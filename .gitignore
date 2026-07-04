@@ -1,0 +1,35 @@
+# --- Tooling / session state ---
+.omc/
+.claude/settings.local.json
+
+# --- macOS ---
+.DS_Store
+
+# --- .NET / Avalonia (for when code lands) ---
+bin/
+obj/
+[Bb]uild/
+*.user
+*.suo
+.vs/
+artifacts/
+publish/
+
+# --- Rider / VS Code (keep shared config, drop local) ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# --- Native helper build output ---
+native/**/.build/
+native/**/DerivedData/
+*.xcuserstate
+
+# Note: .beads/ is intentionally NOT ignored — beads is a git-backed tracker.
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
