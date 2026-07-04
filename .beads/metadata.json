@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bevel",
+  "project_id": "f5094cc3-5136-41b6-a5d5-571a5bfe1be5"
+}
