@@ -1,0 +1,6 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.FileManagerView">
+    <TextBlock Text="Bevel.FileManager — module placeholder (VFS + Explorer UI)"
+               HorizontalAlignment="Center" VerticalAlignment="Center" />
+</UserControl>

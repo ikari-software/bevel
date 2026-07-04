@@ -1,0 +1,11 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:classic="using:Classic.Avalonia.Theme">
+    <!--
+      Bevel's default Windows 2000 theme. At M0 this simply re-exports the
+      Classic.Avalonia ClassicTheme. Once Classic.Avalonia is forked into this
+      project (TODO: tracked in beads), this file becomes the fork's entry point
+      with Bevel.Color/Metric/Font.* semantic keys layered on top.
+    -->
+    <classic:ClassicTheme />
+</Styles>

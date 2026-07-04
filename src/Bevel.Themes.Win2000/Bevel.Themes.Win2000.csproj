@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Default theme. Target state (05 §11): FORK Classic.Avalonia into this project
+       and extract semantic resource keys + metrics + DPI snapping. For M0 we reference
+       the Classic.Avalonia.Theme NuGet package so the app boots with the Win2000 look.
+       TODO: fork Classic.Avalonia (tracked in beads). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Classic.Avalonia.Theme" />
+  </ItemGroup>
+
+</Project>

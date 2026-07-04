@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- File manager module (Win2000 Explorer-style). Feature modules reference
+       Bevel.UI + Bevel.Core + Bevel.Pal.Abstractions ONLY — never a concrete PAL (ARCH-03). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
+    <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
+    <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

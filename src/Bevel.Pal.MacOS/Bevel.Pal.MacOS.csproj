@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- macOS PAL implementation. AppKit interop and the BevelHelper gRPC client
+       land here in M1+. M0 ships compile-only stubs. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Interface-contract events not yet raised by the M0 stubs. -->
+    <NoWarn>$(NoWarn);CS0067</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

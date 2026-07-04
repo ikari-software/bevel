@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package bevel.helper.v1;
+
+// Single source of truth for the Bevel.App <-> BevelHelper IPC contract
+// (gRPC over Unix domain sockets; see docs/spec/01-architecture.md §4).
+//
+// PLACEHOLDER — M0 structure only. The real contract splits by capability, mirroring
+// the PAL: WindowService, TrayService, InputService, SessionService, ScriptingService
+// (macOS), plus SupervisionService (Ping, GetHelperInfo). Event domains use one
+// server-streaming RPC each, always opening with a Snapshot then Deltas (IPC-01), so
+// reconnect == resubscribe. Additive-only evolution within v1 (IPC-02). Pixel frames
+// travel over a shared-memory ring, never protobuf (§4.4).
+
+// csharp_namespace maps generated stubs into Bevel.Ipc when code generation is wired.
+option csharp_namespace = "Bevel.Ipc.V1";
+
+service SupervisionService {
+  rpc Ping(PingRequest) returns (PingReply);
+}
+
+message PingRequest {}
+
+message PingReply {
+  string helper_version = 1;
+}

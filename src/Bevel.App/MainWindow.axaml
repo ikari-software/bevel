@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Bevel.App.MainWindow"
+        Width="640" Height="420"
+        Title="Bevel — M0"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="24" Spacing="12" VerticalAlignment="Center">
+        <TextBlock Text="Bevel — M0" FontSize="28" FontWeight="Bold"
+                   HorizontalAlignment="Center" />
+        <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                   Text="Bootstrap scaffold. This is the foundation, not the product — feature modules are placeholders and the platform layer is stubbed." />
+        <Border BorderThickness="1" Padding="12" Margin="0,8,0,0">
+            <StackPanel Spacing="6">
+                <ContentControl x:Name="DesktopSlot" />
+                <ContentControl x:Name="TaskbarSlot" />
+                <ContentControl x:Name="FileManagerSlot" />
+            </StackPanel>
+        </Border>
+        <TextBlock x:Name="PalStatus" HorizontalAlignment="Center" FontStyle="Italic" />
+    </StackPanel>
+</Window>

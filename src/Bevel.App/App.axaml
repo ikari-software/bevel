@@ -1,0 +1,9 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.App.App"
+             RequestedThemeVariant="Default">
+    <Application.Styles>
+        <!-- Default theme = Bevel.Themes.Win2000 (M0: re-exports Classic.Avalonia). -->
+        <StyleInclude Source="avares://Bevel.Themes.Win2000/Win2000Theme.axaml" />
+    </Application.Styles>
+</Application>

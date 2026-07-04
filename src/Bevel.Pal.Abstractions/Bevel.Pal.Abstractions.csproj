@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The PAL contract. Zero dependencies beyond the BCL (ARCH-02): no Avalonia,
+       no platform APIs, no packages. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

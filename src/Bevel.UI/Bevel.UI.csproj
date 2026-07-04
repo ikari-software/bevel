@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Shared chrome primitives, controls and view infrastructure (Avalonia). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
+    <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,115 @@
+namespace Bevel.Pal.Abstractions;
+
+// Immutable record DTOs and enums shared across every PAL surface (PAL-04).
+// These deliberately model only what the M0 interface stubs reference; the full
+// DTO set (thumbnails, progress, conflict responses, ...) lands with each track.
+
+/// <summary>Opaque identifier for a foreign (non-shell) top-level window.</summary>
+public readonly record struct ForeignWindowId(string Value);
+
+/// <summary>Opaque identifier for a host-OS tray / status item.</summary>
+public readonly record struct TrayItemId(string Value);
+
+/// <summary>Opaque identifier for a monitor.</summary>
+public readonly record struct MonitorId(string Value);
+
+/// <summary>
+/// How authoritative the shell's tray is on this platform: it either owns the real
+/// tray protocol (<see cref="Authoritative"/>, e.g. Windows Shell_TrayWnd, Linux SNI)
+/// or it mirrors a host-owned tray it cannot replace (<see cref="Mirrored"/>, macOS).
+/// </summary>
+public enum TrayCapability
+{
+    Authoritative,
+    Mirrored,
+}
+
+public enum ShellPermission
+{
+    Accessibility,
+    ScreenRecording,
+    FullDiskAccess,
+    AppleEvents,
+    InputMonitoring,
+}
+
+public enum PermissionState
+{
+    Unknown,
+    Granted,
+    Denied,
+    NotApplicable,
+}
+
+public enum LogoutKind
+{
+    LogOut,
+    Restart,
+    Shutdown,
+    Lock,
+}
+
+public enum DockEdge
+{
+    Left,
+    Top,
+    Right,
+    Bottom,
+}
+
+public enum DeleteMode
+{
+    Trash,
+    Permanent,
+}
+
+/// <summary>
+/// Capability descriptor every PAL interface exposes so UI code feature-detects
+/// instead of branching on <c>OperatingSystem.Is*</c> (PAL-02).
+/// </summary>
+public sealed record Capabilities(
+    bool Available,
+    TrayCapability TrayMode,
+    IReadOnlyList<string> Notes)
+{
+    public static Capabilities None { get; } =
+        new(Available: false, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
+}
+
+/// <summary>A foreign top-level window as seen by the taskbar window list.</summary>
+public sealed record ForeignWindow(
+    ForeignWindowId Id,
+    string Title,
+    string? AppId,
+    bool IsMinimized,
+    bool IsFocused);
+
+/// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere).</summary>
+public sealed record TrayItem(
+    TrayItemId Id,
+    string Tooltip);
+
+/// <summary>Physical monitor geometry.</summary>
+public sealed record MonitorInfo(
+    MonitorId Id,
+    int WidthPx,
+    int HeightPx,
+    bool IsPrimary);
+
+/// <summary>A currently running application (taskbar registry).</summary>
+public sealed record RunningApp(
+    string AppId,
+    string DisplayName,
+    int ProcessId);
+
+/// <summary>An installed application (start-menu enumeration).</summary>
+public sealed record InstalledApp(
+    string AppId,
+    string DisplayName,
+    string? IconPath);
+
+/// <summary>A decoded BGRA image handed across the PAL (icons, tray pixels).</summary>
+public sealed record PalImage(
+    int Width,
+    int Height,
+    byte[] Bgra);

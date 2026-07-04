@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Deterministic in-memory PAL. A shipped product feature (DI-05): powers
+       headless UI tests, theming review tooling and reproducible repros. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Interface-contract events that the deterministic fake never raises. -->
+    <NoWarn>$(NoWarn);CS0067</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

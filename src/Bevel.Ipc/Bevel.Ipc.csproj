@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- gRPC / protobuf helper contract. Generated C# client/server stubs from
+       ../../proto land here when the helper handshake track starts. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
