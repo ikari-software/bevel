@@ -1,13 +1,13 @@
-using Avalonia.Controls;
 using Bevel.Desktop;
 using Bevel.FileManager;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
+using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.App;
 
-public partial class MainWindow : Window
+public partial class MainWindow : BevelWindow
 {
     public MainWindow()
     {

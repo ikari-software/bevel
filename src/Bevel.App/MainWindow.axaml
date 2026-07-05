@@ -1,5 +1,6 @@
-<Window xmlns="https://github.com/avaloniaui"
+<ui:BevelWindow xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Bevel.UI"
         x:Class="Bevel.App.MainWindow"
         Width="640" Height="420"
         Title="Bevel — M0"
@@ -18,4 +19,4 @@
         </Border>
         <TextBlock x:Name="PalStatus" HorizontalAlignment="Center" FontStyle="Italic" />
     </StackPanel>
-</Window>
+</ui:BevelWindow>
