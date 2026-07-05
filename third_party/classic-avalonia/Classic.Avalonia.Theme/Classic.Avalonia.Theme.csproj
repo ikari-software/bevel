@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Vendored from https://github.com/BAndysc/Classic.Avalonia (tag v11.3.0.3).
+         See ../NOTICE.md. NuGet-packing metadata stripped; retargeted to the Bevel
+         repo (single TFM + Central Package Management). Do NOT add Version= to any
+         PackageReference here — versions come from the root Directory.Packages.props. -->
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <LangVersion>latest</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Classic.CommonControls.Avalonia\Classic.CommonControls.Avalonia.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="Icons\*.png" />
+      <AvaloniaResource Include="Icons\*.png" />
+    </ItemGroup>
+</Project>

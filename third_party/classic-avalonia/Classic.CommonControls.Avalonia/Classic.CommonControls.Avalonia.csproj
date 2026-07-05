@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Vendored from https://github.com/BAndysc/Classic.Avalonia (tag v11.3.0.3).
+         See ../NOTICE.md. NuGet-packing metadata stripped; retargeted to the Bevel
+         repo (single TFM + Central Package Management). Do NOT add Version= to any
+         PackageReference here — versions come from the root Directory.Packages.props. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <WarningsAsErrors>nullable</WarningsAsErrors>
+        <LangVersion>latest</LangVersion>
+        <IsAotCompatible>true</IsAotCompatible>
+        <IsPackable>false</IsPackable>
+        <!-- Vendored upstream code: InputBox declares ICommand.CanExecuteChanged
+             (interface requirement) but never raises it. Scoped here, not in the
+             root build props, so Bevel code stays strict. -->
+        <NoWarn>$(NoWarn);CS0067</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" />
+        <PackageReference Include="Avalonia.Skia" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <AvaloniaResource Include="Audio\chimes.wav" />
+      <AvaloniaResource Include="Audio\chord.wav" />
+      <AvaloniaResource Include="Audio\ding.wav" />
+    </ItemGroup>
+</Project>

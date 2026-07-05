@@ -15,9 +15,8 @@
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Diagnostics" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="$(AvaloniaVersion)" />
-
-    <!-- Default theme: fork target is Classic.Avalonia; M0 references the package. -->
-    <PackageVersion Include="Classic.Avalonia.Theme" Version="11.3.0.3" />
+    <!-- Required by the vendored Classic.CommonControls.Avalonia (third_party/). -->
+    <PackageVersion Include="Avalonia.Skia" Version="11.3.18" />
 
     <!-- Composition root / DI / hosting -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
