@@ -160,9 +160,9 @@ Deltas surfaced by measurement:
 The 3-D edge has two rasterization modes, selected per theme with an optional user override.
 Both keep the **same logical thickness** (§3 `EdgeThickness`) — proportions never change.
 
-- **Crisp** (default; today's `DPI-01`): each 1-DIP colour band is a hard, device-pixel-snapped
-  line. `devicePx = max(1, round(1 × scale))`. Pixel-authentic; at 3× a band is a fat hard line.
-- **Smooth**: the edge keeps its logical thickness, but the band colours are drawn as an **eased
+- **Crisp** (today's `DPI-01` device snapping): each 1-DIP colour band is a hard, device-pixel-
+  snapped line. `devicePx = max(1, round(1 × scale))`. Pixel-authentic; at 3× a band is a fat hard line.
+- **Smooth** (**default**, decision 2026-07-06): the edge keeps its logical thickness, but the band colours are drawn as an **eased
   sRGB gradient** (`outer → inner → face`) whose *rectangle bounds stay logical-pixel-aligned*
   while the *fill rasterizes at device resolution*. At 1× it collapses to ~2 px (near-crisp); at
   2×/3× the hard step becomes a sub-pixel ramp. Ease: hold the outer (light-catching) colour to
@@ -174,10 +174,13 @@ crisp 1-DIP line at 150 % lands on 1.5 physical px and blurs ambiguously, wherea
 150 % is *meant* to occupy fractional pixels, so it looks intentional.
 
 **Selection:**
-- Theme default `Bevel.Edge.Rendering = Crisp` for Win2000 Classic (authentic OOTB).
-- Whitelisted user override (05 §1 layer 4): a Display-settings toggle **"Smooth bevels"** —
-  era-appropriate next to Win2000's real "Smooth edges of screen fonts". Persist under `theme:<id>`.
-- Suggested auto-default: Crisp at ≤ 100 %, Smooth at ≥ 150 %.
+- Theme default `Bevel.Edge.Rendering = Smooth` at **all** scalings (verified on-device against
+  a live Crisp/Smooth A/B at real DPI — the ramp reads well even at 1×/2× and it removes the
+  150 % fuzziness). This is a deliberate departure from strict pixel-authenticity in favour of
+  the HiDPI-native look.
+- Whitelisted user override (05 §1 layer 4): a Display-settings toggle **"Crisp bevels"** for
+  pixel purists — era-appropriate next to Win2000's real "Smooth edges of screen fonts".
+  Persist under `theme:<id>`.
 
 **Corners:** both modes miter at 45° — each edge is clipped to a trapezoid so adjacent edges
 meet on the diagonal (highlight-L meets shadow-L), matching Win2000's real 3-D corners. This is

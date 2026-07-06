@@ -32,8 +32,10 @@ public class BevelBorder : Decorator
     public static readonly StyledProperty<BevelStyle> BevelStyleProperty =
         AvaloniaProperty.Register<BevelBorder, BevelStyle>(nameof(BevelStyle), BevelStyle.Raised);
 
+    // Default Smooth at all scalings (decision 2026-07-06): the ramp reads well even at 1×/2×
+    // and it removes 150% fuzziness. Crisp remains available as a user override. See spec §8.
     public static readonly StyledProperty<EdgeRendering> EdgeRenderingProperty =
-        AvaloniaProperty.Register<BevelBorder, EdgeRendering>(nameof(EdgeRendering), EdgeRendering.Crisp);
+        AvaloniaProperty.Register<BevelBorder, EdgeRendering>(nameof(EdgeRendering), EdgeRendering.Smooth);
 
     /// <summary>Logical edge thickness (DIP). 2 for full 3-D edges, 1 for the Thin* styles.</summary>
     public static readonly StyledProperty<double> EdgeThicknessProperty =
