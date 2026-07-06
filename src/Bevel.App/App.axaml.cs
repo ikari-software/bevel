@@ -1,15 +1,17 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Bevel.Core;
+using Bevel.Core.Vfs;
+using Bevel.Desktop;
+using Bevel.FileManager;
+using Bevel.FileManager.FileOperations;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.App;
 
 public partial class App : Application
 {
-    /// <summary>
-    /// The composition-root service provider, assigned in <see cref="Program.Main"/>
-    /// before Avalonia starts. Null in the (headless-test) case where no host is built.
-    /// </summary>
     public static IServiceProvider? Services { get; set; }
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -18,7 +20,22 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            var services = Services
+                ?? throw new InvalidOperationException("DI container not initialized before UI startup.");
+
+            // Desktop window (behind everything, wallpaper + icon grid).
+            var desktopWin = new DesktopWindow { Content = new DesktopView() };
+            desktopWin.Show();
+
+            // File manager window — resolved from DI so the SAME object graph the modules
+            // register actually drives the running app: the VfsRoot has both the file AND
+            // computer providers (My Computer works), plus settings and file operations
+            // (Folder Options and Undo work).
+            var fm = services.GetRequiredService<FileManagerWindow>();
+            fm.SetVfsRoot(services.GetRequiredService<VfsRoot>());
+            fm.SetSettingsService(services.GetRequiredService<SettingsService>());
+            fm.SetFileOperationService(services.GetRequiredService<FileOperationService>());
+            desktop.MainWindow = fm;
         }
 
         base.OnFrameworkInitializationCompleted();

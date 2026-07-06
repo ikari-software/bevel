@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.Components.ItemContextMenu"
+             x:Name="Root">
+
+    <!--
+        FM-080: Item right-click context menu.
+        Populated programmatically via ContextMenuBuilder.BuildItemMenu()
+        using the target IVfsNode to determine verbs and capability gating.
+    -->
+</UserControl>

@@ -1,20 +1,31 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// BevelHelper — the macOS native helper daemon skeleton (01 §3.4).
-//
-// This is STRUCTURE ONLY. The gRPC-over-UDS handshake, supervision protocol
-// (SUP-01..07) and the AX / ScreenCaptureKit / CGEvent / Apple Events integration
-// land in later M0/M1+ tasks. It is intentionally NOT part of the .NET solution and
-// is not built by `dotnet build`; it is built by SwiftPM (and later NUKE).
 let package = Package(
     name: "BevelHelper",
     platforms: [
-        .macOS(.v14) // macOS 14 (Sonoma) floor — 02 §10.
+        .macOS(.v15)
+    ],
+    dependencies: [
+        .package(url: "https://github.com/grpc/grpc-swift-2.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "2.0.0"),
     ],
     targets: [
         .executableTarget(
-            name: "BevelHelper"
+            name: "BevelHelper",
+            dependencies: [
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
+            ]
+        ),
+        .testTarget(
+            name: "BevelHelperTests",
+            dependencies: [
+                "BevelHelper",
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+            ]
         )
     ]
 )

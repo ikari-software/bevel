@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Bevel.FileManager.Components"
+             x:Class="Bevel.FileManager.Components.ItemView"
+             Focusable="True">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Details column headers -->
+        <Border x:Name="ColumnHeaders"
+                Grid.Row="0"
+                Background="#ECE9D8"
+                BorderBrush="#ACA899"
+                BorderThickness="0,0,0,1"
+                IsVisible="False"
+                Height="22">
+            <Grid ColumnDefinitions="*,80,120,140">
+                <TextBlock x:Name="SortName"  Grid.Column="0" Tag="Name"
+                           Text=" Name" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Padding="4,2"
+                           Cursor="Hand" PointerPressed="OnHeaderClick" />
+                <TextBlock x:Name="SortSize"  Grid.Column="1" Tag="Size"
+                           Text=" Size" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Padding="4,2"
+                           Cursor="Hand" PointerPressed="OnHeaderClick" />
+                <TextBlock x:Name="SortType"  Grid.Column="2" Tag="Type"
+                           Text=" Type" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Padding="4,2"
+                           Cursor="Hand" PointerPressed="OnHeaderClick" />
+                <TextBlock x:Name="SortModified" Grid.Column="3" Tag="Modified"
+                           Text=" Date Modified" FontSize="11" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Padding="4,2"
+                           Cursor="Hand" PointerPressed="OnHeaderClick" />
+            </Grid>
+        </Border>
+
+        <!-- Items + marquee overlay -->
+        <Panel x:Name="ItemsHost" Grid.Row="1">
+            <ScrollViewer x:Name="ItemsScroller"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         Background="White">
+                <ItemsControl x:Name="ItemsPresenter"
+                              Focusable="False" />
+            </ScrollViewer>
+            <Canvas x:Name="MarqueeCanvas"
+                    IsHitTestVisible="False"
+                    Background="Transparent">
+                <Rectangle x:Name="MarqueeRect"
+                           Fill="#220066FF"
+                           Stroke="#CC0066FF"
+                           StrokeThickness="1"
+                           StrokeDashArray="3,2"
+                           IsVisible="False" />
+            </Canvas>
+        </Panel>
+    </Grid>
+
+</UserControl>

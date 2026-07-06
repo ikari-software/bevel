@@ -22,7 +22,18 @@ internal static class Program
         using var host = builder.Build();
         App.Services = host.Services;
 
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
+        // non-blocking — hosted services degrade gracefully rather than aborting boot.
+        host.Start();
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            // Stop hosted services cleanly on exit (kills the helper, ends the monitor).
+            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        }
     }
 
     // Referenced by name by the Avalonia XAML previewer/designer.

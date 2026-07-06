@@ -1,0 +1,38 @@
+<components:BevelWindow xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:components="using:Bevel.UI"
+         xmlns:fmcomp="using:Bevel.FileManager.Components"
+         x:Class="Bevel.FileManager.FileManagerWindow"
+         Title="Exploring - C:\"
+         Width="800" Height="600"
+         MinWidth="640" MinHeight="480"
+         WindowStartupLocation="CenterScreen">
+
+    <DockPanel>
+        <fmcomp:MenuBar DockPanel.Dock="Top" x:Name="MenuBar" />
+        <fmcomp:Toolbar DockPanel.Dock="Top" x:Name="Toolbar" />
+        <fmcomp:AddressBar DockPanel.Dock="Top" x:Name="AddressBar" />
+        <fmcomp:StatusBar DockPanel.Dock="Bottom" x:Name="StatusBar" />
+
+        <Grid ColumnDefinitions="200,4,*" Margin="2,0,0,2">
+            <!-- Left panel: InfoPane (default) or ExplorerBar (tree) -->
+            <fmcomp:InfoPane x:Name="InfoPane" Grid.Column="0" IsVisible="True"
+                             Title="" Description="" Instruction="" ObjectCount="" />
+            <fmcomp:ExplorerBar x:Name="ExplorerPane" Grid.Column="0" IsVisible="False"
+                                Title="Folders">
+                <TreeView x:Name="TreeView" BorderThickness="0" Margin="-1,-1,-1,-1" />
+            </fmcomp:ExplorerBar>
+
+            <!-- Sunken splitter -->
+            <Border Grid.Column="1" Width="4" Background="#D4D0C8"
+                    BorderBrush="#808080" BorderThickness="1,0,0,0"
+                    Cursor="SizeWestEast" />
+
+            <!-- Right pane: item view -->
+            <Border Grid.Column="2" Background="White"
+                    BorderBrush="#808080" BorderThickness="1,0,0,0" Padding="1,0,0,0">
+                <fmcomp:ItemView x:Name="ItemView" ViewMode="Details" />
+            </Border>
+        </Grid>
+    </DockPanel>
+</components:BevelWindow>

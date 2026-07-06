@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.Components.FolderContextMenu"
+             x:Name="Root">
+
+    <!--
+        FM-081: Folder-background right-click context menu.
+        Populated programmatically via ContextMenuBuilder.BuildFolderBackgroundMenu().
+        Host attaches this to an empty-area right-click handler on the content pane.
+    -->
+</UserControl>

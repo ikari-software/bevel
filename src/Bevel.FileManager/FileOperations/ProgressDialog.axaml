@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Bevel.FileManager.FileOperations.ProgressDialog"
+        Title="Copying..."
+        Width="480" Height="200"
+        MinWidth="400" MinHeight="180"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SystemDecorations="Full">
+
+    <DockPanel Margin="12">
+        <!-- Flying paper animation area -->
+        <Border DockPanel.Dock="Top"
+                Width="120" Height="80"
+                HorizontalAlignment="Center"
+                Margin="0,4,0,12"
+                Background="Transparent">
+            <Image x:Name="AnimationImage"
+                   Width="120" Height="80"
+                   Stretch="None" />
+        </Border>
+
+        <!-- Progress info -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,8,0,0">
+            <!-- From → To label -->
+            <TextBlock x:Name="FromToLabel"
+                       Text=""
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       MaxHeight="32" />
+
+            <!-- Current file -->
+            <TextBlock x:Name="CurrentFileLabel"
+                       Text="Preparing to copy..."
+                       FontSize="11"
+                       TextTrimming="CharacterEllipsis" />
+
+            <!-- Progress bar (blocks style for Win2000 theme) -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                <ProgressBar x:Name="ProgressBar"
+                             Grid.Column="0"
+                             Height="16"
+                             Minimum="0" Maximum="100"
+                             Value="0"
+                             Margin="0,0,8,0" />
+                <TextBlock x:Name="PercentLabel"
+                           Grid.Column="1"
+                           Text="0%"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Width="36" />
+            </Grid>
+
+            <!-- Time remaining -->
+            <TextBlock x:Name="TimeLabel"
+                       Text=""
+                       FontSize="11"
+                       HorizontalAlignment="Right" />
+
+            <!-- Cancel button -->
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Width="80"
+                    Height="24"
+                    HorizontalAlignment="Center"
+                    Click="OnCancelClick" />
+        </StackPanel>
+    </DockPanel>
+</Window>

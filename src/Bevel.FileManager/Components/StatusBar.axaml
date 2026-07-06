@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:cc="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="Bevel.FileManager.Components.StatusBar"
+             x:Name="Root">
+
+    <cc:StatusBar x:Name="MainStatusBar">
+        <!-- Object count panel -->
+        <cc:StatusBarItem cc:StatusBar.Size="2*">
+            <TextBlock x:Name="ObjectCountText"
+                       Text="0 object(s)"
+                       VerticalAlignment="Center"
+                       Margin="2,0" />
+        </cc:StatusBarItem>
+
+        <!-- Total size panel -->
+        <cc:StatusBarItem cc:StatusBar.Size="2*">
+            <TextBlock x:Name="TotalSizeText"
+                       Text=""
+                       VerticalAlignment="Center"
+                       Margin="2,0" />
+        </cc:StatusBarItem>
+
+        <!-- Namespace zone panel -->
+        <cc:StatusBarItem cc:StatusBar.Size="2*">
+            <TextBlock x:Name="NamespaceZoneText"
+                       Text="file"
+                       VerticalAlignment="Center"
+                       Margin="2,0" />
+        </cc:StatusBarItem>
+    </cc:StatusBar>
+</UserControl>

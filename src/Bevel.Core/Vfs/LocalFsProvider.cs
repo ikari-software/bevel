@@ -1,0 +1,434 @@
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Reactive.Subjects;
+
+namespace Bevel.Core.Vfs;
+
+/// <summary>
+/// VFS provider for the local filesystem. Scheme = "file".
+/// Uses .NET System.IO with platform-specific attribute fetching.
+/// </summary>
+public sealed partial class LocalFsProvider : IVfsProvider
+{
+    private readonly string _trashDirectory;
+
+    public LocalFsProvider(string? trashDirectory = null)
+        => _trashDirectory = trashDirectory ?? DefaultTrashDirectory();
+
+    /// <summary>The macOS user Trash (~/.Trash). Overridable for tests/other roots.</summary>
+    private static string DefaultTrashDirectory()
+        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".Trash");
+
+    public string Scheme => "file";
+
+    public ValueTask<IVfsNode> ResolveAsync(VfsPath path, CancellationToken ct)
+    {
+        var fullPath = GetFullPath(path);
+        ct.ThrowIfCancellationRequested();
+
+        if (!System.IO.Directory.Exists(fullPath) && !System.IO.File.Exists(fullPath))
+            throw new FileNotFoundException($"Path not found: {fullPath}");
+
+        return ValueTask.FromResult<IVfsNode>(CreateNode(path, fullPath));
+    }
+
+    public async IAsyncEnumerable<IVfsNode> EnumerateAsync(
+        VfsPath folder,
+        EnumerateOptions options,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var fullPath = GetFullPath(folder);
+        ct.ThrowIfCancellationRequested();
+
+        var remaining = options.Limit;
+
+        // Fast path: enumerate names only, defer stat to visible items
+        foreach (var entry in System.IO.Directory.EnumerateFileSystemEntries(fullPath))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = Path.GetFileName(entry);
+            var childPath = VfsPath.Combine(folder, name);
+
+            // Quick attribute check for hidden/system filtering. The entry can vanish or
+            // become inaccessible between enumeration and this stat (TOCTOU) — skip that
+            // single entry rather than aborting the whole listing.
+            FileAttributes attrs;
+            try
+            {
+                attrs = File.GetAttributes(entry);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            var isHidden = attrs.HasFlag(System.IO.FileAttributes.Hidden);
+            var isSystem = attrs.HasFlag(System.IO.FileAttributes.System);
+            var isDir = attrs.HasFlag(System.IO.FileAttributes.Directory);
+
+            if (isHidden && !options.IncludeHidden) continue;
+            if (isSystem && !options.IncludeSystem) continue;
+
+            var kind = isDir ? VfsNodeKind.Folder : VfsNodeKind.File;
+            var caps = VfsCapabilities.CopySource | VfsCapabilities.Properties | VfsCapabilities.Rename | VfsCapabilities.Delete;
+            if (isDir) caps |= VfsCapabilities.CreateChild | VfsCapabilities.MoveTarget | VfsCapabilities.Watchable;
+            else caps |= VfsCapabilities.Trash;
+
+            var iconKey = isDir ? IconKey.Folder() : IconKey.File(Path.GetExtension(name));
+
+            var node = new LazyFsNode
+            {
+                Path = childPath, FullPath = entry,
+                DisplayName = name, Kind = kind,
+                MightHaveChildren = isDir,
+                TypeDescription = isDir ? "File folder" : FileTypeDescription.ForExtension(Path.GetExtension(name)),
+                IconKey = iconKey, Caps = caps,
+            };
+
+            if (options.Filter is not null && !options.Filter(node)) continue;
+
+            yield return node;
+            if (remaining > 0 && --remaining <= 0) yield break;
+        }
+    }
+
+    public ValueTask<Stream> OpenReadAsync(VfsPath file, CancellationToken ct)
+    {
+        var fullPath = GetFullPath(file);
+        ct.ThrowIfCancellationRequested();
+
+        Stream stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
+        return ValueTask.FromResult(stream);
+    }
+
+    public ValueTask<IVfsMutator?> GetMutatorAsync(VfsPath folder, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IVfsMutator?>(new LocalFsMutator(GetFullPath(folder), _trashDirectory));
+    }
+
+    public IDirectoryWatcher? CreateWatcher(VfsPath folder)
+    {
+        var fullPath = GetFullPath(folder);
+        if (!System.IO.Directory.Exists(fullPath)) return null;
+        return new LocalDirectoryWatcher(fullPath);
+    }
+
+    public NameValidationResult ValidateName(VfsPath folder, string proposedName)
+    {
+        if (string.IsNullOrWhiteSpace(proposedName))
+            return NameValidationResult.Fail("Name cannot be empty.");
+
+        if (proposedName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            return NameValidationResult.Fail("Name contains invalid characters.");
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && proposedName.StartsWith('.'))
+        {
+            // Allow dot-files but warn (macOS convention)
+        }
+
+        var fullPath = Path.Combine(GetFullPath(folder), proposedName);
+        if (System.IO.File.Exists(fullPath) || System.IO.Directory.Exists(fullPath))
+            return NameValidationResult.Fail("An item with this name already exists.");
+
+        return NameValidationResult.Ok;
+    }
+
+    private static string GetFullPath(VfsPath path)
+    {
+        if (path.IsRoot) return Path.GetPathRoot(Environment.CurrentDirectory) ?? "/";
+        var value = path.Value;
+        // Value should be absolute for the file scheme; resolve relative paths.
+        if (!Path.IsPathRooted(value))
+            value = Path.Combine(Path.GetPathRoot(Environment.CurrentDirectory) ?? "/", value);
+        return value;
+    }
+
+    private static IVfsNode CreateNode(VfsPath vfsPath, string fullPath, FileSystemInfo? info = null)
+    {
+        info ??= Directory.Exists(fullPath) ? new DirectoryInfo(fullPath) : new FileInfo(fullPath);
+        var isDir = info.Attributes.HasFlag(FileAttributes.Directory);
+        var kind = isDir ? VfsNodeKind.Folder : VfsNodeKind.File;
+        var caps = VfsCapabilities.CopySource | VfsCapabilities.Properties | VfsCapabilities.Rename | VfsCapabilities.Delete;
+        if (isDir) caps |= VfsCapabilities.CreateChild | VfsCapabilities.MoveTarget | VfsCapabilities.Watchable;
+        else caps |= VfsCapabilities.Trash;
+        return new LocalFsNode(vfsPath, info, kind, caps, isDir ? IconKey.Folder() : IconKey.File(info.Extension));
+    }
+}
+
+/// <summary>Lazy-loading VFS node. Stat (size, modified) deferred to first access.</summary>
+file sealed class LazyFsNode : IVfsNode
+{
+    public required VfsPath Path { get; init; }
+    public required string FullPath { get; init; }
+    public required string DisplayName { get; init; }
+    public required VfsNodeKind Kind { get; init; }
+    public required bool MightHaveChildren { get; init; }
+    public required string TypeDescription { get; init; }
+    public required IconKey IconKey { get; init; }
+    public required VfsCapabilities Caps { get; init; }
+    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
+
+    FileSystemInfo? _info;
+    FileSystemInfo Info => _info ??= Directory.Exists(FullPath) ? new DirectoryInfo(FullPath) : new FileInfo(FullPath);
+
+    public long? Size => Kind != VfsNodeKind.Folder && Info is FileInfo fi ? fi.Length : null;
+    public DateTimeOffset? Modified => Info.LastWriteTimeUtc > DateTime.MinValue ? Info.LastWriteTimeUtc : null;
+}
+
+file sealed class LocalFsNode : IVfsNode
+{
+    private readonly FileSystemInfo _info;
+
+    public LocalFsNode(VfsPath path, FileSystemInfo info, VfsNodeKind kind, VfsCapabilities caps, IconKey iconKey)
+    {
+        _info = info;
+        Path = path;
+        Kind = kind;
+        Caps = caps;
+        IconKey = iconKey;
+        DisplayName = info.Name;
+        MightHaveChildren = kind == VfsNodeKind.Folder;
+        TypeDescription = kind == VfsNodeKind.Folder ? "File folder" : FileTypeDescription.ForExtension(info.Extension);
+    }
+
+    public VfsPath Path { get; }
+    public string DisplayName { get; }
+    public VfsNodeKind Kind { get; }
+    public bool MightHaveChildren { get; }
+    public IconKey IconKey { get; }
+    public VfsCapabilities Caps { get; }
+    public IReadOnlyDictionary<string, object?> ExtraColumns { get; } = new Dictionary<string, object?>();
+
+    public long? Size
+    {
+        get
+        {
+            if (_info is FileInfo fi)
+            {
+                try { return fi.Length; }
+                catch (FileNotFoundException) { return null; }
+            }
+            return null;
+        }
+    }
+
+    public DateTimeOffset? Modified => _info.LastWriteTimeUtc > DateTime.MinValue
+        ? _info.LastWriteTimeUtc
+        : null;
+
+    public string TypeDescription { get; }
+}
+
+file sealed class LocalFsMutator : IVfsMutator
+{
+    private readonly string _directoryPath;
+    private readonly string _trashDirectory;
+
+    public LocalFsMutator(string directoryPath, string trashDirectory)
+    {
+        _directoryPath = directoryPath;
+        _trashDirectory = trashDirectory;
+    }
+
+    public ValueTask<VfsPath> CreateFolderAsync(VfsPath parent, string name, CancellationToken ct)
+    {
+        var fullPath = Path.Combine(_directoryPath, name);
+        System.IO.Directory.CreateDirectory(fullPath);
+        return ValueTask.FromResult(VfsPath.Combine(parent, name));
+    }
+
+    public ValueTask RenameAsync(VfsPath path, string newName, CancellationToken ct)
+    {
+        var fullPath = Path.Combine(_directoryPath, path.FileName);
+        var newPath = Path.Combine(_directoryPath, newName);
+
+        if (System.IO.File.Exists(fullPath))
+            System.IO.File.Move(fullPath, newPath);
+        else if (System.IO.Directory.Exists(fullPath))
+            System.IO.Directory.Move(fullPath, newPath);
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<VfsPath?> DeleteAsync(VfsPath path, bool toTrash, CancellationToken ct)
+    {
+        var fullPath = Path.Combine(_directoryPath, path.FileName);
+
+        if (toTrash)
+        {
+            // Move to the trash directory under a collision-free name and return the new
+            // location so the operation can be undone (restored to its original path).
+            System.IO.Directory.CreateDirectory(_trashDirectory);
+            var trashPath = UniqueTrashPath(path.FileName);
+
+            if (System.IO.Directory.Exists(fullPath))
+                System.IO.Directory.Move(fullPath, trashPath);
+            else
+                System.IO.File.Move(fullPath, trashPath);
+
+            return ValueTask.FromResult<VfsPath?>(new VfsPath("file", trashPath));
+        }
+
+        if (System.IO.Directory.Exists(fullPath))
+            System.IO.Directory.Delete(fullPath, recursive: true);
+        else
+            System.IO.File.Delete(fullPath);
+
+        return ValueTask.FromResult<VfsPath?>(null);
+    }
+
+    /// <summary>Returns a path in the trash for <paramref name="name"/> that does not collide.</summary>
+    private string UniqueTrashPath(string name)
+    {
+        var candidate = Path.Combine(_trashDirectory, name);
+        if (!System.IO.File.Exists(candidate) && !System.IO.Directory.Exists(candidate))
+            return candidate;
+
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var ext = Path.GetExtension(name);
+        for (var i = 1; ; i++)
+        {
+            candidate = Path.Combine(_trashDirectory, $"{stem} {i}{ext}");
+            if (!System.IO.File.Exists(candidate) && !System.IO.Directory.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    public ValueTask SetAttributesAsync(VfsPath path, VfsNodeAttributes attributes, CancellationToken ct)
+    {
+        // Minimal implementation; full attribute mapping per platform lands in M1+.
+        var fullPath = Path.Combine(_directoryPath, path.FileName);
+        FileSystemInfo info = new FileInfo(fullPath);
+        if (!info.Exists)
+        {
+            var di = new DirectoryInfo(fullPath);
+            if (di.Exists)
+                info = di;
+        }
+
+        // Read-only maps to the archive bit on Windows, POSIX write on Unix.
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            info.Attributes = attributes.HasFlag(VfsNodeAttributes.ReadOnly)
+                ? info.Attributes | System.IO.FileAttributes.Archive
+                : info.Attributes & ~System.IO.FileAttributes.Archive;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<Stream> OpenWriteAsync(VfsPath file, CancellationToken ct)
+    {
+        var fullPath = Path.Combine(_directoryPath, file.FileName);
+
+        // Ensure the target directory exists so a write is self-sufficient. Folder jobs
+        // are scanned depth-first (children before their parent), so a nested file can be
+        // written before its folder job runs; without this, that write would throw
+        // DirectoryNotFoundException.
+        var dir = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(dir))
+            System.IO.Directory.CreateDirectory(dir);
+
+        Stream stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+        return ValueTask.FromResult(stream);
+    }
+}
+
+file sealed class LocalDirectoryWatcher : IDirectoryWatcher
+{
+    private readonly FileSystemWatcher _watcher;
+    private readonly Subject<FsChangeBatch> _subject = new();
+
+    // FileSystemWatcher raises events on threadpool threads and can deliver a queued
+    // event even after EnableRaisingEvents is cleared. The gate serializes Notify against
+    // Dispose so OnNext is never called on a disposed Subject.
+    private readonly object _gate = new();
+    private bool _disposed;
+
+    public LocalDirectoryWatcher(string path)
+    {
+        _watcher = new FileSystemWatcher(path)
+        {
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = false,
+            EnableRaisingEvents = true,
+        };
+
+        _watcher.Created += (s, e) => Notify();
+        _watcher.Deleted += (s, e) => Notify();
+        _watcher.Changed += (s, e) => Notify();
+        _watcher.Renamed += (s, e) => Notify();
+        _watcher.Error += (s, e) => OnWatcherError();
+    }
+
+    public IObservable<FsChangeBatch> Changes => _subject;
+
+    private void Notify()
+    {
+        // Batching via debounce is handled at the consumer level (FM-141).
+        // For now, emit a rescan signal (empty paths = "rescan folder").
+        lock (_gate)
+        {
+            if (_disposed) return;
+            try
+            {
+                _subject.OnNext(new FsChangeBatch(
+                    Array.Empty<VfsPath>(),
+                    Array.Empty<VfsPath>(),
+                    Array.Empty<VfsPath>(),
+                    Array.Empty<(VfsPath, VfsPath)>()));
+            }
+            catch
+            {
+                // A subscriber throwing must not crash the FileSystemWatcher's thread-pool
+                // callback and tear down watching (review R5).
+            }
+        }
+    }
+
+    private void OnWatcherError()
+    {
+        // A watcher error (typically InternalBufferOverflowException) drops events and can
+        // stop the watcher raising further notifications. Emit one rescan so the consumer
+        // refreshes, then try to resume watching (review #14).
+        Notify();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            try { _watcher.EnableRaisingEvents = true; }
+            catch { /* watcher unrecoverable; the rescan above is the best-effort recovery */ }
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
+
+        // Stop new events, then dispose. Any in-flight Notify has either already
+        // completed under the gate or will observe _disposed and return.
+        _watcher.EnableRaisingEvents = false;
+        _watcher.Dispose();
+        _subject.Dispose();
+    }
+}
+
+internal static class FileTypeDescription
+{
+    /// <summary>Human-readable type label for a file extension (single source of truth).</summary>
+    public static string ForExtension(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".txt" => "Text Document",
+        ".pdf" => "PDF Document",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".tiff" => "Image",
+        ".zip" => "Compressed (zipped) Folder",
+        ".exe" or ".app" => "Application",
+        "" => "File",
+        _ => $"{extension.TrimStart('.').ToUpperInvariant()} File",
+    };
+}

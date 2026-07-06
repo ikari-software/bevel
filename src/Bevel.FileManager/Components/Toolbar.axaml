@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:cc="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+             x:Class="Bevel.FileManager.Components.Toolbar">
+
+    <DockPanel>
+        <!-- Row 1: Navigation + View -->
+        <cc:ToolBar DockPanel.Dock="Top" Size="Small" TextPlacement="Right">
+            <cc:ToolBarButton x:Name="NavBack" ToolTip.Tip="Back (Alt+Left)" IsEnabled="False" />
+            <cc:ToolBarButton x:Name="NavForward" ToolTip.Tip="Forward (Alt+Right)" IsEnabled="False" />
+            <cc:ToolBarButton x:Name="NavUp" ToolTip.Tip="Up (Alt+Up)" />
+            <Separator />
+            <cc:ToolBarButton x:Name="SearchBtn" ToolTip.Tip="Search (F3)" />
+            <cc:ToolBarButton x:Name="FoldersBtn" ToolTip.Tip="Folders" />
+            <cc:ToolBarButton x:Name="HistoryBtn" ToolTip.Tip="History" />
+        </cc:ToolBar>
+
+        <!-- Row 2: Edit operations -->
+        <cc:ToolBar DockPanel.Dock="Top" Size="Small" TextPlacement="Right">
+            <cc:ToolBarButton x:Name="MoveToBtn" ToolTip.Tip="Move To" />
+            <cc:ToolBarButton x:Name="CopyToBtn" ToolTip.Tip="Copy To" />
+            <Separator />
+            <cc:ToolBarButton x:Name="CutBtn" ToolTip.Tip="Cut (Ctrl+X)" />
+            <cc:ToolBarButton x:Name="CopyBtn" ToolTip.Tip="Copy (Ctrl+C)" />
+            <cc:ToolBarButton x:Name="PasteBtn" ToolTip.Tip="Paste (Ctrl+V)" />
+            <Separator />
+            <cc:ToolBarButton x:Name="UndoBtn" ToolTip.Tip="Undo (Ctrl+Z)" />
+            <Separator />
+            <cc:ToolBarButton x:Name="DeleteBtn" ToolTip.Tip="Delete (Del)" />
+            <cc:ToolBarButton x:Name="PropertiesBtn" ToolTip.Tip="Properties (Alt+Enter)" />
+            <Separator />
+            <cc:ToolBarButton x:Name="ViewsBtn" ToolTip.Tip="Views" IsToggleButton="True">
+                <cc:ToolBarButton.Flyout>
+                    <MenuFlyout>
+                        <MenuItem Header="Large Icons" x:Name="MenuViewLargeIcons" />
+                        <MenuItem Header="Small Icons" x:Name="MenuViewSmallIcons" />
+                        <MenuItem Header="List" x:Name="MenuViewList" />
+                        <MenuItem Header="Details" x:Name="MenuViewDetails" />
+                    </MenuFlyout>
+                </cc:ToolBarButton.Flyout>
+            </cc:ToolBarButton>
+        </cc:ToolBar>
+    </DockPanel>
+</UserControl>

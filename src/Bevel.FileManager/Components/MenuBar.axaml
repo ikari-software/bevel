@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.Components.MenuBar"
+             x:Name="Root">
+
+    <Menu x:Name="MainMenu">
+        <!-- File -->
+        <MenuItem Header="_File">
+            <MenuItem Header="_New Window" x:Name="NewWindowItem" InputGesture="Ctrl+N" />
+            <MenuItem Header="New _Tab" x:Name="NewTabItem" InputGesture="Ctrl+T" />
+            <Separator />
+            <MenuItem Header="_Open" x:Name="OpenItem" InputGesture="Enter" />
+            <MenuItem Header="Open Wit_h..." x:Name="OpenWithItem" />
+            <Separator />
+            <MenuItem Header="Move _To Folder..." x:Name="MoveToFolderItem" />
+            <MenuItem Header="_Copy To Folder..." x:Name="CopyToFolderItem" />
+            <Separator />
+            <MenuItem Header="Create _Shortcut" x:Name="CreateShortcutItem" />
+            <MenuItem Header="_Delete" x:Name="DeleteItem" InputGesture="Delete" />
+            <MenuItem Header="R_name" x:Name="RenameItem" InputGesture="F2" />
+            <Separator />
+            <MenuItem Header="Pr_operties" x:Name="PropertiesItem" InputGesture="Alt+Enter" />
+            <Separator />
+            <MenuItem Header="Close _Window" x:Name="CloseWindowItem" InputGesture="Alt+F4" />
+        </MenuItem>
+
+        <!-- Edit -->
+        <MenuItem Header="_Edit">
+            <MenuItem Header="Undo _Delete" x:Name="UndoDeleteItem" InputGesture="Ctrl+Z" />
+            <Separator />
+            <MenuItem Header="Cu_t" x:Name="CutItem" InputGesture="Ctrl+X" />
+            <MenuItem Header="_Copy" x:Name="CopyItem" InputGesture="Ctrl+C" />
+            <MenuItem Header="_Paste" x:Name="PasteItem" InputGesture="Ctrl+V" />
+            <Separator />
+            <MenuItem Header="Paste _Shortcut" x:Name="PasteShortcutItem" />
+            <Separator />
+            <MenuItem Header="Select _All" x:Name="SelectAllItem" InputGesture="Ctrl+A" />
+            <MenuItem Header="In_vert Selection" x:Name="InvertSelectionItem" />
+            <Separator />
+            <MenuItem Header="_Find Files..." x:Name="FindFilesItem" InputGesture="Ctrl+F" />
+            <MenuItem Header="Find _Computer..." x:Name="FindComputerItem" />
+        </MenuItem>
+
+        <!-- View -->
+        <MenuItem Header="_View">
+            <MenuItem Header="T_oolbar" x:Name="ToolbarMenuItem" InputGesture="Ctrl+T" />
+            <MenuItem Header="Status _Bar" x:Name="StatusBarMenuItem" InputGesture="Ctrl+Shift+S" />
+            <MenuItem Header="_Explorer Bar" x:Name="ExplorerBarMenuItem" />
+            <Separator />
+            <MenuItem Header="_Large Icons" x:Name="LargeIconsItem" InputGesture="Ctrl+Shift+1" />
+            <MenuItem Header="_Small Icons" x:Name="SmallIconsItem" InputGesture="Ctrl+Shift+2" />
+            <MenuItem Header="_List" x:Name="ListItem" InputGesture="Ctrl+Shift+3" />
+            <MenuItem Header="_Details" x:Name="DetailsItem" InputGesture="Ctrl+Shift+4" />
+            <Separator />
+            <MenuItem Header="S_ort Icons" x:Name="SortIconsItem" />
+            <MenuItem Header="Arrange _Icons" x:Name="ArrangeIconsItem" />
+            <Separator />
+            <MenuItem Header="R_efresh" x:Name="RefreshItem" InputGesture="F5" />
+            <Separator />
+            <MenuItem Header="_Options..." x:Name="OptionsItem" />
+        </MenuItem>
+
+        <!-- Go -->
+        <MenuItem Header="_Go">
+            <MenuItem Header="_Back" x:Name="BackItem" InputGesture="Alt+Left" />
+            <MenuItem Header="_Forward" x:Name="ForwardItem" InputGesture="Alt+Right" />
+            <MenuItem Header="_Up" x:Name="UpItem" InputGesture="Alt+Up" />
+            <Separator />
+            <MenuItem Header="_Home" x:Name="HomeItem" />
+            <MenuItem Header="_My Documents" x:Name="MyDocumentsItem" />
+            <MenuItem Header="My Co_mputer" x:Name="MyComputerItem" />
+            <Separator />
+            <MenuItem Header="Recen_t Locations" x:Name="RecentLocationsItem" />
+        </MenuItem>
+
+        <!-- Favorites -->
+        <MenuItem Header="Favo_rites">
+            <MenuItem Header="Add to _Favorites" x:Name="AddToFavoritesItem" InputGesture="Ctrl+D" />
+            <MenuItem Header="Organize _Favorites..." x:Name="OrganizeFavoritesItem" />
+            <Separator />
+            <MenuItem Header="Links" x:Name="LinksItem" />
+            <MenuItem Header="_Media" x:Name="MediaItem" />
+        </MenuItem>
+
+        <!-- Tools -->
+        <MenuItem Header="_Tools">
+            <MenuItem Header="_Map Network Drive..." x:Name="MapNetworkDriveItem" />
+            <MenuItem Header="Disconnect Network D_rive..." x:Name="DisconnectNetworkDriveItem" />
+            <Separator />
+            <MenuItem Header="_Synchronize..." x:Name="SynchronizeItem" />
+            <MenuItem Header="_Folder Options..." x:Name="FolderOptionsItem" />
+        </MenuItem>
+
+        <!-- Help -->
+        <MenuItem Header="_Help">
+            <MenuItem Header="_Help Topics" x:Name="HelpTopicsItem" />
+            <Separator />
+            <MenuItem Header="_About Bevel" x:Name="AboutItem" />
+        </MenuItem>
+    </Menu>
+</UserControl>

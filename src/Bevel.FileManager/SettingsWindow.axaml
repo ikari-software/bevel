@@ -1,0 +1,50 @@
+<components:BevelWindow xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:components="using:Bevel.UI"
+         x:Class="Bevel.FileManager.SettingsWindow"
+         Title="Bevel Settings"
+         Width="420" Height="300"
+         MinWidth="380" MinHeight="260"
+         WindowStartupLocation="CenterOwner"
+         CanResize="False">
+
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+            <Button x:Name="OkButton" Content="OK" Width="75" />
+            <Button x:Name="CancelButton" Content="Cancel" Width="75" />
+            <Button x:Name="ApplyButton" Content="Apply" Width="75" />
+        </StackPanel>
+
+        <TabControl>
+            <TabItem Header="General">
+                <StackPanel Spacing="12" Margin="8">
+                    <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="12" />
+                    <ComboBox x:Name="ThemeCombo" SelectedIndex="0">
+                        <ComboBoxItem>Windows 2000 Classic</ComboBoxItem>
+                        <ComboBoxItem IsEnabled="False">Windows XP (Luna) — v1.1</ComboBoxItem>
+                        <ComboBoxItem IsEnabled="False">Windows 11 — v1.2</ComboBoxItem>
+                    </ComboBox>
+                    <Separator Margin="0,8" />
+                    <CheckBox x:Name="ShellEnabledCheck"
+                              Content="Enable Bevel as the desktop shell"
+                              IsChecked="True" />
+                    <TextBlock Text="Disabling hides the desktop and taskbar. File manager windows remain available."
+                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="View">
+                <StackPanel Spacing="8" Margin="8">
+                    <TextBlock Text="File Manager" FontWeight="SemiBold" FontSize="12" />
+                    <CheckBox x:Name="ShowHiddenCheck"
+                              Content="Show hidden files and folders" />
+                    <CheckBox x:Name="HideExtensionsCheck"
+                              Content="Hide extensions for known file types"
+                              IsEnabled="False" />
+                    <TextBlock Text="Extension hiding follows the host OS setting on first run."
+                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</components:BevelWindow>

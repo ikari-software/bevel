@@ -4,6 +4,7 @@ using Bevel.FileManager;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Bevel.App;
 
@@ -47,6 +48,8 @@ public static class CompositionRoot
         services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
+        services.AddSingleton<Pal.MacOS.HelperLifecycle>();
+        services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
         return services;
     }
 

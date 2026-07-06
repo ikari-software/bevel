@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.Components.AddressBar">
+
+    <DockPanel>
+        <!-- "Address" label -->
+        <TextBlock DockPanel.Dock="Left"
+                   Text="Address"
+                   VerticalAlignment="Center"
+                   Margin="4,0,4,0"
+                   FontSize="11" />
+
+        <!-- ComboBox + Go button -->
+        <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Grid.Column="0"
+                      x:Name="AddressComboBox"
+                      IsEditable="True"
+                      MinHeight="22"
+                      VerticalContentAlignment="Center"
+                      KeyDown="OnAddressKeyDown"
+                      SelectionChanged="OnAddressSelectionChanged" />
+
+            <Button Grid.Column="1"
+                    x:Name="GoButton"
+                    Content="Go"
+                    MinWidth="50"
+                    MinHeight="22"
+                    Margin="4,0,4,0"
+                    Click="OnGoClick" />
+        </Grid>
+    </DockPanel>
+</UserControl>

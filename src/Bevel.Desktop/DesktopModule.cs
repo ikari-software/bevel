@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.Desktop;
 
-/// <summary>Self-registers the desktop module's services (DI-01). Placeholder at M0.</summary>
+/// <summary>Self-registers the desktop surface module.</summary>
 public sealed class DesktopModule : IModule
 {
     public string Name => "Desktop";
@@ -11,5 +11,6 @@ public sealed class DesktopModule : IModule
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddTransient<DesktopView>();
+        services.AddTransient<DesktopWindow>();
     }
 }
