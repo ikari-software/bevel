@@ -59,7 +59,7 @@ public class CompositionWiringTests
         {
             fm.SetVfsRoot(sp.GetRequiredService<VfsRoot>());
             fm.SetSettingsService(sp.GetRequiredService<SettingsService>());
-            fm.SetFileOperationService(sp.GetRequiredService<FileOperationService>());
+            fm.SetController(sp.GetRequiredService<FileManagerController>());
         });
         Assert.Null(ex);
     }

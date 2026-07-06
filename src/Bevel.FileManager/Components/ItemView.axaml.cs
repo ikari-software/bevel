@@ -34,6 +34,9 @@ public partial class ItemView : UserControl
     public IReadOnlyList<IVfsNode>? Items { get => GetValue(ItemsProperty); set => SetValue(ItemsProperty, value); }
     public ItemViewModel? SelectedItem { get => GetValue(SelectedItemProperty); set => SetValue(SelectedItemProperty, value); }
 
+    /// <summary>The full multi-selection in click order (last = focus). Read by the controller at command time.</summary>
+    public IReadOnlyList<ItemViewModel> SelectedItems => _selectedOrder;
+
     private readonly ObservableCollection<ItemViewModel> _viewModels = new();
     private readonly HashSet<ItemViewModel> _selected = new();
     private readonly List<ItemViewModel> _selectedOrder = new();
@@ -54,6 +57,7 @@ public partial class ItemView : UserControl
 
     public event EventHandler<ItemActivatedEventArgs>? ItemActivated;
     public event EventHandler<DropEventArgs>? DropRequested;
+    public event EventHandler<RenameCommittedEventArgs>? RenameCommitted;
 
     // Expose named controls for tests
     public Avalonia.Controls.ItemsControl ItemsControl => ItemsPresenter;
@@ -419,7 +423,12 @@ public partial class ItemView : UserControl
                 foreach (var vm in _viewModels) AddSel(vm); e.Handled = true; break;
             case Key.Down or Key.Up or Key.Left or Key.Right:
                 Navigate(e.Key, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
-            default: if (e.Key is >= Key.A and <= Key.Z) TypeAhead(e.Key); break;
+            default:
+                // Skip type-ahead when a modifier is held so Ctrl+C/X/V (Copy/Cut/Paste,
+                // handled by the window) don't jump the selection instead.
+                if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Meta)
+                    && e.Key is >= Key.A and <= Key.Z) TypeAhead(e.Key);
+                break;
         }
     }
 
@@ -459,6 +468,9 @@ public partial class ItemView : UserControl
 
     // ── Rename ────────────────────────────────────────────────────────
 
+    /// <summary>Begin inline rename of the single selected item (F2, or the Rename menu item).</summary>
+    public void BeginRenameSelected() => BeginRename();
+
     void BeginRename()
     {
         if (SelectedItem is null || _selected.Count != 1) return;
@@ -481,11 +493,22 @@ public partial class ItemView : UserControl
     void FinishRename(bool commit)
     {
         if (_renameBox is null || SelectedItem is null) return;
+        var vm = SelectedItem;
         var box = _renameBox; _renameBox = null;
         box.KeyDown -= OnRenameKey; box.LostFocus -= OnRenameLost;
-        if (commit && !string.IsNullOrWhiteSpace(box.Text)) SelectedItem.EditName = box.Text;
-        SelectedItem.IsEditing = false;
+
+        var newName = box.Text?.Trim();
+        vm.IsEditing = false;
         AdornerLayer.GetAdornerLayer(this)?.Children.Remove(box);
+
+        // Commit through the controller (which drives FileOperationService); the optimistic
+        // EditName is only a visual echo until the directory reloads with the real name.
+        if (commit && !string.IsNullOrWhiteSpace(newName)
+            && !string.Equals(newName, vm.DisplayName, StringComparison.Ordinal))
+        {
+            vm.EditName = newName;
+            RenameCommitted?.Invoke(this, new RenameCommittedEventArgs(vm.Path, newName));
+        }
     }
 
     void OnRenameKey(object? s, KeyEventArgs e)
@@ -511,4 +534,10 @@ public sealed class DropEventArgs : EventArgs
     {
         Paths = paths; IsCopy = ctrl && !shift; IsLink = ctrl && shift;
     }
+}
+
+public sealed class RenameCommittedEventArgs(VfsPath path, string newName) : EventArgs
+{
+    public VfsPath Path { get; } = path;
+    public string NewName { get; } = newName;
 }

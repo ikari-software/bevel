@@ -34,7 +34,7 @@ public partial class App : Application
             var fm = services.GetRequiredService<FileManagerWindow>();
             fm.SetVfsRoot(services.GetRequiredService<VfsRoot>());
             fm.SetSettingsService(services.GetRequiredService<SettingsService>());
-            fm.SetFileOperationService(services.GetRequiredService<FileOperationService>());
+            fm.SetController(services.GetRequiredService<FileManagerController>());
             desktop.MainWindow = fm;
         }
 

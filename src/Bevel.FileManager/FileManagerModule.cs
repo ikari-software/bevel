@@ -30,6 +30,10 @@ public sealed class FileManagerModule : IModule
         services.AddSingleton<IConflictHandler, DefaultConflictHandler>();
         services.AddSingleton<FileOperationService>();
 
+        // Command seam between the UI and the file-ops engine (bevel-o2t). Transient: one per
+        // window, owning that window's navigation history, selection, and clipboard.
+        services.AddTransient<FileManagerController>();
+
         // File manager windows
         services.AddTransient<FileManagerView>();
         services.AddTransient<FileManagerWindow>();

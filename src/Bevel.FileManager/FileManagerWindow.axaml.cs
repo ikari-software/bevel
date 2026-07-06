@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reactive.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -7,51 +9,70 @@ using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
 using Bevel.FileManager.FileOperations;
-using Bevel.FileManager.Navigation;
 using Bevel.UI;
 
 namespace Bevel.FileManager;
 
+/// <summary>
+/// Thin view adapter over <see cref="FileManagerController"/> (bevel-o2t): it renders the tree
+/// and directory listing and forwards UI gestures (toolbar/menu/keyboard/drag-drop/rename) to
+/// the controller, which owns navigation, selection, the clipboard, and all mutations. The
+/// controller raises <see cref="FileManagerController.CurrentDirectoryChanged"/> when the
+/// location changes and the window reloads in response.
+/// </summary>
 public partial class FileManagerWindow : BevelWindow
 {
-    private readonly NavigationStack _nav = new();
     private VfsRoot? _vfsRoot;
-    private FileOperationService? _fileOps;
+    private FileManagerController? _controller;
+    private Core.SettingsService? _settings;
+
     private CancellationTokenSource? _enumerateCts;
     private CancellationTokenSource? _treeCts;
     private IDirectoryWatcher? _directoryWatcher;
     private IDisposable? _watcherSubscription;
     private CancellationTokenSource? _watcherDebounceCts;
-    private Core.SettingsService? _settings;
+
+    private static VfsPath HomePath =>
+        new("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    private VfsPath CurrentPath => _controller?.CurrentDirectory ?? VfsPath.Root("file");
 
     public FileManagerWindow()
     {
         InitializeComponent();
 
-        // Wire up navigation events
-        Toolbar.BackButton.Click += (_, _) => NavigateBack();
-        Toolbar.ForwardButton.Click += (_, _) => NavigateForward();
-        Toolbar.UpButton.Click += (_, _) => NavigateUp();
+        // Navigation (delegated to the controller)
+        Toolbar.BackButton.Click += (_, _) => _controller?.GoBack();
+        Toolbar.ForwardButton.Click += (_, _) => _controller?.GoForward();
+        Toolbar.UpButton.Click += (_, _) => _controller?.GoUp();
 
-        // Wire up view mode switching via toolbar
+        // View mode switching via toolbar
         Toolbar.ViewLargeIcons.Click += (_, _) => SetView(ViewMode.LargeIcons);
         Toolbar.ViewSmallIcons.Click += (_, _) => SetView(ViewMode.SmallIcons);
         Toolbar.ViewList.Click += (_, _) => SetView(ViewMode.List);
         Toolbar.ViewDetails.Click += (_, _) => SetView(ViewMode.Details);
 
-        // Wire up address bar
+        // Mutating actions (bevel-o2t): toolbar + item view -> controller
+        Toolbar.Cut.Click += (_, _) => CutSelection();
+        Toolbar.Copy.Click += (_, _) => CopySelection();
+        Toolbar.Paste.Click += (_, _) => _ = PasteAsync();
+        Toolbar.Delete.Click += (_, _) => _ = DeleteSelectionAsync(toTrash: true);
+        Toolbar.Properties.Click += (_, _) => ShowProperties();
+        ItemView.DropRequested += OnDropRequested;
+        ItemView.RenameCommitted += OnRenameCommitted;
+
+        // Address bar
         AddressBar.AddressNavigated += (_, path) => NavigateTo(path);
 
-        // Wire up tree selection
+        // Tree selection
         TreeView.SelectionChanged += TreeView_SelectedItemChanged;
 
-        // Wire up item activation (double-click / Enter on folder)
+        // Item activation (double-click / Enter on folder)
         ItemView.ItemActivated += OnItemActivated;
 
         // Keyboard shortcuts (FM-070)
         KeyDown += OnWindowKeyDown;
 
-        // Wire up menu bar events
         WireMenuBar();
 
         // Folders toggle: swap InfoPane <-> ExplorerPane (tree)
@@ -72,9 +93,9 @@ public partial class FileManagerWindow : BevelWindow
     {
         // File
         MenuBar.Open.Click += (_, _) => { if (ItemView.SelectedItem is { } item) OnItemActivated(this, new ItemActivatedEventArgs(item)); };
-        MenuBar.Delete.Click += (_, _) => { /* stub */ };
-        MenuBar.Rename.Click += (_, _) => { ItemView.Focus(); /* F2 will trigger rename */ };
-        MenuBar.Properties.Click += (_, _) => { /* stub: Properties dialog */ };
+        MenuBar.Delete.Click += (_, _) => _ = DeleteSelectionAsync(toTrash: true);
+        MenuBar.Rename.Click += (_, _) => ItemView.BeginRenameSelected();
+        MenuBar.Properties.Click += (_, _) => ShowProperties();
         MenuBar.CloseWindow.Click += (_, _) => Close();
 
         // Tools
@@ -87,6 +108,9 @@ public partial class FileManagerWindow : BevelWindow
 
         // Edit
         MenuBar.Undo.Click += async (_, _) => await UndoFromUiAsync();
+        MenuBar.Cut.Click += (_, _) => CutSelection();
+        MenuBar.Copy.Click += (_, _) => CopySelection();
+        MenuBar.Paste.Click += (_, _) => _ = PasteAsync();
         MenuBar.SelectAll.Click += (_, _) => { ItemView.Focus(); /* Ctrl+A handled by ItemView */ };
 
         // View
@@ -94,20 +118,27 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.ViewSmallIcons.Click += (_, _) => SetView(ViewMode.SmallIcons);
         MenuBar.ViewList.Click += (_, _) => SetView(ViewMode.List);
         MenuBar.ViewDetails.Click += (_, _) => SetView(ViewMode.Details);
-        MenuBar.Refresh.Click += (_, _) => _ = LoadDirectory(_nav.Current);
+        MenuBar.Refresh.Click += (_, _) => _controller?.Refresh();
 
         // Go
-        MenuBar.GoBack.Click += (_, _) => NavigateBack();
-        MenuBar.GoForward.Click += (_, _) => NavigateForward();
-        MenuBar.GoUp.Click += (_, _) => NavigateUp();
-        MenuBar.GoHome.Click += (_, _) => NavigateTo(new VfsPath("file",
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        MenuBar.GoBack.Click += (_, _) => _controller?.GoBack();
+        MenuBar.GoForward.Click += (_, _) => _controller?.GoForward();
+        MenuBar.GoUp.Click += (_, _) => _controller?.GoUp();
+        MenuBar.GoHome.Click += (_, _) => NavigateTo(HomePath);
         MenuBar.GoMyComputer.Click += (_, _) => NavigateTo(VfsPath.Root("computer"));
     }
 
-    public void SetFileOperationService(FileOperationService fileOps)
+    /// <summary>
+    /// Wires the controller (bevel-o2t) and kicks off the initial navigation. Replaces the
+    /// former SetFileOperationService — the controller wraps FileOperationService plus the
+    /// navigation/selection/clipboard state the window used to own.
+    /// </summary>
+    public void SetController(FileManagerController controller)
     {
-        _fileOps = fileOps;
+        _controller = controller;
+        controller.CurrentDirectoryChanged += OnCurrentDirectoryChanged;
+        controller.NavigationStateChanged += OnNavigationStateChanged;
+        controller.NavigateTo(HomePath);
     }
 
     public void SetSettingsService(Core.SettingsService settings)
@@ -125,7 +156,7 @@ public partial class FileManagerWindow : BevelWindow
         _treeCts?.Dispose();
         _treeCts = new CancellationTokenSource();
         BuildTreeView();
-        NavigateTo(new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        // Initial navigation is driven by SetController so it flows through the controller.
     }
 
     private void BuildTreeView()
@@ -139,7 +170,7 @@ public partial class FileManagerWindow : BevelWindow
         desktop.IsExpanded = true;
 
         // Home folder
-        var homePath = new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var homePath = HomePath;
         desktop.Items.Add(CreateTreeNode("Home", homePath));
 
         // My Computer
@@ -249,7 +280,7 @@ public partial class FileManagerWindow : BevelWindow
             catch { }
         }
 
-        await LoadDirectory(path);
+        _controller?.NavigateTo(path);
     }
 
     private void OnItemActivated(object? sender, ItemActivatedEventArgs e)
@@ -260,65 +291,29 @@ public partial class FileManagerWindow : BevelWindow
         }
     }
 
-    private async void NavigateTo(string pathString)
+    // ── Navigation (thin delegators to the controller) ─────────────────
+
+    private void NavigateTo(string pathString)
     {
         // A canonical "vfs://scheme/value" string parses via VfsPath; anything else is
         // treated as a bare local filesystem path.
         var path = VfsPath.TryParse(pathString, out var parsed)
             ? parsed
             : new VfsPath("file", pathString);
-        _nav.Push(path);
-        await LoadDirectory(path);
-        UpdateNavigationButtons();
+        _controller?.NavigateTo(path);
+    }
+
+    private void NavigateTo(VfsPath path) => _controller?.NavigateTo(path);
+
+    /// <summary>The controller reached a new directory — render it, retitle, update the address.</summary>
+    private async void OnCurrentDirectoryChanged(VfsPath path)
+    {
         UpdateTitle(path);
         AddressBar.SetAddress(path.ToString());
-    }
-
-    private async void NavigateTo(VfsPath path)
-    {
-        _nav.Push(path);
         await LoadDirectory(path);
-        UpdateNavigationButtons();
-        UpdateTitle(path);
-        AddressBar.SetAddress(path.ToString());
     }
 
-    private async void NavigateBack()
-    {
-        var path = _nav.GoBack();
-        if (path is { } p)
-        {
-            await LoadDirectory(p);
-            UpdateNavigationButtons();
-            UpdateTitle(p);
-            AddressBar.SetAddress(p.ToString());
-        }
-    }
-
-    private async void NavigateForward()
-    {
-        var path = _nav.GoForward();
-        if (path is { } p)
-        {
-            await LoadDirectory(p);
-            UpdateNavigationButtons();
-            UpdateTitle(p);
-            AddressBar.SetAddress(p.ToString());
-        }
-    }
-
-    private async void NavigateUp()
-    {
-        var path = _nav.GoUp();
-        if (path is { } p)
-        {
-            _nav.Push(p);
-            await LoadDirectory(p);
-            UpdateNavigationButtons();
-            UpdateTitle(p);
-            AddressBar.SetAddress(p.ToString());
-        }
-    }
+    private void OnNavigationStateChanged() => UpdateNavigationButtons();
 
     private async System.Threading.Tasks.Task LoadDirectory(VfsPath path)
     {
@@ -395,8 +390,7 @@ public partial class FileManagerWindow : BevelWindow
         };
         InfoPane.ObjectCount = $"{count} object(s)";
         InfoPane.ClearLinks();
-        InfoPane.AddLink("My Documents", () => NavigateTo(new VfsPath("file",
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))));
+        InfoPane.AddLink("My Documents", () => NavigateTo(HomePath));
         InfoPane.AddLink("My Computer", () => NavigateTo(VfsPath.Root("computer")));
     }
 
@@ -407,13 +401,77 @@ public partial class FileManagerWindow : BevelWindow
 
     private void UpdateNavigationButtons()
     {
-        Toolbar.BackButton.IsEnabled = _nav.CanGoBack;
-        Toolbar.ForwardButton.IsEnabled = _nav.CanGoForward;
+        Toolbar.BackButton.IsEnabled = _controller?.CanGoBack ?? false;
+        Toolbar.ForwardButton.IsEnabled = _controller?.CanGoForward ?? false;
     }
 
     private void UpdateTitle(VfsPath path)
     {
         Title = $"Exploring - {path.Value}";
+    }
+
+    // ── Mutating commands (bevel-o2t) ──────────────────────────────────
+
+    void SyncSelection() => _controller?.SetSelection(ItemView.SelectedItems.Select(i => i.Path).ToArray());
+
+    void CopySelection() { SyncSelection(); _controller?.CopySelectionToClipboard(); }
+    void CutSelection() { SyncSelection(); _controller?.CutSelectionToClipboard(); }
+
+    async System.Threading.Tasks.Task DeleteSelectionAsync(bool toTrash)
+    {
+        if (_controller is null) return;
+        SyncSelection();
+        if (_controller.Selection.Count == 0) return;
+        await RunOpAsync(() => _controller.DeleteAsync(_controller.Selection, toTrash));
+    }
+
+    async System.Threading.Tasks.Task PasteAsync()
+    {
+        if (_controller is null) return;
+        try
+        {
+            var result = await _controller.PasteAsync();
+            if (result is { ErrorMessage.Length: > 0 })
+                System.Diagnostics.Debug.WriteLine($"Paste incomplete: {result.ErrorMessage}");
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Paste failed: {ex.Message}"); }
+        finally { _controller.Refresh(); }
+    }
+
+    async System.Threading.Tasks.Task NewFolderAsync()
+    {
+        if (_controller is null) return;
+        try { await _controller.NewFolderAsync(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"New folder failed: {ex.Message}"); }
+        finally { _controller.Refresh(); }
+    }
+
+    void OnDropRequested(object? sender, DropEventArgs e)
+    {
+        if (_controller is null || e.Paths.Count == 0) return;
+        var dest = _controller.CurrentDirectory;
+        _ = RunOpAsync(() => e.IsCopy ? _controller.CopyAsync(e.Paths, dest) : _controller.MoveAsync(e.Paths, dest));
+    }
+
+    async void OnRenameCommitted(object? sender, RenameCommittedEventArgs e)
+    {
+        if (_controller is null) return;
+        await RunOpAsync(() => _controller.RenameAsync(e.Path, e.NewName));
+    }
+
+    void ShowProperties() { /* bevel-o2t.1: Properties dialog not yet built */ }
+
+    /// <summary>Run a mutation, surface any partial-failure message, and reload the view.</summary>
+    async System.Threading.Tasks.Task RunOpAsync(Func<System.Threading.Tasks.Task<FileOpResult>> op)
+    {
+        try
+        {
+            var result = await op();
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+                System.Diagnostics.Debug.WriteLine($"Operation incomplete: {result.ErrorMessage}");
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Operation failed: {ex.Message}"); }
+        finally { _controller?.Refresh(); }
     }
 
     // ── Keyboard shortcuts (FM-070) ────────────────────────────────────
@@ -428,7 +486,7 @@ public partial class FileManagerWindow : BevelWindow
         switch (e.Key)
         {
             case Key.F5:
-                _ = LoadDirectory(_nav.Current);
+                _controller?.Refresh();
                 e.Handled = true;
                 break;
 
@@ -456,22 +514,22 @@ public partial class FileManagerWindow : BevelWindow
                 break;
 
             case Key.Back when !ctrl:
-                NavigateUp();
+                _controller?.GoUp();
                 e.Handled = true;
                 break;
 
             case Key.Left when alt && !ctrl:
-                NavigateBack();
+                _controller?.GoBack();
                 e.Handled = true;
                 break;
 
             case Key.Right when alt && !ctrl:
-                NavigateForward();
+                _controller?.GoForward();
                 e.Handled = true;
                 break;
 
             case Key.Enter when alt && !ctrl:
-                // Alt+Enter = Properties (stub for now)
+                ShowProperties();
                 e.Handled = true;
                 break;
 
@@ -480,18 +538,33 @@ public partial class FileManagerWindow : BevelWindow
                 e.Handled = true;
                 break;
 
+            case Key.C when ctrl && !shift && !alt:
+                CopySelection();
+                e.Handled = true;
+                break;
+
+            case Key.X when ctrl && !shift && !alt:
+                CutSelection();
+                e.Handled = true;
+                break;
+
+            case Key.V when ctrl && !shift && !alt:
+                _ = PasteAsync();
+                e.Handled = true;
+                break;
+
             case Key.Delete when shift:
-                // Shift+Delete = permanent delete (stub)
+                _ = DeleteSelectionAsync(toTrash: false); // permanent delete
                 e.Handled = true;
                 break;
 
             case Key.Delete when !shift:
-                // Delete to trash (stub)
+                _ = DeleteSelectionAsync(toTrash: true); // delete to trash
                 e.Handled = true;
                 break;
 
             case Key.N when ctrl && shift:
-                // Ctrl+Shift+N = new folder (stub)
+                _ = NewFolderAsync();
                 e.Handled = true;
                 break;
 
@@ -532,23 +605,22 @@ public partial class FileManagerWindow : BevelWindow
     {
         try { await System.Threading.Tasks.Task.Delay(250, ct); }
         catch (OperationCanceledException) { return; }
-        await LoadDirectory(_nav.Current);
+        await LoadDirectory(CurrentPath);
     }
 
     /// <summary>
-    /// Reverses the most recent operation through the service (the ONLY correct way to
+    /// Reverses the most recent operation through the controller (the ONLY correct way to
     /// undo — the previous code popped the stack without reverting anything, review #1),
     /// then refreshes the view so the change is visible.
     /// </summary>
     private async System.Threading.Tasks.Task UndoFromUiAsync()
     {
-        if (_fileOps is null || !_fileOps.Undo.CanUndo)
+        if (_controller is null || !_controller.CanUndo)
             return;
 
         try
         {
-            var result = await _fileOps.UndoAsync();
-            await LoadDirectory(_nav.Current);
+            var result = await _controller.UndoAsync();
             if (!string.IsNullOrEmpty(result.ErrorMessage))
                 System.Diagnostics.Debug.WriteLine($"Undo incomplete: {result.ErrorMessage}");
         }
@@ -556,5 +628,6 @@ public partial class FileManagerWindow : BevelWindow
         {
             System.Diagnostics.Debug.WriteLine($"Undo failed: {ex.Message}");
         }
+        finally { _controller?.Refresh(); }
     }
 }
