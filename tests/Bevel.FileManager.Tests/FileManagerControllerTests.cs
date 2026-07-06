@@ -202,4 +202,26 @@ public sealed class FileManagerControllerTests : IDisposable
 
         Assert.Null(await controller.NewFolderAsync());
     }
+
+    // ── Operation runner hook (progress-dialog seam) ───────────────────
+
+    [Fact]
+    public async Task OperationRunner_intercepts_mutations_and_can_still_execute_them()
+    {
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "x");
+
+        FileOpRequest? seen = null;
+        _controller.OperationRunner = async (request, exec) =>
+        {
+            seen = request;                 // the view would wrap this in a ProgressDialog
+            return await exec(CancellationToken.None);
+        };
+
+        var result = await _controller.CopyAsync(new[] { P("a.txt") }, P("dst"));
+
+        Assert.IsType<CopyRequest>(seen);
+        Assert.Equal(FileOpStatus.Completed, result.Status);
+        Assert.True(File.Exists(Abs("dst", "a.txt"))); // the exec delegate really ran the copy
+    }
 }

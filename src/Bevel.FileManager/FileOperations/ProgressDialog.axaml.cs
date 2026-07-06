@@ -13,7 +13,6 @@ namespace Bevel.FileManager.FileOperations;
 public partial class ProgressDialog : Window
 {
     private FileOpRequest _request = null!;
-    private readonly CancellationTokenSource _cts = new();
     private FileOpResult? _result;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private long _bytesTransferred;
@@ -52,32 +51,29 @@ public partial class ProgressDialog : Window
     }
 
     /// <summary>
-    /// Start running the operation and show the dialog.
-    /// Returns the result when the dialog closes or the operation completes.
+    /// Adopt an already-running operation: subscribe to its <paramref name="progress"/> stream,
+    /// show the dialog, and cancel via <paramref name="cts"/> if the user clicks Cancel. The
+    /// caller starts <paramref name="opTask"/> (with <paramref name="cts"/>'s token) so it can
+    /// decide — after a short delay — whether the op is slow enough to warrant showing this
+    /// dialog at all, avoiding a modal flash for instant operations.
     /// </summary>
-    public async Task<FileOpResult?> ShowAndRunAsync(FileOperationService service, Window owner)
+    public async Task<FileOpResult> AdoptAsync(
+        IObservable<FileOpProgress> progress,
+        Task<FileOpResult> opTask,
+        CancellationTokenSource cts,
+        Window owner)
     {
-        // Subscribe to progress
-        using var sub = service.Progress.Subscribe(OnProgress);
+        using var sub = progress.Subscribe(OnProgress);
 
-        // Start the operation in the background
-        var opTask = service.ExecuteAsync(_request, _cts.Token);
-
-        // Show the dialog (modeless-style but we await it)
-        _ = opTask.ContinueWith(_ =>
-        {
-            Dispatcher.UIThread.Post(() => Close());
-        }, TaskScheduler.Default);
+        // Close the dialog once the operation finishes.
+        _ = opTask.ContinueWith(_ => Dispatcher.UIThread.Post(() => Close()), TaskScheduler.Default);
 
         await ShowDialog(owner);
 
-        // If user clicked Cancel, signal cancellation
-        if (WasCancelled)
-        {
-            _cts.Cancel();
-            try { await opTask; } catch (OperationCanceledException) { }
-        }
+        if (WasCancelled) cts.Cancel();
 
+        // The service returns a (possibly Cancelled) result; on hard cancel it may throw
+        // OperationCanceledException, which the caller's mutation wrapper handles.
         _result = await opTask;
         return _result;
     }

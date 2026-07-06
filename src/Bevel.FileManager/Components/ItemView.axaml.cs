@@ -58,6 +58,7 @@ public partial class ItemView : UserControl
     public event EventHandler<ItemActivatedEventArgs>? ItemActivated;
     public event EventHandler<DropEventArgs>? DropRequested;
     public event EventHandler<RenameCommittedEventArgs>? RenameCommitted;
+    public event EventHandler<FileContextRequestedEventArgs>? ItemContextRequested;
 
     // Expose named controls for tests
     public Avalonia.Controls.ItemsControl ItemsControl => ItemsPresenter;
@@ -74,6 +75,7 @@ public partial class ItemView : UserControl
         KeyDown += OnKeyDown;
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(ContextRequestedEvent, OnContextRequested);
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
@@ -409,6 +411,24 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
+    // ── Context menu ─────────────────────────────────────────────────
+
+    void OnContextRequested(object? _, ContextRequestedEventArgs e)
+    {
+        // Locate the item under the pointer; a background (empty-space) request has none.
+        ItemViewModel? vm = null;
+        if (e.TryGetPosition(ItemsPresenter, out var pos))
+            vm = Hit(pos);
+        else
+            pos = default;
+
+        // Right-clicking an unselected item selects it first (Explorer behaviour).
+        if (vm is not null && !vm.IsSelected) SelectOne(vm);
+
+        ItemContextRequested?.Invoke(this, new FileContextRequestedEventArgs(vm, pos));
+        e.Handled = true;
+    }
+
     // ── Keyboard ─────────────────────────────────────────────────────
 
     void OnKeyDown(object? _, KeyEventArgs e)
@@ -540,4 +560,11 @@ public sealed class RenameCommittedEventArgs(VfsPath path, string newName) : Eve
 {
     public VfsPath Path { get; } = path;
     public string NewName { get; } = newName;
+}
+
+public sealed class FileContextRequestedEventArgs(ItemViewModel? item, Point position) : EventArgs
+{
+    /// <summary>The item under the pointer, or null for a folder-background request.</summary>
+    public ItemViewModel? Item { get; } = item;
+    public Point Position { get; } = position;
 }

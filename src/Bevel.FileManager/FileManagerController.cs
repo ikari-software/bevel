@@ -38,6 +38,17 @@ public sealed class FileManagerController
     public bool HasClipboard => _clipboard is { Paths.Count: > 0 };
     public bool CanUndo => _fileOps.Undo.CanUndo;
 
+    /// <summary>Live progress of the running operation — the view subscribes for its progress dialog.</summary>
+    public IObservable<FileOpProgress> Progress => _fileOps.Progress;
+
+    /// <summary>
+    /// Optional hook the view installs to run a request through a progress UI. It is handed the
+    /// request and the inner execute delegate (which runs it on the service under a supplied
+    /// token); when null, requests run directly. This lets the ProgressDialog live in the view
+    /// while all mutations still funnel through this one seam.
+    /// </summary>
+    public Func<FileOpRequest, Func<CancellationToken, Task<FileOpResult>>, Task<FileOpResult>>? OperationRunner { get; set; }
+
     // ── Events ─────────────────────────────────────────────────────────
     /// <summary>The current directory changed (navigate/refresh) — the view should (re)load it.</summary>
     public event Action<VfsPath>? CurrentDirectoryChanged;
@@ -147,7 +158,8 @@ public sealed class FileManagerController
 
     private async Task<FileOpResult> RunAsync(FileOpRequest request, CancellationToken ct)
     {
-        var result = await _fileOps.ExecuteAsync(request, ct);
+        Func<CancellationToken, Task<FileOpResult>> exec = c => _fileOps.ExecuteAsync(request, c);
+        var result = OperationRunner is { } run ? await run(request, exec) : await exec(ct);
         OperationCompleted?.Invoke(result);
         return result;
     }

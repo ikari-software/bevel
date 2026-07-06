@@ -25,6 +25,8 @@ public partial class FileManagerWindow : BevelWindow
     private VfsRoot? _vfsRoot;
     private FileManagerController? _controller;
     private Core.SettingsService? _settings;
+    private readonly ItemContextMenu _itemMenu = new();
+    private readonly FolderContextMenu _folderMenu = new();
 
     private CancellationTokenSource? _enumerateCts;
     private CancellationTokenSource? _treeCts;
@@ -60,6 +62,12 @@ public partial class FileManagerWindow : BevelWindow
         Toolbar.Properties.Click += (_, _) => ShowProperties();
         ItemView.DropRequested += OnDropRequested;
         ItemView.RenameCommitted += OnRenameCommitted;
+
+        // Right-click context menus (FM-080/081) share one action set wired to the controller.
+        ItemView.ItemContextRequested += OnItemContextRequested;
+        var contextActions = BuildContextActions();
+        _itemMenu.SetActions(contextActions);
+        _folderMenu.SetActions(contextActions);
 
         // Address bar
         AddressBar.AddressNavigated += (_, path) => NavigateTo(path);
@@ -138,6 +146,7 @@ public partial class FileManagerWindow : BevelWindow
         _controller = controller;
         controller.CurrentDirectoryChanged += OnCurrentDirectoryChanged;
         controller.NavigationStateChanged += OnNavigationStateChanged;
+        controller.OperationRunner = RunWithProgressAsync;
         controller.NavigateTo(HomePath);
     }
 
@@ -460,6 +469,82 @@ public partial class FileManagerWindow : BevelWindow
     }
 
     void ShowProperties() { /* bevel-o2t.1: Properties dialog not yet built */ }
+
+    // ── Context menus (FM-080/081) ─────────────────────────────────────
+
+    void OnItemContextRequested(object? sender, FileContextRequestedEventArgs e)
+    {
+        SyncSelection();
+        if (e.Item is not null)
+            _itemMenu.Show(e.Item.Node, ItemView, e.Position);
+        else
+            _folderMenu.Show(ItemView, e.Position);
+    }
+
+    /// <summary>The single action set both context menus invoke — every entry routes through
+    /// the controller, exactly like the toolbar/menu/keyboard paths.</summary>
+    ContextMenuActions BuildContextActions() => new()
+    {
+        Open = () => { if (ItemView.SelectedItem is { } i) OnItemActivated(this, new ItemActivatedEventArgs(i)); },
+        Cut = CutSelection,
+        Copy = CopySelection,
+        Paste = () => _ = PasteAsync(),
+        Delete = () => _ = DeleteSelectionAsync(toTrash: true),
+        Rename = () => ItemView.BeginRenameSelected(),
+        Properties = ShowProperties,
+        Undo = () => _ = UndoFromUiAsync(),
+        Refresh = () => _controller?.Refresh(),
+        CanPaste = () => _controller?.HasClipboard ?? false,
+        CanUndo = () => _controller?.CanUndo ?? false,
+        ViewChanged = key => SetView(ViewFromKey(key)),
+        NewItem = kind => { if (kind == "folder") _ = NewFolderAsync(); },
+    };
+
+    static ViewMode ViewFromKey(string key) => key switch
+    {
+        "small-icons" => ViewMode.SmallIcons,
+        "list" => ViewMode.List,
+        "details" => ViewMode.Details,
+        _ => ViewMode.LargeIcons,
+    };
+
+    // ── Progress dialog routing (FM-132) ───────────────────────────────
+
+    /// <summary>
+    /// Controller operation runner: runs Copy/Move/Delete under a ProgressDialog when they take
+    /// longer than a beat, so single-file ops don't flash a modal. Everything else runs inline.
+    /// </summary>
+    async System.Threading.Tasks.Task<FileOpResult> RunWithProgressAsync(
+        FileOpRequest request, Func<CancellationToken, System.Threading.Tasks.Task<FileOpResult>> exec)
+    {
+        if (_controller is null || request is not (CopyRequest or MoveRequest or DeleteRequest))
+            return await exec(CancellationToken.None);
+
+        var cts = new CancellationTokenSource();
+        var opTask = exec(cts.Token);
+
+        if (await System.Threading.Tasks.Task.WhenAny(opTask, System.Threading.Tasks.Task.Delay(400)) == opTask)
+        {
+            cts.Dispose();
+            return await opTask; // finished fast — no dialog
+        }
+
+        var (from, to) = DescribeOp(request);
+        var dlg = new ProgressDialog(request, from, to);
+        try { return await dlg.AdoptAsync(_controller.Progress, opTask, cts, this); }
+        finally { cts.Dispose(); }
+    }
+
+    static (string From, string To) DescribeOp(FileOpRequest request) => request switch
+    {
+        CopyRequest c => (DescribeSources(c.Sources), c.Destination.FileName),
+        MoveRequest m => (DescribeSources(m.Sources), m.Destination.FileName),
+        DeleteRequest d => (DescribeSources(d.Paths), d.ToTrash ? "Trash" : "(permanently removed)"),
+        _ => ("", ""),
+    };
+
+    static string DescribeSources(IReadOnlyList<VfsPath> paths)
+        => paths.Count == 1 ? paths[0].FileName : $"{paths.Count} items";
 
     /// <summary>Run a mutation, surface any partial-failure message, and reload the view.</summary>
     async System.Threading.Tasks.Task RunOpAsync(Func<System.Threading.Tasks.Task<FileOpResult>> op)
