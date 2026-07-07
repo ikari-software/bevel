@@ -1,4 +1,5 @@
 using System.Linq;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
@@ -140,6 +141,27 @@ public class ItemViewTests
 
         Assert.Equal(new[] { "b.txt", "c.txt", "d.txt" }, after.Select(v => v.DisplayName));
         Assert.Same(b, after.Single(v => v.DisplayName == "b.txt")); // survivor kept its identity
+    }
+
+    [AvaloniaFact]
+    public void ArrowDown_advances_the_selection_when_focused()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        var w = new Avalonia.Controls.Window { Content = view, Width = 400, Height = 300 };
+        w.Show();
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+        view.SelectPath(new VfsPath("test", "a.txt"));
+        view.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.ArrowDown, Avalonia.Input.RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("b.txt", view.SelectedItems.Single().DisplayName);
+
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.End, Avalonia.Input.RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("c.txt", view.SelectedItems.Single().DisplayName);
     }
 
     [AvaloniaFact]

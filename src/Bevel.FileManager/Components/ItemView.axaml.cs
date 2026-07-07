@@ -560,6 +560,9 @@ public partial class ItemView : UserControl
 
     void OnBgPointerPressed(object? _, PointerPressedEventArgs e)
     {
+        // Grab keyboard focus — handling the press (below) suppresses Avalonia's automatic
+        // focus-on-click, which would otherwise leave arrows/type-ahead/Enter dead after a click.
+        Focus();
         var pt = e.GetPosition(ItemsPresenter);
         var vm = Hit(pt);
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control), shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
@@ -649,6 +652,16 @@ public partial class ItemView : UserControl
                 foreach (var vm in _viewModels) AddSel(vm); e.Handled = true; break;
             case Key.Down or Key.Up or Key.Left or Key.Right:
                 Navigate(e.Key, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+            case Key.Home:
+                MoveTo(0, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+            case Key.End:
+                MoveTo(_viewModels.Count - 1, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+            case Key.PageDown:
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) + PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+            case Key.PageUp:
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) - PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+            case Key.Escape:
+                ClearSel(); RaiseSelection(); e.Handled = true; break;
             default:
                 // Skip type-ahead when a modifier is held so Ctrl+C/X/V (Copy/Cut/Paste,
                 // handled by the window) don't jump the selection instead.
@@ -660,9 +673,61 @@ public partial class ItemView : UserControl
 
     void Navigate(Key key, bool shift)
     {
-        int cur = _lastClickIdx, next = cur + (key is Key.Down or Key.Right ? 1 : -1);
-        if (next < 0 || next >= _viewModels.Count) return;
-        if (shift) RangeTo(_viewModels[next]); else SelectOne(_viewModels[next]);
+        if (_viewModels.Count == 0) return;
+        int cols = ColsPerRow();
+        int cur = _lastClickIdx < 0 ? 0 : _lastClickIdx;
+        int next = key switch
+        {
+            Key.Down  => cur + cols,   // one row down (a single row in Details/List)
+            Key.Up    => cur - cols,
+            Key.Right => cur + 1,
+            Key.Left  => cur - 1,
+            _         => cur,
+        };
+        MoveTo(next, shift);
+    }
+
+    /// <summary>Move the selection cursor to <paramref name="index"/> (clamped), extending the
+    /// range when Shift is held, and scroll it into view.</summary>
+    void MoveTo(int index, bool shift)
+    {
+        if (_viewModels.Count == 0) return;
+        index = Math.Clamp(index, 0, _viewModels.Count - 1);
+        if (shift) RangeTo(_viewModels[index]); else SelectOne(_viewModels[index]);
+        _lastClickIdx = index;   // advance the cursor — the old code never did, so arrows stuck
+        ScrollToIndex(index);
+    }
+
+    /// <summary>Columns per row for the current view (1 for the vertical Details/List views).</summary>
+    int ColsPerRow()
+    {
+        if (ViewMode is ViewMode.Details or ViewMode.List) return 1;
+        double itemW = ViewMode switch
+        {
+            ViewMode.LargeIcons => 80,
+            ViewMode.SmallIcons => 180,
+            ViewMode.Thumbnails => 120,
+            _ => 80,
+        };
+        return Math.Max(1, (int)(ItemsScroller.Bounds.Width / itemW));
+    }
+
+    int PageStep()
+    {
+        double itemH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
+        int rows = Math.Max(1, (int)(ItemsScroller.Bounds.Height / itemH));
+        return Math.Max(1, rows * ColsPerRow());
+    }
+
+    void ScrollToIndex(int index)
+    {
+        int cols = ColsPerRow();
+        double rowH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
+        double y = index / cols * rowH;
+        double vpH = ItemsScroller.Viewport.Height;
+        var off = ItemsScroller.Offset;
+        if (y < off.Y) ItemsScroller.Offset = new Vector(off.X, y);
+        else if (y + rowH > off.Y + vpH) ItemsScroller.Offset = new Vector(off.X, y + rowH - vpH);
     }
 
     // ── Type-ahead ───────────────────────────────────────────────────
