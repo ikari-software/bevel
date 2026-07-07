@@ -604,11 +604,17 @@ public partial class ItemView : UserControl
 
     ItemViewModel? Hit(Point pt)
     {
-        for (var el = this.GetVisualAt(pt) as Visual; el is not null && el != this; el = el.GetVisualParent())
+        // pt is in ItemsPresenter coordinates (all callers use GetPosition(ItemsPresenter)).
+        // Match it against realized container RECTS rather than visual hit-testing: templates
+        // have transparent/empty gaps (between a row's icon and its text, or a details row's
+        // empty cells) that GetVisualAt falls through, which made most clicks miss. Same
+        // coordinate transform the marquee uses.
+        foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
-            if (el is not Control ctl) continue;
-            for (var c = ctl; c is not null && c != ItemsPresenter; c = c.Parent as Control)
-                if (c.DataContext is ItemViewModel vm && _viewModels.Contains(vm)) return vm;
+            if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm || !_viewModels.Contains(vm))
+                continue;
+            var pos = ctl.TranslatePoint(default, ItemsPresenter) ?? default;
+            if (new Rect(pos, ctl.Bounds.Size).Contains(pt)) return vm;
         }
         return null;
     }
