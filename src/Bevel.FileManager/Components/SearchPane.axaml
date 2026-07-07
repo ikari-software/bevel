@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Bevel.FileManager.Components"
              x:Class="Bevel.FileManager.Components.SearchPane"
              x:Name="Root"
+             Focusable="False"
              ClipToBounds="True">
 
     <UserControl.Styles>
@@ -30,6 +30,15 @@
             <Setter Property="FontSize" Value="11" />
         </Style>
 
+        <!-- Small flat "x" close button -->
+        <Style Selector="Button.CloseBtn">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
         <!-- Label for field captions -->
         <Style Selector="TextBlock.FieldLabel">
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -41,55 +50,41 @@
 
     <Border Classes="SearchBorder" Padding="4">
         <DockPanel>
-            <!-- Title bar -->
-            <TextBlock DockPanel.Dock="Top"
-                       Text="Search for Files or Folders"
-                       FontSize="11"
-                       FontWeight="Bold"
-                       Margin="2,0,0,4"
-                       VerticalAlignment="Center" />
+            <!-- Title bar: caption + close button -->
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Button Classes="CloseBtn"
+                        DockPanel.Dock="Right"
+                        x:Name="CloseButton"
+                        Click="OnCloseClick">
+                    <Path Width="8" Height="8"
+                          Stroke="#FF000000"
+                          StrokeThickness="1"
+                          Data="M0,0 L8,8 M8,0 L0,8" />
+                </Button>
+                <TextBlock Text="Search for Files or Folders"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Margin="2,0,0,0"
+                           VerticalAlignment="Center" />
+            </DockPanel>
 
-            <!-- Search criteria section -->
+            <!-- Search criteria: name only. The pane never runs the search itself — it just
+                 raises SearchRequested with the query text; the host window owns SearchService
+                 and renders results in the main item view. -->
             <Grid DockPanel.Dock="Top"
-                  RowDefinitions="Auto,Auto,Auto"
                   ColumnDefinitions="Auto,1*"
                   Margin="0,0,0,6">
-
-                <!-- Name contains -->
-                <TextBlock Grid.Row="0" Grid.Column="0"
+                <TextBlock Grid.Column="0"
                            Classes="FieldLabel"
                            Text="All or part of the file name:" />
-                <TextBox Grid.Row="0" Grid.Column="1"
+                <TextBox Grid.Column="1"
                          Classes="Sunken"
                          x:Name="NameInput"
-                         Text="{Binding NameContains, Mode=TwoWay}"
-                         Margin="0,2,0,2" />
-
-                <!-- Containing text -->
-                <TextBlock Grid.Row="1" Grid.Column="0"
-                           Classes="FieldLabel"
-                           Text="A word or phrase in the file:" />
-                <TextBox Grid.Row="1" Grid.Column="1"
-                         Classes="Sunken"
-                         x:Name="ContainingTextInput"
-                         Text="{Binding ContainingText, Mode=TwoWay}"
-                         Margin="0,2,0,2" />
-
-                <!-- Look in -->
-                <TextBlock Grid.Row="2" Grid.Column="0"
-                           Classes="FieldLabel"
-                           Text="Look in:" />
-                <ComboBox Grid.Row="2" Grid.Column="1"
-                          x:Name="LookInCombo"
-                          IsEditable="True"
-                          MinHeight="22"
-                          MaxHeight="22"
-                          Margin="0,2,0,2"
-                          HorizontalContentAlignment="Left"
-                          VerticalContentAlignment="Center" />
+                         Watermark="e.g. *.txt or report"
+                         KeyDown="OnNameInputKeyDown" />
             </Grid>
 
-            <!-- Action buttons row -->
+            <!-- Action button -->
             <StackPanel DockPanel.Dock="Top"
                         Orientation="Horizontal"
                         HorizontalAlignment="Left"
@@ -99,100 +94,14 @@
                         x:Name="SearchButton"
                         Content="Search Now"
                         Click="OnSearchClick" />
-                <Button Classes="Win2k"
-                        x:Name="StopButton"
-                        Content="Stop"
-                        IsEnabled="False"
-                        Click="OnStopClick" />
             </StackPanel>
 
-            <!-- Status line -->
-            <TextBlock DockPanel.Dock="Top"
-                       x:Name="StatusText"
+            <!-- Status / result-count line -->
+            <TextBlock x:Name="StatusText"
                        Text=""
                        FontSize="11"
-                       Margin="0,0,0,4"
+                       Margin="0,0,0,2"
                        Foreground="#FF000000" />
-
-            <!-- Results area -->
-            <Border BorderThickness="1"
-                    BorderBrush="#FF808080"
-                    Background="#FFFFFFFF">
-                <DockPanel>
-                    <!-- Results column header -->
-                    <Border DockPanel.Dock="Top"
-                            BorderThickness="0,0,0,1"
-                            BorderBrush="#FF808080"
-                            Background="#FFD4D0C8"
-                            Height="20">
-                        <Grid ColumnDefinitions="1*,80,80,120">
-                            <TextBlock Grid.Column="0" Text="Name"
-                                       FontSize="11" FontWeight="Bold"
-                                       VerticalAlignment="Center" Margin="4,0,0,0" />
-                        <TextBlock Grid.Column="1" Text="Size"
-                                   FontSize="11" FontWeight="Bold"
-                                   VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,4,0" />
-                        <TextBlock Grid.Column="2" Text="Type"
-                                   FontSize="11" FontWeight="Bold"
-                                   VerticalAlignment="Center" Margin="4,0,0,0" />
-                        <TextBlock Grid.Column="3" Text="In Folder"
-                                   FontSize="11" FontWeight="Bold"
-                                   VerticalAlignment="Center" Margin="4,0,0,0" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Search results list -->
-                    <ListBox x:Name="ResultsList"
-                             ItemsSource="{Binding Results}"
-                             Background="#FFFFFFFF"
-                             BorderThickness="0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SearchResultItem">
-                                <Grid ColumnDefinitions="1*,80,80,120"
-                                      Height="20"
-                                      Margin="2,1">
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2"
-                                                VerticalAlignment="Center">
-                                        <TextBlock Text="&#x1F4C4;"
-                                                   FontSize="12"
-                                                   IsVisible="{Binding IsFile}"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="&#x1F4C1;"
-                                                   FontSize="12"
-                                                   IsVisible="{Binding IsFolder}"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding DisplayName}"
-                                                   FontSize="12"
-                                                   Margin="2,0,0,0"
-                                                   VerticalAlignment="Center" />
-                                    </StackPanel>
-
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding SizeDisplay}"
-                                               FontSize="12"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,4,0" />
-
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding TypeDescription}"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               Margin="4,0,0,0" />
-
-                                    <TextBlock Grid.Column="3"
-                                               Text="{Binding InFolderDisplay}"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               Margin="4,0,0,0"
-                                               TextTrimming="CharacterEllipsis" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </Border>
         </DockPanel>
     </Border>
 </UserControl>

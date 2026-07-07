@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reactive.Linq;
+using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -43,6 +44,14 @@ public partial class FileManagerWindow : BevelWindow
         new("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
     private VfsPath CurrentPath => _controller?.CurrentDirectory ?? VfsPath.Root("file");
+
+    /// <summary>Raised for File &gt; New Window (Ctrl+N), carrying this window's current directory.
+    /// App/CompositionRoot wires this to FileManagerWindowFactory (the window can't reference
+    /// Bevel.App directly). New Tab (Ctrl+T) is deferred — it needs a tab-host redesign.</summary>
+    public static event Action<VfsPath>? NewWindowRequested;
+
+    /// <summary>Request a new independent window opened at this window's current directory.</summary>
+    public void NewWindow() => NewWindowRequested?.Invoke(CurrentPath);
 
     public FileManagerWindow()
     {
@@ -94,10 +103,57 @@ public partial class FileManagerWindow : BevelWindow
 
         // Folders toggle: swap InfoPane <-> ExplorerPane (tree)
         Toolbar.Folders.Click += (_, _) => ToggleFolders();
+        Toolbar.Search.Click += (_, _) => ToggleSearchPane();
+        SearchPane.SearchRequested += OnSearchRequested;
+        SearchPane.CloseRequested += (_, _) => ToggleSearchPane();
         ExplorerPane.CloseClicked += (_, _) => ToggleFolders();
     }
 
     bool _showTree;
+
+    private SearchService? _searchService;
+    private CancellationTokenSource? _searchCts;
+
+    /// <summary>Injected by the composition root / window factory so search shares the app VfsRoot.</summary>
+    public void SetSearchService(SearchService searchService) => _searchService = searchService;
+
+    /// <summary>Show/hide the Find pane (Search toolbar button, F3, Ctrl+F, Edit&gt;Find Files).
+    /// Closing cancels any running search and restores the normal directory listing.</summary>
+    void ToggleSearchPane()
+    {
+        SearchPane.IsVisible = !SearchPane.IsVisible;
+        if (SearchPane.IsVisible)
+        {
+            SearchPane.Focus();
+        }
+        else
+        {
+            _searchCts?.Cancel();
+            SearchPane.Reset();
+            _controller?.Refresh();   // drop search results, reload the current folder
+        }
+    }
+
+    async void OnSearchRequested(object? sender, string query)
+    {
+        if (_searchService is null || _controller is null) return;
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+
+        SearchPane.SetStatus("Searching...");
+        var results = new List<IVfsNode>();
+        try
+        {
+            await foreach (var node in _searchService.SearchAsync(_controller.CurrentDirectory, query, ct: ct))
+            {
+                results.Add(node);
+                ItemView.Items = results.ToArray();   // rebuild as matches stream in
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        SearchPane.SetResultCount(results.Count);
+    }
 
     void ToggleFolders()
     {
@@ -109,6 +165,7 @@ public partial class FileManagerWindow : BevelWindow
     private void WireMenuBar()
     {
         // File
+        MenuBar.NewWindow.Click += (_, _) => NewWindow();
         MenuBar.Open.Click += (_, _) => { if (ItemView.SelectedItem is { } item) OnItemActivated(this, new ItemActivatedEventArgs(item)); };
         MenuBar.MoveToFolder.Click += (_, _) => _ = MoveToFolderAsync();
         MenuBar.CopyToFolder.Click += (_, _) => _ = CopyToFolderAsync();
@@ -132,6 +189,7 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.Paste.Click += (_, _) => _ = PasteAsync();
         MenuBar.SelectAll.Click += (_, _) => { ItemView.Focus(); ItemView.SelectAll(); };
         MenuBar.InvertSelection.Click += (_, _) => { ItemView.Focus(); ItemView.InvertSelection(); };
+        MenuBar.FindFiles.Click += (_, _) => ToggleSearchPane();
 
         // View
         MenuBar.ViewLargeIcons.Click += (_, _) => SetView(ViewMode.LargeIcons);
@@ -675,7 +733,12 @@ public partial class FileManagerWindow : BevelWindow
                 break;
 
             case Key.F3:
-                // Toggle search pane (stub)
+                ToggleSearchPane();
+                e.Handled = true;
+                break;
+
+            case Key.F when ctrl && !shift && !alt:
+                ToggleSearchPane();
                 e.Handled = true;
                 break;
 
@@ -749,6 +812,11 @@ public partial class FileManagerWindow : BevelWindow
 
             case Key.N when ctrl && shift:
                 _ = NewFolderAsync();
+                e.Handled = true;
+                break;
+
+            case Key.N when ctrl && !shift && !alt:
+                NewWindow();
                 e.Handled = true;
                 break;
 

@@ -25,6 +25,7 @@ public partial class MenuBar : UserControl
     public MenuItem Paste => PasteItem;
     public MenuItem SelectAll => SelectAllItem;
     public MenuItem InvertSelection => InvertSelectionItem;
+    public MenuItem FindFiles => FindFilesItem;
 
     // View menu
     public MenuItem ViewLargeIcons => LargeIconsItem;

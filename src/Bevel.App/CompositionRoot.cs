@@ -68,6 +68,12 @@ public static class CompositionRoot
             module.ConfigureServices(services);
         }
 
+        // File > New Window (Ctrl+N): builds additional independent FileManagerWindow
+        // instances sharing the VfsRoot/SettingsService singletons registered above by
+        // FileManagerModule. Singleton so App and any window's NewWindow hook resolve the
+        // same factory.
+        services.AddSingleton<FileManagerWindowFactory>();
+
         return services;
     }
 }

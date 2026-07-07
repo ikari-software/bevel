@@ -1,142 +1,79 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Threading;
-using Bevel.Core.Vfs;
 
 namespace Bevel.FileManager.Components;
 
+/// <summary>
+/// Win2000 "Search for Files or Folders" query pane. This control ONLY collects a query and
+/// raises <see cref="SearchRequested"/> — it never walks the VFS itself. The host window owns a
+/// <see cref="FileOperations.SearchService"/>, runs the search against the current folder's
+/// subtree when the event fires, and renders matches in the main item view; it then reports the
+/// outcome back here via <see cref="SetResultCount"/> / <see cref="SetStatus"/> so the pane can
+/// show a status line.
+/// </summary>
 public partial class SearchPane : UserControl
 {
-    private SearchPaneViewModel? _viewModel;
-    private bool _isUpdatingLookIn;
-
     public SearchPane()
     {
         InitializeComponent();
-        ResultsList.DoubleTapped += OnResultsDoubleTapped;
     }
 
-    /// <summary>Set the VFS root and look-in path for this search pane.</summary>
-    public void Initialize(VfsRoot vfsRoot, string lookInPath)
+    /// <summary>The current text in the name-query box.</summary>
+    public string NameQuery
     {
-        _viewModel = new SearchPaneViewModel(vfsRoot)
-        {
-            LookInPath = lookInPath,
-        };
-
-        DataContext = _viewModel;
-
-        // Populate the look-in combo with common roots
-        PopulateLookInCombo(lookInPath);
+        get => NameInput.Text ?? string.Empty;
+        set => NameInput.Text = value;
     }
 
-    /// <summary>Set a new look-in path without reinitializing.</summary>
-    public void SetLookInPath(string path)
-    {
-        if (_viewModel is null) return;
+    /// <summary>Raised when the user asks to search (Search Now button or Enter in the name box).
+    /// The event argument is the trimmed query text.</summary>
+    public event EventHandler<string>? SearchRequested;
 
-        _isUpdatingLookIn = true;
-        try
+    /// <summary>Raised when the user clicks the pane's close ("x") button.</summary>
+    public event EventHandler? CloseRequested;
+
+    /// <summary>Show a plain status message (e.g. "Searching…", or an error).</summary>
+    public void SetStatus(string text) => StatusText.Text = text;
+
+    /// <summary>Show a friendly "N result(s) found" summary once a search completes.</summary>
+    public void SetResultCount(int count) => StatusText.Text = count switch
+    {
+        0 => "No results found.",
+        1 => "1 result found.",
+        _ => $"{count} results found.",
+    };
+
+    /// <summary>Clear the query and status — useful when the pane is hidden/reopened.</summary>
+    public void Reset()
+    {
+        NameQuery = string.Empty;
+        StatusText.Text = string.Empty;
+    }
+
+    private void OnSearchClick(object? sender, RoutedEventArgs e) => RaiseSearchRequested();
+
+    private void OnNameInputKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
         {
-            _viewModel.LookInPath = path;
-            LookInCombo.Text = path;
-        }
-        finally
-        {
-            _isUpdatingLookIn = false;
+            RaiseSearchRequested();
+            e.Handled = true;
         }
     }
 
-    /// <summary>Event raised when the user navigates to a search result.</summary>
-    public event EventHandler<VfsPath>? NavigateTo;
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
-    private void PopulateLookInCombo(string currentPath)
+    private void RaiseSearchRequested()
     {
-        var items = new List<string>();
-
-        // Add common filesystem roots
-        try
+        var query = NameQuery.Trim();
+        if (query.Length == 0)
         {
-            // Current drive / volume
-            var root = Path.GetPathRoot(currentPath);
-            if (!string.IsNullOrEmpty(root))
-                items.Add(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-
-            // Home directory
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrEmpty(home))
-                items.Add(home);
-
-            // Desktop
-            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            if (!string.IsNullOrEmpty(desktop))
-                items.Add(desktop);
-
-            // Documents
-            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            if (!string.IsNullOrEmpty(docs))
-                items.Add(docs);
-
-            // Downloads (common location)
-            var downloads = Path.Combine(home, "Downloads");
-            if (Directory.Exists(downloads))
-                items.Add(downloads);
+            SetStatus("Please specify a name to search for.");
+            return;
         }
-        catch
-        {
-            // Swallow errors gathering special folders
-        }
-
-        // Ensure current path is in the list
-        if (!string.IsNullOrEmpty(currentPath) && !items.Contains(currentPath))
-            items.Insert(0, currentPath);
-
-        LookInCombo.ItemsSource = items.Distinct().ToList();
-        LookInCombo.Text = currentPath;
-
-        LookInCombo.SelectionChanged += (_, _) =>
-        {
-            if (_isUpdatingLookIn) return;
-            if (LookInCombo.SelectedItem is string selected && !string.IsNullOrEmpty(selected))
-            {
-                _viewModel!.LookInPath = selected;
-                _isUpdatingLookIn = true;
-                LookInCombo.Text = selected;
-                _isUpdatingLookIn = false;
-            }
-        };
-    }
-
-    private void OnSearchClick(object? sender, RoutedEventArgs e)
-    {
-        // Sync the combo text to the ViewModel
-        if (_viewModel is not null && !string.IsNullOrWhiteSpace(LookInCombo.Text))
-        {
-            _viewModel.LookInPath = LookInCombo.Text.Trim();
-        }
-
-        _viewModel?.StartSearch();
-        SearchButton.IsEnabled = false;
-        StopButton.IsEnabled = true;
-    }
-
-    private void OnStopClick(object? sender, RoutedEventArgs e)
-    {
-        _viewModel?.StopSearch();
-        SearchButton.IsEnabled = true;
-        StopButton.IsEnabled = false;
-    }
-
-    private void OnResultsDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (ResultsList.SelectedItem is SearchResultItem item && _viewModel is not null)
-        {
-            NavigateTo?.Invoke(this, item.Path);
-        }
+        SearchRequested?.Invoke(this, query);
     }
 
     protected override void OnLoaded(RoutedEventArgs e)

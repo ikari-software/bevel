@@ -27,15 +27,23 @@ public partial class App : Application
             var desktopWin = new DesktopWindow { Content = new DesktopView() };
             desktopWin.Show();
 
-            // File manager window — resolved from DI so the SAME object graph the modules
-            // register actually drives the running app: the VfsRoot has both the file AND
-            // computer providers (My Computer works), plus settings and file operations
-            // (Folder Options and Undo work).
-            var fm = services.GetRequiredService<FileManagerWindow>();
-            fm.SetVfsRoot(services.GetRequiredService<VfsRoot>());
-            fm.SetSettingsService(services.GetRequiredService<SettingsService>());
-            fm.SetController(services.GetRequiredService<FileManagerController>());
+            // File manager window(s) — built via the shared factory so the SAME object graph
+            // the modules register actually drives the running app: the VfsRoot has both the
+            // file AND computer providers (My Computer works), plus settings and file
+            // operations (Folder Options and Undo work). The factory is also how File > New
+            // Window (Ctrl+N) spawns additional independent windows below.
+            var factory = services.GetRequiredService<FileManagerWindowFactory>();
+            var homePath = new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            var fm = factory.Create(homePath);
             desktop.MainWindow = fm;
+
+            // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which
+            // Bevel.App references but not vice versa, so it cannot call the factory directly.
+            // It instead raises this static event with the directory the new window should
+            // open at (its current directory); every window's request is served by the same
+            // factory, reusing the shared VfsRoot/SettingsService with fresh per-window
+            // navigation/undo state. New Tab (Ctrl+T) is out of scope (see FileManagerWindowFactory remarks).
+            FileManagerWindow.NewWindowRequested += path => factory.Create(path);
         }
 
         base.OnFrameworkInitializationCompleted();
