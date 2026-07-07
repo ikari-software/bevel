@@ -37,6 +37,14 @@ public partial class ItemView : UserControl
     /// <summary>The full multi-selection in click order (last = focus). Read by the controller at command time.</summary>
     public IReadOnlyList<ItemViewModel> SelectedItems => _selectedOrder;
 
+    /// <summary>Select a single item by path (controller/agent-driven selection; also used to
+    /// preview selection in the render harness). No-op if the path isn't present.</summary>
+    public void SelectPath(VfsPath path)
+    {
+        var vm = _viewModels.FirstOrDefault(v => v.Path == path);
+        if (vm is not null) SelectOne(vm);
+    }
+
     private readonly ObservableCollection<ItemViewModel> _viewModels = new();
     private readonly HashSet<ItemViewModel> _selected = new();
     private readonly List<ItemViewModel> _selectedOrder = new();
@@ -179,12 +187,41 @@ public partial class ItemView : UserControl
         TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
+    // Win2000 selection: the filename label gets a navy (#0A246A) highlight with white text; the
+    // icon is left un-highlighted, exactly like classic Explorer. Bound to the row's IsSelected so
+    // it tracks selection without rebuilding the row.
+    static readonly IBrush SelectionFill = new SolidColorBrush(Color.Parse("#0A246A"));
+    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
+        new(sel => sel ? SelectionFill : Brushes.Transparent);
+    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
+        new(sel => sel ? Brushes.White : Brushes.Black);
+
+    /// <summary>The filename label wrapped in a selection-highlight border (navy bar + white text
+    /// when selected, plus a dotted focus outline). Used by every view mode's template.</summary>
+    static Control NameCell(string text, TextWrapping wrap = TextWrapping.NoWrap, double maxW = 0,
+        TextAlignment align = TextAlignment.Left)
+    {
+        var label = new TextBlock
+        {
+            Text = text, FontSize = 11,
+            TextWrapping = wrap, TextAlignment = align,
+            MaxWidth = maxW > 0 ? maxW : double.MaxValue,
+            TextTrimming = wrap == TextWrapping.NoWrap ? TextTrimming.CharacterEllipsis : TextTrimming.None,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        label.Bind(TextBlock.ForegroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelFgConv });
+
+        var highlight = new Border { Child = label, Padding = new(2, 0) };
+        highlight.Bind(Border.BackgroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelBgConv });
+        return highlight;
+    }
+
     static readonly FuncDataTemplate<ItemViewModel> LargeIconTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(4) };
         s.Children.Add(Icon(32, vm.IsFolder));
-        s.Children.Add(new TextBlock { Text = vm.DisplayName, TextWrapping = TextWrapping.Wrap, MaxWidth = 72, TextAlignment = TextAlignment.Center, FontSize = 11 });
+        s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
         return s;
     });
 
@@ -193,7 +230,7 @@ public partial class ItemView : UserControl
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
         s.Children.Add(Icon(16, vm.IsFolder));
-        s.Children.Add(Label(vm.DisplayName));
+        s.Children.Add(NameCell(vm.DisplayName));
         return s;
     });
 
@@ -202,7 +239,7 @@ public partial class ItemView : UserControl
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
         s.Children.Add(Icon(16, vm.IsFolder));
-        s.Children.Add(Label(vm.DisplayName));
+        s.Children.Add(NameCell(vm.DisplayName));
         return s;
     });
 
@@ -213,7 +250,7 @@ public partial class ItemView : UserControl
         var g = new Grid { ColumnDefinitions = new("*,80,120,140"), Height = 20 };
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         name.Children.Add(Icon(16, vm.IsFolder));
-        name.Children.Add(Label(vm.DisplayName));
+        name.Children.Add(NameCell(vm.DisplayName));
         g.Children.Add(name);
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
@@ -228,7 +265,7 @@ public partial class ItemView : UserControl
         var b = new Border { BorderBrush = new SolidColorBrush(0xFFACA899), BorderThickness = new(1), Padding = new(4), Margin = new(2), Background = Brushes.White };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
         s.Children.Add(Icon(96, vm.IsFolder));
-        s.Children.Add(new TextBlock { Text = vm.DisplayName, TextWrapping = TextWrapping.Wrap, MaxWidth = 106, TextAlignment = TextAlignment.Center, FontSize = 11 });
+        s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
         b.Child = s;
         return b;
     });

@@ -58,6 +58,10 @@ Pump(30);
 controller.NavigateTo(new VfsPath("file", dir));
 Pump(60);
 
+// Preview the selection highlight (navy bar + white text) in the shot.
+win.SelectInList(new VfsPath("file", Path.Combine(dir, "readme.txt")));
+Pump(5);
+
 var frame = win.CaptureRenderedFrame();
 if (frame is null)
 {

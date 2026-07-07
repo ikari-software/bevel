@@ -315,6 +315,9 @@ public partial class FileManagerWindow : BevelWindow
 
     private void NavigateTo(VfsPath path) => _controller?.NavigateTo(path);
 
+    /// <summary>Select a list item by path (used by tests and the render harness).</summary>
+    public void SelectInList(VfsPath path) => ItemView.SelectPath(path);
+
     /// <summary>The controller reached a new directory — render it, retitle, update the address.</summary>
     private async void OnCurrentDirectoryChanged(VfsPath path)
     {

@@ -141,6 +141,21 @@ public class ItemViewTests
         Assert.Equal(new[] { "b.txt", "c.txt", "d.txt" }, after.Select(v => v.DisplayName));
         Assert.Same(b, after.Single(v => v.DisplayName == "b.txt")); // survivor kept its identity
     }
+
+    [AvaloniaFact]
+    public void SelectPath_selects_the_matching_row()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        view.SelectPath(new VfsPath("test", "b.txt"));
+
+        Assert.Single(view.SelectedItems);
+        Assert.Equal("b.txt", view.SelectedItems[0].DisplayName);
+        Assert.True(view.SelectedItems[0].IsSelected);
+    }
 }
 
 file sealed class TestNode : IVfsNode
