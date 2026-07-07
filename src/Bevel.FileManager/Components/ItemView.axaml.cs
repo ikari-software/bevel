@@ -246,7 +246,8 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> DetailsTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var row = new Border { BorderBrush = new SolidColorBrush(0xFFE8E8E8), BorderThickness = new(0, 0, 0, 1), Padding = new(2, 1) };
+        // No horizontal gridlines — classic Explorer details view has plain white rows.
+        var row = new Border { Padding = new(2, 1) };
         var g = new Grid { ColumnDefinitions = new("*,80,120,140"), Height = 20 };
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         name.Children.Add(Icon(16, vm.IsFolder));
