@@ -58,6 +58,9 @@ public partial class ItemView : UserControl
     private Point _marqueeOrigin;
     private bool _marqueeDragging;
 
+    private Point _dragStart;
+    private bool _dragArmed;
+
     private TextBox? _renameBox;
 
     private SortColumn _sortCol = SortColumn.Name;
@@ -576,11 +579,25 @@ public partial class ItemView : UserControl
         if (shift) RangeTo(vm);
         else if (ctrl) Toggle(vm);
         else if (!vm.IsSelected) SelectOne(vm);
-        _lastClickIdx = Idx(vm); e.Handled = true;
+        _lastClickIdx = Idx(vm);
+        _dragArmed = !ctrl;                 // a plain/shift press on an item can begin a drag
+        _dragStart = e.GetPosition(this);
+        e.Handled = true;
     }
 
     void OnBgPointerMoved(object? _, PointerEventArgs e)
     {
+        // Past a small threshold, a press on a selected item becomes a drag of the selection.
+        if (_dragArmed && !_marqueeDragging)
+        {
+            var d = e.GetPosition(this);
+            if (Math.Abs(d.X - _dragStart.X) > 4 || Math.Abs(d.Y - _dragStart.Y) > 4)
+            {
+                _dragArmed = false;
+                _ = StartDragAsync(e);
+            }
+            return;
+        }
         if (!_marqueeDragging) return;
         var pt = e.GetPosition(ItemsPresenter);
         var r = new Rect(Math.Min(_marqueeOrigin.X, pt.X), Math.Min(_marqueeOrigin.Y, pt.Y), Math.Abs(pt.X - _marqueeOrigin.X), Math.Abs(pt.Y - _marqueeOrigin.Y));
@@ -589,6 +606,7 @@ public partial class ItemView : UserControl
 
     void OnBgPointerReleased(object? _, PointerReleasedEventArgs e)
     {
+        _dragArmed = false;
         if (!_marqueeDragging) return;
         _marqueeDragging = false;
         if (MarqueeRect.IsVisible)
@@ -597,6 +615,21 @@ public partial class ItemView : UserControl
             MarqueeRect.IsVisible = false; Marquee(r);
         }
         e.Handled = true;
+    }
+
+    /// <summary>Begin a drag of the current selection. The payload is our internal
+    /// FileDropPayload, which the drop side (and other Bevel windows) already understand.</summary>
+    async System.Threading.Tasks.Task StartDragAsync(PointerEventArgs e)
+    {
+        var paths = _selectedOrder.Select(v => v.Path).ToList();
+        if (paths.Count == 0) return;
+        var data = new DataObject();
+        data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
+        try
+        {
+            await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+        }
+        catch { /* drag cancelled or platform refused — nothing to clean up */ }
     }
 
     // ── DnD ──────────────────────────────────────────────────────────
@@ -615,8 +648,11 @@ public partial class ItemView : UserControl
             paths = (e.Data.Get(FileDropPayload.DataFormat) as FileDropPayload)?.Paths.ToList();
         else if (e.Data.Contains(DataFormats.Files))
             paths = e.Data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+        // Dropping onto a folder targets that folder; onto empty space, the current directory.
+        var over = Hit(e.GetPosition(ItemsPresenter));
+        var target = over is { IsFolder: true } ? over.Path : (VfsPath?)null;
         if (paths is { Count: > 0 })
-            DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift)));
+            DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;
     }
 
@@ -821,9 +857,11 @@ public sealed class DropEventArgs : EventArgs
     public IReadOnlyList<VfsPath> Paths { get; }
     public bool IsCopy { get; }
     public bool IsLink { get; }
-    public DropEventArgs(IReadOnlyList<VfsPath> paths, bool ctrl, bool shift)
+    /// <summary>The folder the payload was dropped onto, or null for empty space (= current dir).</summary>
+    public VfsPath? TargetFolder { get; }
+    public DropEventArgs(IReadOnlyList<VfsPath> paths, bool ctrl, bool shift, VfsPath? target = null)
     {
-        Paths = paths; IsCopy = ctrl && !shift; IsLink = ctrl && shift;
+        Paths = paths; IsCopy = ctrl && !shift; IsLink = ctrl && shift; TargetFolder = target;
     }
 }
 

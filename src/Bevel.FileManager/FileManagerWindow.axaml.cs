@@ -509,8 +509,11 @@ public partial class FileManagerWindow : BevelWindow
     void OnDropRequested(object? sender, DropEventArgs e)
     {
         if (_controller is null || e.Paths.Count == 0) return;
-        var dest = _controller.CurrentDirectory;
-        _ = RunOpAsync(() => e.IsCopy ? _controller.CopyAsync(e.Paths, dest) : _controller.MoveAsync(e.Paths, dest));
+        var dest = e.TargetFolder ?? _controller.CurrentDirectory;
+        // Never drop an item onto itself (dragging a folder onto its own row).
+        var paths = e.Paths.Where(p => p != dest).ToList();
+        if (paths.Count == 0) return;
+        _ = RunOpAsync(() => e.IsCopy ? _controller.CopyAsync(paths, dest) : _controller.MoveAsync(paths, dest));
     }
 
     async void OnRenameCommitted(object? sender, RenameCommittedEventArgs e)
