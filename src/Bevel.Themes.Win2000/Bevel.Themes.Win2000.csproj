@@ -14,4 +14,10 @@
     <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />
   </ItemGroup>
 
+  <!-- Bundled UI font: Noto Sans (SIL OFL 1.1) as the metric-substitute for Win2000's
+       Tahoma, so text is consistent and correct cross-platform (macOS ships no Tahoma). -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
 </Project>

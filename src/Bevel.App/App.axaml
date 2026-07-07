@@ -2,6 +2,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Bevel.App.App"
              RequestedThemeVariant="Default">
+    <Application.Resources>
+        <!-- App-wide UI font: bundled Noto Sans (OFL), the Tahoma metric-substitute.
+             ContentControlThemeFontFamily is what the Classic theme's Window binds, and
+             FontFamily inherits down the visual tree. -->
+        <FontFamily x:Key="ContentControlThemeFontFamily">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>
+    </Application.Resources>
     <Application.Styles>
         <!-- Default theme = Bevel.Themes.Win2000 (M0: re-exports Classic.Avalonia). -->
         <StyleInclude Source="avares://Bevel.Themes.Win2000/Win2000Theme.axaml" />

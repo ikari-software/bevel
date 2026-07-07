@@ -253,7 +253,7 @@ public partial class ItemView : UserControl
         name.Children.Add(Icon(16, vm.IsFolder));
         name.Children.Add(NameCell(vm.DisplayName));
         g.Children.Add(name);
-        g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
+        g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 3, Text = vm.ModifiedDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         row.Child = g;
@@ -429,8 +429,8 @@ public partial class ItemView : UserControl
         return null;
     }
 
-    void SelectOne(ItemViewModel vm) { ClearSel(); AddSel(vm); SelectedItem = vm; _anchor = vm; }
-    void Toggle(ItemViewModel vm) { if (vm.IsSelected) RemSel(vm); else AddSel(vm); SelectedItem = vm; _anchor = vm; }
+    void SelectOne(ItemViewModel vm) { ClearSel(); AddSel(vm); SelectedItem = vm; _anchor = vm; RaiseSelection(); }
+    void Toggle(ItemViewModel vm) { if (vm.IsSelected) RemSel(vm); else AddSel(vm); SelectedItem = vm; _anchor = vm; RaiseSelection(); }
     int Idx(ItemViewModel? vm) => vm is null ? -1 : _viewModels.IndexOf(vm);
 
     void RangeTo(ItemViewModel vm)
@@ -440,6 +440,7 @@ public partial class ItemView : UserControl
         ClearSel();
         for (int i = Math.Min(a, b); i <= Math.Max(a, b); i++) AddSel(_viewModels[i]);
         SelectedItem = vm;
+        RaiseSelection();
     }
 
     void Marquee(Rect r)
@@ -452,11 +453,16 @@ public partial class ItemView : UserControl
             if (r.Intersects(new(pos.X, pos.Y, ctl.Bounds.Width, ctl.Bounds.Height))) AddSel(vm);
         }
         if (_selected.Count > 0) SelectedItem = _selectedOrder[^1];
+        RaiseSelection();
     }
 
     void AddSel(ItemViewModel vm) { vm.IsSelected = true; _selected.Add(vm); _selectedOrder.Add(vm); }
     void RemSel(ItemViewModel vm) { vm.IsSelected = false; _selected.Remove(vm); _selectedOrder.Remove(vm); }
     void ClearSel() { foreach (var s in _selected) s.IsSelected = false; _selected.Clear(); _selectedOrder.Clear(); }
+
+    /// <summary>Raised whenever the selection set changes (drives the info pane).</summary>
+    public event Action? SelectionChanged;
+    void RaiseSelection() => SelectionChanged?.Invoke();
 
     // ── Pointer ──────────────────────────────────────────────────────
 
@@ -468,7 +474,7 @@ public partial class ItemView : UserControl
         if (e.ClickCount == 2 && vm is not null) { ItemActivated?.Invoke(this, new(vm)); e.Handled = true; return; }
         if (vm is null)
         {
-            if (!ctrl && !shift) ClearSel();
+            if (!ctrl && !shift) { ClearSel(); RaiseSelection(); }
             _marqueeOrigin = pt; _marqueeDragging = true; MarqueeRect.IsVisible = false;
             e.Handled = true; return;
         }

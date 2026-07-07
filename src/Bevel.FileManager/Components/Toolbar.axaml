@@ -6,13 +6,13 @@
     <DockPanel>
         <!-- Row 1: Navigation + View -->
         <cc:ToolBar DockPanel.Dock="Top" Size="Small" TextPlacement="Right">
-            <cc:ToolBarButton x:Name="NavBack" ToolTip.Tip="Back (Alt+Left)" IsEnabled="False" />
+            <cc:ToolBarButton x:Name="NavBack" Text="Back" ToolTip.Tip="Back (Alt+Left)" IsEnabled="False" />
             <cc:ToolBarButton x:Name="NavForward" ToolTip.Tip="Forward (Alt+Right)" IsEnabled="False" />
             <cc:ToolBarButton x:Name="NavUp" ToolTip.Tip="Up (Alt+Up)" />
             <Separator />
-            <cc:ToolBarButton x:Name="SearchBtn" ToolTip.Tip="Search (F3)" />
-            <cc:ToolBarButton x:Name="FoldersBtn" ToolTip.Tip="Folders" />
-            <cc:ToolBarButton x:Name="HistoryBtn" ToolTip.Tip="History" />
+            <cc:ToolBarButton x:Name="SearchBtn" Text="Search" ToolTip.Tip="Search (F3)" />
+            <cc:ToolBarButton x:Name="FoldersBtn" Text="Folders" ToolTip.Tip="Folders" />
+            <cc:ToolBarButton x:Name="HistoryBtn" Text="History" ToolTip.Tip="History" />
         </cc:ToolBar>
 
         <!-- Row 2: Edit operations -->

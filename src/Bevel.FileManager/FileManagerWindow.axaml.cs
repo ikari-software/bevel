@@ -30,6 +30,8 @@ public partial class FileManagerWindow : BevelWindow
 
     private CancellationTokenSource? _enumerateCts;
     private VfsPath? _loadedPath;
+    private VfsPath? _infoPath;
+    private int _infoCount;
     private CancellationTokenSource? _treeCts;
     private IDirectoryWatcher? _directoryWatcher;
     private IDisposable? _watcherSubscription;
@@ -78,6 +80,7 @@ public partial class FileManagerWindow : BevelWindow
 
         // Item activation (double-click / Enter on folder)
         ItemView.ItemActivated += OnItemActivated;
+        ItemView.SelectionChanged += OnItemSelectionChanged;
 
         // Keyboard shortcuts (FM-070)
         KeyDown += OnWindowKeyDown;
@@ -399,6 +402,8 @@ public partial class FileManagerWindow : BevelWindow
 
     void UpdateInfoPane(VfsPath path, int count)
     {
+        _infoPath = path;
+        _infoCount = count;
         var name = path.Scheme == "computer" ? "My Computer"
             : path.IsRoot ? path.Scheme.ToUpperInvariant()
             : path.FileName;
@@ -412,6 +417,30 @@ public partial class FileManagerWindow : BevelWindow
         InfoPane.ClearLinks();
         InfoPane.AddLink("My Documents", () => NavigateTo(HomePath));
         InfoPane.AddLink("My Computer", () => NavigateTo(VfsPath.Root("computer")));
+    }
+
+    /// <summary>Mirror the selection into the info pane — a single item shows its type/size/date,
+    /// several show a count, none restores the folder summary. Matches Win2000's Web View pane.</summary>
+    void OnItemSelectionChanged()
+    {
+        var sel = ItemView.SelectedItems;
+        if (sel.Count == 0)
+        {
+            if (_infoPath is { } p) UpdateInfoPane(p, _infoCount);
+            return;
+        }
+        if (sel.Count == 1)
+        {
+            var vm = sel[0];
+            InfoPane.Title = vm.DisplayName;
+            var lines = new List<string> { vm.IsFolder ? "File Folder" : vm.TypeDescription };
+            if (!vm.IsFolder && vm.Size is not null) lines.Add($"Size: {vm.SizeDisplay}");
+            if (!string.IsNullOrEmpty(vm.ModifiedDisplay)) lines.Add($"Modified: {vm.ModifiedDisplay}");
+            InfoPane.Description = string.Join("\n", lines);
+            return;
+        }
+        InfoPane.Title = $"{sel.Count} items";
+        InfoPane.Description = "Multiple items selected";
     }
 
     private void SetView(ViewMode mode)
