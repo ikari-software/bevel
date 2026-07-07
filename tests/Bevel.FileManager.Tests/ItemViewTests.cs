@@ -165,6 +165,22 @@ public class ItemViewTests
     }
 
     [AvaloniaFact]
+    public void Column_width_is_shared_between_header_and_rows()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt", size: 10) };
+        Dispatcher.UIThread.RunJobs();
+
+        // The header's Size column starts at the default width...
+        Assert.Equal(80, view.DetailsHeaderGrid.ColumnDefinitions[1].Width.Value);
+        // ...and a resize flows through the shared property to the header column (rows bind the same).
+        view.SizeColWidth = new Avalonia.Controls.GridLength(150);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(150, view.DetailsHeaderGrid.ColumnDefinitions[1].Width.Value);
+    }
+
+    [AvaloniaFact]
     public void SelectPath_selects_the_matching_row()
     {
         var view = new ItemView { ViewMode = ViewMode.Details };

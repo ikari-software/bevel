@@ -30,9 +30,21 @@ public partial class ItemView : UserControl
     public static readonly StyledProperty<ItemViewModel?> SelectedItemProperty =
         AvaloniaProperty.Register<ItemView, ItemViewModel?>(nameof(SelectedItem));
 
+    // Details-view column widths — shared source of truth so the header and every row
+    // stay aligned, and a header drag-grip can resize both live (see OnColResize).
+    public static readonly StyledProperty<GridLength> SizeColWidthProperty =
+        AvaloniaProperty.Register<ItemView, GridLength>(nameof(SizeColWidth), new GridLength(80));
+    public static readonly StyledProperty<GridLength> TypeColWidthProperty =
+        AvaloniaProperty.Register<ItemView, GridLength>(nameof(TypeColWidth), new GridLength(120));
+    public static readonly StyledProperty<GridLength> DateColWidthProperty =
+        AvaloniaProperty.Register<ItemView, GridLength>(nameof(DateColWidth), new GridLength(140));
+
     public ViewMode ViewMode { get => GetValue(ViewModeProperty); set => SetValue(ViewModeProperty, value); }
     public IReadOnlyList<IVfsNode>? Items { get => GetValue(ItemsProperty); set => SetValue(ItemsProperty, value); }
     public ItemViewModel? SelectedItem { get => GetValue(SelectedItemProperty); set => SetValue(SelectedItemProperty, value); }
+    public GridLength SizeColWidth { get => GetValue(SizeColWidthProperty); set => SetValue(SizeColWidthProperty, value); }
+    public GridLength TypeColWidth { get => GetValue(TypeColWidthProperty); set => SetValue(TypeColWidthProperty, value); }
+    public GridLength DateColWidth { get => GetValue(DateColWidthProperty); set => SetValue(DateColWidthProperty, value); }
 
     /// <summary>The full multi-selection in click order (last = focus). Read by the controller at command time.</summary>
     public IReadOnlyList<ItemViewModel> SelectedItems => _selectedOrder;
@@ -62,6 +74,7 @@ public partial class ItemView : UserControl
     private bool _dragArmed;
 
     private TextBox? _renameBox;
+    private readonly FuncDataTemplate<ItemViewModel> _detailsTpl;
 
     private SortColumn _sortCol = SortColumn.Name;
     private bool _sortAsc = true;
@@ -74,6 +87,7 @@ public partial class ItemView : UserControl
     // Expose named controls for tests
     public Avalonia.Controls.ItemsControl ItemsControl => ItemsPresenter;
     public Avalonia.Controls.Border ColumnHeaderBorder => ColumnHeaders;
+    public Grid DetailsHeaderGrid => HeaderGrid;
 
     internal enum SortColumn { Name, Size, Type, Modified }
 
@@ -87,7 +101,30 @@ public partial class ItemView : UserControl
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(ContextRequestedEvent, OnContextRequested);
+
+        // Details columns: bind the header's Size/Type/Date widths to the shared properties
+        // and let the header grips resize them. Rows bind the same way (BuildDetailsTemplate).
+        _detailsTpl = BuildDetailsTemplate();
+        HeaderGrid.ColumnDefinitions[1].Bind(ColumnDefinition.WidthProperty, this.GetObservable(SizeColWidthProperty));
+        HeaderGrid.ColumnDefinitions[2].Bind(ColumnDefinition.WidthProperty, this.GetObservable(TypeColWidthProperty));
+        HeaderGrid.ColumnDefinitions[3].Bind(ColumnDefinition.WidthProperty, this.GetObservable(DateColWidthProperty));
+        SizeGrip.DragDelta += OnColResize;
+        TypeGrip.DragDelta += OnColResize;
+        DateGrip.DragDelta += OnColResize;
     }
+
+    /// <summary>Drag a header grip to resize its column (min 28px); header and all rows follow.</summary>
+    private void OnColResize(object? sender, VectorEventArgs e)
+    {
+        switch ((sender as Thumb)?.Name)
+        {
+            case "SizeGrip": SizeColWidth = ClampCol(SizeColWidth.Value + e.Vector.X); break;
+            case "TypeGrip": TypeColWidth = ClampCol(TypeColWidth.Value + e.Vector.X); break;
+            case "DateGrip": DateColWidth = ClampCol(DateColWidth.Value + e.Vector.X); break;
+        }
+    }
+
+    private static GridLength ClampCol(double px) => new(Math.Max(28, px));
 
     protected override void OnLoaded(RoutedEventArgs e)
     {
@@ -116,7 +153,7 @@ public partial class ItemView : UserControl
             case ViewMode.Details:
                 ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
                     new VirtualizingStackPanel { Orientation = Orientation.Vertical });
-                ItemsPresenter.ItemTemplate = DetailsTpl;
+                ItemsPresenter.ItemTemplate = _detailsTpl;
                 break;
             case ViewMode.LargeIcons:
                 ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
@@ -338,12 +375,18 @@ public partial class ItemView : UserControl
         return s;
     });
 
-    static readonly FuncDataTemplate<ItemViewModel> DetailsTpl = new((vm, _) =>
+    // Instance (not static) so each row's Size/Type/Date columns bind to the shared column
+    // widths — a header resize then flows to every row live. Name column stays star-sized.
+    private FuncDataTemplate<ItemViewModel> BuildDetailsTemplate() => new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
         // No horizontal gridlines — classic Explorer details view has plain white rows.
         var row = new Border { Padding = new(2, 1) };
-        var g = new Grid { ColumnDefinitions = new("*,80,120,140"), Height = 20 };
+        var g = new Grid { Height = 20 };
+        g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
+        g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
+        g.ColumnDefinitions.Add(BoundCol(DateColWidthProperty));
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         name.Children.Add(Icon(16, vm.IconKey));
         name.Children.Add(NameCell(vm.DisplayName));
@@ -354,6 +397,14 @@ public partial class ItemView : UserControl
         row.Child = g;
         return row;
     });
+
+    /// <summary>A details-view column whose width tracks a shared ItemView property (live).</summary>
+    private ColumnDefinition BoundCol(StyledProperty<GridLength> prop)
+    {
+        var c = new ColumnDefinition();
+        c.Bind(ColumnDefinition.WidthProperty, this.GetObservable(prop));
+        return c;
+    }
 
     static readonly FuncDataTemplate<ItemViewModel> ThumbTpl = new((vm, _) =>
     {

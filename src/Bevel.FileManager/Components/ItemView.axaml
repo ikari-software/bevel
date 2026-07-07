@@ -13,7 +13,7 @@
                 Background="#D4D0C8"
                 IsVisible="False"
                 Height="18">
-            <Grid ColumnDefinitions="*,80,120,140">
+            <Grid x:Name="HeaderGrid" ColumnDefinitions="*,80,120,140">
                 <Border Grid.Column="0" BorderBrush="#808080" BorderThickness="0,0,1,1">
                     <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
                         <TextBlock x:Name="SortName" Tag="Name" Text=" Name" FontSize="11"
@@ -22,25 +22,40 @@
                     </Border>
                 </Border>
                 <Border Grid.Column="1" BorderBrush="#808080" BorderThickness="0,0,1,1">
-                    <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
-                        <TextBlock x:Name="SortSize" Tag="Size" Text=" Size" FontSize="11"
-                                   VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
-                                   Cursor="Hand" PointerPressed="OnHeaderClick" />
-                    </Border>
+                    <Panel>
+                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                            <TextBlock x:Name="SortSize" Tag="Size" Text=" Size" FontSize="11"
+                                       VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
+                                       Cursor="Hand" PointerPressed="OnHeaderClick" />
+                        </Border>
+                        <Thumb x:Name="SizeGrip" Width="6" HorizontalAlignment="Right" Cursor="SizeWestEast" Background="Transparent">
+                            <Thumb.Template><ControlTemplate><Border Background="Transparent" /></ControlTemplate></Thumb.Template>
+                        </Thumb>
+                    </Panel>
                 </Border>
                 <Border Grid.Column="2" BorderBrush="#808080" BorderThickness="0,0,1,1">
-                    <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
-                        <TextBlock x:Name="SortType" Tag="Type" Text=" Type" FontSize="11"
-                                   VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
-                                   Cursor="Hand" PointerPressed="OnHeaderClick" />
-                    </Border>
+                    <Panel>
+                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                            <TextBlock x:Name="SortType" Tag="Type" Text=" Type" FontSize="11"
+                                       VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
+                                       Cursor="Hand" PointerPressed="OnHeaderClick" />
+                        </Border>
+                        <Thumb x:Name="TypeGrip" Width="6" HorizontalAlignment="Right" Cursor="SizeWestEast" Background="Transparent">
+                            <Thumb.Template><ControlTemplate><Border Background="Transparent" /></ControlTemplate></Thumb.Template>
+                        </Thumb>
+                    </Panel>
                 </Border>
                 <Border Grid.Column="3" BorderBrush="#808080" BorderThickness="0,0,1,1">
-                    <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
-                        <TextBlock x:Name="SortModified" Tag="Modified" Text=" Date Modified" FontSize="11"
-                                   VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
-                                   Cursor="Hand" PointerPressed="OnHeaderClick" />
-                    </Border>
+                    <Panel>
+                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                            <TextBlock x:Name="SortModified" Tag="Modified" Text=" Date Modified" FontSize="11"
+                                       VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
+                                       Cursor="Hand" PointerPressed="OnHeaderClick" />
+                        </Border>
+                        <Thumb x:Name="DateGrip" Width="6" HorizontalAlignment="Right" Cursor="SizeWestEast" Background="Transparent">
+                            <Thumb.Template><ControlTemplate><Border Background="Transparent" /></ControlTemplate></Thumb.Template>
+                        </Thumb>
+                    </Panel>
                 </Border>
             </Grid>
         </Border>
