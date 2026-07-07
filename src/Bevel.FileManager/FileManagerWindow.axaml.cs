@@ -5,6 +5,7 @@ using System.Reactive.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
@@ -51,6 +52,7 @@ public partial class FileManagerWindow : BevelWindow
         Toolbar.BackButton.Click += (_, _) => _controller?.GoBack();
         Toolbar.ForwardButton.Click += (_, _) => _controller?.GoForward();
         Toolbar.UpButton.Click += (_, _) => _controller?.GoUp();
+        Toolbar.History.Click += (_, _) => ShowHistoryFlyout(Toolbar.History);
 
         // View mode switching via toolbar
         Toolbar.ViewLargeIcons.Click += (_, _) => SetView(ViewMode.LargeIcons);
@@ -505,6 +507,26 @@ public partial class FileManagerWindow : BevelWindow
         try { await _controller.NewFolderAsync(); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"New folder failed: {ex.Message}"); }
         finally { _controller.Refresh(); }
+    }
+
+    /// <summary>Drop a MenuFlyout of the navigation history under the History button; clicking
+    /// an entry jumps there without corrupting the stack (see FileManagerController.JumpToHistory).</summary>
+    private void ShowHistoryFlyout(Control anchor)
+    {
+        if (_controller is null) return;
+        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
+        foreach (var entry in _controller.HistoryMenu)
+        {
+            var item = new MenuItem
+            {
+                Header = entry.Label,
+                FontWeight = entry.Index == _controller.HistoryPosition ? FontWeight.Bold : FontWeight.Normal,
+            };
+            var idx = entry.Index;
+            item.Click += (_, _) => _controller.JumpToHistory(idx);
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(anchor);
     }
 
     void OnDropRequested(object? sender, DropEventArgs e)

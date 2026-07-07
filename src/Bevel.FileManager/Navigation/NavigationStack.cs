@@ -28,6 +28,57 @@ public sealed class NavigationStack
     public int Count => _history.Count;
     public int Position => _position;
 
+    /// <summary>All entries in visit order (oldest first) — for building a History dropdown.</summary>
+    public IReadOnlyList<VfsPath> Entries => _history;
+
+    /// <summary>
+    /// Entries before the current position, most-recent-first (i.e. one step back is index 0).
+    /// </summary>
+    public IReadOnlyList<VfsPath> Back
+    {
+        get
+        {
+            if (_position <= 0) return Array.Empty<VfsPath>();
+            var result = new VfsPath[_position];
+            for (var i = 0; i < _position; i++)
+                result[i] = _history[_position - 1 - i];
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Entries after the current position, nearest-next-first (i.e. one step forward is index 0).
+    /// </summary>
+    public IReadOnlyList<VfsPath> Forward
+    {
+        get
+        {
+            if (_position >= _history.Count - 1) return Array.Empty<VfsPath>();
+            var count = _history.Count - _position - 1;
+            var result = new VfsPath[count];
+            for (var i = 0; i < count; i++)
+                result[i] = _history[_position + 1 + i];
+            return result;
+        }
+    }
+
+    /// <summary>The entry at the given absolute index in <see cref="Entries"/>, or null if out of range.</summary>
+    public VfsPath? PeekAt(int index)
+        => index >= 0 && index < _history.Count ? _history[index] : null;
+
+    /// <summary>
+    /// Repositions the current pointer to <paramref name="index"/> (an absolute index into
+    /// <see cref="Entries"/>) WITHOUT pushing a new entry or truncating forward history, and
+    /// returns the path now current. Returns null (no-op) when <paramref name="index"/> is out
+    /// of range.
+    /// </summary>
+    public VfsPath? GoTo(int index)
+    {
+        if (index < 0 || index >= _history.Count) return null;
+        _position = index;
+        return _history[index];
+    }
+
     /// <summary>
     /// Navigate to a new path, pushing it onto the history stack.
     /// Clears any forward entries when navigating to a new location.

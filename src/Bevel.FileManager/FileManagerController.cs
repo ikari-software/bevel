@@ -34,6 +34,24 @@ public sealed class FileManagerController
     public VfsPath CurrentDirectory => _nav.Current;
     public bool CanGoBack => _nav.CanGoBack;
     public bool CanGoForward => _nav.CanGoForward;
+
+    /// <summary>Back-history paths, most-recent-first — for a History dropdown's "back" section.</summary>
+    public IReadOnlyList<VfsPath> BackHistory => _nav.Back;
+
+    /// <summary>Forward-history paths, nearest-next-first — for a History dropdown's "forward" section.</summary>
+    public IReadOnlyList<VfsPath> ForwardHistory => _nav.Forward;
+
+    /// <summary>
+    /// The full navigation history as labeled, indexed entries (oldest first) — pass an entry's
+    /// <see cref="HistoryEntry.Index"/> to <see cref="JumpToHistory"/> to build a History dropdown
+    /// menu (Toolbar History button / Back-chevron flyout, Go menu).
+    /// </summary>
+    public IReadOnlyList<HistoryEntry> HistoryMenu
+        => _nav.Entries.Select((p, i) => new HistoryEntry(i, p, HistoryEntry.LabelFor(p))).ToArray();
+
+    /// <summary>The absolute index of the current directory within <see cref="HistoryMenu"/>.</summary>
+    public int HistoryPosition => _nav.Position;
+
     public IReadOnlyList<VfsPath> Selection => _selection;
     public bool HasClipboard => _clipboard is { Paths.Count: > 0 };
     public bool CanUndo => _fileOps.Undo.CanUndo;
@@ -74,6 +92,14 @@ public sealed class FileManagerController
 
     // GoUp returns the parent without mutating the stack; record it as forward history.
     public void GoUp() { if (_nav.GoUp() is { } p) { _nav.Push(p); Arrived(p); } }
+
+    /// <summary>
+    /// Jump directly to an entry in <see cref="HistoryMenu"/> (by its absolute
+    /// <see cref="HistoryEntry.Index"/>) — repositions the history pointer WITHOUT pushing a new
+    /// entry or truncating forward history, then fires the same arrival events as
+    /// <see cref="GoBack"/>/<see cref="GoForward"/>. No-op if <paramref name="index"/> is out of range.
+    /// </summary>
+    public void JumpToHistory(int index) { if (_nav.GoTo(index) is { } p) Arrived(p); }
 
     /// <summary>Re-raise the current directory so the view reloads it (no history change).</summary>
     public void Refresh() => CurrentDirectoryChanged?.Invoke(_nav.Current);

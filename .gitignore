@@ -33,3 +33,4 @@ native/**/DerivedData/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.claude/worktrees/
