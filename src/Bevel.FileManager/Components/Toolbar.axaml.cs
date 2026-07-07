@@ -4,7 +4,31 @@ namespace Bevel.FileManager.Components;
 
 public partial class Toolbar : UserControl
 {
-    public Toolbar() => InitializeComponent();
+    public Toolbar()
+    {
+        InitializeComponent();
+        ApplyIcons();
+    }
+
+    /// <summary>Assign the self-drawn vector glyphs to each toolbar button's SmallIcon slot.</summary>
+    private void ApplyIcons()
+    {
+        NavBack.SmallIcon = ToolbarIcons.Back();
+        NavForward.SmallIcon = ToolbarIcons.Forward();
+        NavUp.SmallIcon = ToolbarIcons.Up();
+        SearchBtn.SmallIcon = ToolbarIcons.Search();
+        FoldersBtn.SmallIcon = ToolbarIcons.Folders();
+        HistoryBtn.SmallIcon = ToolbarIcons.History();
+        MoveToBtn.SmallIcon = ToolbarIcons.MoveTo();
+        CopyToBtn.SmallIcon = ToolbarIcons.CopyTo();
+        CutBtn.SmallIcon = ToolbarIcons.Cut();
+        CopyBtn.SmallIcon = ToolbarIcons.Copy();
+        PasteBtn.SmallIcon = ToolbarIcons.Paste();
+        UndoBtn.SmallIcon = ToolbarIcons.Undo();
+        DeleteBtn.SmallIcon = ToolbarIcons.Delete();
+        PropertiesBtn.SmallIcon = ToolbarIcons.Properties();
+        ViewsBtn.SmallIcon = ToolbarIcons.Views();
+    }
 
     // Navigation
     public Button BackButton => NavBack;
