@@ -132,17 +132,45 @@ public partial class ItemView : UserControl
 
     // ── Templates ─────────────────────────────────────────────────────
 
-    static readonly IBrush FolderColor = new SolidColorBrush(0xFFFFD83D);
-    static readonly IBrush FileColor = new SolidColorBrush(0xFFE0E0E0);
-
-    static Border Icon(int size, bool folder) => new()
+    // Vector icons — crisp at any DPI (the "vectors + gradients, not dithered bitmaps" rule).
+    // Authored in a 16-unit space and scaled by a Viewbox to the requested size.
+    private static LinearGradientBrush VGrad(string top, string bottom) => new()
     {
-        Width = size, Height = size,
-        Background = folder ? FolderColor : FileColor,
-        BorderBrush = new SolidColorBrush(0xFF999999),
-        BorderThickness = new Thickness(1),
-        CornerRadius = folder ? new CornerRadius(2) : new CornerRadius(0),
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = { new GradientStop(Color.Parse(top), 0), new GradientStop(Color.Parse(bottom), 1) },
     };
+
+    static readonly IBrush FolderBack = VGrad("#FFE49A", "#F0B03C");
+    static readonly IBrush FolderFront = VGrad("#FFF3CE", "#FFD064");
+    static readonly IBrush FolderEdge = new SolidColorBrush(Color.Parse("#9C6B15"));
+    static readonly IBrush PaperFill = VGrad("#FFFFFF", "#ECECEC");
+    static readonly IBrush PaperEdge = new SolidColorBrush(Color.Parse("#7F9DB9"));
+    static readonly IBrush PaperFold = new SolidColorBrush(Color.Parse("#DCE7F2"));
+    static readonly IBrush PaperLine = new SolidColorBrush(Color.Parse("#B4C6D8"));
+
+    static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
+        new() { Data = Geometry.Parse(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
+
+    static Control Icon(int size, bool folder)
+    {
+        var canvas = new Canvas { Width = 16, Height = 16 };
+        if (folder)
+        {
+            // Manila folder with a tab; lighter front flap over a darker back.
+            canvas.Children.Add(Vec("M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z", FolderBack, FolderEdge));
+            canvas.Children.Add(Vec("M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z", FolderFront, FolderEdge));
+        }
+        else
+        {
+            // Document page with a folded top-right corner and a few text lines.
+            canvas.Children.Add(Vec("M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z", PaperFill, PaperEdge));
+            canvas.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+            for (var i = 0; i < 3; i++)
+                canvas.Children.Add(Vec($"M5,{7.0 + i * 2.0} H10.6", null, PaperLine, 0.7));
+        }
+        return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = canvas };
+    }
 
     static TextBlock Label(string text, int maxW = 0) => new()
     {

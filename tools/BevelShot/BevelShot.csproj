@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Deterministic chrome render harness (dev only): boots the real app + Win2000 theme with
+       Skia headless drawing and renders the file manager window to a PNG at exact 96 DPI, so
+       layout can be measured 1:1 against Win2000 without a screen capture.
+       Run it against tools/BevelShot with args: [out.png] [width] [height] -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Skia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Bevel.App\Bevel.App.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.FileManager\Bevel.FileManager.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Core\Bevel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.UI\Bevel.UI.csproj" />
+  </ItemGroup>
+
+</Project>
