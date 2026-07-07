@@ -171,32 +171,50 @@ public partial class ItemView : UserControl
         switch (mode)
         {
             case ViewMode.Details:
+                // Vertical list; columns may exceed the width, so allow horizontal scroll.
+                SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Auto);
                 ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
                     new VirtualizingStackPanel { Orientation = Orientation.Vertical });
                 ItemsPresenter.ItemTemplate = _detailsTpl;
                 break;
             case ViewMode.LargeIcons:
-                ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
-                    new VirtualizingWrapPanel { ItemWidth = 80, ItemHeight = 60, FlowDirection = Orientation.Horizontal });
+                GridScroll();
+                ItemsPresenter.ItemsPanel = Wrap(80, 60, Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = LargeIconTpl;
                 break;
             case ViewMode.SmallIcons:
-                ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
-                    new VirtualizingWrapPanel { ItemWidth = 180, ItemHeight = 20, FlowDirection = Orientation.Horizontal });
+                GridScroll();
+                ItemsPresenter.ItemsPanel = Wrap(180, 20, Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = SmallIconTpl;
                 break;
             case ViewMode.List:
-                ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
-                    new VirtualizingStackPanel { Orientation = Orientation.Vertical });
+                // Vertical flow: items fill a column top-to-bottom, then wrap to the next column.
+                // Height is constrained (no vertical scroll) so it wraps into columns and the
+                // overflow scrolls horizontally — the classic Explorer "List" view.
+                SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Disabled);
+                ItemsPresenter.ItemsPanel = Wrap(180, 18, Orientation.Vertical);
                 ItemsPresenter.ItemTemplate = ListTpl;
                 break;
             case ViewMode.Thumbnails:
-                ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
-                    new VirtualizingWrapPanel { ItemWidth = 120, ItemHeight = 120, FlowDirection = Orientation.Horizontal });
+                GridScroll();
+                ItemsPresenter.ItemsPanel = Wrap(120, 120, Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = ThumbTpl;
                 break;
         }
     }
+
+    // Horizontal-flow icon grids wrap to the viewport WIDTH, so horizontal scroll must be off
+    // (otherwise the panel is measured at infinite width and never wraps); overflow scrolls down.
+    private void GridScroll() => SetScroll(horizontal: ScrollBarVisibility.Disabled, vertical: ScrollBarVisibility.Auto);
+
+    private void SetScroll(ScrollBarVisibility horizontal, ScrollBarVisibility vertical)
+    {
+        ItemsScroller.HorizontalScrollBarVisibility = horizontal;
+        ItemsScroller.VerticalScrollBarVisibility = vertical;
+    }
+
+    private static FuncTemplate<Panel> Wrap(double w, double h, Orientation flow)
+        => new(() => new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, FlowDirection = flow });
 
     // ── Templates ─────────────────────────────────────────────────────
 
