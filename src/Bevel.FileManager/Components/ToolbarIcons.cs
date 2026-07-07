@@ -98,7 +98,7 @@ internal static class ToolbarIcons
 
     public static Bitmap? Up() => Raster(
         Folder(), FolderFlap(),
-        P("M8,7.0 L10.6,10.0 L8.9,10.0 L8.9,12.4 L7.1,12.4 L7.1,10.0 L5.4,10.0 Z", Green, GreenEdge, 0.4));
+        P("M8,5.4 L10.9,8.7 L9.0,8.7 L9.0,11.6 L7.0,11.6 L7.0,8.7 L5.1,8.7 Z", Green, GreenEdge, 0.4));
 
     public static Bitmap? Search() => Raster(
         E(2.3, 2.3, 8.2, 8.2, White, Blue, 1.5),
@@ -117,7 +117,8 @@ internal static class ToolbarIcons
         P("M4.2,9.4 H8.6 M8.6,7.7 L10.6,9.4 L8.6,11.1 Z", Green, GreenEdge, 0.5));
 
     public static Bitmap? CopyTo() => Raster(
-        P("M6.5,3.2 H9.2 l0.9,0.9 H13 a0.5,0.5 0 0 1 0.5,0.5 V10.5 H6.5 Z", FolderBack, FolderEdge, 0.4),
+        // A second folder peeking up-and-right behind the front one.
+        P("M4.6,1.9 H8.1 l1.2,1.2 H14.4 a0.6,0.6 0 0 1 0.6,0.6 V8.6 H4.6 Z", FolderBack, FolderEdge, 0.4),
         Folder(), FolderFlap());
 
     public static Bitmap? Cut() => Raster(
