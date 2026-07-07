@@ -250,6 +250,48 @@ public partial class ItemView : UserControl
         SortItems();
     }
 
+    public bool HasItems => _viewModels.Count > 0;
+
+    /// <summary>
+    /// Differentially update the list to match <paramref name="nodes"/>, keyed by path — a React-
+    /// style keyed diff. Surviving rows keep their object identity (and selection); only genuinely
+    /// added or removed entries mutate the collection, and metadata is refreshed in place. When the
+    /// path set is unchanged (the common watcher/refresh case) nothing rebinds, so the view does
+    /// not flicker. Re-sorting (which detaches the ItemsSource) happens only when items were added.
+    /// </summary>
+    public void ReconcileItems(IReadOnlyList<IVfsNode> nodes)
+    {
+        var existing = new Dictionary<VfsPath, ItemViewModel>(_viewModels.Count);
+        foreach (var vm in _viewModels) existing[vm.Path] = vm;
+
+        var incoming = new HashSet<VfsPath>(nodes.Count);
+        var added = 0;
+        foreach (var n in nodes)
+        {
+            incoming.Add(n.Path);
+            if (existing.TryGetValue(n.Path, out var vm))
+                vm.Update(n);                       // same row, fresh metadata
+            else
+            {
+                _viewModels.Add(new ItemViewModel(n));
+                added++;
+            }
+        }
+
+        // Drop rows whose paths disappeared (in place — a Remove doesn't tear down the list).
+        for (var i = _viewModels.Count - 1; i >= 0; i--)
+        {
+            var vm = _viewModels[i];
+            if (incoming.Contains(vm.Path)) continue;
+            _viewModels.RemoveAt(i);
+            _selected.Remove(vm);
+            _selectedOrder.Remove(vm);
+        }
+
+        // Only a genuine insertion needs the collection re-ordered.
+        if (added > 0) SortItems();
+    }
+
     void RebuildItems()
     {
         _viewModels.Clear();

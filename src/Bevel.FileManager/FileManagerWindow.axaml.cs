@@ -29,6 +29,7 @@ public partial class FileManagerWindow : BevelWindow
     private readonly FolderContextMenu _folderMenu = new();
 
     private CancellationTokenSource? _enumerateCts;
+    private VfsPath? _loadedPath;
     private CancellationTokenSource? _treeCts;
     private IDirectoryWatcher? _directoryWatcher;
     private IDisposable? _watcherSubscription;
@@ -319,7 +320,13 @@ public partial class FileManagerWindow : BevelWindow
     {
         UpdateTitle(path);
         AddressBar.SetAddress(path.ToString());
-        await LoadDirectory(path);
+        // Re-landing on the directory already shown (F5, or a controller Refresh) is a
+        // differential update — reconcile in place rather than clearing and rebuilding, so the
+        // list doesn't flash. A genuine navigation streams a fresh listing.
+        if (_loadedPath is { } loaded && loaded == path && ItemView.HasItems)
+            await ReloadDifferential(path);
+        else
+            await LoadDirectory(path);
     }
 
     private void OnNavigationStateChanged() => UpdateNavigationButtons();
@@ -328,6 +335,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         if (_vfsRoot is null) return;
 
+        _loadedPath = path;
         _enumerateCts?.Cancel();
         _enumerateCts = new CancellationTokenSource();
         var ct = _enumerateCts.Token;
@@ -690,7 +698,46 @@ public partial class FileManagerWindow : BevelWindow
     {
         try { await System.Threading.Tasks.Task.Delay(250, ct); }
         catch (OperationCanceledException) { return; }
-        await LoadDirectory(CurrentPath);
+        // Watcher-driven reloads are always of the current directory, so reconcile in place — a
+        // spurious event or an unrelated mtime touch leaves the path set unchanged and the list
+        // does not flicker.
+        await ReloadDifferential(CurrentPath);
+    }
+
+    /// <summary>
+    /// Re-enumerate <paramref name="path"/> and reconcile the result into the existing list (keyed
+    /// by path) instead of clearing and rebuilding. Reuses the active watcher. Buffers the full
+    /// listing first because a diff needs the complete new set; the directory is already loaded, so
+    /// this is bounded work. Falls back to a fresh streaming load if nothing is displayed yet.
+    /// </summary>
+    private async System.Threading.Tasks.Task ReloadDifferential(VfsPath path)
+    {
+        if (_vfsRoot is null) return;
+        if (!ItemView.HasItems) { await LoadDirectory(path); return; }
+
+        _enumerateCts?.Cancel();
+        _enumerateCts?.Dispose();
+        _enumerateCts = new CancellationTokenSource();
+        var ct = _enumerateCts.Token;
+
+        var nodes = new List<IVfsNode>();
+        long totalSize = 0;
+        try
+        {
+            await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), ct))
+            {
+                nodes.Add(node);
+                if (node.Size.HasValue) totalSize += node.Size.Value;
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        catch (KeyNotFoundException) { }
+
+        _loadedPath = path;
+        ItemView.ReconcileItems(nodes);
+        StatusBar.UpdateObjectCount(nodes.Count);
+        StatusBar.UpdateTotalSize(totalSize);
+        UpdateInfoPane(path, nodes.Count);
     }
 
     /// <summary>

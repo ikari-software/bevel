@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
@@ -95,6 +96,50 @@ public class ItemViewTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.Empty((System.Collections.IList)view.ItemsControl.ItemsSource!);
+    }
+
+    // ── Differential reload (keyed reconcile — no flicker) ─────────────
+
+    static ItemViewModel[] Rows(ItemView view)
+        => ((System.Collections.IList)view.ItemsControl.ItemsSource!).Cast<ItemViewModel>().ToArray();
+
+    [AvaloniaFact]
+    public void ReconcileItems_keeps_row_identity_when_unchanged()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+        var before = Rows(view);
+
+        // A real re-enumeration yields fresh node instances with the same paths.
+        view.ReconcileItems(new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") });
+        Dispatcher.UIThread.RunJobs();
+        var after = Rows(view);
+
+        Assert.Equal(3, after.Length);
+        // Same objects survive → nothing is torn down and rebuilt, so the list can't flicker.
+        Assert.Same(before.Single(v => v.DisplayName == "a.txt"), after.Single(v => v.DisplayName == "a.txt"));
+        Assert.Same(before.Single(v => v.DisplayName == "b.txt"), after.Single(v => v.DisplayName == "b.txt"));
+        Assert.Same(before.Single(v => v.DisplayName == "c.txt"), after.Single(v => v.DisplayName == "c.txt"));
+    }
+
+    [AvaloniaFact]
+    public void ReconcileItems_adds_new_and_drops_missing_keeping_survivors()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+        var b = Rows(view).Single(v => v.DisplayName == "b.txt");
+
+        // a.txt vanished, d.txt appeared; b and c persist.
+        view.ReconcileItems(new[] { Node("b.txt"), Node("c.txt"), Node("d.txt") });
+        Dispatcher.UIThread.RunJobs();
+        var after = Rows(view);
+
+        Assert.Equal(new[] { "b.txt", "c.txt", "d.txt" }, after.Select(v => v.DisplayName));
+        Assert.Same(b, after.Single(v => v.DisplayName == "b.txt")); // survivor kept its identity
     }
 }
 

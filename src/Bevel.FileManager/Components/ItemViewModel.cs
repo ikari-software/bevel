@@ -10,7 +10,7 @@ namespace Bevel.FileManager.Components;
 /// </summary>
 public sealed class ItemViewModel : INotifyPropertyChanged
 {
-    private readonly IVfsNode _node;
+    private IVfsNode _node;
     private bool _isSelected;
     private bool _isEditing;
     private string? _editName;
@@ -22,7 +22,24 @@ public sealed class ItemViewModel : INotifyPropertyChanged
 
     public IVfsNode Node => _node;
 
-    // ── VFS data (immutable) ──────────────────────────────────────────
+    /// <summary>
+    /// Refresh the underlying node in place (same identity, new metadata) during a differential
+    /// reload — keeps the row's object, selection, and virtualization slot, and just re-notifies
+    /// the derived display properties. Part of the keyed reconcile that avoids list flicker.
+    /// </summary>
+    public void Update(IVfsNode node)
+    {
+        if (ReferenceEquals(_node, node)) return;
+        _node = node;
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(SizeDisplay));
+        OnPropertyChanged(nameof(ModifiedDisplay));
+        OnPropertyChanged(nameof(TypeDescription));
+        OnPropertyChanged(nameof(IconKey));
+        OnPropertyChanged(nameof(Node));
+    }
+
+    // ── VFS data ──────────────────────────────────────────────────────
 
     public VfsPath Path => _node.Path;
     public string DisplayName => _node.DisplayName;
