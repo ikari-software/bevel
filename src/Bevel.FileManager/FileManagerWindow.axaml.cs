@@ -32,6 +32,7 @@ public partial class FileManagerWindow : BevelWindow
     private VfsPath? _loadedPath;
     private VfsPath? _infoPath;
     private int _infoCount;
+    private long _infoTotalSize;
     private CancellationTokenSource? _treeCts;
     private IDirectoryWatcher? _directoryWatcher;
     private IDisposable? _watcherSubscription;
@@ -395,6 +396,7 @@ public partial class FileManagerWindow : BevelWindow
             }
 
             StatusBar.UpdateTotalSize(totalSize);
+            _infoTotalSize = totalSize;
             UpdateInfoPane(path, count);
         }
         catch (OperationCanceledException) { }
@@ -427,8 +429,14 @@ public partial class FileManagerWindow : BevelWindow
         if (sel.Count == 0)
         {
             if (_infoPath is { } p) UpdateInfoPane(p, _infoCount);
+            StatusBar.UpdateObjectCount(_infoCount);
+            StatusBar.UpdateTotalSize(_infoTotalSize);
             return;
         }
+
+        var selectedBytes = sel.Sum(s => s.Size ?? 0);
+        StatusBar.UpdateSelection(sel.Count, selectedBytes);
+
         if (sel.Count == 1)
         {
             var vm = sel[0];
@@ -769,6 +777,7 @@ public partial class FileManagerWindow : BevelWindow
         ItemView.ReconcileItems(nodes);
         StatusBar.UpdateObjectCount(nodes.Count);
         StatusBar.UpdateTotalSize(totalSize);
+        _infoTotalSize = totalSize;
         UpdateInfoPane(path, nodes.Count);
     }
 

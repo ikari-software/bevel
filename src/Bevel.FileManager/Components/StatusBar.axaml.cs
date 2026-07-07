@@ -13,6 +13,13 @@ public partial class StatusBar : UserControl
             : $"{count} object(s)";
     }
 
+    /// <summary>Show the current selection (Win2000 shows "N object(s) selected" + size).</summary>
+    public void UpdateSelection(int count, long bytes)
+    {
+        ObjectCountText.Text = count == 1 ? "1 object selected" : $"{count} object(s) selected";
+        TotalSizeText.Text = FormatSize(bytes);
+    }
+
     public void UpdateTotalSize(long bytes)
     {
         TotalSizeText.Text = FormatSize(bytes);

@@ -28,6 +28,8 @@ File.WriteAllText(Path.Combine(dir, "autoexec.bat"), "@echo off");
 File.WriteAllText(Path.Combine(dir, "boot.ini"), "[boot loader]");
 File.WriteAllText(Path.Combine(dir, "readme.txt"), "hello world");
 File.WriteAllText(Path.Combine(dir, "setup.exe"), new string('x', 4096));
+File.WriteAllText(Path.Combine(dir, "holiday.png"), "x");
+File.WriteAllText(Path.Combine(dir, "backup.zip"), "x");
 
 var vfs = new VfsRoot();
 vfs.Register(new LocalFsProvider());

@@ -160,24 +160,116 @@ public partial class ItemView : UserControl
     static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
         new() { Data = Geometry.Parse(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
 
-    static Control Icon(int size, bool folder)
+    private const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
+    private const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";
+    private const string DocPageData = "M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z";
+
+    private static SolidColorBrush SB(string hex) => new(Color.Parse(hex));
+    static readonly IBrush ExeTitle = SB("#0A246A");
+    static readonly IBrush ExeLine = SB("#9DB4C8");
+    static readonly IBrush Sky = SB("#A9D3F5");
+    static readonly IBrush Sun = SB("#FFD64A");
+    static readonly IBrush Mountain = SB("#5E9E52");
+    static readonly IBrush ZipLine = SB("#6B6B6B");
+    static readonly IBrush ZipTeeth = SB("#9A9A9A");
+    static readonly IBrush DriveBody = SB("#CBD0D6");
+    static readonly IBrush DriveEdge = SB("#7A8088");
+    static readonly IBrush DriveLed = SB("#62C462");
+    static readonly IBrush MonScreen = SB("#4F79A8");
+    static readonly IBrush MonInner = SB("#2E5B90");
+    static readonly IBrush MonEdge = SB("#3A3A3A");
+    static readonly IBrush MonStand = SB("#B8BCC2");
+
+    static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "bat", "cmd", "scr", "msi", "ps1", "sh", "app", "dll" };
+    static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase) { "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff", "svg" };
+    static readonly HashSet<string> ArchiveExt = new(StringComparer.OrdinalIgnoreCase) { "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "cab" };
+
+    static Avalonia.Controls.Shapes.Ellipse Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
     {
-        var canvas = new Canvas { Width = 16, Height = 16 };
-        if (folder)
+        var e = new Avalonia.Controls.Shapes.Ellipse { Width = d, Height = d, Fill = fill, Stroke = stroke, StrokeThickness = sw };
+        Canvas.SetLeft(e, x);
+        Canvas.SetTop(e, y);
+        return e;
+    }
+
+    /// <summary>Self-drawn vector glyph chosen from the node's semantic icon key. Crisp at any DPI.</summary>
+    static Control Icon(int size, IconKey key)
+    {
+        var c = new Canvas { Width = 16, Height = 16 };
+        BuildGlyph(c, key.SemanticId ?? "doc.generic");
+        return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = c };
+    }
+
+    static void BuildGlyph(Canvas c, string id)
+    {
+        if (id.StartsWith("folder")) { FolderGlyph(c); return; }
+        if (id == "computer") { ComputerGlyph(c); return; }
+        if (id.StartsWith("drive")) { DriveGlyph(c, id); return; }
+        var ext = id.StartsWith("doc.") ? id[4..] : "";
+        if (ExeExt.Contains(ext)) { ExeGlyph(c); return; }
+        if (ImageExt.Contains(ext)) { ImageGlyph(c); return; }
+        if (ArchiveExt.Contains(ext)) { ArchiveGlyph(c); return; }
+        DocGlyph(c);
+    }
+
+    static void FolderGlyph(Canvas c)
+    {
+        c.Children.Add(Vec(FolderBackData, FolderBack, FolderEdge));
+        c.Children.Add(Vec(FolderFrontData, FolderFront, FolderEdge));
+    }
+
+    static void DocGlyph(Canvas c)
+    {
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        for (var i = 0; i < 3; i++)
+            c.Children.Add(Vec($"M5,{7.0 + i * 2.0} H10.6", null, PaperLine, 0.7));
+    }
+
+    static void ExeGlyph(Canvas c)
+    {
+        // A little program window: navy title bar over a light body.
+        c.Children.Add(Vec("M2.5,3.2 H13.5 V13 H2.5 Z", PaperFill, PaperEdge, 0.5));
+        c.Children.Add(Vec("M2.5,3.2 H13.5 V5.4 H2.5 Z", ExeTitle));
+        c.Children.Add(Vec("M4,7.6 H12 M4,9.4 H11 M4,11.2 H9", null, ExeLine, 0.7));
+    }
+
+    static void ImageGlyph(Canvas c)
+    {
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M4.6,6.4 H11.6 V12 H4.6 Z", Sky, PaperEdge, 0.4));   // photo inset
+        c.Children.Add(Ell(9.4, 7.0, 1.8, Sun));                                  // sun
+        c.Children.Add(Vec("M4.6,12 L6.7,9.2 L8.3,10.8 L10,8.6 L11.6,10.6 V12 Z", Mountain));
+    }
+
+    static void ArchiveGlyph(Canvas c)
+    {
+        FolderGlyph(c);
+        c.Children.Add(Vec("M8,6.9 V13.0", null, ZipLine, 0.9));                  // zipper
+        c.Children.Add(Vec("M7.1,8.2 H8.9 M7.1,9.7 H8.9 M7.1,11.2 H8.9", null, ZipTeeth, 0.6));
+        c.Children.Add(Vec("M7.3,5.8 H8.7 V7.1 H7.3 Z", ZipTeeth, ZipLine, 0.4)); // pull tab
+    }
+
+    static void DriveGlyph(Canvas c, string id)
+    {
+        if (id.Contains("cd"))
         {
-            // Manila folder with a tab; lighter front flap over a darker back.
-            canvas.Children.Add(Vec("M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z", FolderBack, FolderEdge));
-            canvas.Children.Add(Vec("M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z", FolderFront, FolderEdge));
+            c.Children.Add(Ell(2.5, 2.5, 11, DriveBody, DriveEdge, 0.5));
+            c.Children.Add(Ell(6.4, 6.4, 3.2, Brushes.White, DriveEdge, 0.4));
+            return;
         }
-        else
-        {
-            // Document page with a folded top-right corner and a few text lines.
-            canvas.Children.Add(Vec("M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z", PaperFill, PaperEdge));
-            canvas.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
-            for (var i = 0; i < 3; i++)
-                canvas.Children.Add(Vec($"M5,{7.0 + i * 2.0} H10.6", null, PaperLine, 0.7));
-        }
-        return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = canvas };
+        c.Children.Add(Vec("M2,5.5 H14 V11 H2 Z", DriveBody, DriveEdge, 0.5));
+        c.Children.Add(Vec("M3.5,7 H10.5", null, DriveEdge, 0.5));
+        c.Children.Add(Ell(11.5, 8.1, 1.4, DriveLed));
+    }
+
+    static void ComputerGlyph(Canvas c)
+    {
+        c.Children.Add(Vec("M2.5,3 H13.5 V10 H2.5 Z", MonEdge, MonEdge, 0.4));
+        c.Children.Add(Vec("M3.3,3.8 H12.7 V9.2 H3.3 Z", MonScreen));
+        c.Children.Add(Vec("M3.3,3.8 H12.7 V6.6 H3.3 Z", MonInner));
+        c.Children.Add(Vec("M7,10 H9 V11.4 H7 Z", MonStand));
+        c.Children.Add(Vec("M5,12.6 H11 V13.6 H5 Z", MonStand, MonEdge, 0.3));
     }
 
     static TextBlock Label(string text, int maxW = 0) => new()
@@ -220,7 +312,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(4) };
-        s.Children.Add(Icon(32, vm.IsFolder));
+        s.Children.Add(Icon(32, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
         return s;
     });
@@ -229,7 +321,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
-        s.Children.Add(Icon(16, vm.IsFolder));
+        s.Children.Add(Icon(16, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName));
         return s;
     });
@@ -238,7 +330,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
-        s.Children.Add(Icon(16, vm.IsFolder));
+        s.Children.Add(Icon(16, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName));
         return s;
     });
@@ -250,7 +342,7 @@ public partial class ItemView : UserControl
         var row = new Border { Padding = new(2, 1) };
         var g = new Grid { ColumnDefinitions = new("*,80,120,140"), Height = 20 };
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        name.Children.Add(Icon(16, vm.IsFolder));
+        name.Children.Add(Icon(16, vm.IconKey));
         name.Children.Add(NameCell(vm.DisplayName));
         g.Children.Add(name);
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
@@ -265,7 +357,7 @@ public partial class ItemView : UserControl
         if (vm is null) return new TextBlock { Text = "" };
         var b = new Border { BorderBrush = new SolidColorBrush(0xFFACA899), BorderThickness = new(1), Padding = new(4), Margin = new(2), Background = Brushes.White };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
-        s.Children.Add(Icon(96, vm.IsFolder));
+        s.Children.Add(Icon(96, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
         b.Child = s;
         return b;
