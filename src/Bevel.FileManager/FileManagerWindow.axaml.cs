@@ -573,9 +573,14 @@ public partial class FileManagerWindow : BevelWindow
 
     /// <summary>Drop a MenuFlyout of the navigation history under the History button; clicking
     /// an entry jumps there without corrupting the stack (see FileManagerController.JumpToHistory).</summary>
-    private void ShowHistoryFlyout(Control anchor)
+    private void ShowHistoryFlyout(Control anchor) => BuildHistoryFlyout()?.ShowAt(anchor);
+
+    /// <summary>Builds the History dropdown from the controller's visited-folder list (current
+    /// one bold); each item jumps there via JumpToHistory. Separated from ShowAt so it can be
+    /// unit-tested without a rendered anchor. Null when there's no controller.</summary>
+    private MenuFlyout? BuildHistoryFlyout()
     {
-        if (_controller is null) return;
+        if (_controller is null) return null;
         var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
         foreach (var entry in _controller.HistoryMenu)
         {
@@ -588,7 +593,7 @@ public partial class FileManagerWindow : BevelWindow
             item.Click += (_, _) => _controller.JumpToHistory(idx);
             flyout.Items.Add(item);
         }
-        flyout.ShowAt(anchor);
+        return flyout;
     }
 
     // File > Move To / Copy To Folder: pick a destination via the Browse-For-Folder dialog,
