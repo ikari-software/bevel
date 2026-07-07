@@ -60,6 +60,13 @@ Pump(30);
 controller.NavigateTo(new VfsPath("file", dir));
 Pump(60);
 
+// Optional view mode (4th arg): Details (default), LargeIcons, SmallIcons, List, Thumbnails.
+if (args.Length > 3 && Enum.TryParse<Bevel.FileManager.Components.ViewMode>(args[3], true, out var vm))
+{
+    win.SetViewMode(vm);
+    Pump(20);
+}
+
 // Preview the selection highlight (navy bar + white text) in the shot.
 win.SelectInList(new VfsPath("file", Path.Combine(dir, "readme.txt")));
 Pump(5);

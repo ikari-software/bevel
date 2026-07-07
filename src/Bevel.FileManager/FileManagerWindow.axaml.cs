@@ -456,6 +456,9 @@ public partial class FileManagerWindow : BevelWindow
         ItemView.ViewMode = mode;
     }
 
+    /// <summary>Set the list view mode (used by tests and the render harness).</summary>
+    public void SetViewMode(ViewMode mode) => SetView(mode);
+
     private void UpdateNavigationButtons()
     {
         Toolbar.BackButton.IsEnabled = _controller?.CanGoBack ?? false;
