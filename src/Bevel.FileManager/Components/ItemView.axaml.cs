@@ -57,6 +57,26 @@ public partial class ItemView : UserControl
         if (vm is not null) SelectOne(vm);
     }
 
+    /// <summary>Edit → Select All (also Ctrl+A). Clears first so the order list can't gather dupes.</summary>
+    public void SelectAll()
+    {
+        ClearSel();
+        foreach (var vm in _viewModels) AddSel(vm);
+        SelectedItem = _selectedOrder.Count > 0 ? _selectedOrder[^1] : null;
+        RaiseSelection();
+    }
+
+    /// <summary>Edit → Invert Selection: select everything currently unselected and vice-versa.</summary>
+    public void InvertSelection()
+    {
+        foreach (var vm in _viewModels.ToList())
+        {
+            if (vm.IsSelected) RemSel(vm); else AddSel(vm);
+        }
+        SelectedItem = _selectedOrder.Count > 0 ? _selectedOrder[^1] : null;
+        RaiseSelection();
+    }
+
     private readonly ObservableCollection<ItemViewModel> _viewModels = new();
     private readonly HashSet<ItemViewModel> _selected = new();
     private readonly List<ItemViewModel> _selectedOrder = new();
@@ -736,7 +756,7 @@ public partial class ItemView : UserControl
                 if (_selectedOrder.Count > 0) { SelectedItem = _selectedOrder[^1]; ItemActivated?.Invoke(this, new(SelectedItem)); }
                 e.Handled = true; break;
             case Key.A when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                foreach (var vm in _viewModels) AddSel(vm); e.Handled = true; break;
+                SelectAll(); e.Handled = true; break;
             case Key.Down or Key.Up or Key.Left or Key.Right:
                 Navigate(e.Key, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.Home:

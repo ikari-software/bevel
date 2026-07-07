@@ -181,6 +181,26 @@ public class ItemViewTests
     }
 
     [AvaloniaFact]
+    public void SelectAll_and_InvertSelection_toggle_rows_without_dupes()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        view.SelectAll();
+        view.SelectAll();                       // twice — must not accumulate duplicates
+        Assert.Equal(3, view.SelectedItems.Count);
+
+        view.InvertSelection();                 // all → none
+        Assert.Empty(view.SelectedItems);
+
+        view.SelectPath(new VfsPath("test", "b.txt"));
+        view.InvertSelection();                 // b → a,c
+        Assert.Equal(new[] { "a.txt", "c.txt" }, view.SelectedItems.Select(v => v.DisplayName).OrderBy(x => x));
+    }
+
+    [AvaloniaFact]
     public void SelectPath_selects_the_matching_row()
     {
         var view = new ItemView { ViewMode = ViewMode.Details };

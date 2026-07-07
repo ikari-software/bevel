@@ -124,7 +124,8 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.Cut.Click += (_, _) => CutSelection();
         MenuBar.Copy.Click += (_, _) => CopySelection();
         MenuBar.Paste.Click += (_, _) => _ = PasteAsync();
-        MenuBar.SelectAll.Click += (_, _) => { ItemView.Focus(); /* Ctrl+A handled by ItemView */ };
+        MenuBar.SelectAll.Click += (_, _) => { ItemView.Focus(); ItemView.SelectAll(); };
+        MenuBar.InvertSelection.Click += (_, _) => { ItemView.Focus(); ItemView.InvertSelection(); };
 
         // View
         MenuBar.ViewLargeIcons.Click += (_, _) => SetView(ViewMode.LargeIcons);
