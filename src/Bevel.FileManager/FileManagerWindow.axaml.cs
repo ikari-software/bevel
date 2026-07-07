@@ -53,6 +53,8 @@ public partial class FileManagerWindow : BevelWindow
         Toolbar.ForwardButton.Click += (_, _) => _controller?.GoForward();
         Toolbar.UpButton.Click += (_, _) => _controller?.GoUp();
         Toolbar.History.Click += (_, _) => ShowHistoryFlyout(Toolbar.History);
+        Toolbar.MoveTo.Click += (_, _) => _ = MoveToFolderAsync();
+        Toolbar.CopyTo.Click += (_, _) => _ = CopyToFolderAsync();
 
         // View mode switching via toolbar
         Toolbar.ViewLargeIcons.Click += (_, _) => SetView(ViewMode.LargeIcons);
@@ -108,6 +110,8 @@ public partial class FileManagerWindow : BevelWindow
     {
         // File
         MenuBar.Open.Click += (_, _) => { if (ItemView.SelectedItem is { } item) OnItemActivated(this, new ItemActivatedEventArgs(item)); };
+        MenuBar.MoveToFolder.Click += (_, _) => _ = MoveToFolderAsync();
+        MenuBar.CopyToFolder.Click += (_, _) => _ = CopyToFolderAsync();
         MenuBar.Delete.Click += (_, _) => _ = DeleteSelectionAsync(toTrash: true);
         MenuBar.Rename.Click += (_, _) => ItemView.BeginRenameSelected();
         MenuBar.Properties.Click += (_, _) => ShowProperties();
@@ -527,6 +531,24 @@ public partial class FileManagerWindow : BevelWindow
             flyout.Items.Add(item);
         }
         flyout.ShowAt(anchor);
+    }
+
+    // File > Move To / Copy To Folder: pick a destination via the Browse-For-Folder dialog,
+    // then run the op on the current selection through the same seam as drag-drop.
+    async System.Threading.Tasks.Task MoveToFolderAsync() => await MoveOrCopyToFolderAsync(isCopy: false);
+    async System.Threading.Tasks.Task CopyToFolderAsync() => await MoveOrCopyToFolderAsync(isCopy: true);
+
+    async System.Threading.Tasks.Task MoveOrCopyToFolderAsync(bool isCopy)
+    {
+        if (_controller is null || _vfsRoot is null) return;
+        SyncSelection();
+        if (_controller.Selection.Count == 0) return;
+
+        var dialog = new FolderPickerDialog(_vfsRoot, _controller.CurrentDirectory, isCopy ? "Copy Items" : "Move Items");
+        if (await dialog.PickAsync(this) is not { } destination) return;
+
+        var paths = _controller.Selection;
+        await RunOpAsync(() => isCopy ? _controller.CopyAsync(paths, destination) : _controller.MoveAsync(paths, destination));
     }
 
     void OnDropRequested(object? sender, DropEventArgs e)
