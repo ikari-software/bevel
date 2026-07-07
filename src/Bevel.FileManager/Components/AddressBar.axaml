@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shapes="clr-namespace:Avalonia.Controls.Shapes;assembly=Avalonia.Controls"
              x:Class="Bevel.FileManager.Components.AddressBar">
 
     <DockPanel>
@@ -10,23 +11,40 @@
                    Margin="4,0,4,0"
                    FontSize="11" />
 
-        <!-- ComboBox + Go button -->
-        <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0"
-                      x:Name="AddressComboBox"
-                      IsEditable="True"
-                      MinHeight="22"
-                      VerticalContentAlignment="Center"
-                      KeyDown="OnAddressKeyDown"
-                      SelectionChanged="OnAddressSelectionChanged" />
+        <!-- Go button -->
+        <Button DockPanel.Dock="Right"
+                x:Name="GoButton"
+                Content="Go"
+                MinWidth="50"
+                MinHeight="22"
+                Margin="4,0,4,0"
+                Click="OnGoClick" />
 
-            <Button Grid.Column="1"
-                    x:Name="GoButton"
-                    Content="Go"
-                    MinWidth="50"
-                    MinHeight="22"
-                    Margin="4,0,4,0"
-                    Click="OnGoClick" />
+        <!-- Editable path field: a sunken TextBox with a leading folder icon and a
+             dropdown chevron, matching the Win2000 Explorer address combo. (The Classic
+             editable ComboBox doesn't render its Text reliably, so this uses a TextBox.) -->
+        <Grid>
+            <TextBox x:Name="AddressBox"
+                     MinHeight="22"
+                     FontSize="11"
+                     Padding="22,1,18,1"
+                     VerticalContentAlignment="Center"
+                     KeyDown="OnAddressKeyDown" />
+
+            <!-- Folder icon (self-drawn vector, matches the list glyph) -->
+            <Canvas Width="16" Height="16"
+                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Margin="4,0,0,0" IsHitTestVisible="False">
+                <shapes:Path Data="M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z"
+                             Fill="#F0B84A" Stroke="#9C6B15" StrokeThickness="0.5" />
+                <shapes:Path Data="M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z"
+                             Fill="#FFD064" Stroke="#9C6B15" StrokeThickness="0.5" />
+            </Canvas>
+
+            <!-- Dropdown chevron (history dropdown wired later) -->
+            <shapes:Path HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Margin="0,0,5,0" Data="M0,0 L8,0 L4,4 Z"
+                         Fill="#404040" IsHitTestVisible="False" />
         </Grid>
     </DockPanel>
 </UserControl>

@@ -322,7 +322,7 @@ public partial class FileManagerWindow : BevelWindow
     private async void OnCurrentDirectoryChanged(VfsPath path)
     {
         UpdateTitle(path);
-        AddressBar.SetAddress(path.ToString());
+        AddressBar.SetAddress(path.Value);
         // Re-landing on the directory already shown (F5, or a controller Refresh) is a
         // differential update — reconcile in place rather than clearing and rebuilding, so the
         // list doesn't flash. A genuine navigation streams a fresh listing.

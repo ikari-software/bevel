@@ -7,16 +7,9 @@ public partial class AddressBar : UserControl
 {
     public event EventHandler<string>? AddressNavigated;
 
-    private bool _isUpdating;
-
     public AddressBar() => InitializeComponent();
 
-    public void SetAddress(string path)
-    {
-        _isUpdating = true;
-        AddressComboBox.Text = path;
-        _isUpdating = false;
-    }
+    public void SetAddress(string path) => AddressBox.Text = path;
 
     private void OnAddressKeyDown(object? sender, KeyEventArgs e)
     {
@@ -27,23 +20,12 @@ public partial class AddressBar : UserControl
         }
     }
 
-    private void OnAddressSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_isUpdating) return;
-        if (AddressComboBox.SelectedItem is string selected)
-        {
-            AddressNavigated?.Invoke(this, selected);
-        }
-    }
-
     private void OnGoClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        NavigateToAddress();
-    }
+        => NavigateToAddress();
 
     private void NavigateToAddress()
     {
-        var text = AddressComboBox.Text?.Trim();
+        var text = AddressBox.Text?.Trim();
         if (string.IsNullOrEmpty(text)) return;
         AddressNavigated?.Invoke(this, text);
     }
