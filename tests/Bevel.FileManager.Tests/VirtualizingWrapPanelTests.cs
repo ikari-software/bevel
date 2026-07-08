@@ -16,7 +16,7 @@ public sealed class VirtualizingWrapPanelTests
 {
     private static VirtualizingWrapPanel Panel(int count, double w, double h, Orientation flow)
     {
-        var p = new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, FlowDirection = flow };
+        var p = new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, Orientation = flow };
         for (var i = 0; i < count; i++) p.Children.Add(new Border());
         return p;
     }
@@ -43,5 +43,20 @@ public sealed class VirtualizingWrapPanelTests
         var p = Panel(10, 180, 20, Orientation.Vertical);
         p.Measure(new Size(1000, 80));            // 80/20 = 4 per column -> ceil(10/4) = 3 columns
         Assert.Equal(new Size(3 * 180, 4 * 20), p.DesiredSize);
+    }
+
+    [AvaloniaFact]
+    public void RightToLeft_mirrors_horizontal_placement()
+    {
+        var p = Panel(3, 80, 60, Orientation.Horizontal);
+        p.FlowDirection = Avalonia.Media.FlowDirection.RightToLeft;   // ambient reading order
+        p.Measure(new Size(320, 1000));                              // 4 columns wide
+        p.Arrange(new Rect(0, 0, 320, 1000));
+
+        // First item hugs the right edge; subsequent items march leftward.
+        Assert.Equal(320 - 80, p.Children[0].Bounds.X);   // rightmost slot
+        Assert.Equal(320 - 160, p.Children[1].Bounds.X);
+        Assert.Equal(320 - 240, p.Children[2].Bounds.X);
+        Assert.Equal(0, p.Children[0].Bounds.Y);          // still the first row
     }
 }

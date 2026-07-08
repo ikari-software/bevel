@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
@@ -17,10 +18,11 @@ public sealed class ClickSelectionTests
     private static IVfsNode Node(string name)
         => new ClickNode { Path = new VfsPath("test", name), DisplayName = name, Kind = VfsNodeKind.File };
 
-    private static void ClickSelects(ViewMode mode)
+    private static void ClickSelects(ViewMode mode, bool rtl = false)
     {
         var view = new ItemView { ViewMode = mode };
         var w = new Window { Content = view, Width = 500, Height = 400 };
+        if (rtl) w.FlowDirection = FlowDirection.RightToLeft;   // ambient reading order -> mirrored layout
         w.Show();
         view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
         Dispatcher.UIThread.RunJobs();
@@ -41,6 +43,7 @@ public sealed class ClickSelectionTests
     [AvaloniaFact] public void Details_click_selects() => ClickSelects(ViewMode.Details);
     [AvaloniaFact] public void LargeIcons_click_selects() => ClickSelects(ViewMode.LargeIcons);
     [AvaloniaFact] public void List_click_selects() => ClickSelects(ViewMode.List);
+    [AvaloniaFact] public void LargeIcons_click_selects_under_rtl() => ClickSelects(ViewMode.LargeIcons, rtl: true);
 }
 
 file sealed class ClickNode : IVfsNode

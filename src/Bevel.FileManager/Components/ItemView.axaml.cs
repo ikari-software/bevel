@@ -214,7 +214,7 @@ public partial class ItemView : UserControl
     }
 
     private static FuncTemplate<Panel> Wrap(double w, double h, Orientation flow)
-        => new(() => new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, FlowDirection = flow });
+        => new(() => new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, Orientation = flow });
 
     // ── Templates ─────────────────────────────────────────────────────
 
