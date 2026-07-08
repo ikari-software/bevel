@@ -315,12 +315,16 @@ public partial class ItemView : UserControl
     static readonly HashSet<string> CodeExt = new(StringComparer.OrdinalIgnoreCase) { "xml", "xaml", "json", "yaml", "yml", "toml", "css", "cs", "c", "cpp", "cc", "h", "hpp", "java", "go", "rs", "ts", "tsx", "swift", "kt" };
     static readonly HashSet<string> DiscExt = new(StringComparer.OrdinalIgnoreCase) { "iso", "img", "dmg", "vhd", "vhdx", "bin", "cue", "nrg", "toast" };
 
-    static Avalonia.Controls.Shapes.Ellipse Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
+    // A circle at top-left (x,y), diameter d — drawn as an absolute-coordinate Path, NOT an
+    // Ellipse Shape. An Ellipse on a Canvas positions size-dependently (its layout bounds depend
+    // on size/stroke), so nested different-sized ellipses — the CD platter/hub/spindle — drift
+    // off-centre from each other. Path geometry is absolute, so circles stay concentric with each
+    // other and with every Vec() path. Signature unchanged, so all call sites keep working.
+    static Avalonia.Controls.Shapes.Path Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
     {
-        var e = new Avalonia.Controls.Shapes.Ellipse { Width = d, Height = d, Fill = fill, Stroke = stroke, StrokeThickness = sw };
-        Canvas.SetLeft(e, x);
-        Canvas.SetTop(e, y);
-        return e;
+        double r = d / 2, cx = x + r, cy = y + r;
+        var data = FormattableString.Invariant($"M{cx - r},{cy} A{r},{r} 0 1 0 {cx + r},{cy} A{r},{r} 0 1 0 {cx - r},{cy} Z");
+        return Vec(data, fill, stroke, sw);
     }
 
     /// <summary>Self-drawn vector glyph chosen from the node's semantic icon key. Crisp at any DPI.</summary>
@@ -553,9 +557,12 @@ public partial class ItemView : UserControl
         double edge = Math.Max(0.35, 0.5 * k);
         c.Children.Add(Ell(cx - r, cy - r, r * 2, DiscRainbow, DriveEdge, edge));      // iridescent platter
         // Both glints ride the SAME circle (0.85r) so the shine reads as one concentric highlight.
-        double gr = 0.85 * r;
-        c.Children.Add(ConcentricArc(cx, cy, gr, 190, 256, Math.Max(0.5, 1.1 * k)));   // long upper-left sweep
-        c.Children.Add(ConcentricArc(cx, cy, gr, 22, 52, Math.Max(0.45, 0.7 * k)));    // short lower-right glint
+        // Two EQUAL glints exactly 180° apart: the shine is point-symmetric about the centre, so
+        // it doesn't pull the eye off-axis (an asymmetric highlight makes the centred hole *look*
+        // off-centre). Both ride one circle (0.85r) so the shine is a single coherent ring.
+        double gr = 0.85 * r, gw = Math.Max(0.5, 0.9 * k);
+        c.Children.Add(ConcentricArc(cx, cy, gr, 200, 250, gw));   // upper-left
+        c.Children.Add(ConcentricArc(cx, cy, gr, 20, 70, gw));     // lower-right (antipode)
         var hub = 0.357 * r;  c.Children.Add(Ell(cx - hub, cy - hub, hub * 2, DiscSheen, DriveEdge, Math.Max(0.3, 0.4 * k)));
         var bore = 0.125 * r; c.Children.Add(Ell(cx - bore, cy - bore, bore * 2, PaperFill, DriveEdge, Math.Max(0.28, 0.3 * k)));
     }
