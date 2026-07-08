@@ -548,11 +548,16 @@ public partial class ItemView : UserControl
     static void DrawDisc(Canvas c, double cx, double cy, double r)
     {
         var k = r / 5.6;   // scale relative to the full 16-unit disc
-        c.Children.Add(Ell(cx - r, cy - r, r * 2, DiscRainbow, DriveEdge, 0.5 * k));   // iridescent platter
-        c.Children.Add(ConcentricArc(cx, cy, 4.7 * k, 195, 255, 1.2 * k));            // upper-left sweep
-        c.Children.Add(ConcentricArc(cx, cy, 4.9 * k, 15, 55, 0.7 * k));              // lower-right glint
-        var hub = 2.0 * k;  c.Children.Add(Ell(cx - hub, cy - hub, hub * 2, DiscSheen, DriveEdge, 0.4 * k));
-        var bore = 0.7 * k; c.Children.Add(Ell(cx - bore, cy - bore, bore * 2, PaperFill, DriveEdge, 0.3 * k));
+        // Floor the edge strokes so they don't shrink to sub-pixel (uneven anti-aliasing that reads
+        // as off-centre) when the disc is drawn small, e.g. in front of the CD-ROM drive.
+        double edge = Math.Max(0.35, 0.5 * k);
+        c.Children.Add(Ell(cx - r, cy - r, r * 2, DiscRainbow, DriveEdge, edge));      // iridescent platter
+        // Both glints ride the SAME circle (0.85r) so the shine reads as one concentric highlight.
+        double gr = 0.85 * r;
+        c.Children.Add(ConcentricArc(cx, cy, gr, 190, 256, Math.Max(0.5, 1.1 * k)));   // long upper-left sweep
+        c.Children.Add(ConcentricArc(cx, cy, gr, 22, 52, Math.Max(0.45, 0.7 * k)));    // short lower-right glint
+        var hub = 0.357 * r;  c.Children.Add(Ell(cx - hub, cy - hub, hub * 2, DiscSheen, DriveEdge, Math.Max(0.3, 0.4 * k)));
+        var bore = 0.125 * r; c.Children.Add(Ell(cx - bore, cy - bore, bore * 2, PaperFill, DriveEdge, Math.Max(0.28, 0.3 * k)));
     }
 
     /// <summary>A stroked minor arc lying on the circle of radius <paramref name="r"/> about
