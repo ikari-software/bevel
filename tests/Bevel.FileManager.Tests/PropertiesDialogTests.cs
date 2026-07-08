@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
 using Xunit;
@@ -101,11 +103,12 @@ public sealed class PropertiesDialogTests : IDisposable
         Assert.Equal(accessed.ToString("g"), dialog.AccessedValue.Text);
         Assert.True(dialog.ReadOnlyCheck.IsChecked);   // reflects real state...
         Assert.True(dialog.HiddenCheck.IsChecked);
-        Assert.False(dialog.ReadOnlyCheck.IsEnabled);  // ...but stays display-only (bevel-iuh)
+        Assert.True(dialog.ReadOnlyCheck.IsEnabled);   // ...and is now editable/committable (bevel-iuh)
+        Assert.True(dialog.HiddenCheck.IsEnabled);
     }
 
     [AvaloniaFact]
-    public void Single_file_attributes_are_display_only_and_unchecked()
+    public void Single_file_attributes_are_editable_and_default_unchecked()
     {
         var node = new FakeFileNode
         {
@@ -116,13 +119,14 @@ public sealed class PropertiesDialogTests : IDisposable
         var dialog = new PropertiesDialog(_vfsRoot, node);
 
         Assert.False(dialog.ReadOnlyCheck.IsChecked);
-        Assert.False(dialog.ReadOnlyCheck.IsEnabled);
+        Assert.True(dialog.ReadOnlyCheck.IsEnabled);
         Assert.False(dialog.HiddenCheck.IsChecked);
-        Assert.False(dialog.HiddenCheck.IsEnabled);
+        Assert.True(dialog.HiddenCheck.IsEnabled);
+        Assert.False(dialog.NameField.IsReadOnly); // single selection: name is editable too
     }
 
     [AvaloniaFact]
-    public void Ok_cancel_and_apply_buttons_exist_and_apply_is_a_noop_placeholder()
+    public void Ok_cancel_and_apply_buttons_exist_and_apply_starts_disabled_when_clean()
     {
         var node = new FakeFileNode { Path = new VfsPath("file", "/x/a.txt"), DisplayName = "a.txt" };
         var dialog = new PropertiesDialog(_vfsRoot, node);
@@ -130,7 +134,7 @@ public sealed class PropertiesDialogTests : IDisposable
         Assert.NotNull(dialog.Ok);
         Assert.NotNull(dialog.Cancel);
         Assert.NotNull(dialog.Apply);
-        Assert.False(dialog.Apply.IsEnabled); // Apply has nothing to commit yet (see class remarks)
+        Assert.False(dialog.Apply.IsEnabled); // nothing edited yet, so nothing to commit
     }
 
     // ── Single folder (async Contains/size scan) ───────────────────────
@@ -189,6 +193,46 @@ public sealed class PropertiesDialogTests : IDisposable
         Assert.Equal("(various locations)", dialog.LocationValue.Text);
     }
 
+    [AvaloniaFact]
+    public void Multi_selection_size_on_disk_sums_each_files_own_cluster_rounding()
+    {
+        // Two files whose sizes each round up to a different cluster count: summing the raw total
+        // first (1000 + 4097 = 5097) would round to a single 8 KiB cluster, but per-file rounding
+        // (4096 + 8192) must yield 12 KiB — this pins that per-file behavior for the multi-select sheet.
+        var a = new FakeFileNode { Path = new VfsPath("file", "/Users/test/a.txt"), DisplayName = "a.txt", Size = 1000 };
+        var b = new FakeFileNode { Path = new VfsPath("file", "/Users/test/b.txt"), DisplayName = "b.txt", Size = 4097 };
+
+        var dialog = new PropertiesDialog(_vfsRoot, new IVfsNode[] { a, b });
+
+        Assert.Equal("5.0 KB (5,097 bytes)", dialog.SizeValue.Text);
+        Assert.Equal("12.0 KB (12,288 bytes)", dialog.SizeOnDiskValue.Text); // 4096 + 8192, not RoundUp(5097)
+        Assert.Null(dialog.MultiScanTask); // no folders in the selection — resolves synchronously
+    }
+
+    [AvaloniaFact]
+    public async Task Multi_selection_with_a_folder_recurses_and_combines_sizes()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "sub"));
+        File.WriteAllBytes(Path.Combine(_dir, "sub", "inner.bin"), new byte[500]);
+
+        var folderPath = new VfsPath("file", _dir);
+        var folderNode = await _vfsRoot.ResolveAsync(folderPath, default);
+
+        var topFile = new FakeFileNode { Path = new VfsPath("file", "/Users/test/loose.txt"), DisplayName = "loose.txt", Size = 250 };
+
+        var dialog = new PropertiesDialog(_vfsRoot, new IVfsNode[] { topFile, folderNode });
+
+        Assert.NotNull(dialog.MultiScanTask);
+        Assert.Equal("Calculating...", dialog.SizeValue.Text);
+        await dialog.MultiScanTask!;
+
+        // 250 (loose top-level file) + 500 (file inside the selected folder) = 750 bytes.
+        Assert.Contains("750 bytes", dialog.SizeValue.Text);
+        Assert.DoesNotContain("Calculating", dialog.SizeValue.Text);
+        // Size on disk: 250 -> one 4 KiB cluster (4096) + 500 -> one 4 KiB cluster (4096) = 8192.
+        Assert.Contains("8,192 bytes", dialog.SizeOnDiskValue.Text);
+    }
+
     // ── Empty selection ─────────────────────────────────────────────────
 
     [AvaloniaFact]
@@ -198,5 +242,107 @@ public sealed class PropertiesDialogTests : IDisposable
 
         Assert.Equal("Properties", dialog.Title);
         Assert.False(dialog.ContainsRowGrid.IsVisible);
+        Assert.False(dialog.ReadOnlyCheck.IsEnabled);
+        Assert.False(dialog.HiddenCheck.IsEnabled);
+    }
+
+    // ── Actionable Properties: rename + attribute commit (bevel-iuh) ───
+
+    [AvaloniaFact]
+    public async Task Apply_button_tracks_dirty_state_for_name_and_attribute_edits()
+    {
+        var path = Path.Combine(_dir, "dirty.txt");
+        File.WriteAllText(path, "x");
+        var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+        Assert.False(dialog.Apply.IsEnabled);
+
+        dialog.NameField.Text = "renamed.txt";
+        Assert.True(dialog.Apply.IsEnabled);
+
+        dialog.NameField.Text = "dirty.txt"; // revert to the original name
+        Assert.False(dialog.Apply.IsEnabled);
+
+        dialog.HiddenCheck.IsChecked = true;
+        Assert.True(dialog.Apply.IsEnabled);
+
+        dialog.HiddenCheck.IsChecked = false; // revert
+        Assert.False(dialog.Apply.IsEnabled);
+    }
+
+    [AvaloniaFact]
+    public async Task Ok_commits_a_pending_rename_for_a_single_file()
+    {
+        var original = Path.Combine(_dir, "old-name.txt");
+        File.WriteAllText(original, "hello");
+        var node = await _vfsRoot.ResolveAsync(new VfsPath("file", original), default);
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+        dialog.NameField.Text = "new-name.txt";
+
+        await dialog.OkAsync();
+
+        Assert.True(dialog.CommittedChange);
+        Assert.False(File.Exists(original));
+        Assert.True(File.Exists(Path.Combine(_dir, "new-name.txt")));
+    }
+
+    [AvaloniaFact]
+    public async Task Apply_commits_an_attribute_toggle_and_stays_open()
+    {
+        var path = Path.Combine(_dir, "toggle.txt");
+        File.WriteAllText(path, "x");
+        var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+        Assert.False(dialog.Apply.IsEnabled);
+
+        dialog.ReadOnlyCheck.IsChecked = true;
+        Assert.True(dialog.Apply.IsEnabled);
+
+        await dialog.ApplyAsync();
+
+        Assert.True(dialog.CommittedChange);
+        Assert.True(File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly));
+        Assert.False(dialog.Apply.IsEnabled); // dirty cleared — dialog stayed open (this is Apply, not OK)
+
+        // Clear the read-only bit back off so the test fixture's recursive Dispose() delete
+        // of _dir doesn't have to fight file permissions on the way out.
+        File.SetAttributes(path, FileAttributes.Normal);
+    }
+
+    [AvaloniaFact]
+    public async Task Ok_with_no_edits_closes_without_committing()
+    {
+        var path = Path.Combine(_dir, "untouched.txt");
+        File.WriteAllText(path, "x");
+        var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+
+        await dialog.OkAsync();
+
+        Assert.False(dialog.CommittedChange); // nothing was dirty, so nothing to commit
+        Assert.True(File.Exists(path));
+    }
+
+    [AvaloniaFact]
+    public async Task Cancel_discards_pending_edits_without_committing()
+    {
+        var path = Path.Combine(_dir, "cancel-me.txt");
+        File.WriteAllText(path, "x");
+        var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+        dialog.NameField.Text = "should-not-exist.txt";
+        dialog.ReadOnlyCheck.IsChecked = true;
+
+        dialog.Cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.False(dialog.CommittedChange);
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(Path.Combine(_dir, "should-not-exist.txt")));
+        Assert.False(File.GetAttributes(path).HasFlag(FileAttributes.ReadOnly));
     }
 }

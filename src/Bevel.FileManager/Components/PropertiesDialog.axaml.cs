@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.UI;
@@ -17,31 +18,45 @@ namespace Bevel.FileManager.Components;
 /// File&gt;Properties and the toolbar Properties button (FileManagerWindow.ShowProperties).
 /// </summary>
 /// <remarks>
-/// Deliberate simplifications for this first cut (tracked as follow-ups by the caller):
+/// Deliberate simplifications (tracked as follow-ups by the caller):
 /// <list type="bullet">
-/// <item>The name TextBox is display-only — committing a rename from here is not wired up.</item>
 /// <item>
 /// "Size on disk" is derived by rounding each file's <see cref="IVfsNode.Size"/> up to a 4 KiB
 /// cluster boundary. There's no real cluster-size probe per volume; it's an approximation.
 /// </item>
 /// <item>
-/// Created/Modified/Accessed and the Read-only/Hidden checkboxes reflect the node's real state
-/// (via <see cref="IVfsNode.Created"/>/<see cref="IVfsNode.Accessed"/>/<see cref="IVfsNode.Attributes"/>);
-/// a node that can't provide them shows "-"/unchecked. The checkboxes are still disabled —
-/// committing an attribute change from here is a follow-up (bevel-iuh).
+/// For a single-node selection, the name TextBox and the Read-only/Hidden checkboxes are
+/// editable and commit via <see cref="IVfsMutator.RenameAsync"/> /
+/// <see cref="IVfsMutator.SetAttributesAsync"/> on OK/Apply (bevel-iuh). A multi-selection or
+/// empty selection stays display-only/disabled, matching the prior simplified sheet.
 /// </item>
-/// <item>Apply is a no-op — there's nothing mutable on this sheet yet to apply.</item>
 /// <item>
 /// A multi-selection collapses to a simplified sheet (combined size, common type/location if they
 /// agree, no per-item dates/attributes) rather than showing every item's full detail.
+/// </item>
+/// <item>
+/// Commit failures (permission denied, name collision, node raced away, ...) are swallowed:
+/// the dialog stays open rather than crashing, so the user can adjust and retry. There's no
+/// surfaced error message yet — a follow-up if that's needed.
 /// </item>
 /// </list>
 /// </remarks>
 public partial class PropertiesDialog : BevelWindow
 {
+    /// <summary>The subset of <see cref="VfsNodeAttributes"/> this sheet's checkboxes edit.
+    /// Any other bits (e.g. System) are read at populate time and preserved verbatim on commit.</summary>
+    private const VfsNodeAttributes EditableAttributeMask = VfsNodeAttributes.ReadOnly | VfsNodeAttributes.Hidden;
+
     private readonly VfsRoot _vfsRoot;
     private readonly IReadOnlyList<IVfsNode> _items;
     private readonly CancellationTokenSource _cts = new();
+
+    // Single-node commit state (unused/inert for multi/empty selections).
+    private VfsPath _currentPath;
+    private string _initialName = "";
+    private VfsNodeAttributes _initialAttributes;
+    private bool _dirty;
+    private bool _committing;
 
     /// <summary>Parameterless constructor for the XAML previewer only — never used at runtime.</summary>
     public PropertiesDialog() : this(new VfsRoot(), Array.Empty<IVfsNode>())
@@ -59,16 +74,27 @@ public partial class PropertiesDialog : BevelWindow
         _items = items;
         InitializeComponent();
 
-        OkButton.Click += (_, _) => Close();
+        OkButton.Click += async (_, _) => await OnOkAsync();
         CancelButton.Click += (_, _) => Close();
-        // Apply: no-op for now — nothing on this sheet mutates VFS state yet (see class remarks).
-        ApplyButton.Click += (_, _) => { };
+        ApplyButton.Click += async (_, _) => await OnApplyAsync();
 
         Populate();
+
+        // Wire dirty-tracking after the initial populate so setting Text/IsChecked from
+        // Populate() above doesn't itself flip the dirty flag.
+        NameBox.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty) UpdateDirty(); };
+        ReadOnlyCheckBox.PropertyChanged += (_, e) => { if (e.Property == ToggleButton.IsCheckedProperty) UpdateDirty(); };
+        HiddenCheckBox.PropertyChanged += (_, e) => { if (e.Property == ToggleButton.IsCheckedProperty) UpdateDirty(); };
     }
 
     /// <summary>Shows the dialog modally over <paramref name="owner"/>.</summary>
     public Task ShowAsync(Window owner) => ShowDialog(owner);
+
+    /// <summary>
+    /// True once a rename and/or attribute change committed successfully via OK or Apply, so the
+    /// caller (FileManagerWindow.ShowProperties) knows to refresh its listing.
+    /// </summary>
+    internal bool CommittedChange { get; private set; }
 
     /// <summary>
     /// Exposed for tests: the async folder Contains/size scan started for a single-folder
@@ -76,6 +102,13 @@ public partial class PropertiesDialog : BevelWindow
     /// instead of racing the background walk.
     /// </summary>
     internal Task? ContainsScanTask { get; private set; }
+
+    /// <summary>
+    /// Exposed for tests: the async recursive-size scan started for a multi-selection that
+    /// includes one or more folders (null when the selection is folder-free, since that case
+    /// resolves synchronously). Mirrors <see cref="ContainsScanTask"/>.
+    /// </summary>
+    internal Task? MultiScanTask { get; private set; }
 
     // ── Exposed for tests (InternalsVisibleTo Bevel.FileManager.Tests) ─────
 
@@ -95,6 +128,13 @@ public partial class PropertiesDialog : BevelWindow
     internal Button Cancel => CancelButton;
     internal Button Apply => ApplyButton;
 
+    /// <summary>Test hook: runs the same commit-then-close logic as clicking OK, awaitably
+    /// (the Click handler itself is fire-and-forget, which a test can't deterministically await).</summary>
+    internal Task OkAsync() => OnOkAsync();
+
+    /// <summary>Test hook: runs the same commit logic as clicking Apply, awaitably.</summary>
+    internal Task ApplyAsync() => OnApplyAsync();
+
     protected override void OnClosed(EventArgs e)
     {
         _cts.Cancel();
@@ -110,6 +150,8 @@ public partial class PropertiesDialog : BevelWindow
         {
             Title = "Properties";
             ContainsRow.IsVisible = false;
+            ReadOnlyCheckBox.IsEnabled = false;
+            HiddenCheckBox.IsEnabled = false;
             return;
         }
 
@@ -150,8 +192,15 @@ public partial class PropertiesDialog : BevelWindow
         ModifiedText.Text = node.Modified?.ToString("g") ?? "-";
         AccessedText.Text = node.Accessed?.ToString("g") ?? "-";
 
-        // Reflect the real attribute state, but stay display-only for now — committing a change
-        // from here is bevel-iuh (see class remarks).
+        // A single-node selection is editable: name + Read-only/Hidden commit via OK/Apply
+        // (see class remarks / bevel-iuh). Track the "as loaded" state for dirty comparison.
+        _currentPath = node.Path;
+        _initialName = node.DisplayName;
+        _initialAttributes = node.Attributes;
+
+        NameBox.IsReadOnly = false;
+        ReadOnlyCheckBox.IsEnabled = true;
+        HiddenCheckBox.IsEnabled = true;
         ReadOnlyCheckBox.IsChecked = node.Attributes.HasFlag(VfsNodeAttributes.ReadOnly);
         HiddenCheckBox.IsChecked = node.Attributes.HasFlag(VfsNodeAttributes.Hidden);
     }
@@ -171,19 +220,130 @@ public partial class PropertiesDialog : BevelWindow
         var parents = items.Select(i => DescribeLocation(i.Path)).Distinct().ToList();
         LocationText.Text = parents.Count == 1 ? parents[0] : "(various locations)";
 
-        // Multi-selection is a simplified sheet: only the top-level sizes of the selected items
-        // are summed — folders in the selection are NOT recursed into. Follow-up if needed.
-        var totalSize = items.Where(i => i.Size.HasValue).Sum(i => i.Size!.Value);
-        SizeText.Text = FormatSizeWithBytes(totalSize);
-        SizeOnDiskText.Text = FormatSizeWithBytes(RoundUpToCluster(totalSize));
+        // Multi-selection sums the selected items' sizes; folders in the selection are recursed
+        // into (same capped/skip-on-error walk as ScanFolderAsync) so their contents count toward
+        // the combined size. Size-on-disk sums each individual file's size rounded up to a 4 KiB
+        // cluster boundary (no per-volume cluster probe — see class remarks).
+        var topFiles = items.Where(i => !IsFolderKind(i.Kind)).ToList();
+        var topFolders = items.Where(i => IsFolderKind(i.Kind)).ToList();
+
+        var fileSize = topFiles.Where(i => i.Size.HasValue).Sum(i => i.Size!.Value);
+        var fileSizeOnDisk = topFiles.Sum(i => RoundUpToCluster(i.Size ?? 0));
+
+        if (topFolders.Count == 0)
+        {
+            SizeText.Text = FormatSizeWithBytes(fileSize);
+            SizeOnDiskText.Text = FormatSizeWithBytes(fileSizeOnDisk);
+        }
+        else
+        {
+            SizeText.Text = "Calculating...";
+            SizeOnDiskText.Text = "Calculating...";
+            MultiScanTask = ScanMultiAsync(topFolders, fileSize, fileSizeOnDisk, _cts.Token);
+        }
 
         ContainsRow.IsVisible = false;
         CreatedText.Text = "-";
         ModifiedText.Text = "-";
         AccessedText.Text = "-";
 
+        // Multi-selection stays a simplified, display-only sheet — no per-item commit target.
+        ReadOnlyCheckBox.IsEnabled = false;
+        HiddenCheckBox.IsEnabled = false;
         ReadOnlyCheckBox.IsChecked = false;
         HiddenCheckBox.IsChecked = false;
+    }
+
+    // ── Dirty tracking + commit (single-node selection only) ────────────
+
+    /// <summary>Recomputes <see cref="_dirty"/> from the current name/attribute controls and
+    /// enables/disables Apply accordingly. No-op for multi/empty selections.</summary>
+    private void UpdateDirty()
+    {
+        if (_items.Count != 1) return;
+
+        var nameChanged = !string.Equals(NameBox.Text, _initialName, StringComparison.Ordinal);
+        var attrsChanged = CurrentEditableAttributes() != (_initialAttributes & EditableAttributeMask);
+        _dirty = nameChanged || attrsChanged;
+        ApplyButton.IsEnabled = _dirty && !_committing;
+    }
+
+    private VfsNodeAttributes CurrentEditableAttributes()
+    {
+        var attrs = VfsNodeAttributes.None;
+        if (ReadOnlyCheckBox.IsChecked == true) attrs |= VfsNodeAttributes.ReadOnly;
+        if (HiddenCheckBox.IsChecked == true) attrs |= VfsNodeAttributes.Hidden;
+        return attrs;
+    }
+
+    private async Task OnOkAsync()
+    {
+        if (_dirty && !await CommitAsync())
+            return; // commit failed — keep the dialog open so the user can adjust/retry.
+
+        Close();
+    }
+
+    private async Task OnApplyAsync()
+    {
+        if (!_dirty) return;
+        await CommitAsync(); // stays open regardless of outcome; UpdateDirty() re-syncs Apply.
+    }
+
+    /// <summary>
+    /// Commits the pending name/attribute changes for the single selected node via its parent
+    /// folder's <see cref="IVfsMutator"/>. Best-effort: any failure (permission denied, name
+    /// collision, node raced away, read-only folder, ...) is swallowed and reported as
+    /// <c>false</c> rather than thrown, so the caller can leave the dialog open.
+    /// </summary>
+    private async Task<bool> CommitAsync()
+    {
+        if (_items.Count != 1 || !_dirty) return true;
+
+        _committing = true;
+        OkButton.IsEnabled = false;
+        CancelButton.IsEnabled = false;
+        ApplyButton.IsEnabled = false;
+
+        try
+        {
+            var parent = _currentPath.Parent;
+            var mutator = await _vfsRoot.GetProvider(parent).GetMutatorAsync(parent, _cts.Token);
+            if (mutator is null) return false; // read-only folder — nothing we can commit.
+
+            var newPath = _currentPath;
+            var newName = NameBox.Text ?? "";
+            if (newName.Length > 0 && !string.Equals(newName, _initialName, StringComparison.Ordinal))
+            {
+                await mutator.RenameAsync(_currentPath, newName, _cts.Token);
+                newPath = VfsPath.Combine(parent, newName);
+            }
+
+            var newEditableAttrs = CurrentEditableAttributes();
+            if (newEditableAttrs != (_initialAttributes & EditableAttributeMask))
+            {
+                var mergedAttrs = (_initialAttributes & ~EditableAttributeMask) | newEditableAttrs;
+                await mutator.SetAttributesAsync(newPath, mergedAttrs, _cts.Token);
+                _initialAttributes = mergedAttrs;
+            }
+
+            _currentPath = newPath;
+            _initialName = newPath.FileName;
+            CommittedChange = true;
+            _dirty = false;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _committing = false;
+            OkButton.IsEnabled = true;
+            CancelButton.IsEnabled = true;
+            ApplyButton.IsEnabled = _dirty;
+        }
     }
 
     private static string DescribeLocation(VfsPath path)
@@ -207,6 +367,7 @@ public partial class PropertiesDialog : BevelWindow
         const int MaxDepth = 32;
 
         long size = 0;
+        long sizeOnDisk = 0;
         var files = 0;
         var folders = 0;
         var visited = 0;
@@ -249,7 +410,9 @@ public partial class PropertiesDialog : BevelWindow
                     else
                     {
                         files++;
-                        size += child.Size ?? 0;
+                        var childSize = child.Size ?? 0;
+                        size += childSize;
+                        sizeOnDisk += RoundUpToCluster(childSize); // per-file cluster rounding, not total
                     }
                 }
             }
@@ -259,7 +422,6 @@ public partial class PropertiesDialog : BevelWindow
             return; // Dialog closed — stop updating a window that's going away.
         }
 
-        var sizeOnDisk = RoundUpToCluster(size);
         var suffix = truncated ? "+" : "";
 
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -267,6 +429,79 @@ public partial class PropertiesDialog : BevelWindow
             SizeText.Text = FormatSizeWithBytes(size) + (truncated ? " (partial — large folder)" : "");
             SizeOnDiskText.Text = FormatSizeWithBytes(sizeOnDisk) + (truncated ? " (partial)" : "");
             ContainsText.Text = $"{files}{suffix} Files, {folders}{suffix} Folders";
+        });
+    }
+
+    /// <summary>
+    /// Recurses the folders within a multi-selection (same capped, skip-on-error walk as
+    /// <see cref="ScanFolderAsync"/>) and adds their file sizes — raw and per-file cluster-rounded
+    /// — on top of the already-summed top-level file sizes from the selection.
+    /// </summary>
+    private async Task ScanMultiAsync(IReadOnlyList<IVfsNode> folders, long baseSize, long baseSizeOnDisk, CancellationToken ct)
+    {
+        const int MaxNodes = 50_000;
+        const int MaxDepth = 32;
+
+        var size = baseSize;
+        var sizeOnDisk = baseSizeOnDisk;
+        var visited = 0;
+        var truncated = false;
+
+        var stack = new Stack<(VfsPath Path, int Depth)>();
+        foreach (var folder in folders)
+            stack.Push((folder.Path, 0));
+
+        try
+        {
+            while (stack.Count > 0 && !truncated)
+            {
+                ct.ThrowIfCancellationRequested();
+                var (path, depth) = stack.Pop();
+
+                List<IVfsNode> children;
+                try
+                {
+                    children = await CollectChildrenAsync(path, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    continue; // inaccessible / unsupported / raced-away folder — skip, keep walking.
+                }
+
+                foreach (var child in children)
+                {
+                    if (visited >= MaxNodes) { truncated = true; break; }
+                    visited++;
+
+                    if (IsFolderKind(child.Kind))
+                    {
+                        if (depth < MaxDepth) stack.Push((child.Path, depth + 1));
+                    }
+                    else
+                    {
+                        var childSize = child.Size ?? 0;
+                        size += childSize;
+                        sizeOnDisk += RoundUpToCluster(childSize);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return; // Dialog closed — stop updating a window that's going away.
+        }
+
+        var suffix = truncated ? " (partial — large folder)" : "";
+        var suffixDisk = truncated ? " (partial)" : "";
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            SizeText.Text = FormatSizeWithBytes(size) + suffix;
+            SizeOnDiskText.Text = FormatSizeWithBytes(sizeOnDisk) + suffixDisk;
         });
     }
 

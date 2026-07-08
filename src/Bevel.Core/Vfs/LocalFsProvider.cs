@@ -318,24 +318,28 @@ file sealed class LocalFsMutator : IVfsMutator
 
     public ValueTask SetAttributesAsync(VfsPath path, VfsNodeAttributes attributes, CancellationToken ct)
     {
-        // Minimal implementation; full attribute mapping per platform lands in M1+.
+        ct.ThrowIfCancellationRequested();
         var fullPath = Path.Combine(_directoryPath, path.FileName);
-        FileSystemInfo info = new FileInfo(fullPath);
-        if (!info.Exists)
-        {
-            var di = new DirectoryInfo(fullPath);
-            if (di.Exists)
-                info = di;
-        }
 
-        // Read-only maps to the archive bit on Windows, POSIX write on Unix.
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            info.Attributes = attributes.HasFlag(VfsNodeAttributes.ReadOnly)
-                ? info.Attributes | System.IO.FileAttributes.Archive
-                : info.Attributes & ~System.IO.FileAttributes.Archive;
-        }
+        // File.GetAttributes/SetAttributes work for both files and directories, so no
+        // File/DirectoryInfo split is needed here.
+        var current = System.IO.File.GetAttributes(fullPath);
 
+        // Clear only the bits we manage, then re-apply from the requested set — every other
+        // bit (Directory, Archive, Compressed, ReparsePoint, ...) is preserved untouched.
+        var updated = current & ~(System.IO.FileAttributes.ReadOnly
+            | System.IO.FileAttributes.Hidden
+            | System.IO.FileAttributes.System);
+
+        if (attributes.HasFlag(VfsNodeAttributes.ReadOnly)) updated |= System.IO.FileAttributes.ReadOnly;
+        // Best-effort on macOS: FileAttributes.Hidden maps to the UF_HIDDEN flag via .NET's
+        // Unix attribute shim, which Finder does respect, but it is NOT the same as a
+        // dot-prefixed name — some tools/views may still surface the item. Treat this as an
+        // approximation, not a guarantee, on non-Windows platforms.
+        if (attributes.HasFlag(VfsNodeAttributes.Hidden)) updated |= System.IO.FileAttributes.Hidden;
+        if (attributes.HasFlag(VfsNodeAttributes.System)) updated |= System.IO.FileAttributes.System;
+
+        System.IO.File.SetAttributes(fullPath, updated);
         return ValueTask.CompletedTask;
     }
 

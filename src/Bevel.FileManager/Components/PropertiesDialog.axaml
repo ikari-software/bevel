@@ -20,7 +20,7 @@
             <TabItem Header="General">
                 <StackPanel Margin="10" Spacing="8">
 
-                    <!-- Icon + editable-looking name (display-only for now, see PropertiesDialog.axaml.cs remarks) -->
+                    <!-- Icon + name (editable for a single-node selection; read-only for multi, see PropertiesDialog.axaml.cs) -->
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <Border x:Name="IconHost" Width="32" Height="32" />
                         <TextBox x:Name="NameBox" Width="220" />
@@ -64,8 +64,8 @@
 
                     <StackPanel Spacing="4">
                         <TextBlock Text="Attributes:" FontWeight="SemiBold" />
-                        <CheckBox x:Name="ReadOnlyCheckBox" Content="Read-only" IsEnabled="False" />
-                        <CheckBox x:Name="HiddenCheckBox" Content="Hidden" IsEnabled="False" />
+                        <CheckBox x:Name="ReadOnlyCheckBox" Content="Read-only" />
+                        <CheckBox x:Name="HiddenCheckBox" Content="Hidden" />
                     </StackPanel>
 
                 </StackPanel>
