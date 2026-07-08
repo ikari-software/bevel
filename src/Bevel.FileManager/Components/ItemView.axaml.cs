@@ -280,6 +280,25 @@ public partial class ItemView : UserControl
     static readonly IBrush DiscBody = SB("#C7D2DE");
     static readonly IBrush DiscSheen = SB("#EAF1F8");
 
+    // The iridescent rainbow sweep of a real CD's data side — a conic gradient cycling hues once
+    // around the platter (first stop == last so the wrap is seamless).
+    static readonly IBrush DiscRainbow = new ConicGradientBrush
+    {
+        Center = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+        Angle = 210,
+        GradientStops =
+        {
+            new GradientStop(Color.Parse("#8FE9D0"), 0.00),
+            new GradientStop(Color.Parse("#9FD2F2"), 0.14),
+            new GradientStop(Color.Parse("#B9B4F2"), 0.28),
+            new GradientStop(Color.Parse("#EBA6DE"), 0.42),
+            new GradientStop(Color.Parse("#F7B79E"), 0.56),
+            new GradientStop(Color.Parse("#F1E39A"), 0.70),
+            new GradientStop(Color.Parse("#AEE79C"), 0.85),
+            new GradientStop(Color.Parse("#8FE9D0"), 1.00),
+        },
+    };
+
     static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "scr", "msi", "app" };
     static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase) { "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff", "svg" };
     static readonly HashSet<string> ArchiveExt = new(StringComparer.OrdinalIgnoreCase) { "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "cab" };
@@ -524,10 +543,11 @@ public partial class ItemView : UserControl
 
     static void DiscGlyph(Canvas c)
     {
-        // An optical disc image (iso/dmg/…).
-        c.Children.Add(Ell(2.4, 2.4, 11.2, DiscBody, DriveEdge, 0.5));
-        c.Children.Add(Vec("M4,4.4 a6,6 0 0 1 5.2,-1.2", null, DiscSheen, 1.0));   // highlight arc
-        c.Children.Add(Ell(6.2, 6.2, 3.6, DiscSheen, DriveEdge, 0.4));             // hub ring
+        // An optical disc image (iso/dmg/…) — data side up, catching the light.
+        c.Children.Add(Ell(2.4, 2.4, 11.2, DiscRainbow, DriveEdge, 0.5));          // iridescent platter
+        c.Children.Add(Vec("M4.2,4.6 a6,6 0 0 1 5.4,-1.4", null, DiscSheen, 1.2));  // glossy specular sweep
+        c.Children.Add(Vec("M11.6,6.0 a5.6,5.6 0 0 1 0.6,4.6", null, DiscSheen, 0.7)); // second glint
+        c.Children.Add(Ell(6.0, 6.0, 4.0, DiscSheen, DriveEdge, 0.4));             // silver hub ring
         c.Children.Add(Ell(7.3, 7.3, 1.4, PaperFill, DriveEdge, 0.3));             // spindle hole
     }
 
