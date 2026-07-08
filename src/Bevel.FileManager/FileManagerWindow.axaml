@@ -13,6 +13,7 @@
         <fmcomp:Toolbar DockPanel.Dock="Top" x:Name="Toolbar" />
         <fmcomp:AddressBar DockPanel.Dock="Top" x:Name="AddressBar" />
         <fmcomp:SearchPane DockPanel.Dock="Top" x:Name="SearchPane" IsVisible="False" />
+        <fmcomp:TabStrip DockPanel.Dock="Top" x:Name="TabStrip" />
         <fmcomp:StatusBar DockPanel.Dock="Bottom" x:Name="StatusBar" />
 
         <Grid ColumnDefinitions="200,4,*" Margin="2,0,0,2">

@@ -30,6 +30,23 @@ public partial class FileManagerWindow : BevelWindow
     private readonly ItemContextMenu _itemMenu = new();
     private readonly FolderContextMenu _folderMenu = new();
 
+    /// <summary>
+    /// One open browsing session (bevel-6j9): its own <see cref="FileManagerController"/> (hence
+    /// its own navigation history, selection, clipboard, and undo stack — mirroring how
+    /// FileManagerWindowFactory gives each New Window its own controller) plus the id of its
+    /// button in <see cref="TabStrip"/>. Exactly one tab's controller is "attached" (wired to
+    /// this window's event handlers) at a time — the active one; the shared ItemView/StatusBar/
+    /// InfoPane/AddressBar always reflect whichever tab is active.
+    /// </summary>
+    private sealed class TabSession
+    {
+        public required FileManagerController Controller { get; init; }
+        public required Guid StripId { get; init; }
+    }
+
+    private readonly List<TabSession> _tabs = new();
+    private TabSession? _activeTab;
+
     private CancellationTokenSource? _enumerateCts;
     private VfsPath? _loadedPath;
     private VfsPath? _infoPath;
@@ -47,7 +64,8 @@ public partial class FileManagerWindow : BevelWindow
 
     /// <summary>Raised for File &gt; New Window (Ctrl+N), carrying this window's current directory.
     /// App/CompositionRoot wires this to FileManagerWindowFactory (the window can't reference
-    /// Bevel.App directly). New Tab (Ctrl+T) is deferred — it needs a tab-host redesign.</summary>
+    /// Bevel.App directly). New Tab (Ctrl+T) opens within THIS window instead — see
+    /// <see cref="NewTab"/> — and needs no cross-window event.</summary>
     public static event Action<VfsPath>? NewWindowRequested;
 
     /// <summary>Request a new independent window opened at this window's current directory.</summary>
@@ -100,6 +118,13 @@ public partial class FileManagerWindow : BevelWindow
         KeyDown += OnWindowKeyDown;
 
         WireMenuBar();
+
+        // Tab strip (bevel-6j9): New Tab / switch / close. Ctrl+T / Ctrl+W are wired in
+        // OnWindowKeyDown below; the MenuBar already carries a "New Tab" item (Ctrl+T) but
+        // exposes no public accessor for it yet — see FileManagerWindowFactory/MenuBar spec.
+        TabStrip.NewTabRequested += NewTab;
+        TabStrip.TabSelected += SwitchToTabId;
+        TabStrip.TabCloseRequested += CloseTabId;
 
         // Folders toggle: swap InfoPane <-> ExplorerPane (tree)
         Toolbar.Folders.Click += (_, _) => ToggleFolders();
@@ -166,6 +191,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         // File
         MenuBar.NewWindow.Click += (_, _) => NewWindow();
+        MenuBar.NewTab.Click += (_, _) => NewTab();
         MenuBar.Open.Click += (_, _) => { if (ItemView.SelectedItem is { } item) OnItemActivated(this, new ItemActivatedEventArgs(item)); };
         MenuBar.MoveToFolder.Click += (_, _) => _ = MoveToFolderAsync();
         MenuBar.CopyToFolder.Click += (_, _) => _ = CopyToFolderAsync();
@@ -209,15 +235,150 @@ public partial class FileManagerWindow : BevelWindow
     /// <summary>
     /// Wires the controller (bevel-o2t) and kicks off the initial navigation. Replaces the
     /// former SetFileOperationService — the controller wraps FileOperationService plus the
-    /// navigation/selection/clipboard state the window used to own.
+    /// navigation/selection/clipboard state the window used to own. Becomes tab 0 (bevel-6j9);
+    /// additional tabs are opened via <see cref="NewTab"/>.
     /// </summary>
     public void SetController(FileManagerController controller)
     {
-        _controller = controller;
+        var stripId = TabStrip.AddTab(LabelFor(HomePath));
+        var session = new TabSession { Controller = controller, StripId = stripId };
+        _tabs.Add(session);
+        _activeTab = session;
+        AttachController(controller);
+        TabStrip.SetActive(stripId);
+        controller.NavigateTo(HomePath);
+    }
+
+    // ── Tabbed browsing (bevel-6j9) ─────────────────────────────────────
+
+    /// <summary>Number of open tabs (1 in the common, pre-tabs-parity case).</summary>
+    public int TabCount => _tabs.Count;
+
+    /// <summary>Index of the active tab within <see cref="TabCount"/>, or -1 if none (shouldn't
+    /// happen once <see cref="SetController"/> has run).</summary>
+    public int ActiveTabIndex => _activeTab is null ? -1 : _tabs.IndexOf(_activeTab);
+
+    private static string LabelFor(VfsPath path) => path.Scheme == "computer" ? "My Computer"
+        : path.IsRoot ? path.Scheme.ToUpperInvariant()
+        : path.FileName;
+
+    /// <summary>
+    /// Opens a new tab (Ctrl+T / the tab strip's "+" button) at the active tab's current
+    /// directory, with its OWN <see cref="FileManagerController"/> — independent navigation
+    /// history, selection, clipboard, and undo stack — mirroring FileManagerWindowFactory's
+    /// per-window construction. Uses <see cref="Bevel.FileManager.FileOperations.DefaultConflictHandler"/>
+    /// directly (the same concrete handler the app's DI container registers today) since the
+    /// window has no other seam to obtain one; see the INTEGRATION note for a future
+    /// SetConflictHandler hook if that ever needs to vary per window.
+    /// </summary>
+    public void NewTab()
+    {
+        if (_vfsRoot is null) return;
+        var startDir = _activeTab?.Controller.CurrentDirectory ?? HomePath;
+
+        var fileOps = new FileOperationService(_vfsRoot, new DefaultConflictHandler());
+        var controller = new FileManagerController(_vfsRoot, fileOps);
+        controller.NavigateTo(startDir); // seeds this tab's history; no handlers attached yet, so this is silent
+
+        var stripId = TabStrip.AddTab(LabelFor(startDir));
+        var session = new TabSession { Controller = controller, StripId = stripId };
+        _tabs.Add(session);
+        SwitchTo(session);
+    }
+
+    /// <summary>Makes the tab at <paramref name="index"/> the active one (no-op if out of range).</summary>
+    public void SwitchToTab(int index)
+    {
+        if (index < 0 || index >= _tabs.Count) return;
+        SwitchTo(_tabs[index]);
+    }
+
+    /// <summary>Closes the tab at <paramref name="index"/>; a no-op if it is the last remaining
+    /// tab (last-tab guard — see class docs) or the index is out of range.</summary>
+    public void CloseTabAt(int index)
+    {
+        if (index < 0 || index >= _tabs.Count) return;
+        CloseTab(_tabs[index]);
+    }
+
+    private void SwitchToTabId(Guid stripId)
+    {
+        var idx = _tabs.FindIndex(t => t.StripId == stripId);
+        if (idx >= 0) SwitchToTab(idx);
+    }
+
+    private void CloseTabId(Guid stripId)
+    {
+        var idx = _tabs.FindIndex(t => t.StripId == stripId);
+        if (idx >= 0) CloseTabAt(idx);
+    }
+
+    private void CloseActiveTab()
+    {
+        if (_activeTab is { } tab) CloseTab(tab);
+    }
+
+    /// <summary>
+    /// Rebinds the shared ItemView/StatusBar/InfoPane/AddressBar (via the window's existing
+    /// controller-event handlers) from whichever tab was active to <paramref name="session"/>,
+    /// then forces a fresh load of its current directory. A plain <c>NavigateTo</c> on the
+    /// target controller would be a no-op here (it's already "at" that directory from its own
+    /// perspective), so this bypasses that and drives <see cref="OnCurrentDirectoryChanged"/>
+    /// directly — with <c>_loadedPath</c> cleared so it takes the full-load path rather than the
+    /// differential one (which would otherwise reconcile against the OUTGOING tab's listing).
+    /// </summary>
+    private void SwitchTo(TabSession session)
+    {
+        if (_activeTab is { } current && current != session)
+            DetachController(current.Controller);
+
+        _activeTab = session;
+        AttachController(session.Controller);
+        TabStrip.SetActive(session.StripId);
+        UpdateNavigationButtons();
+
+        _loadedPath = null;
+        OnCurrentDirectoryChanged(session.Controller.CurrentDirectory);
+    }
+
+    /// <summary>
+    /// Closes <paramref name="session"/>'s tab. Keeps at least one tab open: closing the last
+    /// remaining tab is a no-op (Ctrl+W / the tab's close button do nothing then — closing the
+    /// whole window is still Cmd+W / Alt+F4 / File &gt; Close Window). Does not dispose the
+    /// closed tab's FileOperationService — nothing in this app disposes it for the main window
+    /// either today, so this isn't a regression, just an existing gap.
+    /// </summary>
+    private void CloseTab(TabSession session)
+    {
+        if (_tabs.Count <= 1) return;
+
+        var idx = _tabs.IndexOf(session);
+        if (idx < 0) return;
+        var wasActive = session == _activeTab;
+
+        _tabs.RemoveAt(idx);
+        TabStrip.RemoveTab(session.StripId);
+
+        if (wasActive)
+        {
+            var next = _tabs[Math.Min(idx, _tabs.Count - 1)];
+            SwitchTo(next);
+        }
+    }
+
+    private void AttachController(FileManagerController controller)
+    {
         controller.CurrentDirectoryChanged += OnCurrentDirectoryChanged;
         controller.NavigationStateChanged += OnNavigationStateChanged;
         controller.OperationRunner = RunWithProgressAsync;
-        controller.NavigateTo(HomePath);
+        _controller = controller;
+    }
+
+    private void DetachController(FileManagerController controller)
+    {
+        controller.CurrentDirectoryChanged -= OnCurrentDirectoryChanged;
+        controller.NavigationStateChanged -= OnNavigationStateChanged;
+        controller.OperationRunner = null;
     }
 
     public void SetSettingsService(Core.SettingsService settings)
@@ -392,6 +553,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         UpdateTitle(path);
         AddressBar.SetAddress(path.Value);
+        if (_activeTab is { } tab) TabStrip.SetHeader(tab.StripId, LabelFor(path));
         // Re-landing on the directory already shown (F5, or a controller Refresh) is a
         // differential update — reconcile in place rather than clearing and rebuilding, so the
         // list doesn't flash. A genuine navigation streams a fresh listing.
@@ -649,6 +811,7 @@ public partial class FileManagerWindow : BevelWindow
 
         var dialog = new Components.PropertiesDialog(_vfsRoot, items);
         await dialog.ShowAsync(this);
+        if (dialog.CommittedChange) _controller?.Refresh();   // a rename/attribute edit committed — reload the listing (bevel-iuh)
     }
 
     // ── Context menus (FM-080/081) ─────────────────────────────────────
@@ -841,6 +1004,16 @@ public partial class FileManagerWindow : BevelWindow
 
             case Key.N when ctrl && !shift && !alt:
                 NewWindow();
+                e.Handled = true;
+                break;
+
+            case Key.T when ctrl && !shift && !alt:
+                NewTab();
+                e.Handled = true;
+                break;
+
+            case Key.W when ctrl && !shift && !alt:
+                CloseActiveTab();
                 e.Handled = true;
                 break;
 

@@ -8,6 +8,7 @@ public partial class MenuBar : UserControl
 
     // File menu
     public MenuItem NewWindow => NewWindowItem;
+    public MenuItem NewTab => NewTabItem;
     public MenuItem Open => OpenItem;
     public MenuItem OpenWith => OpenWithItem;
     public MenuItem MoveToFolder => MoveToFolderItem;

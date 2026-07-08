@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.FileManager.Components.TabStrip"
+             x:Name="Root">
+
+    <Border Background="#D4D0C8" BorderBrush="#808080" BorderThickness="0,0,0,1" Padding="2,2,2,0">
+        <DockPanel>
+            <!-- New Tab affordance (bevel-6j9) -->
+            <Button DockPanel.Dock="Right"
+                    x:Name="NewTabButton"
+                    Content="+"
+                    Width="20" Height="20"
+                    Padding="0"
+                    Margin="2,0,2,2"
+                    VerticalContentAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="New Tab (Ctrl+T)" />
+
+            <!-- Tab buttons are added/removed in code-behind (AddTab/RemoveTab) -->
+            <StackPanel x:Name="TabsPanel" Orientation="Horizontal" />
+        </DockPanel>
+    </Border>
+</UserControl>
