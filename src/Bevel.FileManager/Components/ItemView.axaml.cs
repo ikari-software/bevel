@@ -549,8 +549,9 @@ public partial class ItemView : UserControl
     {
         // An optical disc image (iso/dmg/…) — data side up, catching the light.
         c.Children.Add(Ell(2.4, 2.4, 11.2, DiscRainbow, DriveEdge, 0.5));          // iridescent platter
-        c.Children.Add(Vec("M4.2,4.6 a6,6 0 0 1 5.4,-1.4", null, DiscSheen, 1.2));  // glossy specular sweep
-        c.Children.Add(Vec("M11.6,6.0 a5.6,5.6 0 0 1 0.6,4.6", null, DiscSheen, 0.7)); // second glint
+        // Specular glints: arcs on circles CONCENTRIC with the disc (centre 8,8), r 4.7 / 4.9.
+        c.Children.Add(Vec("M3.5,6.8 A4.7,4.7 0 0 1 6.8,3.5", null, DiscSheen, 1.2));    // upper-left sweep
+        c.Children.Add(Vec("M12.7,9.3 A4.9,4.9 0 0 1 10.8,12.0", null, DiscSheen, 0.7)); // lower-right glint
         c.Children.Add(Ell(6.0, 6.0, 4.0, DiscSheen, DriveEdge, 0.4));             // silver hub ring
         c.Children.Add(Ell(7.3, 7.3, 1.4, PaperFill, DriveEdge, 0.3));             // spindle hole
     }
