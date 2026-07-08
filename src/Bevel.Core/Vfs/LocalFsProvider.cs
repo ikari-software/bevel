@@ -175,6 +175,22 @@ file sealed class LazyFsNode : IVfsNode
 
     public long? Size => Kind != VfsNodeKind.Folder && Info is FileInfo fi ? fi.Length : null;
     public DateTimeOffset? Modified => Info.LastWriteTimeUtc > DateTime.MinValue ? Info.LastWriteTimeUtc : null;
+    public DateTimeOffset? Created => Info.CreationTimeUtc > DateTime.MinValue ? Info.CreationTimeUtc : null;
+    public DateTimeOffset? Accessed => Info.LastAccessTimeUtc > DateTime.MinValue ? Info.LastAccessTimeUtc : null;
+    public VfsNodeAttributes Attributes => FsAttr.Map(Info.Attributes);
+}
+
+/// <summary>Maps System.IO file attributes onto the VFS-level flag set.</summary>
+file static class FsAttr
+{
+    public static VfsNodeAttributes Map(FileAttributes a)
+    {
+        var r = VfsNodeAttributes.None;
+        if (a.HasFlag(FileAttributes.ReadOnly)) r |= VfsNodeAttributes.ReadOnly;
+        if (a.HasFlag(FileAttributes.Hidden)) r |= VfsNodeAttributes.Hidden;
+        if (a.HasFlag(FileAttributes.System)) r |= VfsNodeAttributes.System;
+        return r;
+    }
 }
 
 file sealed class LocalFsNode : IVfsNode
@@ -217,6 +233,10 @@ file sealed class LocalFsNode : IVfsNode
     public DateTimeOffset? Modified => _info.LastWriteTimeUtc > DateTime.MinValue
         ? _info.LastWriteTimeUtc
         : null;
+
+    public DateTimeOffset? Created => _info.CreationTimeUtc > DateTime.MinValue ? _info.CreationTimeUtc : null;
+    public DateTimeOffset? Accessed => _info.LastAccessTimeUtc > DateTime.MinValue ? _info.LastAccessTimeUtc : null;
+    public VfsNodeAttributes Attributes => FsAttr.Map(_info.Attributes);
 
     public string TypeDescription { get; }
 }

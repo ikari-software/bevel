@@ -26,12 +26,10 @@ namespace Bevel.FileManager.Components;
 /// cluster boundary. There's no real cluster-size probe per volume; it's an approximation.
 /// </item>
 /// <item>
-/// <see cref="IVfsNode"/> only exposes <see cref="IVfsNode.Modified"/> — Created/Accessed are not
-/// available from the VFS abstraction yet, so those rows show "-".
-/// </item>
-/// <item>
-/// Read-only/Hidden attributes aren't exposed on <see cref="IVfsNode"/> either, so the checkboxes
-/// are always unchecked and disabled (display-only) rather than derived from the real file state.
+/// Created/Modified/Accessed and the Read-only/Hidden checkboxes reflect the node's real state
+/// (via <see cref="IVfsNode.Created"/>/<see cref="IVfsNode.Accessed"/>/<see cref="IVfsNode.Attributes"/>);
+/// a node that can't provide them shows "-"/unchecked. The checkboxes are still disabled —
+/// committing an attribute change from here is a follow-up (bevel-iuh).
 /// </item>
 /// <item>Apply is a no-op — there's nothing mutable on this sheet yet to apply.</item>
 /// <item>
@@ -149,13 +147,14 @@ public partial class PropertiesDialog : BevelWindow
             SizeOnDiskText.Text = FormatSizeWithBytes(RoundUpToCluster(size));
         }
 
-        CreatedText.Text = "-";  // Creation time isn't exposed by IVfsNode (see class remarks).
+        CreatedText.Text = node.Created?.ToString("g") ?? "-";
         ModifiedText.Text = node.Modified?.ToString("g") ?? "-";
-        AccessedText.Text = "-"; // Access time isn't exposed by IVfsNode (see class remarks).
+        AccessedText.Text = node.Accessed?.ToString("g") ?? "-";
 
-        // Attributes aren't exposed on IVfsNode — display-only placeholders (see class remarks).
-        ReadOnlyCheckBox.IsChecked = false;
-        HiddenCheckBox.IsChecked = false;
+        // Reflect the real attribute state, but stay display-only for now — committing a change
+        // from here is bevel-iuh (see class remarks).
+        ReadOnlyCheckBox.IsChecked = node.Attributes.HasFlag(VfsNodeAttributes.ReadOnly);
+        HiddenCheckBox.IsChecked = node.Attributes.HasFlag(VfsNodeAttributes.Hidden);
     }
 
     private void PopulateMulti(IReadOnlyList<IVfsNode> items)

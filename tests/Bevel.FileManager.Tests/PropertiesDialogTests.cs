@@ -42,6 +42,9 @@ public sealed class PropertiesDialogTests : IDisposable
         public bool MightHaveChildren { get; init; }
         public long? Size { get; init; }
         public DateTimeOffset? Modified { get; init; }
+        public DateTimeOffset? Created { get; init; }
+        public DateTimeOffset? Accessed { get; init; }
+        public VfsNodeAttributes Attributes { get; init; }
         public string TypeDescription { get; init; } = "";
         public IconKey IconKey { get; init; }
         public VfsCapabilities Caps { get; init; }
@@ -76,6 +79,29 @@ public sealed class PropertiesDialogTests : IDisposable
         Assert.Equal("-", dialog.CreatedValue.Text);   // not exposed by IVfsNode
         Assert.Equal("-", dialog.AccessedValue.Text);  // not exposed by IVfsNode
         Assert.Null(dialog.ContainsScanTask);           // only folders scan
+    }
+
+    [AvaloniaFact]
+    public void Single_file_surfaces_created_accessed_and_attribute_state()
+    {
+        var created = new DateTimeOffset(2024, 1, 2, 3, 4, 0, TimeSpan.Zero);
+        var accessed = new DateTimeOffset(2025, 6, 7, 8, 9, 0, TimeSpan.Zero);
+        var node = new FakeFileNode
+        {
+            Path = new VfsPath("file", "/x/a.txt"),
+            DisplayName = "a.txt",
+            Created = created,
+            Accessed = accessed,
+            Attributes = VfsNodeAttributes.ReadOnly | VfsNodeAttributes.Hidden,
+        };
+
+        var dialog = new PropertiesDialog(_vfsRoot, node);
+
+        Assert.Equal(created.ToString("g"), dialog.CreatedValue.Text);
+        Assert.Equal(accessed.ToString("g"), dialog.AccessedValue.Text);
+        Assert.True(dialog.ReadOnlyCheck.IsChecked);   // reflects real state...
+        Assert.True(dialog.HiddenCheck.IsChecked);
+        Assert.False(dialog.ReadOnlyCheck.IsEnabled);  // ...but stays display-only (bevel-iuh)
     }
 
     [AvaloniaFact]
