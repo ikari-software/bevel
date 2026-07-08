@@ -37,6 +37,12 @@ File.WriteAllText(Path.Combine(dir, "kernel32.dll"), "x");
 File.WriteAllText(Path.Combine(dir, "install.cmd"), "x");
 File.WriteAllText(Path.Combine(dir, "Arial.ttf"), "x");
 File.WriteAllText(Path.Combine(dir, "manual.pdf"), "x");
+File.WriteAllText(Path.Combine(dir, "budget.xlsx"), "x");
+File.WriteAllText(Path.Combine(dir, "letter.docx"), "x");
+File.WriteAllText(Path.Combine(dir, "pitch.pptx"), "x");
+File.WriteAllText(Path.Combine(dir, "contacts.db"), "x");
+File.WriteAllText(Path.Combine(dir, "config.xml"), "x");
+File.WriteAllText(Path.Combine(dir, "winxp.iso"), "x");
 
 var vfs = new VfsRoot();
 vfs.Register(new LocalFsProvider());

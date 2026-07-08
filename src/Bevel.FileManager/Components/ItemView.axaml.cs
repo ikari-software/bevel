@@ -269,6 +269,16 @@ public partial class ItemView : UserControl
     static readonly IBrush ConsoleTitle = SB("#3C3C3C");
     static readonly IBrush FontInk = SB("#33373D");
     static readonly IBrush PdfRed = SB("#D93A2B");
+    static readonly IBrush SheetGreen = SB("#217346");
+    static readonly IBrush SheetGrid = SB("#8FBFA3");
+    static readonly IBrush WordBlue = SB("#2B579A");
+    static readonly IBrush PptOrange = SB("#D24726");
+    static readonly IBrush DbBody = SB("#8FA9C4");
+    static readonly IBrush DbTop = SB("#C2D4E6");
+    static readonly IBrush DbEdge = SB("#5B7590");
+    static readonly IBrush CodeInk = SB("#3B4A57");
+    static readonly IBrush DiscBody = SB("#C7D2DE");
+    static readonly IBrush DiscSheen = SB("#EAF1F8");
 
     static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "scr", "msi", "app" };
     static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase) { "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff", "svg" };
@@ -279,6 +289,12 @@ public partial class ItemView : UserControl
     static readonly HashSet<string> SystemExt = new(StringComparer.OrdinalIgnoreCase) { "dll", "sys", "drv", "ocx", "vxd", "cpl" };
     static readonly HashSet<string> ScriptExt = new(StringComparer.OrdinalIgnoreCase) { "bat", "cmd", "vbs", "js", "ps1", "sh", "py", "pl", "rb", "wsf" };
     static readonly HashSet<string> FontExt = new(StringComparer.OrdinalIgnoreCase) { "ttf", "otf", "fon", "fnt", "ttc", "woff", "woff2" };
+    static readonly HashSet<string> SheetExt = new(StringComparer.OrdinalIgnoreCase) { "xls", "xlsx", "xlsm", "csv", "tsv", "ods", "numbers" };
+    static readonly HashSet<string> WordExt = new(StringComparer.OrdinalIgnoreCase) { "doc", "docx", "rtf", "odt", "pages", "wpd" };
+    static readonly HashSet<string> SlideExt = new(StringComparer.OrdinalIgnoreCase) { "ppt", "pptx", "pps", "ppsx", "odp", "key" };
+    static readonly HashSet<string> DbExt = new(StringComparer.OrdinalIgnoreCase) { "db", "sqlite", "sqlite3", "mdb", "accdb", "sql", "dbf" };
+    static readonly HashSet<string> CodeExt = new(StringComparer.OrdinalIgnoreCase) { "xml", "xaml", "json", "yaml", "yml", "toml", "css", "cs", "c", "cpp", "cc", "h", "hpp", "java", "go", "rs", "ts", "tsx", "swift", "kt" };
+    static readonly HashSet<string> DiscExt = new(StringComparer.OrdinalIgnoreCase) { "iso", "img", "dmg", "vhd", "vhdx", "bin", "cue", "nrg", "toast" };
 
     static Avalonia.Controls.Shapes.Ellipse Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
     {
@@ -312,6 +328,12 @@ public partial class ItemView : UserControl
         if (ScriptExt.Contains(ext)) { ScriptGlyph(c); return; }
         if (FontExt.Contains(ext)) { FontGlyph(c); return; }
         if (ext == "pdf") { PdfGlyph(c); return; }
+        if (SheetExt.Contains(ext)) { SheetGlyph(c); return; }
+        if (WordExt.Contains(ext)) { WordGlyph(c); return; }
+        if (SlideExt.Contains(ext)) { SlideGlyph(c); return; }
+        if (DbExt.Contains(ext)) { DatabaseGlyph(c); return; }
+        if (CodeExt.Contains(ext)) { CodeGlyph(c); return; }
+        if (DiscExt.Contains(ext)) { DiscGlyph(c); return; }
         DocGlyph(c);
     }
 
@@ -449,6 +471,64 @@ public partial class ItemView : UserControl
         c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
         c.Children.Add(Vec("M3.6,10.4 H12.4 V13.2 H3.6 Z", PdfRed));
         c.Children.Add(Vec("M5.2,11.1 V12.5 M7.8,11.1 V12.5 M10.4,11.1 V12.5", null, Brushes.White, 0.5));
+    }
+
+    static void SheetGlyph(Canvas c)
+    {
+        // A page with a green spreadsheet grid.
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M4.4,6.2 H11.6 V12.6 H4.4 Z", Brushes.White, SheetGreen, 0.5)); // table
+        c.Children.Add(Vec("M4.4,6.2 H11.6 V7.8 H4.4 Z", SheetGreen));                       // header row
+        c.Children.Add(Vec("M4.4,9.4 H11.6 M4.4,11.0 H11.6", null, SheetGrid, 0.4));         // row lines
+        c.Children.Add(Vec("M6.8,7.8 V12.6 M9.2,7.8 V12.6", null, SheetGrid, 0.4));          // column lines
+    }
+
+    static void WordGlyph(Canvas c)
+    {
+        // A page with a blue "W" (word processor document).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M4.8,6.6 L6.1,11.4 L8,7.9 L9.9,11.4 L11.2,6.6", null, WordBlue, 1.1));
+    }
+
+    static void SlideGlyph(Canvas c)
+    {
+        // A page with an orange bar chart (presentation / slide deck).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M4.6,12.2 H11.6", null, PptOrange, 0.6));       // baseline
+        c.Children.Add(Vec("M5.2,9.6 H6.6 V12.0 H5.2 Z", PptOrange));       // short bar
+        c.Children.Add(Vec("M7.3,7.8 H8.7 V12.0 H7.3 Z", PptOrange));       // tall bar
+        c.Children.Add(Vec("M9.4,8.9 H10.8 V12.0 H9.4 Z", PptOrange));      // mid bar
+    }
+
+    static void DatabaseGlyph(Canvas c)
+    {
+        // A database cylinder.
+        c.Children.Add(Vec("M3.5,4.5 V11.5 a4.5,1.7 0 0 0 9,0 V4.5 Z", DbBody, DbEdge, 0.5));   // body
+        c.Children.Add(Vec("M3.5,4.5 a4.5,1.7 0 0 1 9,0 a4.5,1.7 0 0 1 -9,0 Z", DbTop, DbEdge, 0.5)); // top
+        c.Children.Add(Vec("M3.5,7.0 a4.5,1.7 0 0 0 9,0", null, DbEdge, 0.4));                   // band 1
+        c.Children.Add(Vec("M3.5,9.4 a4.5,1.7 0 0 0 9,0", null, DbEdge, 0.4));                   // band 2
+    }
+
+    static void CodeGlyph(Canvas c)
+    {
+        // A page with angle brackets (markup / source code).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M6.4,7.4 L4.6,9.6 L6.4,11.8", null, CodeInk, 0.8));    // <
+        c.Children.Add(Vec("M9.6,7.4 L11.4,9.6 L9.6,11.8", null, CodeInk, 0.8));   // >
+        c.Children.Add(Vec("M8.6,6.8 L7.4,12.4", null, CodeInk, 0.7));             // /
+    }
+
+    static void DiscGlyph(Canvas c)
+    {
+        // An optical disc image (iso/dmg/…).
+        c.Children.Add(Ell(2.4, 2.4, 11.2, DiscBody, DriveEdge, 0.5));
+        c.Children.Add(Vec("M4,4.4 a6,6 0 0 1 5.2,-1.2", null, DiscSheen, 1.0));   // highlight arc
+        c.Children.Add(Ell(6.2, 6.2, 3.6, DiscSheen, DriveEdge, 0.4));             // hub ring
+        c.Children.Add(Ell(7.3, 7.3, 1.4, PaperFill, DriveEdge, 0.3));             // spindle hole
     }
 
     static TextBlock Label(string text, int maxW = 0) => new()
