@@ -630,7 +630,26 @@ public partial class FileManagerWindow : BevelWindow
         await RunOpAsync(() => _controller.RenameAsync(e.Path, e.NewName));
     }
 
-    void ShowProperties() { /* bevel-o2t.1: Properties dialog not yet built */ }
+    async void ShowProperties()
+    {
+        if (_vfsRoot is null || _controller is null) return;
+
+        IReadOnlyList<IVfsNode> items;
+        var selected = ItemView.SelectedItems;
+        if (selected.Count > 0)
+        {
+            items = selected.Select(s => s.Node).ToArray();
+        }
+        else
+        {
+            // Nothing selected — mirror Explorer and show the current folder's Properties.
+            try { items = new[] { await _vfsRoot.ResolveAsync(_controller.CurrentDirectory, CancellationToken.None) }; }
+            catch { return; }   // current directory raced away / couldn't resolve — nothing to show
+        }
+
+        var dialog = new Components.PropertiesDialog(_vfsRoot, items);
+        await dialog.ShowAsync(this);
+    }
 
     // ── Context menus (FM-080/081) ─────────────────────────────────────
 

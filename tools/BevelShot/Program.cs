@@ -67,6 +67,21 @@ Pump(30);
 controller.NavigateTo(new VfsPath("file", dir));
 Pump(60);
 
+// 4th arg "Properties" renders the file Properties sheet instead of the main window.
+if (args.Length > 3 && string.Equals(args[3], "Properties", StringComparison.OrdinalIgnoreCase))
+{
+    var nodeTask = vfs.ResolveAsync(new VfsPath("file", dir), default).AsTask();
+    while (!nodeTask.IsCompleted) Pump(1);
+    var dlg = new Bevel.FileManager.Components.PropertiesDialog(vfs, nodeTask.Result);
+    dlg.Show();
+    Pump(50);   // let layout settle and the async Contains/size scan finish
+    var dframe = dlg.CaptureRenderedFrame() ?? throw new Exception("dialog capture null");
+    dframe.Save(outPath);
+    Console.WriteLine($"saved {outPath} ({dframe.PixelSize.Width}x{dframe.PixelSize.Height})");
+    try { Directory.Delete(dir, recursive: true); } catch { }
+    Environment.Exit(0);
+}
+
 // Optional view mode (4th arg): Details (default), LargeIcons, SmallIcons, List, Thumbnails.
 if (args.Length > 3 && Enum.TryParse<Bevel.FileManager.Components.ViewMode>(args[3], true, out var vm))
 {

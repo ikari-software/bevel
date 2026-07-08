@@ -1,0 +1,75 @@
+<ui:BevelWindow xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:ui="using:Bevel.UI"
+         x:Class="Bevel.FileManager.Components.PropertiesDialog"
+         Title="Properties"
+         Width="320" Height="450"
+         MinWidth="300" MinHeight="410"
+         WindowStartupLocation="CenterOwner"
+         CanResize="False">
+
+    <DockPanel Margin="10" Background="#D4D0C8">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="OK" Width="75" Height="23" />
+            <Button x:Name="CancelButton" Content="Cancel" Width="75" Height="23" />
+            <Button x:Name="ApplyButton" Content="Apply" Width="75" Height="23" IsEnabled="False" />
+        </StackPanel>
+
+        <TabControl>
+            <TabItem Header="General">
+                <StackPanel Margin="10" Spacing="8">
+
+                    <!-- Icon + editable-looking name (display-only for now, see PropertiesDialog.axaml.cs remarks) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border x:Name="IconHost" Width="32" Height="32" />
+                        <TextBox x:Name="NameBox" Width="220" />
+                    </StackPanel>
+
+                    <Separator Margin="0,2" />
+
+                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Type:" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TypeText" TextWrapping="Wrap" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Location:" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LocationText" TextWrapping="Wrap" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Size:" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="SizeText" TextWrapping="Wrap" />
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Size on disk:" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SizeOnDiskText" TextWrapping="Wrap" />
+                    </Grid>
+
+                    <Grid x:Name="ContainsRow" ColumnDefinitions="90,*">
+                        <TextBlock Grid.Column="0" Text="Contains:" />
+                        <TextBlock Grid.Column="1" x:Name="ContainsText" TextWrapping="Wrap" />
+                    </Grid>
+
+                    <Separator Margin="0,2" />
+
+                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Created:" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="CreatedText" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Modified:" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ModifiedText" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Accessed:" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="AccessedText" />
+                    </Grid>
+
+                    <Separator Margin="0,2" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Attributes:" FontWeight="SemiBold" />
+                        <CheckBox x:Name="ReadOnlyCheckBox" Content="Read-only" IsEnabled="False" />
+                        <CheckBox x:Name="HiddenCheckBox" Content="Hidden" IsEnabled="False" />
+                    </StackPanel>
+
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</ui:BevelWindow>
