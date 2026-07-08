@@ -331,6 +331,10 @@ public partial class ItemView : UserControl
         return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = c };
     }
 
+    /// <summary>Render a single semantic glyph at an arbitrary size — for previews and tooling.
+    /// The glyph is authored in a 16-unit space and vector-scaled, so any size stays crisp.</summary>
+    public static Control GlyphPreview(IconKey key, int size) => Icon(size, key);
+
     static void BuildGlyph(Canvas c, string id)
     {
         if (id.StartsWith("folder")) { FolderGlyph(c); return; }

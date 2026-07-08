@@ -73,6 +73,35 @@ Pump(30);
 controller.NavigateTo(new VfsPath("file", dir));
 Pump(60);
 
+// 4th arg "Glyph:<semanticId>" paints a single icon glyph at (width) px on a neutral card —
+// e.g. `BevelShot out.png 256 256 Glyph:doc.iso`.
+if (args.Length > 3 && args[3].StartsWith("Glyph:", StringComparison.OrdinalIgnoreCase))
+{
+    var semanticId = args[3]["Glyph:".Length..];
+    var glyph = Bevel.FileManager.Components.ItemView.GlyphPreview(new IconKey(semanticId), width - 24);
+    var host = new Avalonia.Controls.Window
+    {
+        Width = width,
+        Height = height,
+        SystemDecorations = Avalonia.Controls.SystemDecorations.None,
+        Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#ECECEC")),
+        Content = new Avalonia.Controls.Border
+        {
+            Padding = new Avalonia.Thickness(12),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Child = glyph,
+        },
+    };
+    host.Show();
+    Pump(30);
+    var gframe = host.CaptureRenderedFrame() ?? throw new Exception("glyph capture null");
+    gframe.Save(outPath);
+    Console.WriteLine($"saved {outPath} ({gframe.PixelSize.Width}x{gframe.PixelSize.Height})");
+    try { Directory.Delete(dir, recursive: true); } catch { }
+    Environment.Exit(0);
+}
+
 // 4th arg "Properties" renders the file Properties sheet instead of the main window.
 if (args.Length > 3 && string.Equals(args[3], "Properties", StringComparison.OrdinalIgnoreCase))
 {
