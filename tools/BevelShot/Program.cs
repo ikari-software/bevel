@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.VisualTree;
 using Avalonia.Threading;
 using Bevel.Core;
 using Bevel.Core.Vfs;
@@ -98,6 +99,54 @@ if (args.Length > 3 && args[3].StartsWith("Glyph:", StringComparison.OrdinalIgno
     var gframe = host.CaptureRenderedFrame() ?? throw new Exception("glyph capture null");
     gframe.Save(outPath);
     Console.WriteLine($"saved {outPath} ({gframe.PixelSize.Width}x{gframe.PixelSize.Height})");
+    try { Directory.Delete(dir, recursive: true); } catch { }
+    Environment.Exit(0);
+}
+
+// 4th arg "CtxMenu" opens the folder-background right-click menu and captures it, to eyeball
+// menu colors (bg / text / highlight) headlessly.
+if (args.Length > 3 && string.Equals(args[3], "CtxMenu", StringComparison.OrdinalIgnoreCase))
+{
+    var noop = new Action(() => { });
+    var actions = new Bevel.FileManager.Components.ContextMenuActions
+    {
+        Open = noop, OpenWith = noop, SendTo = noop, Cut = noop, Copy = noop,
+        Paste = noop, PasteShortcut = noop, CreateShortcut = noop, Delete = noop,
+        Rename = noop, Properties = noop, Undo = noop, Refresh = noop,
+        CanPaste = () => true, CanUndo = () => true,
+        ViewChanged = _ => { }, ArrangeIcons = _ => { }, NewItem = _ => { },
+    };
+    // Optional 6th arg "dark": force the OS-style Dark theme variant to reproduce a menu that
+    // resolves light text (as macOS Dark mode would) — the Win2000 theme should stay light-locked.
+    if (args.Length > 5 && string.Equals(args[5], "dark", StringComparison.OrdinalIgnoreCase))
+    {
+        // Simulate macOS Dark mode the way the OS does: at the Application level. (Note this
+        // overrides an App.axaml Light pin, so it shows what dark WOULD look like, not the fix.)
+        Avalonia.Application.Current!.RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark;
+        Pump(10);
+    }
+    Console.WriteLine($"App variant = {Avalonia.Application.Current!.ActualThemeVariant}");
+
+    var menu = Bevel.FileManager.Components.ContextMenuBuilder.BuildFolderBackgroundMenu(actions);
+    // Attach to the real ItemView (as the on-device path does), not the bare window — the popup
+    // resolves DynamicResource colors up through its attach point, so the target matters.
+    var target = win.GetVisualDescendants()
+        .OfType<Bevel.FileManager.Components.ItemView>().FirstOrDefault() as Avalonia.Controls.Control ?? win;
+    menu.Open(target);
+    Pump(40);
+    // Optional 5th arg: index of an item to force into the :selected (highlight) state so the
+    // navy-bg / white-text hover colors are visible in the capture.
+    if (args.Length > 4 && int.TryParse(args[4], out var hi) && menu.Items[hi] is Avalonia.Controls.Control mi)
+    {
+        ((Avalonia.Controls.IPseudoClasses)mi.Classes).Add(":selected");
+        Pump(10);
+    }
+    // Popups render into their own PopupRoot top-level in headless; capture that, not the window.
+    var popupRoot = (menu.GetVisualRoot() as Avalonia.Controls.TopLevel)
+                    ?? throw new Exception("context menu popup root not found (menu did not open)");
+    var cframe = popupRoot.CaptureRenderedFrame() ?? throw new Exception("ctx capture null");
+    cframe.Save(outPath);
+    Console.WriteLine($"saved {outPath} ({cframe.PixelSize.Width}x{cframe.PixelSize.Height})");
     try { Directory.Delete(dir, recursive: true); } catch { }
     Environment.Exit(0);
 }
