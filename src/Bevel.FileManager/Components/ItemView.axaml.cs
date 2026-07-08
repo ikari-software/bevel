@@ -400,7 +400,7 @@ public partial class ItemView : UserControl
 
     static void DriveGlyph(Canvas c, string id)
     {
-        if (id.Contains("cd")) { DiscGlyph(c); return; }   // CD-ROM drive → the iridescent disc
+        if (id.Contains("cd")) { CdDriveGlyph(c); return; }   // CD-ROM drive → bay + disc in front
         c.Children.Add(Vec("M2,5.5 H14 V11 H2 Z", DriveBody, DriveEdge, 0.5));
         c.Children.Add(Vec("M3.5,7 H10.5", null, DriveEdge, 0.5));
         c.Children.Add(Ell(11.5, 8.1, 1.4, DriveLed));
@@ -540,15 +540,41 @@ public partial class ItemView : UserControl
         c.Children.Add(Vec("M8.6,6.8 L7.4,12.4", null, CodeInk, 0.7));             // /
     }
 
-    static void DiscGlyph(Canvas c)
+    static void DiscGlyph(Canvas c) => DrawDisc(c, 8, 8, 5.6);   // bare optical disc (iso/dmg/…)
+
+    /// <summary>The iridescent CD, drawn at an arbitrary centre/radius so it can stand alone
+    /// (disc image) or sit in front of a drive bay. Everything is derived from (cx,cy,r), so the
+    /// platter, glints, hub and spindle stay concentric by construction at any size.</summary>
+    static void DrawDisc(Canvas c, double cx, double cy, double r)
     {
-        // An optical disc image (iso/dmg/…) — data side up, catching the light.
-        c.Children.Add(Ell(2.4, 2.4, 11.2, DiscRainbow, DriveEdge, 0.5));          // iridescent platter
-        // Specular glints: arcs on circles CONCENTRIC with the disc (centre 8,8), r 4.7 / 4.9.
-        c.Children.Add(Vec("M3.5,6.8 A4.7,4.7 0 0 1 6.8,3.5", null, DiscSheen, 1.2));    // upper-left sweep
-        c.Children.Add(Vec("M12.7,9.3 A4.9,4.9 0 0 1 10.8,12.0", null, DiscSheen, 0.7)); // lower-right glint
-        c.Children.Add(Ell(6.0, 6.0, 4.0, DiscSheen, DriveEdge, 0.4));             // silver hub ring
-        c.Children.Add(Ell(7.3, 7.3, 1.4, PaperFill, DriveEdge, 0.3));             // spindle hole
+        var k = r / 5.6;   // scale relative to the full 16-unit disc
+        c.Children.Add(Ell(cx - r, cy - r, r * 2, DiscRainbow, DriveEdge, 0.5 * k));   // iridescent platter
+        c.Children.Add(ConcentricArc(cx, cy, 4.7 * k, 195, 255, 1.2 * k));            // upper-left sweep
+        c.Children.Add(ConcentricArc(cx, cy, 4.9 * k, 15, 55, 0.7 * k));              // lower-right glint
+        var hub = 2.0 * k;  c.Children.Add(Ell(cx - hub, cy - hub, hub * 2, DiscSheen, DriveEdge, 0.4 * k));
+        var bore = 0.7 * k; c.Children.Add(Ell(cx - bore, cy - bore, bore * 2, PaperFill, DriveEdge, 0.3 * k));
+    }
+
+    /// <summary>A stroked minor arc lying on the circle of radius <paramref name="r"/> about
+    /// (<paramref name="cx"/>,<paramref name="cy"/>) — endpoints computed from the angles so the
+    /// arc is concentric by construction (angles in degrees, clockwise, 0° = +x).</summary>
+    static Avalonia.Controls.Shapes.Path ConcentricArc(double cx, double cy, double r, double a1, double a2, double sw)
+    {
+        double t1 = a1 * Math.PI / 180, t2 = a2 * Math.PI / 180;
+        var large = Math.Abs(a2 - a1) > 180 ? 1 : 0;
+        double x1 = cx + r * Math.Cos(t1), y1 = cy + r * Math.Sin(t1);
+        double x2 = cx + r * Math.Cos(t2), y2 = cy + r * Math.Sin(t2);
+        var data = FormattableString.Invariant($"M{x1:0.###},{y1:0.###} A{r:0.###},{r:0.###} 0 {large} 1 {x2:0.###},{y2:0.###}");
+        return Vec(data, null, DiscSheen, sw);
+    }
+
+    static void CdDriveGlyph(Canvas c)
+    {
+        // A CD-ROM drive: the bay unit, with the iridescent disc standing in front of it.
+        c.Children.Add(Vec("M5,3.4 H14 V9.0 H5 Z", DriveBody, DriveEdge, 0.5));    // drive bay
+        c.Children.Add(Vec("M9.5,7.4 H12.9", null, DriveEdge, 0.45));              // tray slot
+        c.Children.Add(Ell(12.7, 4.3, 1.0, DriveLed));                            // activity LED
+        DrawDisc(c, 5.6, 10.0, 3.7);                                              // disc, front-left
     }
 
     static TextBlock Label(string text, int maxW = 0) => new()
