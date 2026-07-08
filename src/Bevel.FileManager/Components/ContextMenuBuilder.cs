@@ -76,11 +76,11 @@ public static class ContextMenuBuilder
         menu.Items.Add(new Separator());
 
         // 4) Cut / Copy
-        var cut = MakeItem("Cu_t", actions.Cut);
+        var cut = MakeItem("Cu_t", actions.Cut, gesture: "Ctrl+X");
         cut.IsEnabled = caps.HasFlag(VfsCapabilities.CopySource) && actions.Cut is not null;
         menu.Items.Add(cut);
 
-        var copy = MakeItem("_Copy", actions.Copy);
+        var copy = MakeItem("_Copy", actions.Copy, gesture: "Ctrl+C");
         copy.IsEnabled = caps.HasFlag(VfsCapabilities.CopySource) && actions.Copy is not null;
         menu.Items.Add(copy);
 
@@ -91,7 +91,7 @@ public static class ContextMenuBuilder
         shortcut.IsEnabled = actions.CreateShortcut is not null;
         menu.Items.Add(shortcut);
 
-        var del = MakeItem("_Delete", actions.Delete, gesture: "Del");
+        var del = MakeItem("_Delete", actions.Delete, gesture: "Delete");
         del.IsEnabled = (caps.HasFlag(VfsCapabilities.Delete) || caps.HasFlag(VfsCapabilities.Trash))
                         && actions.Delete is not null;
         menu.Items.Add(del);
@@ -212,7 +212,7 @@ public static class ContextMenuBuilder
             item.FontWeight = BoldWeight;
 
         if (gesture is not null)
-            item.InputGesture = new KeyGesture(Key.None); // display-only; real binding lives elsewhere
+            item.InputGesture = KeyGesture.Parse(gesture); // display-only; the real key binding is wired in the window
 
         if (action is not null)
             item.Click += (_, _) => action();
