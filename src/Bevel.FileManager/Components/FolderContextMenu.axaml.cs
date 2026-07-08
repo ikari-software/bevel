@@ -37,7 +37,7 @@ public partial class FolderContextMenu : UserControl
     public void Show(Control placement, Point position)
     {
         var menu = ContextMenuBuilder.BuildFolderBackgroundMenu(_actions);
-        menu.Placement = PlacementMode.BottomEdgeAlignedLeft;
+        menu.Placement = PlacementMode.Pointer;   // open at the cursor, not the corner of the list
         menu.Open(placement);
     }
 }

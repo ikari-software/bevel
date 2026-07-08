@@ -37,7 +37,7 @@ public partial class ItemContextMenu : UserControl
     public void Show(IVfsNode node, Control placement, Point position)
     {
         var menu = ContextMenuBuilder.BuildItemMenu(node, _actions);
-        menu.Placement = PlacementMode.BottomEdgeAlignedLeft;
+        menu.Placement = PlacementMode.Pointer;   // open at the cursor, not the corner of the list
         menu.Open(placement);
     }
 }

@@ -40,6 +40,30 @@ public sealed class ClickSelectionTests
         Assert.Equal("b.txt", view.SelectedItems.Single().DisplayName);
     }
 
+    [AvaloniaFact]
+    public void Click_selects_after_switching_view_mode()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        var w = new Window { Content = view, Width = 500, Height = 400 };
+        w.Show();
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        view.ViewMode = ViewMode.LargeIcons;      // switch views, then click
+        Dispatcher.UIThread.RunJobs();
+        w.MouseMove(new Point(1, 1));
+        Dispatcher.UIThread.RunJobs();
+
+        var target = view.ItemsControl.GetRealizedContainers()
+            .First(c => (c.DataContext as ItemViewModel)?.DisplayName == "b.txt");
+        var center = target.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), w)!.Value;
+        w.MouseDown(center, MouseButton.Left);
+        w.MouseUp(center, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("b.txt", view.SelectedItems.Single().DisplayName);
+    }
+
     [AvaloniaFact] public void Details_click_selects() => ClickSelects(ViewMode.Details);
     [AvaloniaFact] public void LargeIcons_click_selects() => ClickSelects(ViewMode.LargeIcons);
     [AvaloniaFact] public void List_click_selects() => ClickSelects(ViewMode.List);

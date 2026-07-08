@@ -83,6 +83,11 @@ public sealed class FileManagerController
     // ── Navigation ─────────────────────────────────────────────────────
     public void NavigateTo(VfsPath path)
     {
+        // Navigating to where we already are is a no-op. Re-firing Arrived would start a second,
+        // racing LoadDirectory of the same folder — which streams a duplicate listing. (This
+        // happens on startup: SetController navigates Home, then the window factory navigates to
+        // the same Home.) Use Refresh() to force a genuine reload.
+        if (_nav.Count > 0 && _nav.Current == path) return;
         _nav.Push(path);
         Arrived(path);
     }

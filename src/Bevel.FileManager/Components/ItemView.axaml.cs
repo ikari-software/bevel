@@ -682,11 +682,15 @@ public partial class ItemView : UserControl
 
     void OnBgPointerMoved(object? _, PointerEventArgs e)
     {
-        // Past a small threshold, a press on a selected item becomes a drag of the selection.
+        // A press on a selected item becomes a drag only on a DELIBERATE gesture: the button is
+        // still held and the pointer has moved well past a click's jitter. Firing on a few px
+        // would hijack ordinary clicks into a modal DoDragDrop session (which can strand pointer
+        // capture and break subsequent mouse input) and drop items into whatever's under release.
         if (_dragArmed && !_marqueeDragging)
         {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { _dragArmed = false; return; }
             var d = e.GetPosition(this);
-            if (Math.Abs(d.X - _dragStart.X) > 4 || Math.Abs(d.Y - _dragStart.Y) > 4)
+            if (Math.Abs(d.X - _dragStart.X) > 10 || Math.Abs(d.Y - _dragStart.Y) > 10)
             {
                 _dragArmed = false;
                 _ = StartDragAsync(e);

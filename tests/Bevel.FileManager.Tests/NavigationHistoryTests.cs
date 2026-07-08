@@ -176,6 +176,21 @@ public sealed class NavigationHistoryTests
     }
 
     [Fact]
+    public void NavigateTo_the_current_directory_does_not_refire()
+    {
+        var controller = MakeController();
+        var fires = 0;
+        controller.CurrentDirectoryChanged += _ => fires++;
+
+        controller.NavigateTo(P("a"));
+        controller.NavigateTo(P("a"));   // already here — must NOT start a second (racing) load
+        Assert.Equal(1, fires);
+
+        controller.NavigateTo(P("a/b")); // a genuine move still navigates
+        Assert.Equal(2, fires);
+    }
+
+    [Fact]
     public void BackHistory_and_ForwardHistory_mirror_the_stack()
     {
         var controller = MakeController();
