@@ -400,12 +400,7 @@ public partial class ItemView : UserControl
 
     static void DriveGlyph(Canvas c, string id)
     {
-        if (id.Contains("cd"))
-        {
-            c.Children.Add(Ell(2.5, 2.5, 11, DriveBody, DriveEdge, 0.5));
-            c.Children.Add(Ell(6.4, 6.4, 3.2, Brushes.White, DriveEdge, 0.4));
-            return;
-        }
+        if (id.Contains("cd")) { DiscGlyph(c); return; }   // CD-ROM drive → the iridescent disc
         c.Children.Add(Vec("M2,5.5 H14 V11 H2 Z", DriveBody, DriveEdge, 0.5));
         c.Children.Add(Vec("M3.5,7 H10.5", null, DriveEdge, 0.5));
         c.Children.Add(Ell(11.5, 8.1, 1.4, DriveLed));
@@ -437,11 +432,11 @@ public partial class ItemView : UserControl
         c.Children.Add(Vec("M4.4,5.6 H11.6 V10.4 H4.4 Z", FilmFrame));
         for (var i = 0; i < 6; i++)
         {
-            var x = 2.55 + i * 1.85;
+            var x = 2.5 + i * 2.0;   // 6 holes, pitch 2, symmetric in the 2..14 strip
             c.Children.Add(Vec($"M{x:0.##},4.35 h1 v1 h-1 Z", Brushes.White));   // top holes
             c.Children.Add(Vec($"M{x:0.##},10.65 h1 v1 h-1 Z", Brushes.White));  // bottom holes
         }
-        c.Children.Add(Vec("M6.9,6.7 L9.6,8 L6.9,9.3 Z", Brushes.White));        // play
+        c.Children.Add(Vec("M7.1,6.7 L9.8,8 L7.1,9.3 Z", Brushes.White));        // play (centred on 8,8)
     }
 
     static void WebGlyph(Canvas c)
@@ -449,8 +444,8 @@ public partial class ItemView : UserControl
         // A page with a wireframe globe (HTML/web document).
         c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
         c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
-        c.Children.Add(Ell(4.6, 5.8, 6.6, Globe, GlobeEdge, 0.4));               // globe
-        c.Children.Add(Vec("M4.7,9.1 H11.5", null, Brushes.White, 0.4));          // equator
+        c.Children.Add(Ell(4.6, 5.8, 6.6, Globe, GlobeEdge, 0.4));               // globe (centre 7.9,9.1 r3.3)
+        c.Children.Add(Vec("M4.8,9.1 H11.0", null, Brushes.White, 0.4));          // equator (within the rim)
         c.Children.Add(Vec("M7.9,5.9 Q5.2,9.1 7.9,12.3", null, Brushes.White, 0.4)); // meridian
         c.Children.Add(Vec("M7.9,5.9 Q10.6,9.1 7.9,12.3", null, Brushes.White, 0.4));
     }
@@ -492,8 +487,8 @@ public partial class ItemView : UserControl
         // A page with a red label band.
         c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
         c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
-        c.Children.Add(Vec("M3.6,10.4 H12.4 V13.2 H3.6 Z", PdfRed));
-        c.Children.Add(Vec("M5.2,11.1 V12.5 M7.8,11.1 V12.5 M10.4,11.1 V12.5", null, Brushes.White, 0.5));
+        c.Children.Add(Vec("M3.6,10.4 H12.4 V13.2 H3.6 Z", PdfRed));            // band centre x=8
+        c.Children.Add(Vec("M5.2,11.1 V12.5 M8.0,11.1 V12.5 M10.8,11.1 V12.5", null, Brushes.White, 0.5));
     }
 
     static void SheetGlyph(Canvas c)
