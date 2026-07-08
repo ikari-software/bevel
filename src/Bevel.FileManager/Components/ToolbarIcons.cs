@@ -40,8 +40,7 @@ internal static class ToolbarIcons
     private static readonly IBrush Board = S("#CBAE79");
     private static readonly IBrush BoardEdge = S("#7A6030");
 
-    private const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
-    private const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";
+    // Folder path data is shared with the list-view glyphs — single source of truth in Glyphs.
 
     // ── Primitives ─────────────────────────────────────────────────────
     private static Path P(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.7) => new()
@@ -84,8 +83,8 @@ internal static class ToolbarIcons
         }
     }
 
-    private static Path Folder() => P(FolderBackData, FolderBack, FolderEdge, 0.5);
-    private static Path FolderFlap() => P(FolderFrontData, FolderFront, FolderEdge, 0.5);
+    private static Path Folder() => P(Glyphs.FolderBackData, FolderBack, FolderEdge, 0.5);
+    private static Path FolderFlap() => P(Glyphs.FolderFrontData, FolderFront, FolderEdge, 0.5);
 
     // ── Glyphs ─────────────────────────────────────────────────────────
     public static Bitmap? Back() => Raster(

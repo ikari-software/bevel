@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.UI;
@@ -125,7 +124,7 @@ public partial class PropertiesDialog : BevelWindow
         Title = $"{node.DisplayName} Properties";
         NameBox.Text = node.DisplayName;
 
-        IconHost.Child = BuildIcon(node.Kind, 32);
+        IconHost.Child = Glyphs.Icon(32, node.IconKey);   // the real per-type semantic glyph
 
         TypeText.Text = node.TypeDescription;
         LocationText.Text = DescribeLocation(node.Path);
@@ -163,7 +162,7 @@ public partial class PropertiesDialog : BevelWindow
         NameBox.Text = $"{items.Count} items selected";
         NameBox.IsReadOnly = true;
 
-        IconHost.Child = BuildIcon(VfsNodeKind.File, 32);
+        IconHost.Child = Glyphs.Icon(32, IconKey.Unknown);   // generic document for a mixed selection
 
         var allFolders = items.All(i => IsFolderKind(i.Kind));
         var allFiles = items.All(i => i.Kind == VfsNodeKind.File);
@@ -297,52 +296,4 @@ public partial class PropertiesDialog : BevelWindow
 
     private static string FormatSizeWithBytes(long bytes) => $"{FormatSize(bytes)} ({bytes:N0} bytes)";
 
-    // ── Icon (clean-room: simple generic folder/document glyph, not derived from any
-    //    Win2000 asset — the real semantic icon pipeline lives in ItemView and isn't
-    //    reachable from here without widening its access, which is out of this lane) ──
-
-    private static Control BuildIcon(VfsNodeKind kind, int size)
-    {
-        var canvas = new Canvas { Width = 32, Height = 32 };
-
-        if (IsFolderKind(kind))
-        {
-            canvas.Children.Add(new Avalonia.Controls.Shapes.Path
-            {
-                Data = Geometry.Parse("M2,10 L2,27 L30,27 L30,12 L14,12 L11,8 L2,8 Z"),
-                Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xD5, 0x7E)),
-                Stroke = Brushes.Black,
-                StrokeThickness = 1,
-            });
-        }
-        else
-        {
-            canvas.Children.Add(new Avalonia.Controls.Shapes.Path
-            {
-                Data = Geometry.Parse("M6,2 L20,2 L26,8 L26,30 L6,30 Z"),
-                Fill = Brushes.White,
-                Stroke = Brushes.Black,
-                StrokeThickness = 1,
-            });
-            canvas.Children.Add(new Avalonia.Controls.Shapes.Path
-            {
-                Data = Geometry.Parse("M20,2 L20,8 L26,8 Z"),
-                Fill = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
-                Stroke = Brushes.Black,
-                StrokeThickness = 0.5,
-            });
-            for (var i = 0; i < 3; i++)
-            {
-                canvas.Children.Add(new Avalonia.Controls.Shapes.Line
-                {
-                    StartPoint = new Point(9, 14 + i * 4),
-                    EndPoint = new Point(23, 14 + i * 4),
-                    Stroke = Brushes.Gray,
-                    StrokeThickness = 1,
-                });
-            }
-        }
-
-        return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = canvas };
-    }
 }
