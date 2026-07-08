@@ -30,6 +30,13 @@ File.WriteAllText(Path.Combine(dir, "readme.txt"), "hello world");
 File.WriteAllText(Path.Combine(dir, "setup.exe"), new string('x', 4096));
 File.WriteAllText(Path.Combine(dir, "holiday.png"), "x");
 File.WriteAllText(Path.Combine(dir, "backup.zip"), "x");
+File.WriteAllText(Path.Combine(dir, "theme song.mp3"), "x");
+File.WriteAllText(Path.Combine(dir, "vacation.avi"), "x");
+File.WriteAllText(Path.Combine(dir, "index.html"), "x");
+File.WriteAllText(Path.Combine(dir, "kernel32.dll"), "x");
+File.WriteAllText(Path.Combine(dir, "install.cmd"), "x");
+File.WriteAllText(Path.Combine(dir, "Arial.ttf"), "x");
+File.WriteAllText(Path.Combine(dir, "manual.pdf"), "x");
 
 var vfs = new VfsRoot();
 vfs.Register(new LocalFsProvider());

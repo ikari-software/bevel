@@ -257,10 +257,28 @@ public partial class ItemView : UserControl
     static readonly IBrush MonInner = SB("#2E5B90");
     static readonly IBrush MonEdge = SB("#3A3A3A");
     static readonly IBrush MonStand = SB("#B8BCC2");
+    static readonly IBrush Note = SB("#5A50C8");
+    static readonly IBrush FilmDark = SB("#333941");
+    static readonly IBrush FilmEdge = SB("#20242A");
+    static readonly IBrush FilmFrame = SB("#6E9BD0");
+    static readonly IBrush Globe = SB("#2E86D8");
+    static readonly IBrush GlobeEdge = SB("#1E5FA0");
+    static readonly IBrush GearBody = SB("#B6BAC0");
+    static readonly IBrush GearEdge = SB("#70747A");
+    static readonly IBrush ConsoleBg = SB("#1E1E1E");
+    static readonly IBrush ConsoleTitle = SB("#3C3C3C");
+    static readonly IBrush FontInk = SB("#33373D");
+    static readonly IBrush PdfRed = SB("#D93A2B");
 
-    static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "bat", "cmd", "scr", "msi", "ps1", "sh", "app", "dll" };
+    static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "scr", "msi", "app" };
     static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase) { "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff", "svg" };
     static readonly HashSet<string> ArchiveExt = new(StringComparer.OrdinalIgnoreCase) { "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "cab" };
+    static readonly HashSet<string> AudioExt = new(StringComparer.OrdinalIgnoreCase) { "mp3", "wav", "wma", "mid", "midi", "ogg", "flac", "m4a", "aac", "aiff", "au" };
+    static readonly HashSet<string> VideoExt = new(StringComparer.OrdinalIgnoreCase) { "avi", "mpg", "mpeg", "wmv", "mov", "mp4", "mkv", "flv", "webm", "m4v", "3gp" };
+    static readonly HashSet<string> WebExt = new(StringComparer.OrdinalIgnoreCase) { "htm", "html", "xhtml", "mht", "mhtml", "url", "asp", "aspx", "php", "jsp" };
+    static readonly HashSet<string> SystemExt = new(StringComparer.OrdinalIgnoreCase) { "dll", "sys", "drv", "ocx", "vxd", "cpl" };
+    static readonly HashSet<string> ScriptExt = new(StringComparer.OrdinalIgnoreCase) { "bat", "cmd", "vbs", "js", "ps1", "sh", "py", "pl", "rb", "wsf" };
+    static readonly HashSet<string> FontExt = new(StringComparer.OrdinalIgnoreCase) { "ttf", "otf", "fon", "fnt", "ttc", "woff", "woff2" };
 
     static Avalonia.Controls.Shapes.Ellipse Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
     {
@@ -287,6 +305,13 @@ public partial class ItemView : UserControl
         if (ExeExt.Contains(ext)) { ExeGlyph(c); return; }
         if (ImageExt.Contains(ext)) { ImageGlyph(c); return; }
         if (ArchiveExt.Contains(ext)) { ArchiveGlyph(c); return; }
+        if (AudioExt.Contains(ext)) { AudioGlyph(c); return; }
+        if (VideoExt.Contains(ext)) { VideoGlyph(c); return; }
+        if (WebExt.Contains(ext)) { WebGlyph(c); return; }
+        if (SystemExt.Contains(ext)) { SystemGlyph(c); return; }
+        if (ScriptExt.Contains(ext)) { ScriptGlyph(c); return; }
+        if (FontExt.Contains(ext)) { FontGlyph(c); return; }
+        if (ext == "pdf") { PdfGlyph(c); return; }
         DocGlyph(c);
     }
 
@@ -348,6 +373,82 @@ public partial class ItemView : UserControl
         c.Children.Add(Vec("M3.3,3.8 H12.7 V6.6 H3.3 Z", MonInner));
         c.Children.Add(Vec("M7,10 H9 V11.4 H7 Z", MonStand));
         c.Children.Add(Vec("M5,12.6 H11 V13.6 H5 Z", MonStand, MonEdge, 0.3));
+    }
+
+    static void AudioGlyph(Canvas c)
+    {
+        // A page with a musical note.
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M10.6,5.6 V10.4", null, Note, 0.9));                // stem
+        c.Children.Add(Vec("M10.6,5.6 Q12.6,6.0 12.0,8.0", null, Note, 0.9));   // flag
+        c.Children.Add(Ell(8.2, 9.4, 2.4, Note));                              // note head
+    }
+
+    static void VideoGlyph(Canvas c)
+    {
+        // A filmstrip: dark band with sprocket holes and a play triangle.
+        c.Children.Add(Vec("M2,4 H14 V12 H2 Z", FilmDark, FilmEdge, 0.4));
+        c.Children.Add(Vec("M4.4,5.6 H11.6 V10.4 H4.4 Z", FilmFrame));
+        for (var i = 0; i < 6; i++)
+        {
+            var x = 2.55 + i * 1.85;
+            c.Children.Add(Vec($"M{x:0.##},4.35 h1 v1 h-1 Z", Brushes.White));   // top holes
+            c.Children.Add(Vec($"M{x:0.##},10.65 h1 v1 h-1 Z", Brushes.White));  // bottom holes
+        }
+        c.Children.Add(Vec("M6.9,6.7 L9.6,8 L6.9,9.3 Z", Brushes.White));        // play
+    }
+
+    static void WebGlyph(Canvas c)
+    {
+        // A page with a wireframe globe (HTML/web document).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Ell(4.6, 5.8, 6.6, Globe, GlobeEdge, 0.4));               // globe
+        c.Children.Add(Vec("M4.7,9.1 H11.5", null, Brushes.White, 0.4));          // equator
+        c.Children.Add(Vec("M7.9,5.9 Q5.2,9.1 7.9,12.3", null, Brushes.White, 0.4)); // meridian
+        c.Children.Add(Vec("M7.9,5.9 Q10.6,9.1 7.9,12.3", null, Brushes.White, 0.4));
+    }
+
+    static void SystemGlyph(Canvas c)
+    {
+        // A page with a small gear (dll / sys / driver).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M7.3,5.2 H8.7 V6.6 H7.3 Z", GearBody, GearEdge, 0.3));   // top tooth
+        c.Children.Add(Vec("M7.3,10.4 H8.7 V11.8 H7.3 Z", GearBody, GearEdge, 0.3)); // bottom
+        c.Children.Add(Vec("M5.0,7.8 H6.4 V9.2 H5.0 Z", GearBody, GearEdge, 0.3));   // left
+        c.Children.Add(Vec("M9.6,7.8 H11.0 V9.2 H9.6 Z", GearBody, GearEdge, 0.3));  // right
+        c.Children.Add(Ell(5.9, 6.4, 4.2, GearBody, GearEdge, 0.4));                 // hub
+        c.Children.Add(Ell(7.2, 7.7, 1.6, PaperFill, GearEdge, 0.3));                // bore
+    }
+
+    static void ScriptGlyph(Canvas c)
+    {
+        // A console window (batch / shell script): dark body, prompt caret.
+        c.Children.Add(Vec("M2.5,3.5 H13.5 V12.5 H2.5 Z", ConsoleBg, MonEdge, 0.4));
+        c.Children.Add(Vec("M2.5,3.5 H13.5 V5.0 H2.5 Z", ConsoleTitle));
+        c.Children.Add(Vec("M4.2,7.4 L5.8,8.4 L4.2,9.4", null, Brushes.White, 0.7)); // ">"
+        c.Children.Add(Vec("M6.6,9.4 H10.2", null, Brushes.White, 0.6));             // cursor
+    }
+
+    static void FontGlyph(Canvas c)
+    {
+        // A page with a serif "A" (font file).
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M8,4.6 L5.5,11.4", null, FontInk, 1.2));    // left leg
+        c.Children.Add(Vec("M8,4.6 L10.5,11.4", null, FontInk, 1.2));   // right leg
+        c.Children.Add(Vec("M6.5,9.2 H9.5", null, FontInk, 1.0));       // crossbar
+    }
+
+    static void PdfGlyph(Canvas c)
+    {
+        // A page with a red label band.
+        c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
+        c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
+        c.Children.Add(Vec("M3.6,10.4 H12.4 V13.2 H3.6 Z", PdfRed));
+        c.Children.Add(Vec("M5.2,11.1 V12.5 M7.8,11.1 V12.5 M10.4,11.1 V12.5", null, Brushes.White, 0.5));
     }
 
     static TextBlock Label(string text, int maxW = 0) => new()
