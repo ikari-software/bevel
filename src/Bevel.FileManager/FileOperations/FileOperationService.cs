@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reactive.Subjects;
 using Bevel.Core.Vfs;
 
@@ -39,8 +40,11 @@ public sealed class FileOperationService : IDisposable
     private readonly UndoStack _undoStack;
     private readonly int _copyBufferSize;
     private readonly Subject<FileOpProgress> _progressSubject = new();
-    private CancellationTokenSource? _cts;
-    private readonly object _ctsGate = new();
+
+    // One CTS per in-flight operation, keyed by its opId. A single mutable field could not
+    // represent two concurrent operations, so on the shared singleton one window's Cancel()
+    // aliased another window's op (review AD3-#9 / bevel-var). Each op now cancels only itself.
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new();
 
     private readonly FileOpScanner _scanner;
     private readonly VolumeQueueExecutor _volumes = new();
@@ -66,38 +70,50 @@ public sealed class FileOperationService : IDisposable
     }
 
     /// <summary>
-    /// Execute a file operation request. Returns the result when complete.
+    /// Begin a file operation and return a <see cref="IFileOpHandle"/> for it: await
+    /// <see cref="IFileOpHandle.Completion"/> for the result, or call
+    /// <see cref="IFileOpHandle.Cancel"/> to stop just this operation. The opId is minted here
+    /// (before scanning) so it is stable and cancellable from the moment the handle exists.
     /// </summary>
-    public async Task<FileOpResult> ExecuteAsync(FileOpRequest request, CancellationToken externalCt = default)
+    public IFileOpHandle Begin(FileOpRequest request, CancellationToken externalCt = default)
     {
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
-        lock (_ctsGate)
-            _cts = linkedCts;
+        var opId = Guid.NewGuid().ToString("N")[..12];
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+        _inFlight[opId] = cts;
+        var completion = DispatchAsync(opId, request, cts);
+        return new FileOpHandle(opId, cts, completion);
+    }
 
+    /// <summary>
+    /// Execute a file operation request and return the result when complete. A convenience
+    /// wrapper over <see cref="Begin"/> for callers that don't need the handle (they cancel via
+    /// the passed <paramref name="externalCt"/> instead).
+    /// </summary>
+    public Task<FileOpResult> ExecuteAsync(FileOpRequest request, CancellationToken externalCt = default)
+        => Begin(request, externalCt).Completion;
+
+    private async Task<FileOpResult> DispatchAsync(
+        string opId, FileOpRequest request, CancellationTokenSource cts)
+    {
         try
         {
-            var ct = linkedCts.Token;
+            var ct = cts.Token;
             return request switch
             {
-                MoveRequest r => await ExecuteTransferAsync(FileOpKind.Move, r.Sources, r.Destination, linkedCts),
-                CopyRequest r => await ExecuteTransferAsync(FileOpKind.Copy, r.Sources, r.Destination, linkedCts),
-                RenameRequest r => await ExecuteRenameAsync(r, ct),
-                DeleteRequest r => await ExecuteDeleteAsync(r, ct),
-                UndoRequest r => await ExecuteUndoAsync(r, ct),
+                MoveRequest r => await ExecuteTransferAsync(opId, FileOpKind.Move, r.Sources, r.Destination, cts),
+                CopyRequest r => await ExecuteTransferAsync(opId, FileOpKind.Copy, r.Sources, r.Destination, cts),
+                RenameRequest r => await ExecuteRenameAsync(opId, r, ct),
+                DeleteRequest r => await ExecuteDeleteAsync(opId, r, ct),
+                UndoRequest r => await ExecuteUndoAsync(opId, r, ct),
                 _ => throw new ArgumentOutOfRangeException(nameof(request))
             };
         }
         finally
         {
-            // Clear the field before disposing so a late Cancel() never touches a
-            // disposed CTS, and only if this operation is still the current one (an
-            // overlapping ExecuteAsync may have replaced it — we still own our CTS).
-            lock (_ctsGate)
-            {
-                if (ReferenceEquals(_cts, linkedCts))
-                    _cts = null;
-            }
-            linkedCts.Dispose();
+            // Deregister before disposing so a late Cancel() sees no entry and no-ops rather
+            // than touching a disposed CTS.
+            _inFlight.TryRemove(opId, out _);
+            cts.Dispose();
         }
     }
 
@@ -112,15 +128,17 @@ public sealed class FileOperationService : IDisposable
             ct);
 
     /// <summary>
-    /// Request cancellation of the in-flight operation, if any. The current file
-    /// finishes, then processing stops. Safe to call at any time, including after
-    /// the operation has already completed.
+    /// Request cancellation of the operation with <paramref name="operationId"/>, if it is still
+    /// in flight. The current file finishes, then processing stops. Safe to call at any time,
+    /// including after the operation has completed (then a no-op). Prefer
+    /// <see cref="IFileOpHandle.Cancel"/> from the handle you were given; this exists for callers
+    /// that only kept the opId.
     /// </summary>
-    public void Cancel()
+    public void Cancel(string operationId)
     {
-        lock (_ctsGate)
+        if (_inFlight.TryGetValue(operationId, out var cts))
         {
-            try { _cts?.Cancel(); }
+            try { cts.Cancel(); }
             catch (ObjectDisposedException) { /* operation already finished */ }
         }
     }
@@ -128,12 +146,11 @@ public sealed class FileOperationService : IDisposable
     // ── Transfer (Move / Copy share one path — review #18) ─────────────────
 
     private async Task<FileOpResult> ExecuteTransferAsync(
-        FileOpKind kind, IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationTokenSource opCts)
+        string opId, FileOpKind kind, IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationTokenSource opCts)
     {
         var isMove = kind == FileOpKind.Move;
         var ct = opCts.Token;
-        var scan = await _scanner.ScanAsync(sources, destination, kind, ct);
-        var opId = scan.Jobs.Count > 0 ? scan.Jobs[0].OperationId : Guid.NewGuid().ToString("N")[..12];
+        var scan = await _scanner.ScanAsync(opId, sources, destination, kind, ct);
         var results = new List<FileItemResult>();
         var completed = new List<FileOpJob>();
 
@@ -349,9 +366,8 @@ public sealed class FileOperationService : IDisposable
 
     // ── Rename ─────────────────────────────────────────────────────────────
 
-    private async Task<FileOpResult> ExecuteRenameAsync(RenameRequest request, CancellationToken ct)
+    private async Task<FileOpResult> ExecuteRenameAsync(string opId, RenameRequest request, CancellationToken ct)
     {
-        var opId = Guid.NewGuid().ToString("N")[..12];
         var results = new List<FileItemResult>();
 
         EmitProgress(opId, FileOpStatus.Running, 0, 1, 0, 0, request.Path.FileName);
@@ -418,9 +434,8 @@ public sealed class FileOperationService : IDisposable
 
     // ── Delete / Trash ─────────────────────────────────────────────────────
 
-    private async Task<FileOpResult> ExecuteDeleteAsync(DeleteRequest request, CancellationToken ct)
+    private async Task<FileOpResult> ExecuteDeleteAsync(string opId, DeleteRequest request, CancellationToken ct)
     {
-        var opId = Guid.NewGuid().ToString("N")[..12];
         var results = new List<FileItemResult>();
         var trashPairs = new List<(VfsPath Original, VfsPath TrashPath)>();
 
@@ -499,13 +514,13 @@ public sealed class FileOperationService : IDisposable
 
     // ── Undo ───────────────────────────────────────────────────────────────
 
-    private async Task<FileOpResult> ExecuteUndoAsync(UndoRequest request, CancellationToken ct)
+    private async Task<FileOpResult> ExecuteUndoAsync(string opId, UndoRequest request, CancellationToken ct)
     {
         var entry = _undoStack.Pop();
         if (entry is null)
             return new FileOpResult
             {
-                OperationId = request.OperationId,
+                OperationId = opId,
                 Kind = FileOpKind.Undo,
                 Status = FileOpStatus.Failed,
                 ItemResults = [],
@@ -543,8 +558,44 @@ public sealed class FileOperationService : IDisposable
 
     public void Dispose()
     {
-        _cts?.Dispose();
+        // Cancel and dispose any operations still running when the service is torn down
+        // (e.g. a window closed mid-transfer).
+        foreach (var cts in _inFlight.Values)
+        {
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { /* already finished */ }
+            cts.Dispose();
+        }
+        _inFlight.Clear();
+
         _progressSubject.Dispose();
         _volumes.Dispose();
+    }
+}
+
+/// <summary>
+/// Per-operation handle returned by <see cref="FileOperationService.Begin"/>. Owns the reference
+/// to its operation's cancellation source so <see cref="Cancel"/> stops only this operation.
+/// </summary>
+internal sealed class FileOpHandle : IFileOpHandle
+{
+    private readonly CancellationTokenSource _cts;
+
+    public string OperationId { get; }
+    public Task<FileOpResult> Completion { get; }
+
+    public FileOpHandle(string operationId, CancellationTokenSource cts, Task<FileOpResult> completion)
+    {
+        OperationId = operationId;
+        _cts = cts;
+        Completion = completion;
+    }
+
+    public void Cancel()
+    {
+        // The service disposes the CTS when the operation completes; a Cancel() that races that
+        // teardown just no-ops.
+        try { _cts.Cancel(); }
+        catch (ObjectDisposedException) { /* operation already finished */ }
     }
 }

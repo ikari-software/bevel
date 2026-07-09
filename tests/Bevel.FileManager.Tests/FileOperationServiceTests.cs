@@ -341,15 +341,135 @@ public sealed class FileOperationServiceTests : IDisposable
         await File.WriteAllTextAsync(Abs("a.txt"), "x");
 
         using var svc = NewService();
-        await svc.ExecuteAsync(new CopyRequest
+        var handle = svc.Begin(new CopyRequest
         {
             Sources = new[] { P("a.txt") },
             Destination = P("dst"),
             Timestamp = DateTimeOffset.UtcNow,
         });
+        var result = await handle.Completion;
 
-        // The linked CTS was disposed when ExecuteAsync returned; Cancel must not throw.
-        var ex = Record.Exception(() => { svc.Cancel(); svc.Cancel(); });
+        // The CTS was disposed when the operation completed; neither the handle nor an id-based
+        // Cancel must throw, and an unknown id is a harmless no-op.
+        var ex = Record.Exception(() =>
+        {
+            handle.Cancel();
+            svc.Cancel(handle.OperationId);
+            svc.Cancel("no-such-operation");
+        });
         Assert.Null(ex);
+    }
+
+    // ── Per-operation cancellation handle (bevel-var / review AD3-#9) ─────────
+
+    [Fact]
+    public async Task Begin_gives_each_operation_a_distinct_id_matching_its_result()
+    {
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "a");
+        await File.WriteAllTextAsync(Abs("b.txt"), "b");
+
+        using var svc = NewService();
+
+        var h1 = svc.Begin(Copy("a.txt"));
+        var h2 = svc.Begin(Copy("b.txt"));
+        var r1 = await h1.Completion;
+        var r2 = await h2.Completion;
+
+        Assert.NotEqual(h1.OperationId, h2.OperationId);      // distinct per operation
+        Assert.Equal(h1.OperationId, r1.OperationId);          // handle id threads into the result
+        Assert.Equal(h2.OperationId, r2.OperationId);
+    }
+
+    [Fact]
+    public async Task Handle_cancel_stops_its_own_operation()
+    {
+        // A pre-existing destination file forces the copy through conflict resolution, where the
+        // scripted handler parks until this operation's token is cancelled.
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "a");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old");
+
+        var handler = new ScriptedConflictHandler { BlockingFile = "a.txt" };
+        using var svc = new FileOperationService(_vfs, handler);
+
+        var handle = svc.Begin(Copy("a.txt"));
+        await handler.ReachedBlocking.Task;   // the op is now parked in conflict resolution
+        handle.Cancel();
+
+        var result = await handle.Completion;
+        Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task Cancelling_one_operation_leaves_a_concurrent_one_running()
+    {
+        // The regression: with a single shared CTS, cancelling A cancelled B too. Here A parks
+        // in conflict resolution holding the volume queue; B queues behind it. Cancelling A must
+        // release the queue and let B complete — B must NOT be cancelled.
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "aaa");
+        await File.WriteAllTextAsync(Abs("b.txt"), "bbb");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old-a");
+        await File.WriteAllTextAsync(Abs("dst", "b.txt"), "old-b");
+
+        var handler = new ScriptedConflictHandler { BlockingFile = "a.txt", GatedFile = "b.txt" };
+        using var svc = new FileOperationService(_vfs, handler);
+
+        var opA = svc.Begin(Copy("a.txt"));
+        await handler.ReachedBlocking.Task;   // A holds the volume queue, parked on its token
+        var opB = svc.Begin(Copy("b.txt"));   // B parks behind A on the same volume queue
+
+        opA.Cancel();                         // frees the queue for B; must not touch B
+
+        await handler.ReachedGated.Task;      // B has now entered conflict resolution
+        handler.ReleaseGated.SetResult();     // let B overwrite and finish
+
+        var rB = await opB.Completion;
+        var rA = await opA.Completion;
+
+        Assert.Equal(FileOpStatus.Completed, rB.Status);
+        Assert.Equal("bbb", await File.ReadAllTextAsync(Abs("dst", "b.txt")));   // B really ran
+        Assert.Contains(rA.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
+    }
+
+    private CopyRequest Copy(string name) => new()
+    {
+        Sources = new[] { P(name) },
+        Destination = P("dst"),
+        Timestamp = DateTimeOffset.UtcNow,
+    };
+
+    /// <summary>
+    /// Conflict handler that parks operations so cancellation can be observed deterministically:
+    /// the op copying <see cref="BlockingFile"/> waits on its own token (released only by
+    /// cancellation), while the op copying <see cref="GatedFile"/> waits on
+    /// <see cref="ReleaseGated"/> then resolves Yes.
+    /// </summary>
+    private sealed class ScriptedConflictHandler : IConflictHandler
+    {
+        public string BlockingFile = "";
+        public string GatedFile = "";
+        public readonly TaskCompletionSource ReachedBlocking = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource ReachedGated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource ReleaseGated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask<ConflictResolution> ResolveConflictAsync(
+            VfsPath source, VfsPath destination, long? sourceSize, long? destSize,
+            DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope,
+            CancellationToken ct)
+        {
+            if (source.FileName == BlockingFile)
+            {
+                ReachedBlocking.TrySetResult();
+                await Task.Delay(Timeout.Infinite, ct);   // throws when this op is cancelled
+            }
+            else if (source.FileName == GatedFile)
+            {
+                ReachedGated.TrySetResult();
+                await ReleaseGated.Task.WaitAsync(ct);
+            }
+            return ConflictResolution.Yes;
+        }
     }
 }

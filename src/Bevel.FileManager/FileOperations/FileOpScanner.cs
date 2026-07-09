@@ -15,10 +15,9 @@ internal sealed class FileOpScanner
     public FileOpScanner(VfsRoot vfs) => _vfs = vfs;
 
     public async Task<PreScanResult> ScanAsync(
-        IReadOnlyList<VfsPath> sources, VfsPath destination, FileOpKind kind, CancellationToken ct)
+        string opId, IReadOnlyList<VfsPath> sources, VfsPath destination, FileOpKind kind, CancellationToken ct)
     {
         var jobs = new List<FileOpJob>();
-        var opId = Guid.NewGuid().ToString("N")[..12];
         long totalSize = 0;
         int fileCount = 0;
         int folderCount = 0;
