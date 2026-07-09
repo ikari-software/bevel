@@ -14,4 +14,9 @@
     <PackageReference Include="System.Reactive" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Exposes internal trash/copy helpers (LocalTrash) to the Core test project. -->
+    <InternalsVisibleTo Include="Bevel.Core.Tests" />
+  </ItemGroup>
+
 </Project>

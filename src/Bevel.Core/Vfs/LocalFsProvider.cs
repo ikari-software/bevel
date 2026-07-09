@@ -306,10 +306,7 @@ file sealed class LocalFsMutator : IVfsMutator
             System.IO.Directory.CreateDirectory(_trashDirectory);
             var trashPath = UniqueTrashPath(path.FileName);
 
-            if (System.IO.Directory.Exists(fullPath))
-                System.IO.Directory.Move(fullPath, trashPath);
-            else
-                System.IO.File.Move(fullPath, trashPath);
+            LocalTrash.MoveToTrash(fullPath, trashPath);
 
             return ValueTask.FromResult<VfsPath?>(new VfsPath("file", trashPath));
         }
@@ -380,6 +377,59 @@ file sealed class LocalFsMutator : IVfsMutator
 
         Stream stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
         return ValueTask.FromResult(stream);
+    }
+}
+
+/// <summary>
+/// Relocates a file or directory into the trash. A same-volume move is an atomic rename; a
+/// cross-volume directory rename fails (EXDEV) because <see cref="System.IO.Directory.Move"/>
+/// cannot span filesystems, so we recreate the tree at the destination and delete the original
+/// (bevel-bb0). <see cref="System.IO.File.Move"/> already copies across volumes internally, so a
+/// single file needs no special handling.
+/// </summary>
+internal static class LocalTrash
+{
+    public static void MoveToTrash(string source, string destination)
+    {
+        if (System.IO.Directory.Exists(source))
+            MoveDirectory(source, destination);
+        else
+            System.IO.File.Move(source, destination);
+    }
+
+    private static void MoveDirectory(string source, string destination)
+    {
+        try
+        {
+            // Fast path: an atomic rename when source and trash share a volume.
+            System.IO.Directory.Move(source, destination);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // A genuinely missing source — surface it rather than masking it with copy+delete.
+            throw;
+        }
+        catch (IOException)
+        {
+            // Cross-volume (EXDEV) or a similar rename refusal: recreate the tree at the trash
+            // location, then remove the original. The destination is a fresh, unique path, so
+            // there is nothing to overwrite.
+            CopyDirectory(source, destination);
+            System.IO.Directory.Delete(source, recursive: true);
+        }
+    }
+
+    /// <summary>Recursively copies every file and subdirectory of <paramref name="source"/> into
+    /// <paramref name="destination"/> (which is created if needed).</summary>
+    public static void CopyDirectory(string source, string destination)
+    {
+        System.IO.Directory.CreateDirectory(destination);
+
+        foreach (var file in System.IO.Directory.EnumerateFiles(source))
+            System.IO.File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+
+        foreach (var dir in System.IO.Directory.EnumerateDirectories(source))
+            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
     }
 }
 
