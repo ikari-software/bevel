@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Reactive.Subjects;
 using Bevel.Core.Vfs;
 
@@ -21,25 +20,32 @@ public sealed record FileOpProgress
 }
 
 /// <summary>
-/// Core file operations engine (FM-130..136).
-/// - FIFO queue per target volume, parallel across volumes
-/// - Pre-scan phase (enumerate + size totals)
-/// - Conflict resolution via IConflictHandler
-/// - Multi-level undo stack (depth 10)
-/// - Progress observable (IObservable)
-/// - Cancel stops after current file completes
-/// All pure managed I/O — no Avalonia dependency.
+/// Core file operations engine (FM-130..136) — a thin facade over focused collaborators
+/// (bevel-p3g):
+/// <list type="bullet">
+/// <item><see cref="FileOpScanner"/> — pre-scan (enumerate + size totals + per-volume jobs).</item>
+/// <item><see cref="VolumeQueueExecutor"/> — FIFO queue per target volume, parallel across volumes.</item>
+/// <item><see cref="ConflictCoordinator"/> — conflict resolution via IConflictHandler.</item>
+/// <item><see cref="UndoExecutor"/> — multi-level undo (depth 10).</item>
+/// </list>
+/// The facade owns the public API, the progress observable, the undo stack, cancellation, and the
+/// low-level transfer primitives (<see cref="MoveFileAsync"/>/<see cref="CopyFileAsync"/>) that a
+/// forward Move/Copy and an undo both reuse. Move and Copy share one <see cref="ExecuteTransferAsync"/>
+/// (review #18). All pure managed I/O — no Avalonia dependency.
 /// </summary>
 public sealed class FileOperationService : IDisposable
 {
     private readonly VfsRoot _vfs;
-    private readonly IConflictHandler _conflictHandler;
     private readonly UndoStack _undoStack;
     private readonly int _copyBufferSize;
     private readonly Subject<FileOpProgress> _progressSubject = new();
     private CancellationTokenSource? _cts;
     private readonly object _ctsGate = new();
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _volumeQueues = new();
+
+    private readonly FileOpScanner _scanner;
+    private readonly VolumeQueueExecutor _volumes = new();
+    private readonly ConflictCoordinator _conflicts;
+    private readonly UndoExecutor _undoExecutor;
 
     public IObservable<FileOpProgress> Progress => _progressSubject;
     public UndoStack Undo => _undoStack;
@@ -51,9 +57,12 @@ public sealed class FileOperationService : IDisposable
         int copyBufferSize = 81920)
     {
         _vfs = vfs;
-        _conflictHandler = conflictHandler;
         _undoStack = new UndoStack(maxUndoDepth);
         _copyBufferSize = copyBufferSize;
+        _scanner = new FileOpScanner(vfs);
+        _conflicts = new ConflictCoordinator(vfs, conflictHandler);
+        // Undo reuses the same reverse-move primitive and progress stream as a forward op.
+        _undoExecutor = new UndoExecutor(vfs, MoveFileAsync, p => _progressSubject.OnNext(p));
     }
 
     /// <summary>
@@ -70,8 +79,8 @@ public sealed class FileOperationService : IDisposable
             var ct = linkedCts.Token;
             return request switch
             {
-                MoveRequest r => await ExecuteMoveAsync(r, linkedCts),
-                CopyRequest r => await ExecuteCopyAsync(r, linkedCts),
+                MoveRequest r => await ExecuteTransferAsync(FileOpKind.Move, r.Sources, r.Destination, linkedCts),
+                CopyRequest r => await ExecuteTransferAsync(FileOpKind.Copy, r.Sources, r.Destination, linkedCts),
                 RenameRequest r => await ExecuteRenameAsync(r, ct),
                 DeleteRequest r => await ExecuteDeleteAsync(r, ct),
                 UndoRequest r => await ExecuteUndoAsync(r, ct),
@@ -116,151 +125,37 @@ public sealed class FileOperationService : IDisposable
         }
     }
 
-    // ── Pre-scan ──────────────────────────────────────────────────────────
+    // ── Transfer (Move / Copy share one path — review #18) ─────────────────
 
-    private async Task<PreScanResult> PreScanMoveAsync(
-        IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationToken ct)
-        => await PreScanAsync(sources, destination, FileOpKind.Move, ct);
-
-    private async Task<PreScanResult> PreScanCopyAsync(
-        IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationToken ct)
-        => await PreScanAsync(sources, destination, FileOpKind.Copy, ct);
-
-    private async Task<PreScanResult> PreScanAsync(
-        IReadOnlyList<VfsPath> sources,
-        VfsPath destination,
-        FileOpKind kind,
-        CancellationToken ct)
+    private async Task<FileOpResult> ExecuteTransferAsync(
+        FileOpKind kind, IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationTokenSource opCts)
     {
-        var jobs = new List<FileOpJob>();
-        var opId = Guid.NewGuid().ToString("N")[..12];
-        long totalSize = 0;
-        int fileCount = 0;
-        int folderCount = 0;
-
-        foreach (var source in sources)
-        {
-            var (size, files, folders) = await ScanPathAsync(source, destination, kind, opId, jobs, ct);
-            totalSize += size;
-            fileCount += files;
-            folderCount += folders;
-        }
-
-        var byVolume = jobs.GroupBy(j => j.VolumeKey)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<FileOpJob>)g.ToList());
-
-        return new PreScanResult
-        {
-            Jobs = jobs,
-            JobsByVolume = byVolume,
-            TotalSize = totalSize,
-            TotalFileCount = fileCount,
-            TotalFolderCount = folderCount,
-        };
-    }
-
-    private async Task<(long totalSize, int fileCount, int folderCount)> ScanPathAsync(
-        VfsPath source,
-        VfsPath destination,
-        FileOpKind kind,
-        string opId,
-        List<FileOpJob> jobs,
-        CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        long totalSize = 0;
-        int fileCount = 0;
-        int folderCount = 0;
-
-        var provider = _vfs.GetProvider(source);
-        var node = await provider.ResolveAsync(source, ct);
-
-        if (node.Kind == VfsNodeKind.Folder)
-        {
-            folderCount++;
-            var destChild = VfsPath.Combine(destination, source.FileName);
-
-            // A Copy/Move must relocate EVERY child, including hidden/system entries;
-            // otherwise the source folder can't be emptied and the operation silently
-            // under-copies while still reporting Success (review #12).
-            var childOptions = kind is FileOpKind.Copy or FileOpKind.Move
-                ? new EnumerateOptions { IncludeHidden = true, IncludeSystem = true }
-                : new EnumerateOptions();
-            await foreach (var child in provider.EnumerateAsync(source, childOptions, ct))
-            {
-                ct.ThrowIfCancellationRequested();
-                var (size, files, folders) = await ScanPathAsync(child.Path, destChild, kind, opId, jobs, ct);
-                totalSize += size;
-                fileCount += files;
-                folderCount += folders;
-            }
-
-            var volumeKey = _vfs.GetProvider(destination).GetVolumeKey(destination);
-            jobs.Add(new FileOpJob
-            {
-                OperationId = opId,
-                Kind = kind,
-                Source = source,
-                Destination = destChild,
-                VolumeKey = volumeKey,
-                Size = 0,
-            });
-        }
-        else
-        {
-            fileCount++;
-            var size = node.Size ?? 0;
-            totalSize += size;
-            var destChild = VfsPath.Combine(destination, source.FileName);
-            var volumeKey = _vfs.GetProvider(destination).GetVolumeKey(destination);
-
-            jobs.Add(new FileOpJob
-            {
-                OperationId = opId,
-                Kind = kind,
-                Source = source,
-                Destination = destChild,
-                VolumeKey = volumeKey,
-                Size = size,
-            });
-        }
-
-        return (totalSize, fileCount, folderCount);
-    }
-
-    // ── Move ──────────────────────────────────────────────────────────────
-
-    private async Task<FileOpResult> ExecuteMoveAsync(MoveRequest request, CancellationTokenSource opCts)
-    {
+        var isMove = kind == FileOpKind.Move;
         var ct = opCts.Token;
-        var scan = await PreScanMoveAsync(request.Sources, request.Destination, ct);
+        var scan = await _scanner.ScanAsync(sources, destination, kind, ct);
         var opId = scan.Jobs.Count > 0 ? scan.Jobs[0].OperationId : Guid.NewGuid().ToString("N")[..12];
         var results = new List<FileItemResult>();
-        var undoPairs = new List<(VfsPath Source, VfsPath Destination)>();
+        var completed = new List<FileOpJob>();
 
-        // Jobs on different volumes run concurrently (ExecuteByVolumeAsync), so every
-        // mutation of the shared result/undo lists is serialized through this gate.
+        // Jobs on different volumes run concurrently, so every mutation of the shared
+        // result/completed lists is serialized through this gate.
         var sync = new object();
         void AddResult(FileItemResult r) { lock (sync) results.Add(r); }
+        static FileItemResult Outcome(FileOpJob j, FileItemResultStatus s, string? err = null)
+            => new() { Source = j.Source, Destination = j.Destination, Status = s, ErrorMessage = err };
 
         var bytesBefore = BuildBytesBeforeMap(scan.Jobs);
         EmitProgress(opId, FileOpStatus.Scanning, 0, scan.TotalFileCount, 0, scan.TotalSize, "");
 
-        using var sticky = new StickyConflictResolver(_conflictHandler);
+        using var sticky = _conflicts.NewResolver();
 
-        await ExecuteByVolumeAsync(scan.JobsByVolume, ct, async (job, volumeSem, fileIndex) =>
+        await _volumes.ExecuteAsync(scan.JobsByVolume, ct, async (job, fileIndex) =>
         {
             if (ct.IsCancellationRequested)
             {
                 // Stop gracefully: record this job as cancelled and let the batch drain so
-                // items already completed still get an undo entry (review #2). Throwing here
-                // (the old behavior) unwound before the undo-stack push below.
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Cancelled,
-                });
+                // items already completed still get an undo entry (review #2).
+                AddResult(Outcome(job, FileItemResultStatus.Cancelled));
                 return;
             }
             EmitProgress(opId, FileOpStatus.Running, fileIndex, scan.TotalFileCount,
@@ -268,82 +163,77 @@ public sealed class FileOperationService : IDisposable
 
             try
             {
-                var resolved = await HandleConflictIfNeeded(job, sticky, fileIndex, scan.TotalFileCount, ct);
+                var resolved = await _conflicts.ResolveAsync(job, sticky, fileIndex, scan.TotalFileCount, ct);
                 if (resolved == ConflictResolution.Cancel)
                 {
                     job.Status = FileOpJobStatus.Cancelled;
-                    AddResult(new FileItemResult
-                    {
-                        Source = job.Source, Destination = job.Destination,
-                        Status = FileItemResultStatus.Cancelled,
-                    });
+                    AddResult(Outcome(job, FileItemResultStatus.Cancelled));
                     opCts.Cancel();
                     return;
                 }
                 if (resolved == ConflictResolution.No)
                 {
                     job.Status = FileOpJobStatus.Skipped;
-                    AddResult(new FileItemResult
-                    {
-                        Source = job.Source, Destination = job.Destination,
-                        Status = FileItemResultStatus.Skipped,
-                    });
+                    AddResult(Outcome(job, FileItemResultStatus.Skipped));
                     return;
                 }
 
-                await MoveFileAsync(job, ct);
+                if (isMove) await MoveFileAsync(job, ct);
+                else await CopyFileAsync(job, ct);
 
                 job.Status = FileOpJobStatus.Completed;
                 lock (sync)
                 {
-                    undoPairs.Add((job.Source, job.Destination));
+                    completed.Add(job);
                     results.Add(new FileItemResult
                     {
                         Source = job.Source, Destination = job.Destination,
                         Status = FileItemResultStatus.Success,
                         UndoSource = job.Destination,
-                        UndoDestination = job.Source,
+                        // A Copy's undo just deletes the copy, so it has no undo-destination;
+                        // a Move's undo relocates the item back to where it came from.
+                        UndoDestination = isMove ? job.Source : null,
                     });
                 }
             }
             catch (OperationCanceledException)
             {
                 job.Status = FileOpJobStatus.Cancelled;
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Cancelled,
-                });
+                AddResult(Outcome(job, FileItemResultStatus.Cancelled));
             }
             catch (Exception ex)
             {
                 job.Status = FileOpJobStatus.Failed;
                 job.ErrorMessage = ex.Message;
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
+                AddResult(Outcome(job, FileItemResultStatus.Failed, ex.Message));
             }
         });
 
-        if (undoPairs.Count > 0)
+        if (completed.Count > 0)
         {
-            _undoStack.Push(new MoveUndoEntry
-            {
-                OperationId = opId,
-                Timestamp = DateTimeOffset.UtcNow,
-                OriginalKind = FileOpKind.Move,
-                Pairs = undoPairs,
-                Description = $"Moved {undoPairs.Count} item(s)",
-            });
+            _undoStack.Push(isMove
+                ? new MoveUndoEntry
+                {
+                    OperationId = opId,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    OriginalKind = FileOpKind.Move,
+                    Pairs = completed.Select(j => (j.Source, j.Destination)).ToList(),
+                    Description = $"Moved {completed.Count} item(s)",
+                }
+                : new CopyUndoEntry
+                {
+                    OperationId = opId,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    OriginalKind = FileOpKind.Copy,
+                    CopiedPaths = completed.Select(j => j.Destination).ToList(),
+                    Description = $"Copied {completed.Count} item(s)",
+                });
         }
 
-        var status = BuildFinalStatus(results);
+        var status = FileOpHelpers.BuildFinalStatus(results);
         var finalResult = new FileOpResult
         {
-            OperationId = opId, Kind = FileOpKind.Move,
+            OperationId = opId, Kind = kind,
             Status = status, ItemResults = results,
         };
         EmitProgress(opId, status, scan.TotalFileCount, scan.TotalFileCount,
@@ -370,15 +260,12 @@ public sealed class FileOperationService : IDisposable
                 new VfsPath(job.Destination.Scheme, job.Destination.ParentValue),
                 job.Destination.FileName, ct);
 
-            // The folder's children are relocated by their own jobs, which are
-            // scanned depth-first (see ScanPathAsync) and therefore run before this
-            // folder job within the same destination volume. Remove the now-empty
-            // source directory so a Move doesn't leave the original tree behind.
-            // Delete NON-recursively and only when the source is genuinely empty:
-            // the move scan skips hidden entries (EnumerateOptions.IncludeHidden
-            // defaults to false), so a recursive delete here could destroy files
-            // that were never moved. A non-empty source (leftover hidden files, or
-            // a skipped/failed child) simply leaves the folder in place.
+            // The folder's children are relocated by their own jobs (scanned depth-first, so
+            // they run before this folder job within the same destination volume). Remove the
+            // now-empty source directory so a Move doesn't leave the original tree behind —
+            // but ONLY when the provider exposes a native path AND the directory is genuinely
+            // empty. A non-empty source (leftover hidden files, or a skipped/failed child) is
+            // left in place rather than recursively deleted, so nothing that wasn't moved is lost.
             var srcNative = sourceProvider.ResolveEffectivePath(job.Source);
             if (srcNative is not null && Directory.Exists(srcNative)
                 && !Directory.EnumerateFileSystemEntries(srcNative).Any())
@@ -412,128 +299,6 @@ public sealed class FileOperationService : IDisposable
             if (mutator is not null)
                 await mutator.DeleteAsync(job.Source, toTrash: false, ct);
         }
-    }
-
-    // ── Copy ──────────────────────────────────────────────────────────────
-
-    private async Task<FileOpResult> ExecuteCopyAsync(CopyRequest request, CancellationTokenSource opCts)
-    {
-        var ct = opCts.Token;
-        var scan = await PreScanCopyAsync(request.Sources, request.Destination, ct);
-        var opId = scan.Jobs.Count > 0 ? scan.Jobs[0].OperationId : Guid.NewGuid().ToString("N")[..12];
-        var results = new List<FileItemResult>();
-        var copiedPaths = new List<VfsPath>();
-
-        // Jobs on different volumes run concurrently (ExecuteByVolumeAsync), so every
-        // mutation of the shared result/copied-path lists is serialized through this gate.
-        var sync = new object();
-        void AddResult(FileItemResult r) { lock (sync) results.Add(r); }
-
-        var bytesBefore = BuildBytesBeforeMap(scan.Jobs);
-        EmitProgress(opId, FileOpStatus.Scanning, 0, scan.TotalFileCount, 0, scan.TotalSize, "");
-
-        using var sticky = new StickyConflictResolver(_conflictHandler);
-
-        await ExecuteByVolumeAsync(scan.JobsByVolume, ct, async (job, volumeSem, fileIndex) =>
-        {
-            if (ct.IsCancellationRequested)
-            {
-                // Stop gracefully: record this job as cancelled and let the batch drain so
-                // items already completed still get an undo entry (review #2). Throwing here
-                // (the old behavior) unwound before the undo-stack push below.
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Cancelled,
-                });
-                return;
-            }
-            EmitProgress(opId, FileOpStatus.Running, fileIndex, scan.TotalFileCount,
-                bytesBefore[job], scan.TotalSize, job.Source.FileName, job.VolumeKey);
-
-            try
-            {
-                var resolved = await HandleConflictIfNeeded(job, sticky, fileIndex, scan.TotalFileCount, ct);
-                if (resolved == ConflictResolution.Cancel)
-                {
-                    job.Status = FileOpJobStatus.Cancelled;
-                    AddResult(new FileItemResult
-                    {
-                        Source = job.Source, Destination = job.Destination,
-                        Status = FileItemResultStatus.Cancelled,
-                    });
-                    opCts.Cancel();
-                    return;
-                }
-                if (resolved == ConflictResolution.No)
-                {
-                    job.Status = FileOpJobStatus.Skipped;
-                    AddResult(new FileItemResult
-                    {
-                        Source = job.Source, Destination = job.Destination,
-                        Status = FileItemResultStatus.Skipped,
-                    });
-                    return;
-                }
-
-                await CopyFileAsync(job, ct);
-
-                job.Status = FileOpJobStatus.Completed;
-                lock (sync)
-                {
-                    copiedPaths.Add(job.Destination);
-                    results.Add(new FileItemResult
-                    {
-                        Source = job.Source, Destination = job.Destination,
-                        Status = FileItemResultStatus.Success,
-                        UndoSource = job.Destination,
-                    });
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                job.Status = FileOpJobStatus.Cancelled;
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Cancelled,
-                });
-            }
-            catch (Exception ex)
-            {
-                job.Status = FileOpJobStatus.Failed;
-                job.ErrorMessage = ex.Message;
-                AddResult(new FileItemResult
-                {
-                    Source = job.Source, Destination = job.Destination,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
-            }
-        });
-
-        if (copiedPaths.Count > 0)
-        {
-            _undoStack.Push(new CopyUndoEntry
-            {
-                OperationId = opId,
-                Timestamp = DateTimeOffset.UtcNow,
-                OriginalKind = FileOpKind.Copy,
-                CopiedPaths = copiedPaths,
-                Description = $"Copied {copiedPaths.Count} item(s)",
-            });
-        }
-
-        var status = BuildFinalStatus(results);
-        var finalResult = new FileOpResult
-        {
-            OperationId = opId, Kind = FileOpKind.Copy,
-            Status = status, ItemResults = results,
-        };
-        EmitProgress(opId, status, scan.TotalFileCount, scan.TotalFileCount,
-            scan.TotalSize, scan.TotalSize, "");
-
-        return finalResult;
     }
 
     private async Task CopyFileAsync(FileOpJob job, CancellationToken ct)
@@ -582,7 +347,7 @@ public sealed class FileOperationService : IDisposable
         await readStream.CopyToAsync(writeStream, _copyBufferSize, ct);
     }
 
-    // ── Rename ────────────────────────────────────────────────────────────
+    // ── Rename ─────────────────────────────────────────────────────────────
 
     private async Task<FileOpResult> ExecuteRenameAsync(RenameRequest request, CancellationToken ct)
     {
@@ -651,7 +416,7 @@ public sealed class FileOperationService : IDisposable
         }
     }
 
-    // ── Delete / Trash ────────────────────────────────────────────────────
+    // ── Delete / Trash ─────────────────────────────────────────────────────
 
     private async Task<FileOpResult> ExecuteDeleteAsync(DeleteRequest request, CancellationToken ct)
     {
@@ -721,7 +486,7 @@ public sealed class FileOperationService : IDisposable
             });
         }
 
-        var status = BuildFinalStatus(results);
+        var status = FileOpHelpers.BuildFinalStatus(results);
         var finalResult = new FileOpResult
         {
             OperationId = opId, Kind = FileOpKind.Delete,
@@ -732,7 +497,7 @@ public sealed class FileOperationService : IDisposable
         return finalResult;
     }
 
-    // ── Undo ──────────────────────────────────────────────────────────────
+    // ── Undo ───────────────────────────────────────────────────────────────
 
     private async Task<FileOpResult> ExecuteUndoAsync(UndoRequest request, CancellationToken ct)
     {
@@ -747,324 +512,10 @@ public sealed class FileOperationService : IDisposable
                 ErrorMessage = "Nothing to undo.",
             };
 
-        return entry switch
-        {
-            MoveUndoEntry e => await UndoMoveAsync(e, ct),
-            CopyUndoEntry e => await UndoCopyAsync(e, ct),
-            RenameUndoEntry e => await UndoRenameAsync(e, ct),
-            TrashUndoEntry e => await UndoTrashAsync(e, ct),
-            _ => throw new InvalidOperationException($"Unknown undo entry type: {entry.GetType().Name}")
-        };
+        return await _undoExecutor.ExecuteAsync(entry, ct);
     }
 
-    private async Task<FileOpResult> UndoMoveAsync(MoveUndoEntry entry, CancellationToken ct)
-    {
-        var results = new List<FileItemResult>();
-        int idx = 0;
-
-        foreach (var (source, destination) in entry.Pairs)
-        {
-            ct.ThrowIfCancellationRequested();
-            EmitProgress(entry.OperationId, FileOpStatus.Running, idx, entry.Pairs.Count, 0, 0, destination.FileName);
-
-            try
-            {
-                var provider = _vfs.GetProvider(source);
-                var parentPath = new VfsPath(source.Scheme, source.ParentValue);
-                var mutator = await provider.GetMutatorAsync(parentPath, ct);
-
-                if (mutator is null)
-                    throw new InvalidOperationException($"Cannot undo move: {source}");
-
-                // Don't silently overwrite a file recreated at the original location since
-                // the move — fail the undo of this item instead of clobbering (review #11).
-                if (await TryResolveAsync(source, ct) is not null)
-                    throw new IOException(
-                        $"'{source.FileName}' already exists at its original location; not overwriting on undo.");
-
-                // Reverse: move from destination back to source
-                var reverseJob = new FileOpJob
-                {
-                    OperationId = entry.OperationId,
-                    Kind = FileOpKind.Move,
-                    Source = destination,
-                    Destination = source,
-                    VolumeKey = _vfs.GetProvider(source).GetVolumeKey(source),
-                };
-                await MoveFileAsync(reverseJob, ct);
-
-                results.Add(new FileItemResult
-                {
-                    Source = destination, Destination = source,
-                    Status = FileItemResultStatus.Success,
-                });
-            }
-            catch (Exception ex)
-            {
-                results.Add(new FileItemResult
-                {
-                    Source = destination, Destination = source,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
-            }
-
-            idx++;
-        }
-
-        return new FileOpResult
-        {
-            OperationId = entry.OperationId, Kind = FileOpKind.Undo,
-            Status = BuildFinalStatus(results), ItemResults = results,
-        };
-    }
-
-    private async Task<FileOpResult> UndoCopyAsync(CopyUndoEntry entry, CancellationToken ct)
-    {
-        var results = new List<FileItemResult>();
-        int idx = 0;
-
-        foreach (var copiedPath in entry.CopiedPaths)
-        {
-            ct.ThrowIfCancellationRequested();
-            EmitProgress(entry.OperationId, FileOpStatus.Running, idx, entry.CopiedPaths.Count, 0, 0, copiedPath.FileName);
-
-            try
-            {
-                var provider = _vfs.GetProvider(copiedPath);
-                var parentPath = new VfsPath(copiedPath.Scheme, copiedPath.ParentValue);
-                var mutator = await provider.GetMutatorAsync(parentPath, ct);
-
-                if (mutator is null)
-                    throw new InvalidOperationException($"Cannot undo copy: {copiedPath}");
-
-                await mutator.DeleteAsync(copiedPath, toTrash: false, ct);
-
-                results.Add(new FileItemResult
-                {
-                    Source = copiedPath, Destination = null,
-                    Status = FileItemResultStatus.Success,
-                });
-            }
-            catch (Exception ex)
-            {
-                results.Add(new FileItemResult
-                {
-                    Source = copiedPath, Destination = null,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
-            }
-
-            idx++;
-        }
-
-        return new FileOpResult
-        {
-            OperationId = entry.OperationId, Kind = FileOpKind.Undo,
-            Status = BuildFinalStatus(results), ItemResults = results,
-        };
-    }
-
-    private async Task<FileOpResult> UndoRenameAsync(RenameUndoEntry entry, CancellationToken ct)
-    {
-        var results = new List<FileItemResult>();
-
-        foreach (var (currentPath, originalPath) in entry.Pairs)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            try
-            {
-                var provider = _vfs.GetProvider(currentPath);
-                var parentPath = new VfsPath(currentPath.Scheme, currentPath.ParentValue);
-                var mutator = await provider.GetMutatorAsync(parentPath, ct);
-
-                if (mutator is null)
-                    throw new InvalidOperationException($"Cannot undo rename: {currentPath}");
-
-                await mutator.RenameAsync(currentPath, originalPath.FileName, ct);
-
-                results.Add(new FileItemResult
-                {
-                    Source = currentPath, Destination = originalPath,
-                    Status = FileItemResultStatus.Success,
-                });
-            }
-            catch (Exception ex)
-            {
-                results.Add(new FileItemResult
-                {
-                    Source = currentPath, Destination = originalPath,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
-            }
-        }
-
-        return new FileOpResult
-        {
-            OperationId = entry.OperationId, Kind = FileOpKind.Undo,
-            Status = BuildFinalStatus(results), ItemResults = results,
-        };
-    }
-
-    private async Task<FileOpResult> UndoTrashAsync(TrashUndoEntry entry, CancellationToken ct)
-    {
-        var results = new List<FileItemResult>();
-
-        foreach (var (original, trashPath) in entry.Pairs)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            try
-            {
-                // Don't clobber a file recreated at the original location while the item
-                // sat in the trash — fail this restore instead of overwriting (review #11).
-                if (await TryResolveAsync(original, ct) is not null)
-                    throw new IOException(
-                        $"'{original.FileName}' already exists at its original location; not overwriting on undo.");
-
-                // Restore from trash: move trashPath back to original location
-                var reverseJob = new FileOpJob
-                {
-                    OperationId = entry.OperationId,
-                    Kind = FileOpKind.Move,
-                    Source = trashPath,
-                    Destination = original,
-                    VolumeKey = _vfs.GetProvider(original).GetVolumeKey(original),
-                };
-                await MoveFileAsync(reverseJob, ct);
-
-                results.Add(new FileItemResult
-                {
-                    Source = trashPath, Destination = original,
-                    Status = FileItemResultStatus.Success,
-                });
-            }
-            catch (Exception ex)
-            {
-                results.Add(new FileItemResult
-                {
-                    Source = trashPath, Destination = original,
-                    Status = FileItemResultStatus.Failed,
-                    ErrorMessage = ex.Message,
-                });
-            }
-        }
-
-        return new FileOpResult
-        {
-            OperationId = entry.OperationId, Kind = FileOpKind.Undo,
-            Status = BuildFinalStatus(results), ItemResults = results,
-        };
-    }
-
-    // ── Volume-parallel execution ─────────────────────────────────────────
-
-    private async Task ExecuteByVolumeAsync(
-        IReadOnlyDictionary<string, IReadOnlyList<FileOpJob>> jobsByVolume,
-        CancellationToken ct,
-        Func<FileOpJob, SemaphoreSlim, int, Task> executeJob)
-    {
-        var volumeTasks = new List<Task>();
-
-        foreach (var (volumeKey, volumeJobs) in jobsByVolume)
-        {
-            var sem = _volumeQueues.GetOrAdd(volumeKey, _ => new SemaphoreSlim(1, 1));
-            var volumeTask = Task.Run(async () =>
-            {
-                int fileIndex = 0;
-                foreach (var job in volumeJobs)
-                {
-                    // Drain gracefully on cancellation rather than throwing out of the
-                    // volume worker, so the caller still records undo entries for the work
-                    // that completed before the cancel (review #2).
-                    if (ct.IsCancellationRequested) break;
-                    try
-                    {
-                        await sem.WaitAsync(ct);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    try
-                    {
-                        await executeJob(job, sem, fileIndex);
-                    }
-                    finally
-                    {
-                        sem.Release();
-                    }
-                    fileIndex++;
-                }
-            }, ct);
-
-            volumeTasks.Add(volumeTask);
-        }
-
-        await Task.WhenAll(volumeTasks);
-    }
-
-    // ── Conflict handling ─────────────────────────────────────────────────
-
-    private async Task<ConflictResolution> HandleConflictIfNeeded(
-        FileOpJob job,
-        StickyConflictResolver sticky,
-        int fileIndex,
-        int totalFiles,
-        CancellationToken ct)
-    {
-        if (job.Kind is not (FileOpKind.Copy or FileOpKind.Move))
-            return ConflictResolution.Yes;
-
-        // Resolve the destination once: null means it doesn't exist (no conflict);
-        // otherwise reuse the same node for the conflict dialog's size/modified fields
-        // instead of resolving it a second time.
-        var destNode = await TryResolveAsync(job.Destination, ct);
-        if (destNode is null)
-            return ConflictResolution.Yes;
-
-        var sourceProvider = _vfs.GetProvider(job.Source);
-        var sourceNode = await sourceProvider.ResolveAsync(job.Source, ct);
-
-        var scope = new ConflictScope
-        {
-            FileIndex = fileIndex,
-            TotalFiles = totalFiles,
-            OperationKind = job.Kind,
-        };
-
-        return await sticky.ResolveConflictAsync(
-            job.Source, job.Destination,
-            sourceNode.Size, destNode.Size,
-            sourceNode.Modified, destNode.Modified,
-            scope, ct);
-    }
-
-    /// <summary>
-    /// Resolves a path, returning null if it genuinely does not exist. Any OTHER failure
-    /// (permission, IO, a locked file) propagates: treating it as "does not exist" would
-    /// skip the conflict prompt and silently overwrite the destination.
-    /// </summary>
-    private async Task<IVfsNode?> TryResolveAsync(VfsPath path, CancellationToken ct)
-    {
-        try
-        {
-            return await _vfs.GetProvider(path).ResolveAsync(path, ct);
-        }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
-        catch (DirectoryNotFoundException)
-        {
-            return null;
-        }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
+    // ── Helpers ────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Precomputes cumulative bytes-before for every job in a single pass (review #16).
@@ -1083,41 +534,17 @@ public sealed class FileOperationService : IDisposable
         return map;
     }
 
-    private static FileOpStatus BuildFinalStatus(List<FileItemResult> results)
-    {
-        if (results.All(r => r.Status == FileItemResultStatus.Success))
-            return FileOpStatus.Completed;
-        if (results.All(r => r.Status is FileItemResultStatus.Cancelled or FileItemResultStatus.Skipped))
-            return FileOpStatus.Cancelled;
-        if (results.Any(r => r.Status == FileItemResultStatus.Failed))
-            return FileOpStatus.PartiallyCompleted;
-        return FileOpStatus.Completed;
-    }
-
     private void EmitProgress(
         string opId, FileOpStatus status, int current, int total,
         long bytesTransferred, long totalBytes, string currentFile,
         string? volumeKey = null, string? message = null)
-    {
-        _progressSubject.OnNext(new FileOpProgress
-        {
-            OperationId = opId,
-            Status = status,
-            CurrentFileIndex = current,
-            TotalFiles = total,
-            BytesTransferred = bytesTransferred,
-            TotalBytes = totalBytes,
-            CurrentFileName = currentFile,
-            VolumeKey = volumeKey,
-            Message = message,
-        });
-    }
+        => _progressSubject.OnNext(FileOpHelpers.MakeProgress(
+            opId, status, current, total, bytesTransferred, totalBytes, currentFile, volumeKey, message));
 
     public void Dispose()
     {
         _cts?.Dispose();
         _progressSubject.Dispose();
-        foreach (var sem in _volumeQueues.Values)
-            sem.Dispose();
+        _volumes.Dispose();
     }
 }
