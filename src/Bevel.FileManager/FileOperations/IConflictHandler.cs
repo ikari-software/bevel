@@ -6,19 +6,29 @@ namespace Bevel.FileManager.FileOperations;
 /// Callback for resolving file conflicts when a destination already exists (FM-133).
 /// Implement this to show the Win2000-style "Confirm File Replace" dialog.
 /// </summary>
+/// <remarks>
+/// Async by contract (review AD6): the interactive dialog must marshal to the UI thread and
+/// await the user's click. The engine calls this from thread-pool volume workers, so a
+/// synchronous signature would force <c>Dispatcher.Invoke(...).Result</c> blocking — and several
+/// volume workers blocking the UI thread at once deadlocks. Returning a <see cref="ValueTask"/>
+/// lets the handler suspend the worker instead of blocking a thread.
+/// </remarks>
 public interface IConflictHandler
 {
     /// <summary>
-    /// Called when a destination file already exists during copy or move.
+    /// Called when a destination file already exists during copy or move. Implementations that
+    /// prompt the user must honor <paramref name="ct"/> (return/throw on cancellation) so a
+    /// cancelled operation doesn't leave a dialog waiting on a click that never comes.
     /// </summary>
-    ConflictResolution ResolveConflict(
+    ValueTask<ConflictResolution> ResolveConflictAsync(
         VfsPath source,
         VfsPath destination,
         long? sourceSize,
         long? destSize,
         DateTimeOffset? sourceModified,
         DateTimeOffset? destModified,
-        ConflictScope scope);
+        ConflictScope scope,
+        CancellationToken ct);
 }
 
 /// <summary>
@@ -56,48 +66,57 @@ public sealed record ConflictScope
 }
 
 /// <summary>
-/// A resolver that applies sticky YesToAll / NoToAll decisions across
-/// subsequent conflicts in the same operation.
+/// A resolver that applies sticky YesToAll / NoToAll decisions across subsequent conflicts in
+/// the same operation, and serializes prompts so at most one dialog is open at a time.
 /// </summary>
-public sealed class StickyConflictResolver : IConflictHandler
+/// <remarks>
+/// Called from volume-parallel workers within one operation. The old synchronous version held a
+/// <c>lock</c> across the inner call; an async inner handler can't be awaited under a <c>lock</c>,
+/// so mutual exclusion is a <see cref="SemaphoreSlim"/> instead (review #9). Serializing here is
+/// also what keeps two volume workers from popping two "Confirm File Replace" dialogs at once.
+/// </remarks>
+public sealed class StickyConflictResolver : IConflictHandler, IDisposable
 {
     private readonly IConflictHandler _inner;
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private ConflictResolution? _sticky;
-
-    // Called from volume-parallel workers within one operation, so the sticky state is
-    // guarded against concurrent read/write (review #9).
-    private readonly object _gate = new();
 
     public StickyConflictResolver(IConflictHandler inner)
     {
         _inner = inner;
     }
 
-    public ConflictResolution ResolveConflict(
+    public async ValueTask<ConflictResolution> ResolveConflictAsync(
         VfsPath source,
         VfsPath destination,
         long? sourceSize,
         long? destSize,
         DateTimeOffset? sourceModified,
         DateTimeOffset? destModified,
-        ConflictScope scope)
+        ConflictScope scope,
+        CancellationToken ct)
     {
-        lock (_gate)
+        await _gate.WaitAsync(ct);
+        try
         {
             if (_sticky is ConflictResolution.Yes or ConflictResolution.YesToAll)
                 return ConflictResolution.Yes;
             if (_sticky is ConflictResolution.No or ConflictResolution.NoToAll)
                 return ConflictResolution.No;
 
-            var result = _inner.ResolveConflict(source, destination, sourceSize, destSize,
-                sourceModified, destModified, scope);
+            var result = await _inner.ResolveConflictAsync(source, destination, sourceSize, destSize,
+                sourceModified, destModified, scope, ct);
 
             if (result is ConflictResolution.YesToAll or ConflictResolution.NoToAll)
                 _sticky = result;
 
             return result;
         }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
-    public void Reset() { lock (_gate) _sticky = null; }
+    public void Dispose() => _gate.Dispose();
 }

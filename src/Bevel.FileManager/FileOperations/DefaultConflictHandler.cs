@@ -9,8 +9,9 @@ namespace Bevel.FileManager.FileOperations;
 /// </summary>
 public sealed class DefaultConflictHandler : IConflictHandler
 {
-    public ConflictResolution ResolveConflict(
+    public ValueTask<ConflictResolution> ResolveConflictAsync(
         VfsPath source, VfsPath destination, long? sourceSize, long? destSize,
-        DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope)
-        => ConflictResolution.Cancel;
+        DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope,
+        CancellationToken ct)
+        => new(ConflictResolution.Cancel);
 }

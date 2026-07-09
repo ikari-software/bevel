@@ -247,7 +247,7 @@ public sealed class FileOperationService : IDisposable
         var bytesBefore = BuildBytesBeforeMap(scan.Jobs);
         EmitProgress(opId, FileOpStatus.Scanning, 0, scan.TotalFileCount, 0, scan.TotalSize, "");
 
-        var sticky = new StickyConflictResolver(_conflictHandler);
+        using var sticky = new StickyConflictResolver(_conflictHandler);
 
         await ExecuteByVolumeAsync(scan.JobsByVolume, ct, async (job, volumeSem, fileIndex) =>
         {
@@ -437,7 +437,7 @@ public sealed class FileOperationService : IDisposable
         var bytesBefore = BuildBytesBeforeMap(scan.Jobs);
         EmitProgress(opId, FileOpStatus.Scanning, 0, scan.TotalFileCount, 0, scan.TotalSize, "");
 
-        var sticky = new StickyConflictResolver(_conflictHandler);
+        using var sticky = new StickyConflictResolver(_conflictHandler);
 
         await ExecuteByVolumeAsync(scan.JobsByVolume, ct, async (job, volumeSem, fileIndex) =>
         {
@@ -1041,11 +1041,11 @@ public sealed class FileOperationService : IDisposable
             OperationKind = job.Kind,
         };
 
-        return sticky.ResolveConflict(
+        return await sticky.ResolveConflictAsync(
             job.Source, job.Destination,
             sourceNode.Size, destNode.Size,
             sourceNode.Modified, destNode.Modified,
-            scope);
+            scope, ct);
     }
 
     /// <summary>

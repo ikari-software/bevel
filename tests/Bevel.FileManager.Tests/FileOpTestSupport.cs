@@ -37,12 +37,13 @@ public sealed class StubConflictHandler : IConflictHandler
 
     public StubConflictHandler(ConflictResolution resolution = ConflictResolution.Yes) => _resolution = resolution;
 
-    public ConflictResolution ResolveConflict(
+    public ValueTask<ConflictResolution> ResolveConflictAsync(
         VfsPath source, VfsPath destination, long? sourceSize, long? destSize,
-        DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope)
+        DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope,
+        CancellationToken ct)
     {
         Calls++;
-        return _resolution;
+        return new ValueTask<ConflictResolution>(_resolution);
     }
 }
 
