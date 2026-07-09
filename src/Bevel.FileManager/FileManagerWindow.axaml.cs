@@ -500,25 +500,16 @@ public partial class FileManagerWindow : BevelWindow
         base.OnClosed(e);
     }
 
-    private async void TreeView_SelectedItemChanged(object? sender, SelectionChangedEventArgs e)
+    private void TreeView_SelectedItemChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (TreeView.SelectedItem is not TreeViewItem node || node.Tag is not VfsPath path)
             return;
         if (_vfsRoot is null) return;
 
-        // Resolve computer:// volume paths to their file:// mount path
-        if (path.Scheme == "computer" && !path.IsRoot)
-        {
-            try
-            {
-                var node_ = await _vfsRoot.ResolveAsync(path, CancellationToken.None);
-                if (node_.ExtraColumns.TryGetValue("MountPath", out var mountPath) && mountPath is string mp)
-                {
-                    path = new VfsPath("file", mp);
-                }
-            }
-            catch { }
-        }
+        // A virtual volume node (e.g. a computer:// drive) exposes the native mount it stands
+        // for; navigate into that via the file provider rather than the virtual namespace.
+        if (path.Scheme != "file" && _vfsRoot.GetProvider(path).ResolveEffectivePath(path) is { } mount)
+            path = new VfsPath("file", mount);
 
         _controller?.NavigateTo(path);
     }

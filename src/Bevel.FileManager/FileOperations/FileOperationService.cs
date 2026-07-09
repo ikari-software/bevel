@@ -196,7 +196,7 @@ public sealed class FileOperationService : IDisposable
                 folderCount += folders;
             }
 
-            var volumeKey = GetVolumeKey(destination);
+            var volumeKey = _vfs.GetProvider(destination).GetVolumeKey(destination);
             jobs.Add(new FileOpJob
             {
                 OperationId = opId,
@@ -213,7 +213,7 @@ public sealed class FileOperationService : IDisposable
             var size = node.Size ?? 0;
             totalSize += size;
             var destChild = VfsPath.Combine(destination, source.FileName);
-            var volumeKey = GetVolumeKey(destination);
+            var volumeKey = _vfs.GetProvider(destination).GetVolumeKey(destination);
 
             jobs.Add(new FileOpJob
             {
@@ -379,34 +379,29 @@ public sealed class FileOperationService : IDisposable
             // defaults to false), so a recursive delete here could destroy files
             // that were never moved. A non-empty source (leftover hidden files, or
             // a skipped/failed child) simply leaves the folder in place.
-            if (job.Source.Scheme == "file")
+            var srcNative = sourceProvider.ResolveEffectivePath(job.Source);
+            if (srcNative is not null && Directory.Exists(srcNative)
+                && !Directory.EnumerateFileSystemEntries(srcNative).Any())
             {
-                var srcFull = job.Source.Value;
-                if (Directory.Exists(srcFull) && !Directory.EnumerateFileSystemEntries(srcFull).Any())
-                    Directory.Delete(srcFull, recursive: false);
+                Directory.Delete(srcNative, recursive: false);
             }
         }
         else
         {
-            // For local file moves within same volume, use File.Move for efficiency.
-            if (job.Source.Scheme == "file" && job.Destination.Scheme == "file")
+            // Fast path: a native atomic rename, but only when the source provider says source
+            // and destination share one volume (same disk). Everything else — cross-volume or
+            // cross-scheme — falls through to the explicit copy+delete below.
+            if (sourceProvider.CanFastMoveWithin(job.Source, job.Destination))
             {
-                var srcPath = job.Source.Value;
-                var dstPath = job.Destination.Value;
+                var srcNative = sourceProvider.ResolveEffectivePath(job.Source)!;
+                var dstNative = _vfs.GetProvider(job.Destination).ResolveEffectivePath(job.Destination)!;
 
-                var srcDir = Path.GetDirectoryName(srcPath) ?? "";
-                var dstDir = Path.GetDirectoryName(dstPath) ?? "";
+                var dstParent = Path.GetDirectoryName(dstNative);
+                if (dstParent is not null && !Directory.Exists(dstParent))
+                    Directory.CreateDirectory(dstParent);
 
-                // Same volume = rename (fast), cross-volume = copy+delete
-                if (string.Equals(Path.GetPathRoot(srcPath), Path.GetPathRoot(dstPath), StringComparison.OrdinalIgnoreCase))
-                {
-                    var dstParent = Path.GetDirectoryName(dstPath);
-                    if (dstParent is not null && !Directory.Exists(dstParent))
-                        Directory.CreateDirectory(dstParent);
-
-                    File.Move(srcPath, dstPath, overwrite: true);
-                    return;
-                }
+                File.Move(srcNative, dstNative, overwrite: true);
+                return;
             }
 
             // Cross-volume or cross-scheme: copy + delete
@@ -794,7 +789,7 @@ public sealed class FileOperationService : IDisposable
                     Kind = FileOpKind.Move,
                     Source = destination,
                     Destination = source,
-                    VolumeKey = GetVolumeKey(source),
+                    VolumeKey = _vfs.GetProvider(source).GetVolumeKey(source),
                 };
                 await MoveFileAsync(reverseJob, ct);
 
@@ -937,7 +932,7 @@ public sealed class FileOperationService : IDisposable
                     Kind = FileOpKind.Move,
                     Source = trashPath,
                     Destination = original,
-                    VolumeKey = GetVolumeKey(original),
+                    VolumeKey = _vfs.GetProvider(original).GetVolumeKey(original),
                 };
                 await MoveFileAsync(reverseJob, ct);
 
@@ -1070,16 +1065,6 @@ public sealed class FileOperationService : IDisposable
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
-
-    private static string GetVolumeKey(VfsPath path)
-    {
-        if (path.Scheme == "file")
-        {
-            var root = Path.GetPathRoot(path.Value);
-            return $"file:{root ?? "/"}";
-        }
-        return path.Scheme;
-    }
 
     /// <summary>
     /// Precomputes cumulative bytes-before for every job in a single pass (review #16).

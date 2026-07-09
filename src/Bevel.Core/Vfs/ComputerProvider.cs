@@ -79,6 +79,24 @@ public sealed class ComputerProvider : IVfsProvider
     public NameValidationResult ValidateName(VfsPath folder, string proposedName)
         => NameValidationResult.Fail("Cannot rename items in Computer.");
 
+    /// <summary>
+    /// Translates a volume node to the native mount path it stands for (e.g. the
+    /// "Local Disk (C:)" node → "C:\"), so the shell can navigate into it via the file provider
+    /// without reaching into ExtraColumns. The root ("My Computer") and unmatched/absent volumes
+    /// have no effective path.
+    /// </summary>
+    public string? ResolveEffectivePath(VfsPath path)
+    {
+        if (path.IsRoot) return null;
+        var volumeName = path.FileName;
+        DriveInfo[] drives;
+        try { drives = DriveInfo.GetDrives(); }
+        catch { return null; }
+        var drive = drives.FirstOrDefault(d =>
+            GetVolumeDisplayName(d).Equals(volumeName, StringComparison.OrdinalIgnoreCase));
+        return drive?.RootDirectory.FullName;
+    }
+
     private static IVfsNode CreateVolumeNode(VfsPath path, DriveInfo drive)
     {
         var icon = drive.DriveType switch

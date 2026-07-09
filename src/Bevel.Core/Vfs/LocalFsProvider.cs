@@ -145,6 +145,29 @@ public sealed partial class LocalFsProvider : IVfsProvider
         return value;
     }
 
+    // ── Scheme-crossing helpers (review AD1) ──────────────────────────────────
+
+    /// <summary>One write-queue per physical volume (path root), so moves/copies to the same
+    /// disk run FIFO while different disks run in parallel.</summary>
+    public string GetVolumeKey(VfsPath path)
+        => $"file:{Path.GetPathRoot(GetFullPath(path)) ?? "/"}";
+
+    /// <summary>The file scheme IS the local filesystem, so the effective path is the mapped
+    /// native path.</summary>
+    public string? ResolveEffectivePath(VfsPath path) => GetFullPath(path);
+
+    /// <summary>A native <see cref="File.Move(string, string, bool)"/> is an atomic rename only
+    /// within one volume; across volumes it silently copies, which the engine would rather do
+    /// explicitly (with progress + undo). So claim the fast path only when the destination is
+    /// also local and shares the source's path root.</summary>
+    public bool CanFastMoveWithin(VfsPath source, VfsPath destination)
+    {
+        if (destination.Scheme != Scheme) return false;
+        var srcRoot = Path.GetPathRoot(GetFullPath(source));
+        var dstRoot = Path.GetPathRoot(GetFullPath(destination));
+        return string.Equals(srcRoot, dstRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static IVfsNode CreateNode(VfsPath vfsPath, string fullPath, FileSystemInfo? info = null)
     {
         info ??= Directory.Exists(fullPath) ? new DirectoryInfo(fullPath) : new FileInfo(fullPath);
