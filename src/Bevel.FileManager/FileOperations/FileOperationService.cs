@@ -46,6 +46,8 @@ public sealed class FileOperationService : IDisposable
     // aliased another window's op (review AD3-#9 / bevel-var). Each op now cancels only itself.
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new();
 
+    private bool _disposed;
+
     private readonly FileOpScanner _scanner;
     private readonly VolumeQueueExecutor _volumes = new();
     private readonly ConflictCoordinator _conflicts;
@@ -77,6 +79,7 @@ public sealed class FileOperationService : IDisposable
     /// </summary>
     public IFileOpHandle Begin(FileOpRequest request, CancellationToken externalCt = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
         var opId = Guid.NewGuid().ToString("N")[..12];
         var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
         _inFlight[opId] = cts;
@@ -556,20 +559,27 @@ public sealed class FileOperationService : IDisposable
         => _progressSubject.OnNext(FileOpHelpers.MakeProgress(
             opId, status, current, total, bytesTransferred, totalBytes, currentFile, volumeKey, message));
 
+    /// <summary>
+    /// Cancels any operations still running (they drain gracefully as Cancelled) and stops the
+    /// progress stream. Safe to call mid-operation (bevel-70g): each in-flight CTS is only
+    /// CANCELLED here — its <see cref="DispatchAsync"/> finally block stays the sole owner of
+    /// its disposal — and the subject is stopped with OnCompleted rather than Dispose, so a
+    /// draining operation's late EmitProgress is silently ignored instead of throwing
+    /// ObjectDisposedException into its Completion task. Idempotent; <see cref="Begin"/> throws
+    /// afterwards.
+    /// </summary>
     public void Dispose()
     {
-        // Cancel and dispose any operations still running when the service is torn down
-        // (e.g. a window closed mid-transfer).
+        if (Volatile.Read(ref _disposed)) return;
+        Volatile.Write(ref _disposed, true);
+
         foreach (var cts in _inFlight.Values)
         {
             try { cts.Cancel(); }
-            catch (ObjectDisposedException) { /* already finished */ }
-            cts.Dispose();
+            catch (ObjectDisposedException) { /* operation finished concurrently */ }
         }
-        _inFlight.Clear();
 
-        _progressSubject.Dispose();
-        _volumes.Dispose();
+        _progressSubject.OnCompleted();
     }
 }
 

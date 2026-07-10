@@ -433,6 +433,73 @@ public sealed class FileOperationServiceTests : IDisposable
         Assert.Contains(rA.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
     }
 
+    // ── Mid-operation disposal safety (bevel-70g) ─────────────────────────────
+
+    [Fact]
+    public async Task Dispose_while_an_operation_drains_completes_it_as_cancelled_without_faulting()
+    {
+        // The op parks in conflict resolution; Dispose cancels it and must let it drain: the
+        // final EmitProgress lands on a STOPPED (not disposed) subject, and the volume worker's
+        // semaphore Release must not hit a disposed semaphore — either would fault Completion.
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "new");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old");
+
+        var handler = new ParkingConflictHandler();
+        var svc = new FileOperationService(_vfs, handler);
+
+        var handle = svc.Begin(Copy("a.txt"));
+        await handler.Reached.Task;   // parked mid-operation
+        svc.Dispose();
+
+        var result = await handle.Completion; // must not throw
+        Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
+        Assert.Equal("old", await File.ReadAllTextAsync(Abs("dst", "a.txt"))); // never overwritten
+    }
+
+    [Fact]
+    public async Task Progress_stream_completes_on_Dispose_and_late_emissions_are_ignored()
+    {
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "new");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old");
+
+        var handler = new ParkingConflictHandler();
+        var svc = new FileOperationService(_vfs, handler);
+        var streamCompleted = false;
+        using var sub = svc.Progress.Subscribe(_ => { }, () => streamCompleted = true);
+
+        var handle = svc.Begin(Copy("a.txt"));
+        await handler.Reached.Task;
+        svc.Dispose();
+
+        Assert.True(streamCompleted);          // subscribers see a clean end-of-stream
+        var result = await handle.Completion;  // drain emits progress AFTER the stream stopped
+        Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
+    }
+
+    [Fact]
+    public void Begin_after_Dispose_throws()
+    {
+        var svc = NewService();
+        svc.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => svc.Begin(Copy("a.txt")));
+    }
+
+    [Fact]
+    public async Task Dispose_is_idempotent()
+    {
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "x");
+
+        var svc = NewService();
+        await svc.ExecuteAsync(Copy("a.txt"));
+
+        svc.Dispose();
+        var ex = Record.Exception(() => svc.Dispose());
+        Assert.Null(ex);
+    }
+
     private CopyRequest Copy(string name) => new()
     {
         Sources = new[] { P(name) },

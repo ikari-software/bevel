@@ -42,14 +42,6 @@ public partial class FileManagerWindow : BevelWindow
     {
         public required FileManagerController Controller { get; init; }
         public required Guid StripId { get; init; }
-
-        /// <summary>
-        /// Live handles of this tab's running file operations (bevel-c8g). Only touched on the
-        /// UI thread — added/removed by <see cref="RunWithProgressAsync"/>, cancelled by
-        /// <see cref="CloseTab"/> / <see cref="OnClosed"/> so closing a tab or the window stops
-        /// its transfers without disturbing any other tab's or window's operation.
-        /// </summary>
-        public List<IFileOpHandle> InFlightOps { get; } = new();
     }
 
     private readonly List<TabSession> _tabs = new();
@@ -350,12 +342,12 @@ public partial class FileManagerWindow : BevelWindow
     }
 
     /// <summary>
-    /// Closes <paramref name="session"/>'s tab, cancelling any of its still-running file
-    /// operations (bevel-c8g). Keeps at least one tab open: closing the last remaining tab is a
+    /// Closes <paramref name="session"/>'s tab, disposing its controller — which cancels the
+    /// tab's still-running file operations (they drain as Cancelled) and tears down its
+    /// FileOperationService (bevel-c8g / bevel-70g) — without touching any other tab's or
+    /// window's operations. Keeps at least one tab open: closing the last remaining tab is a
     /// no-op (Ctrl+W / the tab's close button do nothing then — closing the whole window is
-    /// still Cmd+W / Alt+F4 / File &gt; Close Window). Does not dispose the closed tab's
-    /// FileOperationService — nothing in this app disposes it for the main window either today,
-    /// so this isn't a regression, just an existing gap.
+    /// still Cmd+W / Alt+F4 / File &gt; Close Window).
     /// </summary>
     private void CloseTab(TabSession session)
     {
@@ -365,7 +357,7 @@ public partial class FileManagerWindow : BevelWindow
         if (idx < 0) return;
         var wasActive = session == _activeTab;
 
-        CancelInFlightOps(session);
+        session.Controller.Dispose();
 
         _tabs.RemoveAt(idx);
         TabStrip.RemoveTab(session.StripId);
@@ -498,22 +490,14 @@ public partial class FileManagerWindow : BevelWindow
         }
     }
 
-    /// <summary>
-    /// Cancels <paramref name="session"/>'s running file operations through their handles, so
-    /// only that tab's transfers stop (bevel-c8g). Snapshots the list: cancellation completes
-    /// each operation, whose runner continuation removes it from <see cref="TabSession.InFlightOps"/>.
-    /// </summary>
-    private static void CancelInFlightOps(TabSession session)
-    {
-        foreach (var op in session.InFlightOps.ToArray())
-            op.Cancel();
-    }
-
     protected override void OnClosed(EventArgs e)
     {
-        // Stop this window's transfers (every tab's) without touching other windows' operations.
+        // Dispose every tab's controller: cancels this window's transfers (they drain as
+        // Cancelled) and tears down each per-tab FileOperationService, without touching other
+        // windows' operations (bevel-70g). Covers tab 0's factory-created controller too — the
+        // window is its only owner.
         foreach (var tab in _tabs)
-            CancelInFlightOps(tab);
+            tab.Controller.Dispose();
 
         _treeCts?.Cancel();
         _treeCts?.Dispose();
@@ -880,32 +864,24 @@ public partial class FileManagerWindow : BevelWindow
     /// <summary>
     /// Controller operation runner: presents an already-running operation, showing a
     /// ProgressDialog for Copy/Move/Delete when they take longer than a beat so single-file ops
-    /// don't flash a modal. Cancel — the dialog's button, closing the op's tab, or closing the
-    /// window — goes through <paramref name="op"/>'s handle and stops only this operation
-    /// (bevel-c8g).
+    /// don't flash a modal. The dialog's Cancel button goes through <paramref name="op"/>'s
+    /// handle and stops only this operation (bevel-c8g); closing the op's tab or the window
+    /// disposes that tab's controller instead, which cancels every operation of its service
+    /// (bevel-70g).
     /// </summary>
     async System.Threading.Tasks.Task<FileOpResult> RunWithProgressAsync(
         FileOpRequest request, IFileOpHandle op)
     {
-        // The runner is only installed on the ACTIVE tab's controller and mutations dispatch on
-        // the UI thread, so the operation belongs to the tab that is active right now. Track it
-        // there for tab-close / window-close cancellation.
-        var session = _activeTab;
-        session?.InFlightOps.Add(op);
-        try
-        {
-            if (_controller is null || request is not (CopyRequest or MoveRequest or DeleteRequest))
-                return await op.Completion;
+        if (_controller is null || request is not (CopyRequest or MoveRequest or DeleteRequest))
+            return await op.Completion;
 
-            if (await System.Threading.Tasks.Task.WhenAny(
-                    op.Completion, System.Threading.Tasks.Task.Delay(ProgressDialogDelayMs)) == op.Completion)
-                return await op.Completion; // finished fast — no dialog
+        if (await System.Threading.Tasks.Task.WhenAny(
+                op.Completion, System.Threading.Tasks.Task.Delay(ProgressDialogDelayMs)) == op.Completion)
+            return await op.Completion; // finished fast — no dialog
 
-            var (from, to) = DescribeOp(request);
-            var dlg = new ProgressDialog(request, from, to);
-            return await dlg.AdoptAsync(_controller.Progress, op, this);
-        }
-        finally { session?.InFlightOps.Remove(op); }
+        var (from, to) = DescribeOp(request);
+        var dlg = new ProgressDialog(request, from, to);
+        return await dlg.AdoptAsync(_controller.Progress, op, this);
     }
 
     static (string From, string To) DescribeOp(FileOpRequest request) => request switch

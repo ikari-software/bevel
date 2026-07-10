@@ -15,7 +15,7 @@ namespace Bevel.FileManager;
 /// dependency and is unit-testable in isolation — the view pushes selection into it and reacts
 /// to <see cref="CurrentDirectoryChanged"/> / <see cref="NavigationStateChanged"/>.
 /// </summary>
-public sealed class FileManagerController
+public sealed class FileManagerController : IDisposable
 {
     private readonly VfsRoot _vfs;
     private readonly FileOperationService _fileOps;
@@ -188,6 +188,15 @@ public sealed class FileManagerController
 
         return await mutator.CreateFolderAsync(dir, name, ct);
     }
+
+    /// <summary>
+    /// Disposes the wrapped <see cref="FileOperationService"/>: this controller's in-flight
+    /// operations are cancelled (draining gracefully as Cancelled) and its progress stream
+    /// completes. Each controller owns exactly one service (per tab / per window), so the view
+    /// calls this when its tab or window closes (bevel-70g). Mutations afterwards throw
+    /// <see cref="ObjectDisposedException"/>; navigation state remains readable.
+    /// </summary>
+    public void Dispose() => _fileOps.Dispose();
 
     private async Task<FileOpResult> RunAsync(FileOpRequest request, CancellationToken ct)
     {

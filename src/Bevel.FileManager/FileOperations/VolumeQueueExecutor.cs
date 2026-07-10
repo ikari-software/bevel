@@ -8,8 +8,13 @@ namespace Bevel.FileManager.FileOperations;
 /// the same disk serialize while different disks run in parallel. On cancellation each volume
 /// worker drains gracefully (breaks the loop) rather than throwing, so the caller still records
 /// undo entries for the work that completed before the cancel (review #2).
+///
+/// Deliberately NOT disposable (bevel-70g): these semaphores never touch AvailableWaitHandle,
+/// so they hold no kernel handle and need no disposal — while disposing them during service
+/// teardown would make a still-draining worker's <c>sem.Release()</c> throw
+/// ObjectDisposedException and fault that operation's Completion task.
 /// </summary>
-internal sealed class VolumeQueueExecutor : IDisposable
+internal sealed class VolumeQueueExecutor
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _volumeQueues = new();
 
@@ -57,11 +62,5 @@ internal sealed class VolumeQueueExecutor : IDisposable
         }
 
         await Task.WhenAll(volumeTasks);
-    }
-
-    public void Dispose()
-    {
-        foreach (var sem in _volumeQueues.Values)
-            sem.Dispose();
     }
 }

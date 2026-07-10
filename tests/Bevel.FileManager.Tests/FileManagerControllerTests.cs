@@ -253,6 +253,21 @@ public sealed class FileManagerControllerTests : IDisposable
         Assert.Equal("old", await File.ReadAllTextAsync(Abs("dst", "a.txt"))); // never overwritten
     }
 
+    // ── Disposal (bevel-70g) ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task Disposing_the_controller_makes_further_mutations_throw()
+    {
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "x");
+
+        _controller.Dispose(); // tears down the wrapped service
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => _controller.CopyAsync(new[] { P("a.txt") }, P("dst")));
+        Assert.False(File.Exists(Abs("dst", "a.txt")));
+    }
+
     [Fact]
     public async Task External_token_still_cancels_when_a_runner_is_installed()
     {

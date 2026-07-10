@@ -1,6 +1,4 @@
-using System.Collections;
 using System.Diagnostics;
-using System.Reflection;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
@@ -10,11 +8,12 @@ using Xunit;
 namespace Bevel.FileManager.Tests;
 
 /// <summary>
-/// Headless tests for the per-window / per-tab file-operation cancel wiring (bevel-c8g): the
-/// window tracks each running operation's <see cref="IFileOpHandle"/> on the tab that started
-/// it, closing that tab or the window cancels only those operations, and the ProgressDialog
-/// renders only its own operation's progress events. Operations are parked deterministically
-/// via <see cref="ParkingConflictHandler"/> — released only by cancellation, never by timing.
+/// Headless tests for the per-window / per-tab file-operation cancel wiring (bevel-c8g /
+/// bevel-70g): closing a tab or the window disposes that tab's controller — cancelling its
+/// running operations and tearing down its FileOperationService — without disturbing any other
+/// tab's or window's work, and the ProgressDialog renders only its own operation's progress
+/// events. Operations are parked deterministically via <see cref="ParkingConflictHandler"/> —
+/// released only by cancellation, never by timing.
 /// </summary>
 public sealed class FileOpCancelWiringTests : IDisposable
 {
@@ -34,11 +33,6 @@ public sealed class FileOpCancelWiringTests : IDisposable
     }
 
     private VfsPath P(params string[] parts) => new("file", Path.Combine(new[] { _dir }.Concat(parts).ToArray()));
-
-    // ── helpers (mirrors TabbedBrowsingTests) ──────────────────────────────
-    private const BindingFlags NI = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public;
-    private static object? Field(object o, string name) => o.GetType().GetField(name, NI)!.GetValue(o);
-    private static object? Prop(object o, string name) => o.GetType().GetProperty(name, NI)!.GetValue(o);
 
     private (FileManagerWindow win, FileManagerController controller, ParkingConflictHandler handler) BuildWindow()
     {
@@ -64,33 +58,29 @@ public sealed class FileOpCancelWiringTests : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
-    /// <summary>The tab's tracked in-flight handles, via reflection (TabSession is private).</summary>
-    private static IList InFlightOps(FileManagerWindow win, int tabIndex)
-    {
-        var tabs = (IList)Field(win, "_tabs")!;
-        return (IList)Prop(tabs[tabIndex]!, "InFlightOps")!;
-    }
-
     // ── tab close ──────────────────────────────────────────────────────────
 
     [AvaloniaFact]
-    public void Closing_a_tab_cancels_that_tabs_in_flight_operation()
+    public async Task Closing_a_tab_cancels_its_in_flight_operation_and_disposes_its_service()
     {
         var (win, controller, handler) = BuildWindow();
 
         var task = controller.CopyAsync(new[] { P("a.txt") }, P("dst"));
         WaitUntil(() => handler.Reached.Task.IsCompleted);
-        Assert.Single(InFlightOps(win, 0));           // tracked on the tab that started it
 
         win.NewTab();                                  // tab 1 becomes active; tab 0's op keeps running
         Assert.False(task.IsCompleted);
 
-        win.CloseTabAt(0);                             // closing the op's tab cancels it
+        win.CloseTabAt(0);                             // closing the op's tab disposes its controller
         WaitUntil(() => task.IsCompleted);
 
-        var result = task.Result;
+        var result = await task;
         Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
         Assert.Equal("old", File.ReadAllText(Path.Combine(_dir, "dst", "a.txt"))); // never overwritten
+
+        // The closed tab's service is gone: further mutations on its controller throw.
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => controller.CopyAsync(new[] { P("a.txt") }, P("dst")));
     }
 
     // ── window close ───────────────────────────────────────────────────────
@@ -110,23 +100,6 @@ public sealed class FileOpCancelWiringTests : IDisposable
 
         var result = task.Result;
         Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
-    }
-
-    // ── completion untracks ────────────────────────────────────────────────
-
-    [AvaloniaFact]
-    public void A_completed_operation_is_removed_from_the_tabs_tracking_list()
-    {
-        var (win, controller, handler) = BuildWindow();
-
-        var task = controller.CopyAsync(new[] { P("a.txt") }, P("dst"));
-        WaitUntil(() => handler.Reached.Task.IsCompleted);
-        Assert.Single(InFlightOps(win, 0));
-
-        ((IFileOpHandle)InFlightOps(win, 0)[0]!).Cancel(); // any cancel path completes the op
-        WaitUntil(() => task.IsCompleted && InFlightOps(win, 0).Count == 0);
-
-        Assert.Empty(InFlightOps(win, 0));                 // runner's finally untracked it
     }
 
     // ── ProgressDialog renders only its own operation ──────────────────────
