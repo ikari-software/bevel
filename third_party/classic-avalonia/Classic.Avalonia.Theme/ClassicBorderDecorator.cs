@@ -157,6 +157,7 @@ public sealed class ClassicBorderDecorator : Decorator
         BackgroundProperty.Changed.AddClassHandler<ClassicBorderDecorator>(BorderBrushesChanged);
 
         AffectsRender<ClassicBorderDecorator>(BorderThicknessProperty, BorderStyleProperty);
+        AffectsRender<ClassicBorderDecorator>(EdgeRenderingProperty);
         AffectsArrange<ClassicBorderDecorator>(BorderThicknessProperty, BorderStyleProperty);
         AffectsMeasure<ClassicBorderDecorator>(BorderThicknessProperty, BorderStyleProperty);
         BorderStyleProperty.Changed.AddClassHandler<ClassicBorderDecorator>(BorderBrushesChanged);
@@ -497,6 +498,24 @@ public sealed class ClassicBorderDecorator : Decorator
     {
         get => GetValue(BorderStyleProperty);
         set => SetValue(BorderStyleProperty, value);
+    }
+
+    /// <summary>
+    /// How the 3-D edge rasterizes (Bevel fork addition, bevel-38y.1 / spec §8): Smooth
+    /// (default, decision 2026-07-06 — eased gradient at device resolution, mitered corners)
+    /// or Crisp (hard pixel-snapped bands — the original behaviour, kept as the whitelisted
+    /// "Crisp bevels" user override). Applies to the full 3-D edge styles (Raised/RaiseReversed/
+    /// RaisedPressed/Sunken/Etched); the 1-px primitives (Thin*, Tab*, lines, RadioButton)
+    /// always draw crisp — a gradient across 1 logical px reads as blur, not finesse.
+    /// </summary>
+    public static readonly StyledProperty<EdgeRendering> EdgeRenderingProperty =
+        AvaloniaProperty.Register<ClassicBorderDecorator, EdgeRendering>(
+            nameof(EdgeRendering), EdgeRendering.Smooth);
+
+    public EdgeRendering EdgeRendering
+    {
+        get => GetValue(EdgeRenderingProperty);
+        set => SetValue(EdgeRenderingProperty, value);
     }
 
     private static bool IsValidBorderStyle(ClassicBorderStyle style)
@@ -847,22 +866,41 @@ public sealed class ClassicBorderDecorator : Decorator
         {
             switch (style)
             {
+                // The full 3-D edge styles honor EdgeRendering (Bevel fork, bevel-38y.1):
+                // Smooth draws the same band algebra as an eased mitered gradient; Crisp is
+                // the original hard-ring path. Band order below mirrors each Draw*Border's
+                // DrawBorderPair sequence (outer ring first).
                 case ClassicBorderStyle.Raised:
                 case ClassicBorderStyle.RaisedFocused:
                     // Focused already has a 1px border drawn from above
-                    DrawRaisedBorder(singleThickness, drawingContext, ref bounds);
+                    if (EdgeRendering == EdgeRendering.Smooth)
+                        DrawSmoothEdge(new[] { LightLightBrush, LightBrush }, new[] { DarkDarkBrush, DarkBrush }, singleThickness, drawingContext, ref bounds);
+                    else
+                        DrawRaisedBorder(singleThickness, drawingContext, ref bounds);
                     break;
                 case ClassicBorderStyle.RaiseReversed:
-                    DrawRaisedReversedBorder(singleThickness, drawingContext, ref bounds);
+                    if (EdgeRendering == EdgeRendering.Smooth)
+                        DrawSmoothEdge(new[] { DarkDarkBrush, DarkBrush }, new[] { LightLightBrush, LightBrush }, singleThickness, drawingContext, ref bounds);
+                    else
+                        DrawRaisedReversedBorder(singleThickness, drawingContext, ref bounds);
                     break;
                 case ClassicBorderStyle.RaisedPressed:
-                    DrawRaisedPressedBorder(singleThickness, drawingContext, ref bounds);
+                    if (EdgeRendering == EdgeRendering.Smooth)
+                        DrawSmoothEdge(new[] { DarkBrush }, new[] { DarkBrush }, singleThickness, drawingContext, ref bounds);
+                    else
+                        DrawRaisedPressedBorder(singleThickness, drawingContext, ref bounds);
                     break;
                 case ClassicBorderStyle.Sunken:
-                    DrawSunkenBorder(singleThickness, drawingContext, ref bounds);
+                    if (EdgeRendering == EdgeRendering.Smooth)
+                        DrawSmoothEdge(new[] { DarkBrush, DarkDarkBrush }, new[] { LightLightBrush, LightBrush }, singleThickness, drawingContext, ref bounds);
+                    else
+                        DrawSunkenBorder(singleThickness, drawingContext, ref bounds);
                     break;
                 case ClassicBorderStyle.Etched:
-                    DrawEtchedBorder(singleThickness, drawingContext, ref bounds);
+                    if (EdgeRendering == EdgeRendering.Smooth)
+                        DrawSmoothEdge(new[] { DarkBrush, LightLightBrush }, new[] { LightLightBrush, DarkBrush }, singleThickness, drawingContext, ref bounds);
+                    else
+                        DrawEtchedBorder(singleThickness, drawingContext, ref bounds);
                     break;
                 case ClassicBorderStyle.HorizontalLine:
                     DrawHorizontalLine(singleThickness, drawingContext, ref bounds);
@@ -1040,6 +1078,41 @@ public sealed class ClassicBorderDecorator : Decorator
     {
         DrawBorder(shadow,    new Thickness(0, 0, singleThickness.Right, singleThickness.Bottom), dc, ref bounds);
         DrawBorder(highlight, new Thickness(singleThickness.Left, singleThickness.Top, 0, 0), dc, ref bounds);
+    }
+
+    private static Color BrushColor(IBrush? brush, Color fallback)
+        => brush is ISolidColorBrush s ? s.Color : fallback;
+
+    // The colour the edge ramps into at its inner end — the control's face. Sunken wells pass
+    // their Window-white Background; buttons their face fill. Falls back to the derived Light
+    // (face) colour when Background isn't a solid brush.
+    private Color SmoothFaceColor
+        => Background is ISolidColorBrush bg
+            ? bg.Color
+            : BrushColor(LightBrush, Color.FromRgb(0xD4, 0xD0, 0xC8));
+
+    /// <summary>
+    /// Smooth-mode counterpart of the hard-ring Draw*Border methods (Bevel fork, bevel-38y.1):
+    /// same band colours, same total thickness, same bounds deflation — only the fill technique
+    /// changes (BevelEdgeRenderer's mitered eased gradient, spec §8).
+    /// </summary>
+    private void DrawSmoothEdge(
+        IBrush?[] topLeft, IBrush?[] bottomRight, Thickness singleThickness,
+        DrawingContext dc, ref Rect bounds)
+    {
+        var rings = topLeft.Length;
+        var t = ScaleThickness(singleThickness, rings);
+        if (bounds.Width < t.Left + t.Right || bounds.Height < t.Top + t.Bottom)
+            return;
+
+        var face = SmoothFaceColor;
+        var tl = new Color[topLeft.Length];
+        for (var i = 0; i < topLeft.Length; i++) tl[i] = BrushColor(topLeft[i], face);
+        var br = new Color[bottomRight.Length];
+        for (var i = 0; i < bottomRight.Length; i++) br[i] = BrushColor(bottomRight[i], face);
+
+        BevelEdgeRenderer.DrawSmoothFrame(dc, bounds, t, tl, br, face);
+        bounds = HelperDeflateRect(bounds, t);
     }
 
     #region Draw Methods for all ClassicBorderStyles

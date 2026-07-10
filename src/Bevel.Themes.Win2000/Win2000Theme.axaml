@@ -8,6 +8,15 @@
       Classic templates' own keys are an internal detail slated for the ENG-01 audit.
     -->
     <classic:ClassicTheme />
+
+    <!-- Edge rendering (bevel-38y.1 / chrome spec §8): the Win2000 theme owns the mode.
+         Smooth by default at all scalings (decision 2026-07-06 — HiDPI-native eased-gradient
+         bevels, fixes 150% fuzziness); the whitelisted "Crisp bevels" Display-settings
+         override flips this setter when that surface ships. -->
+    <Style Selector="classic|ClassicBorderDecorator">
+        <Setter Property="EdgeRendering" Value="Smooth" />
+    </Style>
+
     <Styles.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

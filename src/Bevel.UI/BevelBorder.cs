@@ -1,31 +1,18 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Classic.Avalonia.Theme;
 
 namespace Bevel.UI;
-
-/// <summary>How a 3-D edge is rasterized (see docs/spec/win2000-explorer-chrome.md §8).</summary>
-public enum EdgeRendering
-{
-    /// <summary>Authentic: each logical-pixel colour band is a hard, device-pixel-snapped line.</summary>
-    Crisp,
-
-    /// <summary>
-    /// Keeps the logical edge thickness but renders the band colours as an eased sRGB gradient
-    /// at physical resolution — smooth sub-pixel bevels at HiDPI, same proportions.
-    /// </summary>
-    Smooth,
-}
 
 /// <summary>The classic Win2000 3-D edge styles.</summary>
 public enum BevelStyle { Raised, Sunken, Etched, ThinRaised, ThinSunken }
 
 /// <summary>
-/// Spike primitive for bevel-38y: a Win2000 3-D border that draws in either Crisp (hard,
-/// pixel-snapped bands — today's DPI-01 behaviour) or Smooth (physical-precision gradient)
-/// mode. In the full theme this logic folds into ClassicBorderDecorator / BevelRenderer and
-/// reads its colours from Bevel.Color.* resources; here the palette is exposed as properties
-/// so the spike renders standalone.
+/// Standalone Win2000 3-D border primitive for Bevel-owned chrome and previews. Shares the
+/// Smooth-mode painter (<see cref="BevelEdgeRenderer"/>) and <see cref="EdgeRendering"/> enum
+/// with the themed <see cref="ClassicBorderDecorator"/> (bevel-38y.1); the palette is exposed
+/// as properties so it also renders standalone (BevelShot previews, dialogs).
 /// </summary>
 public class BevelBorder : Decorator
 {
@@ -105,11 +92,16 @@ public class BevelBorder : Decorator
 
         if (w < 2 * t || h < 2 * t) return;
 
-        // Mitered frame: each edge is clipped to a 45°-cornered trapezoid so adjacent edges
-        // meet on the diagonal — the authentic Win2000 3-D corner (highlight-L meets shadow-L
-        // on the diagonal), and in Smooth mode no seam where a vertical gradient would abut a
-        // horizontal one. Along the diagonal both gradients share the same normalized depth,
-        // so light meets dark cleanly.
+        if (mode == EdgeRendering.Smooth)
+        {
+            // Shared painter: mitered trapezoids with the eased outer→inner→face gradient.
+            BevelEdgeRenderer.DrawSmoothFrame(ctx, rect, new Thickness(t), light, dark, FaceColor);
+            return;
+        }
+
+        // Crisp: mitered frame of hard 1-DIP bands — each edge clipped to a 45°-cornered
+        // trapezoid so adjacent edges meet on the diagonal (highlight-L meets shadow-L),
+        // the authentic Win2000 3-D corner.
         DrawMiteredEdge(ctx, Side.Top,    new Rect(0, 0, w, t),     light, mode, w, h, t);
         DrawMiteredEdge(ctx, Side.Bottom, new Rect(0, h - t, w, t), dark,  mode, w, h, t);
         DrawMiteredEdge(ctx, Side.Left,   new Rect(0, 0, t, h),     light, mode, w, h, t);
@@ -149,46 +141,21 @@ public class BevelBorder : Decorator
     {
         if (edge.Width <= 0 || edge.Height <= 0 || bands.Length == 0) return;
 
-        if (mode == EdgeRendering.Crisp)
+        // Hard bands: one 1-DIP line per band, outer→inner. UseLayoutRounding keeps them
+        // on the device-pixel grid. (Smooth mode never reaches here — Render short-circuits
+        // to BevelEdgeRenderer.DrawSmoothFrame.)
+        var n = bands.Length;
+        for (var i = 0; i < n; i++)
         {
-            // Hard bands: one 1-DIP line per band, outer→inner. UseLayoutRounding keeps them
-            // on the device-pixel grid.
-            var n = bands.Length;
-            for (var i = 0; i < n; i++)
+            var b = new SolidColorBrush(bands[i]);
+            var r = side switch
             {
-                var b = new SolidColorBrush(bands[i]);
-                var r = side switch
-                {
-                    Side.Top    => new Rect(edge.X, edge.Y + i, edge.Width, 1),
-                    Side.Bottom => new Rect(edge.X, edge.Bottom - 1 - i, edge.Width, 1),
-                    Side.Left   => new Rect(edge.X + i, edge.Y, 1, edge.Height),
-                    _           => new Rect(edge.Right - 1 - i, edge.Y, 1, edge.Height),
-                };
-                ctx.FillRectangle(b, r);
-            }
-            return;
+                Side.Top    => new Rect(edge.X, edge.Y + i, edge.Width, 1),
+                Side.Bottom => new Rect(edge.X, edge.Bottom - 1 - i, edge.Width, 1),
+                Side.Left   => new Rect(edge.X + i, edge.Y, 1, edge.Height),
+                _           => new Rect(edge.Right - 1 - i, edge.Y, 1, edge.Height),
+            };
+            ctx.FillRectangle(b, r);
         }
-
-        // Smooth: eased sRGB gradient outer→inner→face across the logical thickness. The rect
-        // bounds stay logical-pixel-aligned (proportions exact); Skia rasterizes the ramp at
-        // device resolution, so hard steps become sub-pixel ramps at HiDPI.
-        var stops = new GradientStops
-        {
-            new GradientStop(bands[0], 0.0),
-            new GradientStop(bands[0], 0.35),                        // hold the light-catching colour
-        };
-        for (var i = 1; i < bands.Length; i++)
-            stops.Add(new GradientStop(bands[i], 0.35 + 0.45 * i / bands.Length));
-        stops.Add(new GradientStop(FaceColor, 1.0));
-
-        var (start, end) = side switch
-        {
-            Side.Top    => (new RelativePoint(0, 0, RelativeUnit.Relative), new RelativePoint(0, 1, RelativeUnit.Relative)),
-            Side.Bottom => (new RelativePoint(0, 1, RelativeUnit.Relative), new RelativePoint(0, 0, RelativeUnit.Relative)),
-            Side.Left   => (new RelativePoint(0, 0, RelativeUnit.Relative), new RelativePoint(1, 0, RelativeUnit.Relative)),
-            _           => (new RelativePoint(1, 0, RelativeUnit.Relative), new RelativePoint(0, 0, RelativeUnit.Relative)),
-        };
-
-        ctx.FillRectangle(new LinearGradientBrush { StartPoint = start, EndPoint = end, GradientStops = stops }, edge);
     }
 }
