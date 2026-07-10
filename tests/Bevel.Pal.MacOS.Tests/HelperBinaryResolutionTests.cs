@@ -4,7 +4,7 @@ using Xunit;
 namespace Bevel.Pal.MacOS.Tests;
 
 /// <summary>
-/// Security tests for HelperLifecycle.ResolveHelperBinary (SEC1 / bevel-tyv): the helper is the
+/// Security tests for HelperProcessHost.ResolveHelperBinary (SEC1 / bevel-tyv): the helper is the
 /// IPC trust anchor, so its path must be an absolute, existing binary — never an unqualified name
 /// resolved off $PATH, and never an unvalidated env override in a shipped build. The resolver
 /// takes an injected file-existence probe so these cases are exercised without a real filesystem.
@@ -24,7 +24,7 @@ public class HelperBinaryResolutionTests
     [Fact]
     public void Falls_back_to_the_app_bundle_and_returns_an_absolute_path()
     {
-        var path = HelperLifecycle.ResolveHelperBinary(
+        var path = HelperProcessHost.ResolveHelperBinary(
             envPath: null, BaseDir, allowEnvOverride: false, Exists(BundlePath));
 
         Assert.Equal(BundlePath, path);
@@ -37,7 +37,7 @@ public class HelperBinaryResolutionTests
         // The old code returned the bare name "BevelHelper" here, letting $PATH decide. Now it
         // must fail closed rather than risk exec'ing an attacker-controlled binary.
         Assert.Throws<InvalidOperationException>(() =>
-            HelperLifecycle.ResolveHelperBinary(
+            HelperProcessHost.ResolveHelperBinary(
                 envPath: null, BaseDir, allowEnvOverride: false, Exists(/* nothing present */)));
     }
 
@@ -45,7 +45,7 @@ public class HelperBinaryResolutionTests
     public void Honors_an_absolute_existing_env_override_in_dev_builds()
     {
         const string dev = "/opt/custom/BevelHelper";
-        var path = HelperLifecycle.ResolveHelperBinary(
+        var path = HelperProcessHost.ResolveHelperBinary(
             envPath: dev, BaseDir, allowEnvOverride: true, Exists(dev, BundlePath));
 
         Assert.Equal(dev, path);
@@ -57,7 +57,7 @@ public class HelperBinaryResolutionTests
         // A relative path resolves against the attacker-influenced CWD — reject loudly rather
         // than honor it or silently fall through to the bundle.
         Assert.Throws<InvalidOperationException>(() =>
-            HelperLifecycle.ResolveHelperBinary(
+            HelperProcessHost.ResolveHelperBinary(
                 envPath: "evil/BevelHelper", BaseDir, allowEnvOverride: true,
                 Exists("evil/BevelHelper", BundlePath)));
     }
@@ -66,7 +66,7 @@ public class HelperBinaryResolutionTests
     public void Rejects_an_absolute_env_override_that_does_not_exist()
     {
         Assert.Throws<InvalidOperationException>(() =>
-            HelperLifecycle.ResolveHelperBinary(
+            HelperProcessHost.ResolveHelperBinary(
                 envPath: "/opt/missing/BevelHelper", BaseDir, allowEnvOverride: true,
                 Exists(BundlePath)));
     }
@@ -77,7 +77,7 @@ public class HelperBinaryResolutionTests
         // In a shipped (Release) build allowEnvOverride is false, so even a valid absolute
         // existing override is ignored and the bundle wins — a hostile env cannot redirect it.
         const string dev = "/opt/custom/BevelHelper";
-        var path = HelperLifecycle.ResolveHelperBinary(
+        var path = HelperProcessHost.ResolveHelperBinary(
             envPath: dev, BaseDir, allowEnvOverride: false, Exists(dev, BundlePath));
 
         Assert.Equal(BundlePath, path);
@@ -90,7 +90,7 @@ public class HelperBinaryResolutionTests
         const string exeDir = "/repo/src/Bevel.App/bin";
         const string devDebug = "/repo/native/helper-macos/.build/debug/BevelHelper";
 
-        var path = HelperLifecycle.ResolveHelperBinary(
+        var path = HelperProcessHost.ResolveHelperBinary(
             envPath: null, exeDir, allowEnvOverride: false,
             Exists($"{repo}/Bevel.sln", devDebug));
 

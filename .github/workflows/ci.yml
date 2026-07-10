@@ -101,6 +101,34 @@ jobs:
           name: BevelHelper
           path: native/helper-macos/.build/release/BevelHelper
 
+  # ── Proto codegen drift check (bevel-vgg) ───────────────────────────────────
+  #
+  #  Regenerates the Swift protobuf output from proto/bevel.helper.v1.proto and fails
+  #  if it differs from the checked-in Generated/ dir, so the Swift/C# wire contract
+  #  can't silently drift (someone editing the .proto without regenerating, or editing
+  #  Generated/ by hand). If this fails because Homebrew bumped protoc/swift-protobuf
+  #  to a version that formats output differently, re-run generate-proto.sh locally
+  #  with the matching versions and commit the result — the diff itself is the signal.
+
+  proto-drift:
+    name: Proto codegen drift (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install protoc + Swift plugin
+        run: brew install protobuf swift-protobuf
+
+      - name: Regenerate Swift protobuf output
+        run: ./native/helper-macos/generate-proto.sh
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code -- native/helper-macos/Sources/BevelHelper/Generated; then
+            echo "::error::Generated Swift protobuf output drifted from proto/bevel.helper.v1.proto. Run native/helper-macos/generate-proto.sh and commit the result."
+            exit 1
+          fi
+
   # ── macOS signing + notarization lane ───────────────────────────────────────
   #
   #  Prerequisites (set these in the repo / org secrets):
