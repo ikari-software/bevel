@@ -48,6 +48,7 @@ public static class CompositionRoot
         services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
+        services.AddSingleton<IVolumeLabelSource, Pal.MacOS.MacOSVolumeLabelSource>();
         services.AddSingleton<Pal.MacOS.HelperLifecycle>();
         services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
         return services;

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.Core.Vfs;
 
@@ -9,6 +10,12 @@ namespace Bevel.Core.Vfs;
 /// </summary>
 public sealed class ComputerProvider : IVfsProvider
 {
+    private readonly IVolumeLabelSource? _labels;
+
+    /// <param name="labels">Platform lookup for real volume labels ("Macintosh HD") —
+    /// bevel-1cc. Null (tests, platforms without one) renders mount-path-derived names.</param>
+    public ComputerProvider(IVolumeLabelSource? labels = null) => _labels = labels;
+
     public string Scheme => "computer";
 
     public ValueTask<IVfsNode> ResolveAsync(VfsPath path, CancellationToken ct)
@@ -107,7 +114,7 @@ public sealed class ComputerProvider : IVfsProvider
     /// <summary>Inverse of <see cref="VolumeKeyFor"/>: the native mount path a volume path segment stands for.</summary>
     private static string MountPathFor(VfsPath path) => Uri.UnescapeDataString(path.FileName);
 
-    private static IVfsNode CreateVolumeNode(VfsPath path, DriveInfo drive)
+    private IVfsNode CreateVolumeNode(VfsPath path, DriveInfo drive)
     {
         var icon = drive.DriveType switch
         {
@@ -143,18 +150,22 @@ public sealed class ComputerProvider : IVfsProvider
         };
     }
 
-    private static string GetVolumeDisplayName(DriveInfo drive)
+    private string GetVolumeDisplayName(DriveInfo drive)
     {
         // Win2000 presentation: "Label (mount)". Trimming the POSIX root "/" would leave an
-        // empty mount, so keep the name verbatim then. On Unix, .NET reports VolumeLabel as the
-        // mount path itself (no real label available) — treat that as unlabeled rather than
-        // rendering "/ (/)"; real macOS labels are a PAL follow-up (bevel-d3b notes).
+        // empty mount, so keep the name verbatim then.
         var mount = drive.Name.TrimEnd(Path.DirectorySeparatorChar);
         if (mount.Length == 0) mount = drive.Name;
 
-        if (string.IsNullOrWhiteSpace(drive.VolumeLabel) || drive.VolumeLabel == drive.Name)
-            return mount;
+        // The PAL knows real labels ("Macintosh HD") — bevel-1cc. Without it, DriveInfo is
+        // the only source, and on Unix .NET reports VolumeLabel as the mount path itself
+        // (no real label) — treat that as unlabeled rather than rendering "/ (/)".
+        var label = _labels?.LabelFor(drive.RootDirectory.FullName);
+        if (string.IsNullOrWhiteSpace(label))
+            label = string.IsNullOrWhiteSpace(drive.VolumeLabel) || drive.VolumeLabel == drive.Name
+                ? null
+                : drive.VolumeLabel;
 
-        return $"{drive.VolumeLabel} ({mount})";
+        return label is null ? mount : $"{label} ({mount})";
     }
 }

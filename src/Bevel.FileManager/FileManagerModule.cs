@@ -17,7 +17,9 @@ public sealed class FileManagerModule : IModule
         {
             var root = new VfsRoot();
             root.Register(new LocalFsProvider());
-            root.Register(new ComputerProvider());
+            // Volume labels come from the active PAL when it provides them (bevel-1cc);
+            // GetService (not Required) because the Fake PAL registers none.
+            root.Register(new ComputerProvider(sp.GetService<Bevel.Pal.Abstractions.IVolumeLabelSource>()));
             return root;
         });
 

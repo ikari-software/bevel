@@ -106,3 +106,16 @@ public interface IAudioPlayback
 
     Task PlayAsync(string wavPath, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Native display labels for mounted volumes (My Computer, bevel-1cc). .NET on Unix reports
+/// DriveInfo.VolumeLabel as the mount path itself, so real labels ("Macintosh HD") need a
+/// platform lookup. Implementations must be cheap and synchronous — called once per volume
+/// during enumeration; cache anything slow.
+/// </summary>
+public interface IVolumeLabelSource
+{
+    /// <summary>The user-facing label of the volume mounted at <paramref name="mountPath"/>,
+    /// or null when the platform has none (callers fall back to the mount path).</summary>
+    string? LabelFor(string mountPath);
+}

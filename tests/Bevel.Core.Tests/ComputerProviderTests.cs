@@ -102,4 +102,49 @@ public sealed class ComputerProviderTests
             Assert.DoesNotContain("%2F", v.DisplayName, StringComparison.OrdinalIgnoreCase);
         });
     }
+
+    // ── PAL volume labels (bevel-1cc) ──────────────────────────────────────
+
+    private sealed class FakeLabelSource : Bevel.Pal.Abstractions.IVolumeLabelSource
+    {
+        public List<string> Asked { get; } = new();
+        public string? Label { get; set; }
+
+        public string? LabelFor(string mountPath)
+        {
+            Asked.Add(mountPath);
+            return Label;
+        }
+    }
+
+    private static string MountForDisplay(string mountPath)
+    {
+        var trimmed = mountPath.TrimEnd(Path.DirectorySeparatorChar);
+        return trimmed.Length == 0 ? mountPath : trimmed;
+    }
+
+    [Fact]
+    public async Task Volume_display_names_use_the_pal_label_in_win2000_form()
+    {
+        var labels = new FakeLabelSource { Label = "Macintosh HD" };
+        var volumes = await EnumerateRootAsync(new ComputerProvider(labels));
+
+        Assert.All(volumes, v =>
+            Assert.Equal($"Macintosh HD ({MountForDisplay(v.Volume!.MountPath)})", v.DisplayName));
+        // The provider asked the PAL about each volume's actual mount.
+        Assert.All(volumes, v => Assert.Contains(v.Volume!.MountPath, labels.Asked));
+    }
+
+    [Fact]
+    public async Task A_pal_without_a_label_leaves_the_mount_derived_name()
+    {
+        var labels = new FakeLabelSource { Label = null };
+        var withSource = await EnumerateRootAsync(new ComputerProvider(labels));
+        var withoutSource = await EnumerateRootAsync(new ComputerProvider());
+
+        // Null from the PAL must render exactly like having no PAL at all.
+        Assert.Equal(
+            withoutSource.Select(v => v.DisplayName),
+            withSource.Select(v => v.DisplayName));
+    }
 }
