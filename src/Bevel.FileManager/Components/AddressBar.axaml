@@ -22,13 +22,17 @@
 
         <!-- Editable path field: a sunken TextBox with a leading folder icon and a
              dropdown chevron, matching the Win2000 Explorer address combo. (The Classic
-             editable ComboBox doesn't render its Text reliably, so this uses a TextBox.) -->
+             editable ComboBox doesn't render its Text reliably, so this uses a TextBox.)
+             The PATH text is pinned LeftToRight even when the surrounding chrome mirrors
+             under RTL (bevel-3cd): filesystem paths are LTR strings ('/' separators read
+             left-to-right), matching classic Explorer's RTL behavior. -->
         <Grid>
             <TextBox x:Name="AddressBox"
                      MinHeight="22"
                      FontSize="11"
                      Padding="22,1,18,1"
                      VerticalContentAlignment="Center"
+                     FlowDirection="LeftToRight"
                      KeyDown="OnAddressKeyDown" />
 
             <!-- Folder icon (self-drawn vector, matches the list glyph) -->

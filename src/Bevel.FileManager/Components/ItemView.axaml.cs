@@ -688,12 +688,16 @@ public partial class ItemView : UserControl
         if (_viewModels.Count == 0) return;
         int cols = ColsPerRow();
         int cur = _lastClickIdx < 0 ? 0 : _lastClickIdx;
+        // Arrow keys are VISUAL: under RTL the layout is mirrored (index 0 sits at the visual
+        // right — VirtualizingWrapPanel), so the Right arrow moves toward reading-start, i.e.
+        // a LOWER index (bevel-3cd), exactly like classic Explorer on RTL Windows.
+        int ahead = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft ? -1 : 1;
         int next = key switch
         {
             Key.Down  => cur + cols,   // one row down (a single row in Details/List)
             Key.Up    => cur - cols,
-            Key.Right => cur + 1,
-            Key.Left  => cur - 1,
+            Key.Right => cur + ahead,
+            Key.Left  => cur - ahead,
             _         => cur,
         };
         MoveTo(next, shift);
