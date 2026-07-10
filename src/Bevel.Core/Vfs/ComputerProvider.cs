@@ -21,14 +21,15 @@ public sealed class ComputerProvider : IVfsProvider
                 path, "My Computer", IconKey.Computer()));
         }
 
-        // Resolve a specific volume by name
-        var volumeName = path.FileName;
+        // Resolve a volume by its mount identity — the path segment is the ESCAPED mount path,
+        // never the display name (which embeds '/' on macOS, e.g. "Macintosh HD (/)", and would
+        // be mangled by VfsPath's separator handling — bevel-d3b).
+        var mount = MountPathFor(path);
         var drives = DriveInfo.GetDrives();
-        var drive = drives.FirstOrDefault(d =>
-            GetVolumeDisplayName(d).Equals(volumeName, StringComparison.OrdinalIgnoreCase));
+        var drive = drives.FirstOrDefault(d => d.RootDirectory.FullName == mount);
 
         if (drive is null)
-            throw new DirectoryNotFoundException($"Volume not found: {volumeName}");
+            throw new DirectoryNotFoundException($"Volume not found: {mount}");
 
         return ValueTask.FromResult<IVfsNode>(CreateVolumeNode(path, drive));
     }
@@ -63,7 +64,7 @@ public sealed class ComputerProvider : IVfsProvider
 
             if (!drive.IsReady) continue;
 
-            var childPath = VfsPath.Combine(folder, GetVolumeDisplayName(drive));
+            var childPath = VfsPath.Combine(folder, VolumeKeyFor(drive));
             yield return CreateVolumeNode(childPath, drive);
         }
     }
@@ -88,14 +89,23 @@ public sealed class ComputerProvider : IVfsProvider
     public string? ResolveEffectivePath(VfsPath path)
     {
         if (path.IsRoot) return null;
-        var volumeName = path.FileName;
+        var mount = MountPathFor(path);
         DriveInfo[] drives;
         try { drives = DriveInfo.GetDrives(); }
         catch { return null; }
-        var drive = drives.FirstOrDefault(d =>
-            GetVolumeDisplayName(d).Equals(volumeName, StringComparison.OrdinalIgnoreCase));
-        return drive?.RootDirectory.FullName;
+        return drives.FirstOrDefault(d => d.RootDirectory.FullName == mount)?.RootDirectory.FullName;
     }
+
+    /// <summary>
+    /// The path segment for a volume: its native mount path, percent-escaped so the segment
+    /// contains no '/' or '\' (VfsPath splits segments on separators; bevel-d3b). This is the
+    /// volume's IDENTITY — stable across label changes and collision-free — while
+    /// <see cref="GetVolumeDisplayName"/> is presentation only and never appears in paths.
+    /// </summary>
+    private static string VolumeKeyFor(DriveInfo drive) => Uri.EscapeDataString(drive.RootDirectory.FullName);
+
+    /// <summary>Inverse of <see cref="VolumeKeyFor"/>: the native mount path a volume path segment stands for.</summary>
+    private static string MountPathFor(VfsPath path) => Uri.UnescapeDataString(path.FileName);
 
     private static IVfsNode CreateVolumeNode(VfsPath path, DriveInfo drive)
     {
@@ -135,9 +145,16 @@ public sealed class ComputerProvider : IVfsProvider
 
     private static string GetVolumeDisplayName(DriveInfo drive)
     {
-        if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
-            return $"{drive.VolumeLabel} ({drive.Name.TrimEnd(Path.DirectorySeparatorChar)})";
+        // Win2000 presentation: "Label (mount)". Trimming the POSIX root "/" would leave an
+        // empty mount, so keep the name verbatim then. On Unix, .NET reports VolumeLabel as the
+        // mount path itself (no real label available) — treat that as unlabeled rather than
+        // rendering "/ (/)"; real macOS labels are a PAL follow-up (bevel-d3b notes).
+        var mount = drive.Name.TrimEnd(Path.DirectorySeparatorChar);
+        if (mount.Length == 0) mount = drive.Name;
 
-        return drive.Name.TrimEnd(Path.DirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(drive.VolumeLabel) || drive.VolumeLabel == drive.Name)
+            return mount;
+
+        return $"{drive.VolumeLabel} ({mount})";
     }
 }

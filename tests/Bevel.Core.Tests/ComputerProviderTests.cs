@@ -49,8 +49,57 @@ public sealed class ComputerProviderTests
         Assert.Null(root.Volume);
     }
 
-    // NOTE: resolve-by-path round-trip (enumerate → ResolveAsync(node.Path)) is deliberately
-    // not asserted here: macOS volume display names embed the mount path ("Macintosh HD (/)"),
-    // whose '/' mangles VfsPath.FileName and breaks the round-trip — tracked as its own bug
-    // (bevel: ComputerProvider path round-trip), where the fix will carry the reproducer.
+    // ── Path identity round-trip (bevel-d3b) ───────────────────────────────
+    // Volume path segments are the ESCAPED mount path (identity), never the display name —
+    // display names embed '/' on macOS ("Macintosh HD (/)") and would be mangled by VfsPath.
+
+    [Fact]
+    public async Task Volume_path_segments_are_separator_free_and_round_trip_through_ResolveAsync()
+    {
+        var volumes = await EnumerateRootAsync(_provider);
+
+        Assert.All(volumes, v =>
+        {
+            Assert.False(string.IsNullOrEmpty(v.Path.FileName));
+            Assert.DoesNotContain("/", v.Path.FileName);
+            Assert.DoesNotContain("\\", v.Path.FileName);
+        });
+
+        foreach (var v in volumes)
+        {
+            var resolved = await _provider.ResolveAsync(v.Path, CancellationToken.None);
+            Assert.Equal(v.Volume!.MountPath, resolved.Volume!.MountPath);
+            Assert.Equal(v.DisplayName, resolved.DisplayName);
+        }
+    }
+
+    [Fact]
+    public async Task ResolveEffectivePath_translates_a_volume_path_to_its_native_mount()
+    {
+        var volumes = await EnumerateRootAsync(_provider);
+
+        Assert.Equal(volumes[0].Volume!.MountPath, _provider.ResolveEffectivePath(volumes[0].Path));
+        Assert.Null(_provider.ResolveEffectivePath(VfsPath.Root("computer"))); // root: no native path
+    }
+
+    [Fact]
+    public async Task Resolving_an_unknown_volume_throws_DirectoryNotFound()
+    {
+        var path = VfsPath.Combine(VfsPath.Root("computer"), Uri.EscapeDataString("/no/such/mount"));
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(
+            () => _provider.ResolveAsync(path, CancellationToken.None).AsTask());
+    }
+
+    [Fact]
+    public async Task Display_names_are_presentation_not_escaped_identity()
+    {
+        var volumes = await EnumerateRootAsync(_provider);
+
+        Assert.All(volumes, v =>
+        {
+            Assert.False(string.IsNullOrEmpty(v.DisplayName));
+            Assert.DoesNotContain("%2F", v.DisplayName, StringComparison.OrdinalIgnoreCase);
+        });
+    }
 }

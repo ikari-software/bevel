@@ -516,19 +516,29 @@ public partial class FileManagerWindow : BevelWindow
             return;
         if (_vfsRoot is null) return;
 
-        // A virtual volume node (e.g. a computer:// drive) exposes the native mount it stands
-        // for; navigate into that via the file provider rather than the virtual namespace.
-        if (path.Scheme != "file" && _vfsRoot.GetProvider(path).ResolveEffectivePath(path) is { } mount)
-            path = new VfsPath("file", mount);
-
-        _controller?.NavigateTo(path);
+        _controller?.NavigateTo(ToNavigablePath(path));
     }
+
+    /// <summary>
+    /// Translates a virtual node's path to the native mount it stands for (e.g. a computer://
+    /// volume → its file:// mount), so navigation proceeds through the file provider rather
+    /// than the virtual namespace. Paths without an effective native path (the computer root,
+    /// file paths themselves) pass through unchanged. Shared by tree selection and list-item
+    /// activation (bevel-d3b). Internal for tests.
+    /// </summary>
+    internal VfsPath ToNavigablePath(VfsPath path)
+        => path.Scheme != "file" && _vfsRoot?.GetProvider(path).ResolveEffectivePath(path) is { } mount
+            ? new VfsPath("file", mount)
+            : path;
 
     private void OnItemActivated(object? sender, ItemActivatedEventArgs e)
     {
-        if (e.Item.Node.Kind == VfsNodeKind.Folder)
+        // Volumes under My Computer (and virtual roots like My Computer itself on the desktop
+        // listing) open like folders — previously only Folder kinds navigated, so double-
+        // clicking a drive in the list did nothing (bevel-d3b).
+        if (e.Item.Node.Kind is VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot)
         {
-            NavigateTo(e.Item.Path);
+            NavigateTo(ToNavigablePath(e.Item.Path));
         }
     }
 
