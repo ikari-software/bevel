@@ -2,6 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
                     xmlns:system="clr-namespace:System;assembly=netstandard">
+  <!--
+    auto-generated: do NOT edit by hand.
+    Classic color scheme (W2K-01 / bevel-c75), generated from
+    src/Bevel.Themes.Win2000/schemes.json by tools/ThemeGen. Edit the JSON and run
+    tools/ThemeGen (dotnet run); CI fails when this file drifts from a fresh generation.
+  -->
   <Color x:Key="{x:Static common:SystemColors.ActiveBorderColorKey}">#ffa89890</Color>
   <Color x:Key="{x:Static common:SystemColors.ActiveCaptionColorKey}">#ff484060</Color>
   <Color x:Key="{x:Static common:SystemColors.ActiveCaptionTextColorKey}">White</Color>

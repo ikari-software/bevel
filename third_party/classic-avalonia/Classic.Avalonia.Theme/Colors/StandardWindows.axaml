@@ -2,6 +2,12 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
                     xmlns:system="clr-namespace:System;assembly=netstandard">
+  <!--
+    auto-generated: do NOT edit by hand.
+    Classic color scheme (W2K-01 / bevel-c75), generated from
+    src/Bevel.Themes.Win2000/schemes.json by tools/ThemeGen. Edit the JSON and run
+    tools/ThemeGen (dotnet run); CI fails when this file drifts from a fresh generation.
+  -->
   <Color x:Key="{x:Static common:SystemColors.ActiveBorderColorKey}">#ffd4d0c8</Color>
   <Color x:Key="{x:Static common:SystemColors.ActiveCaptionColorKey}">#ff0a246a</Color>
   <Color x:Key="{x:Static common:SystemColors.ActiveCaptionTextColorKey}">White</Color>
@@ -25,9 +31,6 @@
   <Color x:Key="{x:Static common:SystemColors.InfoColorKey}">#ffffffe1</Color>
   <Color x:Key="{x:Static common:SystemColors.InfoTextColorKey}">Black</Color>
   <Color x:Key="{x:Static common:SystemColors.MenuColorKey}">#ffd4d0c8</Color>
-  <!-- Win2000 "Windows Standard" (Bevel fork, bevel-sp5): the menu bar shares the Menu face
-       and menu selection uses the Highlight navy — #ece9d8/#316ac5 were XP-era values that
-       postdate this scheme (spec 05-theming.md §8.1). -->
   <Color x:Key="{x:Static common:SystemColors.MenuBarColorKey}">#ffd4d0c8</Color>
   <Color x:Key="{x:Static common:SystemColors.MenuHighlightColorKey}">#ff0a246a</Color>
   <Color x:Key="{x:Static common:SystemColors.MenuTextColorKey}">Black</Color>

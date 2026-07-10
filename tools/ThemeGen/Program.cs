@@ -14,6 +14,8 @@ var repoRoot = FindRepoRoot(AppContext.BaseDirectory)
 var jsonPath = args.Length > 0 ? args[0] : Path.Combine(repoRoot, "src", "Bevel.Themes.Win2000", "theme.json");
 var axamlPath = args.Length > 1 ? args[1] : Path.Combine(repoRoot, "src", "Bevel.Themes.Win2000", "Tokens.axaml");
 var csPath = args.Length > 2 ? args[2] : Path.Combine(repoRoot, "src", "Bevel.UI", "ThemeTokens.cs");
+var schemesJsonPath = Path.Combine(repoRoot, "src", "Bevel.Themes.Win2000", "schemes.json");
+var schemesOutDir = Path.Combine(repoRoot, "third_party", "classic-avalonia", "Classic.Avalonia.Theme", "Colors");
 
 using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
 var root = doc.RootElement;
@@ -25,6 +27,59 @@ File.WriteAllText(axamlPath, EmitAxaml(palette, metrics, fonts), new UTF8Encodin
 File.WriteAllText(csPath, EmitCs(palette, metrics, fonts), new UTF8Encoding(false));
 Console.WriteLine($"themegen: wrote {axamlPath}");
 Console.WriteLine($"themegen: wrote {csPath}");
+
+// Classic color schemes (W2K-01 / bevel-c75): one SystemColors dictionary per scheme in the
+// vendored fork, generated from schemes.json.
+using var schemesDoc = JsonDocument.Parse(File.ReadAllText(schemesJsonPath));
+foreach (var scheme in schemesDoc.RootElement.GetProperty("schemes").EnumerateObject())
+{
+    var outPath = Path.Combine(schemesOutDir, scheme.Name + ".axaml");
+    File.WriteAllText(outPath, EmitScheme(scheme.Value), new UTF8Encoding(false));
+    Console.WriteLine($"themegen: wrote {outPath}");
+}
+
+static string EmitScheme(JsonElement colors)
+{
+    var b = new StringBuilder();
+    b.Append("""
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+                    xmlns:system="clr-namespace:System;assembly=netstandard">
+  <!--
+    auto-generated: do NOT edit by hand.
+    Classic color scheme (W2K-01 / bevel-c75), generated from
+    src/Bevel.Themes.Win2000/schemes.json by tools/ThemeGen. Edit the JSON and run
+    tools/ThemeGen (dotnet run); CI fails when this file drifts from a fresh generation.
+  -->
+""");
+    b.Append('\n');
+    foreach (var c in colors.EnumerateObject())
+        b.Append($"  <Color x:Key=\"{{x:Static common:SystemColors.{c.Name}ColorKey}}\">{c.Value.GetString()}</Color>\n");
+
+    // Shared non-color tail — identical across schemes, owned here (upstream had it verbatim
+    // in every scheme file).
+    b.Append("""
+
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarHeightKey}">16</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarWidthKey}">16</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarButtonWidthKey}">16</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarButtonHeightKey}">16</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarThumbWidthKey}">16</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.MenuBarHeightKey}">18</system:Double>
+
+  <system:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">18</system:Double>
+  <system:Double x:Key="{x:Static common:NonClientMetrics.CaptionFontSizeKey}">11</system:Double>
+  <FontFamily x:Key="{x:Static common:NonClientMetrics.CaptionFontKey}">fonts:Tahoma#Tahoma, Tahoma, $Default</FontFamily>
+  <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Tahoma#Tahoma, Tahoma, $Default</FontFamily>
+  <system:Double x:Key="FontSizeSmall">9</system:Double>
+  <system:Double x:Key="FontSizeNormal">11</system:Double>
+  <system:Double x:Key="FontSizeLarge">13</system:Double>
+</ResourceDictionary>
+""");
+    b.Append('\n');
+    return b.ToString();
+}
 
 static string EmitAxaml(JsonElement palette, JsonElement metrics, JsonElement fonts)
 {
