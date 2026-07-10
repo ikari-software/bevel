@@ -6,24 +6,24 @@
 
     <Grid RowDefinitions="Auto,*">
         <!-- Details column headers -->
-        <!-- Raised button-style column headers (white top-left highlight, #808080
-             bottom-right shadow), on the Win2000 face colour. -->
+        <!-- Raised button-style column headers (ButtonHighlight top-left, ButtonShadow
+             bottom-right — the thin-raised bevel), on the theme face colour (bevel-38y). -->
         <Border x:Name="ColumnHeaders"
                 Grid.Row="0"
-                Background="#D4D0C8"
+                Background="{DynamicResource Bevel.Brush.ButtonFace}"
                 IsVisible="False"
                 Height="18">
             <Grid x:Name="HeaderGrid" ColumnDefinitions="*,80,120,140">
-                <Border Grid.Column="0" BorderBrush="#808080" BorderThickness="0,0,1,1">
-                    <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                <Border Grid.Column="0" BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="0,0,1,1">
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}" BorderThickness="1,1,0,0" Background="{DynamicResource Bevel.Brush.ButtonFace}">
                         <TextBlock x:Name="SortName" Tag="Name" Text=" Name" FontSize="11"
                                    VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
                                    Cursor="Hand" PointerPressed="OnHeaderClick" />
                     </Border>
                 </Border>
-                <Border Grid.Column="1" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                <Border Grid.Column="1" BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="0,0,1,1">
                     <Panel>
-                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                        <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}" BorderThickness="1,1,0,0" Background="{DynamicResource Bevel.Brush.ButtonFace}">
                             <TextBlock x:Name="SortSize" Tag="Size" Text=" Size" FontSize="11"
                                        VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
                                        Cursor="Hand" PointerPressed="OnHeaderClick" />
@@ -33,9 +33,9 @@
                         </Thumb>
                     </Panel>
                 </Border>
-                <Border Grid.Column="2" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                <Border Grid.Column="2" BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="0,0,1,1">
                     <Panel>
-                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                        <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}" BorderThickness="1,1,0,0" Background="{DynamicResource Bevel.Brush.ButtonFace}">
                             <TextBlock x:Name="SortType" Tag="Type" Text=" Type" FontSize="11"
                                        VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
                                        Cursor="Hand" PointerPressed="OnHeaderClick" />
@@ -45,9 +45,9 @@
                         </Thumb>
                     </Panel>
                 </Border>
-                <Border Grid.Column="3" BorderBrush="#808080" BorderThickness="0,0,1,1">
+                <Border Grid.Column="3" BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="0,0,1,1">
                     <Panel>
-                        <Border BorderBrush="White" BorderThickness="1,1,0,0" Background="#D4D0C8">
+                        <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}" BorderThickness="1,1,0,0" Background="{DynamicResource Bevel.Brush.ButtonFace}">
                             <TextBlock x:Name="SortModified" Tag="Modified" Text=" Date Modified" FontSize="11"
                                        VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="4,0"
                                        Cursor="Hand" PointerPressed="OnHeaderClick" />
@@ -65,7 +65,7 @@
             <ScrollViewer x:Name="ItemsScroller"
                          HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto"
-                         Background="White">
+                         Background="{DynamicResource Bevel.Brush.Window}">
                 <ItemsControl x:Name="ItemsPresenter"
                               Focusable="False" />
             </ScrollViewer>

@@ -3,8 +3,10 @@
              x:Class="Bevel.FileManager.Components.InfoPane"
              Focusable="False">
 
-    <!-- Win2000 Folder Info Pane: gradient banner + metadata + links -->
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Background="White">
+    <!-- Win2000 Folder Info Pane: gradient banner + metadata + links. The banner/illustration
+         colours below are webview ART specific to this pane (not system palette) and stay
+         literal; only the page background is a theme token (bevel-38y). -->
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Background="{DynamicResource Bevel.Brush.Window}">
 
         <!-- Banner area: sky gradient with computer vector -->
         <Border Grid.Row="0" Height="120" ClipToBounds="True">

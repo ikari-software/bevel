@@ -3,7 +3,7 @@
              x:Class="Bevel.FileManager.Components.TabStrip"
              x:Name="Root">
 
-    <Border Background="#D4D0C8" BorderBrush="#808080" BorderThickness="0,0,0,1" Padding="2,2,2,0">
+    <Border Background="{DynamicResource Bevel.Brush.ButtonFace}" BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="0,0,0,1" Padding="2,2,2,0">
         <DockPanel>
             <!-- New Tab affordance (bevel-6j9) -->
             <Button DockPanel.Dock="Right"

@@ -2,10 +2,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:classic="using:Classic.Avalonia.Theme">
     <!--
-      Bevel's default Windows 2000 theme. At M0 this simply re-exports the
-      Classic.Avalonia ClassicTheme. Once Classic.Avalonia is forked into this
-      project (TODO: tracked in beads), this file becomes the fork's entry point
-      with Bevel.Color/Metric/Font.* semantic keys layered on top.
+      Bevel's default Windows 2000 theme: the vendored Classic.Avalonia ClassicTheme with
+      Bevel's semantic token layer (Bevel.Color/Brush/Metric/Font.* — see Tokens.axaml,
+      bevel-38y) merged on top. Bevel-owned controls bind ONLY the semantic tokens; the
+      Classic templates' own keys are an internal detail slated for the ENG-01 audit.
     -->
     <classic:ClassicTheme />
+    <Styles.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Bevel.Themes.Win2000/Tokens.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Styles.Resources>
 </Styles>

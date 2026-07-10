@@ -226,14 +226,22 @@ public partial class ItemView : UserControl
         TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
-    // Win2000 selection: the filename label gets a navy (#0A246A) highlight with white text; the
-    // icon is left un-highlighted, exactly like classic Explorer. Bound to the row's IsSelected so
-    // it tracks selection without rebuilding the row.
-    static readonly IBrush SelectionFill = new SolidColorBrush(Color.Parse("#0A246A"));
+    // Win2000 selection: the filename label gets a Highlight-colored bar with HighlightText
+    // text; the icon is left un-highlighted, exactly like classic Explorer. Colors come from
+    // the theme tokens (bevel-38y) so classic color schemes recolor selection too; the literal
+    // fallbacks are the Windows Standard values, used only when no theme is loaded (bare unit
+    // tests). Bound to the row's IsSelected so it tracks selection without rebuilding the row.
+    static IBrush ThemeBrush(string key, string fallbackHex)
+        => Avalonia.Application.Current?.TryGetResource(key, null, out var v) == true && v is IBrush b
+            ? b
+            : new SolidColorBrush(Color.Parse(fallbackHex));
+    static readonly IBrush SelectionFill = ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlight, "#0A246A");
+    static readonly IBrush SelectionText = ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlightText, "#FFFFFF");
+    static readonly IBrush NormalText = ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
         new(sel => sel ? SelectionFill : Brushes.Transparent);
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
-        new(sel => sel ? Brushes.White : Brushes.Black);
+        new(sel => sel ? SelectionText : NormalText);
 
     /// <summary>The filename label wrapped in a selection-highlight border (navy bar + white text
     /// when selected, plus a dotted focus outline). Used by every view mode's template.</summary>

@@ -26,13 +26,13 @@
             </fmcomp:ExplorerBar>
 
             <!-- Sunken splitter -->
-            <Border Grid.Column="1" Width="4" Background="#D4D0C8"
-                    BorderBrush="#808080" BorderThickness="1,0,0,0"
+            <Border Grid.Column="1" Width="4" Background="{DynamicResource Bevel.Brush.ButtonFace}"
+                    BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="1,0,0,0"
                     Cursor="SizeWestEast" />
 
             <!-- Right pane: item view -->
-            <Border Grid.Column="2" Background="White"
-                    BorderBrush="#808080" BorderThickness="1,0,0,0" Padding="1,0,0,0">
+            <Border Grid.Column="2" Background="{DynamicResource Bevel.Brush.Window}"
+                    BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="1,0,0,0" Padding="1,0,0,0">
                 <fmcomp:ItemView x:Name="ItemView" ViewMode="Details" />
             </Border>
         </Grid>
