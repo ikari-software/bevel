@@ -60,12 +60,14 @@ public sealed class FileManagerController
     public IObservable<FileOpProgress> Progress => _fileOps.Progress;
 
     /// <summary>
-    /// Optional hook the view installs to run a request through a progress UI. It is handed the
-    /// request and the inner execute delegate (which runs it on the service under a supplied
-    /// token); when null, requests run directly. This lets the ProgressDialog live in the view
-    /// while all mutations still funnel through this one seam.
+    /// Optional hook the view installs to present a running request through a progress UI. It is
+    /// handed the request and its live <see cref="IFileOpHandle"/> (the operation is already
+    /// started); the runner awaits <see cref="IFileOpHandle.Completion"/> and may call
+    /// <see cref="IFileOpHandle.Cancel"/> — which stops only that operation, never another
+    /// window's (bevel-c8g). When null, requests run to completion directly. This lets the
+    /// ProgressDialog live in the view while all mutations still funnel through this one seam.
     /// </summary>
-    public Func<FileOpRequest, Func<CancellationToken, Task<FileOpResult>>, Task<FileOpResult>>? OperationRunner { get; set; }
+    public Func<FileOpRequest, IFileOpHandle, Task<FileOpResult>>? OperationRunner { get; set; }
 
     // ── Events ─────────────────────────────────────────────────────────
     /// <summary>The current directory changed (navigate/refresh) — the view should (re)load it.</summary>
@@ -189,8 +191,11 @@ public sealed class FileManagerController
 
     private async Task<FileOpResult> RunAsync(FileOpRequest request, CancellationToken ct)
     {
-        Func<CancellationToken, Task<FileOpResult>> exec = c => _fileOps.ExecuteAsync(request, c);
-        var result = OperationRunner is { } run ? await run(request, exec) : await exec(ct);
+        // Begin links ct into the operation's own cancellation source, so an agent/test caller's
+        // token keeps working even when a view runner is installed; the runner cancels through
+        // the handle instead of a second ambient token (bevel-c8g).
+        var handle = _fileOps.Begin(request, ct);
+        var result = OperationRunner is { } run ? await run(request, handle) : await handle.Completion;
         OperationCompleted?.Invoke(result);
         return result;
     }

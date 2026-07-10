@@ -48,6 +48,27 @@ public sealed class StubConflictHandler : IConflictHandler
 }
 
 /// <summary>
+/// Conflict handler that parks the first conflicting operation on its own cancellation token,
+/// signalling <see cref="Reached"/> once parked. Released ONLY by cancelling that operation, so
+/// cancel wiring can be observed deterministically — no sleeps, no timing races (bevel-c8g).
+/// </summary>
+public sealed class ParkingConflictHandler : IConflictHandler
+{
+    /// <summary>Completes when the operation is parked inside conflict resolution.</summary>
+    public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async ValueTask<ConflictResolution> ResolveConflictAsync(
+        VfsPath source, VfsPath destination, long? sourceSize, long? destSize,
+        DateTimeOffset? sourceModified, DateTimeOffset? destModified, ConflictScope scope,
+        CancellationToken ct)
+    {
+        Reached.TrySetResult();
+        await Task.Delay(Timeout.Infinite, ct); // throws OperationCanceledException on cancel
+        return ConflictResolution.Yes;          // unreachable — kept for the compiler
+    }
+}
+
+/// <summary>
 /// Wraps a real IVfsProvider so tests can inject failures and observe calls without
 /// re-implementing an in-memory filesystem: force read-only behavior, throw from
 /// ResolveAsync for chosen paths, and count/record resolves.

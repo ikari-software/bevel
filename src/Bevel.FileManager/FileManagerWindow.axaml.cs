@@ -42,6 +42,14 @@ public partial class FileManagerWindow : BevelWindow
     {
         public required FileManagerController Controller { get; init; }
         public required Guid StripId { get; init; }
+
+        /// <summary>
+        /// Live handles of this tab's running file operations (bevel-c8g). Only touched on the
+        /// UI thread — added/removed by <see cref="RunWithProgressAsync"/>, cancelled by
+        /// <see cref="CloseTab"/> / <see cref="OnClosed"/> so closing a tab or the window stops
+        /// its transfers without disturbing any other tab's or window's operation.
+        /// </summary>
+        public List<IFileOpHandle> InFlightOps { get; } = new();
     }
 
     private readonly List<TabSession> _tabs = new();
@@ -342,11 +350,12 @@ public partial class FileManagerWindow : BevelWindow
     }
 
     /// <summary>
-    /// Closes <paramref name="session"/>'s tab. Keeps at least one tab open: closing the last
-    /// remaining tab is a no-op (Ctrl+W / the tab's close button do nothing then — closing the
-    /// whole window is still Cmd+W / Alt+F4 / File &gt; Close Window). Does not dispose the
-    /// closed tab's FileOperationService — nothing in this app disposes it for the main window
-    /// either today, so this isn't a regression, just an existing gap.
+    /// Closes <paramref name="session"/>'s tab, cancelling any of its still-running file
+    /// operations (bevel-c8g). Keeps at least one tab open: closing the last remaining tab is a
+    /// no-op (Ctrl+W / the tab's close button do nothing then — closing the whole window is
+    /// still Cmd+W / Alt+F4 / File &gt; Close Window). Does not dispose the closed tab's
+    /// FileOperationService — nothing in this app disposes it for the main window either today,
+    /// so this isn't a regression, just an existing gap.
     /// </summary>
     private void CloseTab(TabSession session)
     {
@@ -355,6 +364,8 @@ public partial class FileManagerWindow : BevelWindow
         var idx = _tabs.IndexOf(session);
         if (idx < 0) return;
         var wasActive = session == _activeTab;
+
+        CancelInFlightOps(session);
 
         _tabs.RemoveAt(idx);
         TabStrip.RemoveTab(session.StripId);
@@ -487,8 +498,23 @@ public partial class FileManagerWindow : BevelWindow
         }
     }
 
+    /// <summary>
+    /// Cancels <paramref name="session"/>'s running file operations through their handles, so
+    /// only that tab's transfers stop (bevel-c8g). Snapshots the list: cancellation completes
+    /// each operation, whose runner continuation removes it from <see cref="TabSession.InFlightOps"/>.
+    /// </summary>
+    private static void CancelInFlightOps(TabSession session)
+    {
+        foreach (var op in session.InFlightOps.ToArray())
+            op.Cancel();
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        // Stop this window's transfers (every tab's) without touching other windows' operations.
+        foreach (var tab in _tabs)
+            CancelInFlightOps(tab);
+
         _treeCts?.Cancel();
         _treeCts?.Dispose();
         _enumerateCts?.Cancel();
@@ -846,28 +872,40 @@ public partial class FileManagerWindow : BevelWindow
     // ── Progress dialog routing (FM-132) ───────────────────────────────
 
     /// <summary>
-    /// Controller operation runner: runs Copy/Move/Delete under a ProgressDialog when they take
-    /// longer than a beat, so single-file ops don't flash a modal. Everything else runs inline.
+    /// How long an operation may run before the ProgressDialog appears. Internal so tests can
+    /// push it out of the way and exercise the cancel wiring without a modal (bevel-c8g).
+    /// </summary>
+    internal int ProgressDialogDelayMs { get; set; } = 400;
+
+    /// <summary>
+    /// Controller operation runner: presents an already-running operation, showing a
+    /// ProgressDialog for Copy/Move/Delete when they take longer than a beat so single-file ops
+    /// don't flash a modal. Cancel — the dialog's button, closing the op's tab, or closing the
+    /// window — goes through <paramref name="op"/>'s handle and stops only this operation
+    /// (bevel-c8g).
     /// </summary>
     async System.Threading.Tasks.Task<FileOpResult> RunWithProgressAsync(
-        FileOpRequest request, Func<CancellationToken, System.Threading.Tasks.Task<FileOpResult>> exec)
+        FileOpRequest request, IFileOpHandle op)
     {
-        if (_controller is null || request is not (CopyRequest or MoveRequest or DeleteRequest))
-            return await exec(CancellationToken.None);
-
-        var cts = new CancellationTokenSource();
-        var opTask = exec(cts.Token);
-
-        if (await System.Threading.Tasks.Task.WhenAny(opTask, System.Threading.Tasks.Task.Delay(400)) == opTask)
+        // The runner is only installed on the ACTIVE tab's controller and mutations dispatch on
+        // the UI thread, so the operation belongs to the tab that is active right now. Track it
+        // there for tab-close / window-close cancellation.
+        var session = _activeTab;
+        session?.InFlightOps.Add(op);
+        try
         {
-            cts.Dispose();
-            return await opTask; // finished fast — no dialog
-        }
+            if (_controller is null || request is not (CopyRequest or MoveRequest or DeleteRequest))
+                return await op.Completion;
 
-        var (from, to) = DescribeOp(request);
-        var dlg = new ProgressDialog(request, from, to);
-        try { return await dlg.AdoptAsync(_controller.Progress, opTask, cts, this); }
-        finally { cts.Dispose(); }
+            if (await System.Threading.Tasks.Task.WhenAny(
+                    op.Completion, System.Threading.Tasks.Task.Delay(ProgressDialogDelayMs)) == op.Completion)
+                return await op.Completion; // finished fast — no dialog
+
+            var (from, to) = DescribeOp(request);
+            var dlg = new ProgressDialog(request, from, to);
+            return await dlg.AdoptAsync(_controller.Progress, op, this);
+        }
+        finally { session?.InFlightOps.Remove(op); }
     }
 
     static (string From, string To) DescribeOp(FileOpRequest request) => request switch

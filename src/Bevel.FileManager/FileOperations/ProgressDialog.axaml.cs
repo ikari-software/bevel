@@ -27,6 +27,14 @@ public partial class ProgressDialog : Window
     public FileOpResult? Result => _result;
     public bool WasCancelled { get; private set; }
 
+    /// <summary>
+    /// The id of the operation this dialog renders. The service's progress stream carries every
+    /// operation it is running (multi-tab / multi-window), so events for other ids are ignored —
+    /// otherwise a concurrent transfer would drive this dialog's bar and labels (bevel-c8g).
+    /// Internal setter for tests; <see cref="AdoptAsync"/> sets it from the handle.
+    /// </summary>
+    internal string? OperationId { get; set; }
+
     public ProgressDialog()
     {
         InitializeComponent();
@@ -51,35 +59,38 @@ public partial class ProgressDialog : Window
     }
 
     /// <summary>
-    /// Adopt an already-running operation: subscribe to its <paramref name="progress"/> stream,
-    /// show the dialog, and cancel via <paramref name="cts"/> if the user clicks Cancel. The
-    /// caller starts <paramref name="opTask"/> (with <paramref name="cts"/>'s token) so it can
-    /// decide — after a short delay — whether the op is slow enough to warrant showing this
-    /// dialog at all, avoiding a modal flash for instant operations.
+    /// Adopt an already-running operation: subscribe to its <paramref name="progress"/> stream
+    /// (filtered to <paramref name="op"/>'s id), show the dialog, and cancel via
+    /// <see cref="IFileOpHandle.Cancel"/> — stopping only this operation — if the user clicks
+    /// Cancel. The caller started the operation so it can decide — after a short delay — whether
+    /// the op is slow enough to warrant showing this dialog at all, avoiding a modal flash for
+    /// instant operations.
     /// </summary>
     public async Task<FileOpResult> AdoptAsync(
         IObservable<FileOpProgress> progress,
-        Task<FileOpResult> opTask,
-        CancellationTokenSource cts,
+        IFileOpHandle op,
         Window owner)
     {
+        OperationId = op.OperationId;
         using var sub = progress.Subscribe(OnProgress);
 
         // Close the dialog once the operation finishes.
-        _ = opTask.ContinueWith(_ => Dispatcher.UIThread.Post(() => Close()), TaskScheduler.Default);
+        _ = op.Completion.ContinueWith(_ => Dispatcher.UIThread.Post(() => Close()), TaskScheduler.Default);
 
         await ShowDialog(owner);
 
-        if (WasCancelled) cts.Cancel();
+        if (WasCancelled) op.Cancel();
 
         // The service returns a (possibly Cancelled) result; on hard cancel it may throw
         // OperationCanceledException, which the caller's mutation wrapper handles.
-        _result = await opTask;
+        _result = await op.Completion;
         return _result;
     }
 
-    private void OnProgress(FileOpProgress progress)
+    internal void OnProgress(FileOpProgress progress)
     {
+        if (OperationId is not null && progress.OperationId != OperationId) return;
+
         Dispatcher.UIThread.Post(() =>
         {
             _bytesTransferred = progress.BytesTransferred;

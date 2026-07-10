@@ -203,25 +203,76 @@ public sealed class FileManagerControllerTests : IDisposable
         Assert.Null(await controller.NewFolderAsync());
     }
 
-    // ── Operation runner hook (progress-dialog seam) ───────────────────
+    // ── Operation runner hook (progress-dialog seam, bevel-c8g) ─────────
 
     [Fact]
-    public async Task OperationRunner_intercepts_mutations_and_can_still_execute_them()
+    public async Task OperationRunner_receives_the_live_handle_of_the_started_operation()
     {
         Directory.CreateDirectory(Abs("dst"));
         await File.WriteAllTextAsync(Abs("a.txt"), "x");
 
         FileOpRequest? seen = null;
-        _controller.OperationRunner = async (request, exec) =>
+        string? handleId = null;
+        _controller.OperationRunner = async (request, op) =>
         {
             seen = request;                 // the view would wrap this in a ProgressDialog
-            return await exec(CancellationToken.None);
+            handleId = op.OperationId;
+            return await op.Completion;
         };
 
         var result = await _controller.CopyAsync(new[] { P("a.txt") }, P("dst"));
 
         Assert.IsType<CopyRequest>(seen);
+        Assert.Equal(handleId, result.OperationId); // the handle really is THIS op's
         Assert.Equal(FileOpStatus.Completed, result.Status);
-        Assert.True(File.Exists(Abs("dst", "a.txt"))); // the exec delegate really ran the copy
+        Assert.True(File.Exists(Abs("dst", "a.txt")));
+    }
+
+    [Fact]
+    public async Task OperationRunner_cancels_through_the_handle_and_the_result_reports_it()
+    {
+        // A pre-existing destination file routes the copy into conflict resolution, where the
+        // parking handler holds it until the handle is cancelled.
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "new");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old");
+
+        var handler = new ParkingConflictHandler();
+        using var svc = new FileOperationService(_vfs, handler);
+        var controller = new FileManagerController(_vfs, svc);
+        controller.OperationRunner = async (_, op) =>
+        {
+            await handler.Reached.Task;     // op is parked — cancel it like a dialog's button would
+            op.Cancel();
+            return await op.Completion;
+        };
+
+        var result = await controller.CopyAsync(new[] { P("a.txt") }, P("dst"));
+
+        Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
+        Assert.Equal("old", await File.ReadAllTextAsync(Abs("dst", "a.txt"))); // never overwritten
+    }
+
+    [Fact]
+    public async Task External_token_still_cancels_when_a_runner_is_installed()
+    {
+        // Agents/tests pass a CancellationToken to CopyAsync; installing a view runner must not
+        // disconnect it (Begin links it into the op's own source).
+        Directory.CreateDirectory(Abs("dst"));
+        await File.WriteAllTextAsync(Abs("a.txt"), "new");
+        await File.WriteAllTextAsync(Abs("dst", "a.txt"), "old");
+
+        var handler = new ParkingConflictHandler();
+        using var svc = new FileOperationService(_vfs, handler);
+        var controller = new FileManagerController(_vfs, svc);
+        controller.OperationRunner = (_, op) => op.Completion; // passive runner — never cancels
+
+        using var cts = new CancellationTokenSource();
+        var task = controller.CopyAsync(new[] { P("a.txt") }, P("dst"), cts.Token);
+        await handler.Reached.Task;
+        cts.Cancel();
+
+        var result = await task;
+        Assert.Contains(result.ItemResults, r => r.Status == FileItemResultStatus.Cancelled);
     }
 }
