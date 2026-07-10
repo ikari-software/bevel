@@ -34,3 +34,7 @@ native/**/DerivedData/
 .beads-credential-key
 .beads/proxieddb/
 .claude/worktrees/
+
+# Local clean-room reference stash (public Win2000 screenshots for measurement only —
+# Microsoft-copyrighted images; never committed/shipped; see docs/reference/win2000/)
+refs/
