@@ -191,7 +191,6 @@ file sealed class LazyFsNode : IVfsNode
     public required string TypeDescription { get; init; }
     public required IconKey IconKey { get; init; }
     public required VfsCapabilities Caps { get; init; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
 
     FileSystemInfo? _info;
     FileSystemInfo Info => _info ??= Directory.Exists(FullPath) ? new DirectoryInfo(FullPath) : new FileInfo(FullPath);
@@ -238,7 +237,6 @@ file sealed class LocalFsNode : IVfsNode
     public bool MightHaveChildren { get; }
     public IconKey IconKey { get; }
     public VfsCapabilities Caps { get; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; } = new Dictionary<string, object?>();
 
     public long? Size
     {

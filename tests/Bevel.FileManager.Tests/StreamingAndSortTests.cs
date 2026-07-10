@@ -113,7 +113,6 @@ file sealed class TestNode : IVfsNode
     public string TypeDescription { get; init; } = "";
     public IconKey IconKey { get; init; }
     public VfsCapabilities Caps { get; init; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
 
     public static IVfsNode Make(string name, VfsNodeKind kind = VfsNodeKind.File, long? size = 1024)
         => new TestNode

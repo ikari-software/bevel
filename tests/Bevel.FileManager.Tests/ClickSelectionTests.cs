@@ -81,6 +81,4 @@ file sealed class ClickNode : IVfsNode
     public string TypeDescription { get; init; } = "";
     public IconKey IconKey { get; init; }
     public VfsCapabilities Caps { get; init; }
-    public System.Collections.Generic.IReadOnlyDictionary<string, object?> ExtraColumns { get; init; }
-        = new System.Collections.Generic.Dictionary<string, object?>();
 }

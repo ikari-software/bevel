@@ -125,13 +125,11 @@ public sealed class ComputerProvider : IVfsProvider
             },
             IconKey = icon,
             Caps = VfsCapabilities.Properties,
-            ExtraColumns = new Dictionary<string, object?>
-            {
-                ["MountPath"] = drive.RootDirectory.FullName,
-                ["FreeSpace"] = drive.TotalFreeSpace,
-                ["TotalSize"] = drive.TotalSize,
-                ["DriveFormat"] = drive.DriveFormat,
-            },
+            Volume = new VolumeInfo(
+                MountPath: drive.RootDirectory.FullName,
+                TotalSize: drive.TotalSize,
+                FreeSpace: drive.TotalFreeSpace,
+                Format: drive.DriveFormat),
         };
     }
 

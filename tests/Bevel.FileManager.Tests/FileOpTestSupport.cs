@@ -15,7 +15,6 @@ public sealed class FakeNode : IVfsNode
     public string TypeDescription { get; init; } = "File";
     public IconKey IconKey { get; init; }
     public VfsCapabilities Caps { get; init; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
 
     public static FakeNode File(string name, long size = 1024, string type = "Text Document", DateTimeOffset? modified = null)
         => new()

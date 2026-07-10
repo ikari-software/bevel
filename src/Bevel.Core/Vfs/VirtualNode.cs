@@ -14,8 +14,7 @@ public sealed class VirtualNode : IVfsNode
     public string TypeDescription { get; init; } = "";
     public IconKey IconKey { get; init; }
     public VfsCapabilities Caps { get; init; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; }
-        = new Dictionary<string, object?>();
+    public VolumeInfo? Volume { get; init; }
 
     public static VirtualNode Folder(VfsPath path, string name, IconKey? icon = null)
         => new()

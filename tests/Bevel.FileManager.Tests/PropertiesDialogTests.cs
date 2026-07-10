@@ -50,7 +50,6 @@ public sealed class PropertiesDialogTests : IDisposable
         public string TypeDescription { get; init; } = "";
         public IconKey IconKey { get; init; }
         public VfsCapabilities Caps { get; init; }
-        public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
     }
 
     // ── Single file ─────────────────────────────────────────────────────

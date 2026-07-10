@@ -235,7 +235,6 @@ public class SearchServiceTests
         public string TypeDescription { get; init; } = "";
         public IconKey IconKey { get; init; }
         public VfsCapabilities Caps { get; init; }
-        public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
     }
 
     /// <summary>Minimal in-memory IVfsProvider driven by a fixed folder->children map, with the

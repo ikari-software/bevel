@@ -38,9 +38,12 @@ public sealed class UndoStack
     }
 
     /// <summary>
-    /// Pop the most recent undo entry. Returns null if empty.
+    /// Pop the most recent undo entry. Returns null if empty. Internal (bevel-972 / review
+    /// #1/AD2): only <see cref="FileOperationService"/>'s undo execution may pop — an outside
+    /// caller popping would discard the record without reverting anything. UI goes through
+    /// <see cref="FileOperationService.UndoAsync"/>.
     /// </summary>
-    public UndoEntry? Pop()
+    internal UndoEntry? Pop()
     {
         lock (_gate)
         {
@@ -51,28 +54,8 @@ public sealed class UndoStack
         }
     }
 
-    /// <summary>
-    /// Peek at the most recent undo entry without removing it.
-    /// </summary>
-    public UndoEntry? Peek() { lock (_gate) return _entries.Last?.Value; }
-
-    /// <summary>
-    /// Remove all entries and return them in LIFO order (newest first)
-    /// for cleanup purposes.
-    /// </summary>
-    public IReadOnlyList<UndoEntry> Clear()
-    {
-        lock (_gate)
-        {
-            var result = new List<UndoEntry>();
-            while (_entries.Count > 0)
-            {
-                result.Add(_entries.Last!.Value);
-                _entries.RemoveLast();
-            }
-            return result;
-        }
-    }
+    /// <summary>Peek at the most recent undo entry without removing it (internal — see <see cref="Pop"/>).</summary>
+    internal UndoEntry? Peek() { lock (_gate) return _entries.Last?.Value; }
 }
 
 /// <summary>

@@ -227,5 +227,4 @@ file sealed class TestNode : IVfsNode
     public string TypeDescription { get; init; } = "";
     public IconKey IconKey { get; init; }
     public VfsCapabilities Caps { get; init; }
-    public IReadOnlyDictionary<string, object?> ExtraColumns { get; init; } = new Dictionary<string, object?>();
 }
