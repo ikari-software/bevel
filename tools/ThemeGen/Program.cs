@@ -34,12 +34,22 @@ using var schemesDoc = JsonDocument.Parse(File.ReadAllText(schemesJsonPath));
 foreach (var scheme in schemesDoc.RootElement.GetProperty("schemes").EnumerateObject())
 {
     var outPath = Path.Combine(schemesOutDir, scheme.Name + ".axaml");
-    File.WriteAllText(outPath, EmitScheme(scheme.Value), new UTF8Encoding(false));
+    File.WriteAllText(outPath, EmitScheme(scheme.Value, metrics), new UTF8Encoding(false));
     Console.WriteLine($"themegen: wrote {outPath}");
 }
 
-static string EmitScheme(JsonElement colors)
+static string MetricDouble(JsonElement metrics, string name)
+    => metrics.GetProperty(name).GetProperty("double").GetDouble()
+        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+static string EmitScheme(JsonElement colors, JsonElement metrics)
 {
+    // The vendored SystemParameters keys must agree with Bevel.Metric.* — both derive from
+    // theme.json here so they cannot drift (bevel-zhf; upstream shipped MenuBarHeight 18
+    // where the Win2000 'Windows Standard' value is 19, spec 05-theming.md §3).
+    var menuBarHeight = MetricDouble(metrics, "MenuBarHeight");
+    var captionHeight = MetricDouble(metrics, "CaptionHeight");
+    var scrollBarSize = MetricDouble(metrics, "ScrollBarSize");
     var b = new StringBuilder();
     b.Append("""
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
@@ -58,17 +68,17 @@ static string EmitScheme(JsonElement colors)
         b.Append($"  <Color x:Key=\"{{x:Static common:SystemColors.{c.Name}ColorKey}}\">{c.Value.GetString()}</Color>\n");
 
     // Shared non-color tail — identical across schemes, owned here (upstream had it verbatim
-    // in every scheme file).
-    b.Append("""
+    // in every scheme file); metric values interpolated from theme.json above.
+    b.Append($$"""
 
-  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarHeightKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarWidthKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarButtonWidthKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarButtonHeightKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarThumbWidthKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.MenuBarHeightKey}">18</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarHeightKey}">{{scrollBarSize}}</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarWidthKey}">{{scrollBarSize}}</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarButtonWidthKey}">{{scrollBarSize}}</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarButtonHeightKey}">{{scrollBarSize}}</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarThumbWidthKey}">{{scrollBarSize}}</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.MenuBarHeightKey}">{{menuBarHeight}}</system:Double>
 
-  <system:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">18</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">{{captionHeight}}</system:Double>
   <system:Double x:Key="{x:Static common:NonClientMetrics.CaptionFontSizeKey}">11</system:Double>
   <FontFamily x:Key="{x:Static common:NonClientMetrics.CaptionFontKey}">fonts:Tahoma#Tahoma, Tahoma, $Default</FontFamily>
   <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Tahoma#Tahoma, Tahoma, $Default</FontFamily>

@@ -44,7 +44,7 @@
   <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarButtonWidthKey}">16</system:Double>
   <system:Double x:Key="{x:Static common:SystemParameters.VerticalScrollBarButtonHeightKey}">16</system:Double>
   <system:Double x:Key="{x:Static common:SystemParameters.HorizontalScrollBarThumbWidthKey}">16</system:Double>
-  <system:Double x:Key="{x:Static common:SystemParameters.MenuBarHeightKey}">18</system:Double>
+  <system:Double x:Key="{x:Static common:SystemParameters.MenuBarHeightKey}">19</system:Double>
 
   <system:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">18</system:Double>
   <system:Double x:Key="{x:Static common:NonClientMetrics.CaptionFontSizeKey}">11</system:Double>

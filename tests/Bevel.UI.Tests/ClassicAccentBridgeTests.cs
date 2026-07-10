@@ -74,4 +74,32 @@ public sealed class ClassicAccentBridgeTests
             Color.Parse("#FF0A246A"),
             ResolveSystemColor(ClassicCommon.SystemColors.MenuHighlightColorKey));
     }
+
+    private static double ResolveDouble(object key)
+    {
+        Assert.True(
+            Application.Current!.TryGetResource(key, Application.Current.ActualThemeVariant, out var value),
+            $"theme does not define '{key}'");
+        return Assert.IsType<double>(value);
+    }
+
+    [AvaloniaFact]
+    public void Vendored_system_parameters_agree_with_the_bevel_metrics()
+    {
+        // Both derive from theme.json via ThemeGen (bevel-zhf) — this locks the invariant.
+        // Win2000 'Windows Standard': menu bar 19 (upstream shipped 18), caption 18,
+        // scrollbars 16 (spec 05-theming.md §3).
+        Assert.Equal(
+            ResolveDouble(Bevel.UI.ThemeTokens.MetricMenuBarHeight),
+            ResolveDouble(ClassicCommon.SystemParameters.MenuBarHeightKey));
+        Assert.Equal(19d, ResolveDouble(ClassicCommon.SystemParameters.MenuBarHeightKey));
+
+        Assert.Equal(
+            ResolveDouble(Bevel.UI.ThemeTokens.MetricCaptionHeight),
+            ResolveDouble(ClassicCommon.SystemParameters.WindowCaptionHeightKey));
+
+        Assert.Equal(
+            ResolveDouble(Bevel.UI.ThemeTokens.MetricScrollBarSize),
+            ResolveDouble(ClassicCommon.SystemParameters.VerticalScrollBarWidthKey));
+    }
 }
