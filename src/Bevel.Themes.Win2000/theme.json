@@ -1,0 +1,53 @@
+{
+  "_comment": "Single source of truth for the Win2000 theme tokens (MET-01 / bevel-51t). Values: docs/spec/05-theming.md §8.1 (palette, 'Windows Standard'), §3 (metrics, Win2000 column), §5 FNT-01 (fonts). Edit THIS file and run `dotnet run --project tools/ThemeGen` — Tokens.axaml and ThemeTokens.cs are generated from it and CI fails on drift.",
+  "theme": "win2000",
+  "scheme": "Windows Standard",
+  "palette": {
+    "ButtonFace": "#D4D0C8",
+    "ButtonHighlight": "#FFFFFF",
+    "ButtonLight": "#D4D0C8",
+    "ButtonShadow": "#808080",
+    "ButtonDkShadow": "#404040",
+    "Window": "#FFFFFF",
+    "WindowText": "#000000",
+    "WindowFrame": "#000000",
+    "GrayText": "#808080",
+    "AppWorkspace": "#808080",
+    "Desktop": "#3A6EA5",
+    "Menu": "#D4D0C8",
+    "MenuText": "#000000",
+    "Scrollbar": "#D4D0C8",
+    "ActiveTitle": "#0A246A",
+    "GradientActiveTitle": "#A6CAF0",
+    "InactiveTitle": "#808080",
+    "GradientInactiveTitle": "#C0C0C0",
+    "ActiveTitleText": "#FFFFFF",
+    "InactiveTitleText": "#D4D0C8",
+    "Highlight": "#0A246A",
+    "HighlightText": "#FFFFFF",
+    "HotTracking": "#000080",
+    "InfoWindow": "#FFFFE1",
+    "InfoText": "#000000"
+  },
+  "metrics": {
+    "CaptionHeight": { "double": 18 },
+    "CaptionButtonWidth": { "double": 16 },
+    "CaptionButtonHeight": { "double": 14 },
+    "ResizeBorder": { "double": 4 },
+    "EdgeThickness": { "double": 2 },
+    "ScrollBarSize": { "double": 16 },
+    "MenuBarHeight": { "double": 19 },
+    "MenuItemHeight": { "double": 17 },
+    "TaskbarHeight": { "double": 28 },
+    "IconGridCellWidth": { "double": 75 },
+    "IconGridCellHeight": { "double": 75 },
+    "FocusRectInset": { "double": 1 },
+    "CornerRadius": { "cornerRadius": "0" },
+    "ButtonPadding": { "thickness": "6,1" }
+  },
+  "fonts": {
+    "UI": "avares://Bevel.Themes.Win2000/Assets/#Noto Sans",
+    "Caption": "avares://Bevel.Themes.Win2000/Assets/#Noto Sans",
+    "Mono": "Menlo,Consolas,monospace"
+  }
+}

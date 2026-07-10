@@ -1,21 +1,20 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!--
-      Bevel semantic theme tokens — Windows 2000 "Windows Standard" scheme (bevel-38y).
+      auto-generated: do NOT edit by hand.
+      Bevel semantic theme tokens, generated from theme.json by tools/ThemeGen
+      (MET-01 / bevel-51t). Edit theme.json and run tools/ThemeGen (dotnet run);
+      CI fails when this file drifts from a fresh generation. (XML comments cannot
+      contain double hyphens, so no flag spellings here.)
 
-      Single source: docs/spec/05-theming.md §8.1 (palette), §3 (metrics), §5 FNT-01 (fonts).
+      Values: docs/spec/05-theming.md §8.1 (palette), §3 (metrics), §5 FNT-01 (fonts).
       Controls bind Bevel.Brush.* / Bevel.Metric.* / Bevel.Font.* via DynamicResource so a
-      future theme (Luna, Win11) or classic color scheme (W2K-01) swaps values without touching
-      templates. Roles that share a value in this scheme (Menu = ButtonFace, InfoText =
-      WindowText, ButtonLight = ButtonFace) still get their OWN keys: schemes may recolor them
-      independently.
-
-      MET-01 (theme.json + source generator as the single source of truth) is a follow-up —
-      until then this dictionary and ThemeTokens.cs key constants are kept in sync by
-      ThemeTokenTests.
+      future theme or classic color scheme (W2K-01) swaps values without touching templates.
+      Roles that share a value in this scheme still get their OWN keys — schemes may recolor
+      them independently.
     -->
 
-    <!-- ── Palette (§8.1, Win2000 "Windows Standard") ─────────────────────── -->
+    <!-- ── Palette ────────────────────────────────────────────────────────── -->
 
     <Color x:Key="Bevel.Color.ButtonFace">#D4D0C8</Color>
     <Color x:Key="Bevel.Color.ButtonHighlight">#FFFFFF</Color>
@@ -69,7 +68,7 @@
     <SolidColorBrush x:Key="Bevel.Brush.InfoWindow" Color="{StaticResource Bevel.Color.InfoWindow}" />
     <SolidColorBrush x:Key="Bevel.Brush.InfoText" Color="{StaticResource Bevel.Color.InfoText}" />
 
-    <!-- ── Metrics (§3, Win2000 column — logical px at 1.0 scale) ─────────── -->
+    <!-- ── Metrics (logical px at 1.0 scale) ──────────────────────────────── -->
 
     <x:Double x:Key="Bevel.Metric.CaptionHeight">18</x:Double>
     <x:Double x:Key="Bevel.Metric.CaptionButtonWidth">16</x:Double>
@@ -86,7 +85,7 @@
     <CornerRadius x:Key="Bevel.Metric.CornerRadius">0</CornerRadius>
     <Thickness x:Key="Bevel.Metric.ButtonPadding">6,1</Thickness>
 
-    <!-- ── Fonts (§5 FNT-01) — families only; faces swap with the asset work ── -->
+    <!-- ── Fonts (families only; faces swap with the asset work) ──────────── -->
 
     <FontFamily x:Key="Bevel.Font.UI">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>
     <FontFamily x:Key="Bevel.Font.Caption">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>

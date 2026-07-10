@@ -101,6 +101,33 @@ jobs:
           name: BevelHelper
           path: native/helper-macos/.build/release/BevelHelper
 
+  # ── Theme token codegen drift check (bevel-51t / MET-01) ────────────────────
+  #
+  #  Regenerates Tokens.axaml + ThemeTokens.cs from theme.json (the single source of
+  #  truth) and fails if the checked-in files differ — someone edited a generated file
+  #  by hand, or edited theme.json without running tools/ThemeGen.
+
+  theme-drift:
+    name: Theme token codegen drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Regenerate theme tokens
+        run: dotnet run --project tools/ThemeGen
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code -- src/Bevel.Themes.Win2000/Tokens.axaml src/Bevel.UI/ThemeTokens.cs; then
+            echo "::error::Generated theme tokens drifted from theme.json. Edit theme.json and run 'dotnet run --project tools/ThemeGen', then commit the result."
+            exit 1
+          fi
+
   # ── Proto codegen drift check (bevel-vgg) ───────────────────────────────────
   #
   #  Regenerates the Swift protobuf output from proto/bevel.helper.v1.proto and fails
