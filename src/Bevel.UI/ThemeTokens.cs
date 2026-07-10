@@ -83,4 +83,6 @@ public static class ThemeTokens
     public const string FontUI = "Bevel.Font.UI";
     public const string FontCaption = "Bevel.Font.Caption";
     public const string FontMono = "Bevel.Font.Mono";
+
+    public const string EdgeRendering = "Bevel.Edge.Rendering";
 }

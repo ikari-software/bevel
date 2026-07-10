@@ -45,6 +45,17 @@
                                FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
             </TabItem>
+            <TabItem Header="Display">
+                <StackPanel Spacing="8" Margin="8">
+                    <TextBlock Text="Effects" FontWeight="SemiBold" FontSize="12" />
+                    <!-- Whitelisted EdgeRendering override (chrome spec §8 / bevel-wym) —
+                         era-appropriate next to Win2000's real "Smooth edges of screen fonts". -->
+                    <CheckBox x:Name="CrispBevelsCheck"
+                              Content="Crisp bevels" />
+                    <TextBlock Text="Draws 3-D edges as hard pixel bands instead of smooth gradients. Pixel-authentic; smooth uses high-DPI detail for finesse."
+                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+            </TabItem>
         </TabControl>
     </DockPanel>
 </components:BevelWindow>

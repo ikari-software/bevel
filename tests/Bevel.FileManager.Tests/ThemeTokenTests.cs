@@ -44,6 +44,7 @@ public sealed class ThemeTokenTests
                 case "MetricCornerRadius": Assert.IsType<CornerRadius>(value); break;
                 case "MetricButtonPadding": Assert.IsType<Thickness>(value); break;
                 case var n when n.StartsWith("Metric"): Assert.IsType<double>(value); break;
+                case "EdgeRendering": Assert.IsType<Classic.Avalonia.Theme.EdgeRendering>(value); break;
                 default: Assert.Fail($"unclassified token constant '{name}'"); break;
             }
         }

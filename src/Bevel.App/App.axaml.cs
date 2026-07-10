@@ -23,6 +23,14 @@ public partial class App : Application
             var services = Services
                 ?? throw new InvalidOperationException("DI container not initialized before UI startup.");
 
+            // Load persisted settings BEFORE any window shows and apply the whitelisted theme
+            // overrides (bevel-wym) — previously nothing called LoadAsync, so saved settings
+            // never survived a restart. Small local-file read; blocking at startup is fine.
+            var settings = services.GetRequiredService<SettingsService>();
+            settings.LoadAsync().GetAwaiter().GetResult();
+            UI.ThemeOptions.ApplyCrispBevels(
+                this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
+
             // Desktop window (behind everything, wallpaper + icon grid).
             var desktopWin = new DesktopWindow { Content = new DesktopView() };
             desktopWin.Show();

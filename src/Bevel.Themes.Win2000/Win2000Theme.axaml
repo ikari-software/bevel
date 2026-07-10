@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:classic="using:Classic.Avalonia.Theme">
+        xmlns:classic="using:Classic.Avalonia.Theme"
+        xmlns:ui="using:Bevel.UI">
     <!--
       Bevel's default Windows 2000 theme: the vendored Classic.Avalonia ClassicTheme with
       Bevel's semantic token layer (Bevel.Color/Brush/Metric/Font.* — see Tokens.axaml,
@@ -9,12 +10,16 @@
     -->
     <classic:ClassicTheme />
 
-    <!-- Edge rendering (bevel-38y.1 / chrome spec §8): the Win2000 theme owns the mode.
-         Smooth by default at all scalings (decision 2026-07-06 — HiDPI-native eased-gradient
-         bevels, fixes 150% fuzziness); the whitelisted "Crisp bevels" Display-settings
-         override flips this setter when that surface ships. -->
+    <!-- Edge rendering (bevel-38y.1 / chrome spec §8): the Win2000 theme owns the mode via
+         the Bevel.Edge.Rendering resource (theme.json default: Smooth — HiDPI-native
+         eased-gradient bevels). The whitelisted "Crisp bevels" Display-settings toggle
+         (bevel-wym) overrides the resource at Application level, which shadows the theme's
+         value for DynamicResource lookups and flips every bevel live. -->
     <Style Selector="classic|ClassicBorderDecorator">
-        <Setter Property="EdgeRendering" Value="Smooth" />
+        <Setter Property="EdgeRendering" Value="{DynamicResource Bevel.Edge.Rendering}" />
+    </Style>
+    <Style Selector="ui|BevelBorder">
+        <Setter Property="EdgeRendering" Value="{DynamicResource Bevel.Edge.Rendering}" />
     </Style>
 
     <Styles.Resources>

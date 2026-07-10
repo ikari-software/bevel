@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:classic="using:Classic.Avalonia.Theme">
     <!--
       auto-generated: do NOT edit by hand.
       Bevel semantic theme tokens, generated from theme.json by tools/ThemeGen
@@ -90,4 +91,8 @@
     <FontFamily x:Key="Bevel.Font.UI">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>
     <FontFamily x:Key="Bevel.Font.Caption">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>
     <FontFamily x:Key="Bevel.Font.Mono">Menlo,Consolas,monospace</FontFamily>
+
+    <!-- ── Edge rendering default (chrome spec §8; user override: Display settings) ── -->
+
+    <classic:EdgeRendering x:Key="Bevel.Edge.Rendering">Smooth</classic:EdgeRendering>
 </ResourceDictionary>

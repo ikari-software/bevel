@@ -22,8 +22,9 @@ var root = doc.RootElement;
 var palette = root.GetProperty("palette");
 var metrics = root.GetProperty("metrics");
 var fonts = root.GetProperty("fonts");
+var edgeRendering = root.GetProperty("edgeRendering").GetString()!;
 
-File.WriteAllText(axamlPath, EmitAxaml(palette, metrics, fonts), new UTF8Encoding(false));
+File.WriteAllText(axamlPath, EmitAxaml(palette, metrics, fonts, edgeRendering), new UTF8Encoding(false));
 File.WriteAllText(csPath, EmitCs(palette, metrics, fonts), new UTF8Encoding(false));
 Console.WriteLine($"themegen: wrote {axamlPath}");
 Console.WriteLine($"themegen: wrote {csPath}");
@@ -91,12 +92,13 @@ static string EmitScheme(JsonElement colors, JsonElement metrics)
     return b.ToString();
 }
 
-static string EmitAxaml(JsonElement palette, JsonElement metrics, JsonElement fonts)
+static string EmitAxaml(JsonElement palette, JsonElement metrics, JsonElement fonts, string edgeRendering)
 {
     var b = new StringBuilder();
     b.Append("""
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:classic="using:Classic.Avalonia.Theme">
     <!--
       auto-generated: do NOT edit by hand.
       Bevel semantic theme tokens, generated from theme.json by tools/ThemeGen
@@ -130,6 +132,9 @@ static string EmitAxaml(JsonElement palette, JsonElement metrics, JsonElement fo
     b.Append("\n    <!-- ── Fonts (families only; faces swap with the asset work) ──────────── -->\n\n");
     foreach (var f in fonts.EnumerateObject())
         b.Append($"    <FontFamily x:Key=\"Bevel.Font.{f.Name}\">{f.Value.GetString()}</FontFamily>\n");
+
+    b.Append("\n    <!-- ── Edge rendering default (chrome spec §8; user override: Display settings) ── -->\n\n");
+    b.Append($"    <classic:EdgeRendering x:Key=\"Bevel.Edge.Rendering\">{edgeRendering}</classic:EdgeRendering>\n");
 
     b.Append("</ResourceDictionary>\n");
     return b.ToString();
@@ -178,6 +183,8 @@ public static class ThemeTokens
     b.Append('\n');
     foreach (var f in fonts.EnumerateObject())
         b.Append($"    public const string Font{f.Name} = \"Bevel.Font.{f.Name}\";\n");
+    b.Append('\n');
+    b.Append("    public const string EdgeRendering = \"Bevel.Edge.Rendering\";\n");
     b.Append("}\n");
     return b.ToString();
 }

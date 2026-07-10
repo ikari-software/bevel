@@ -28,6 +28,7 @@ public partial class SettingsWindow : UI.BevelWindow
         };
         ShellEnabledCheck.IsChecked = s.ShellEnabled;
         ShowHiddenCheck.IsChecked = s.ShowHiddenFiles;
+        CrispBevelsCheck.IsChecked = _settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false;
 
         // Wire buttons
         OkButton.Click += OnOkClick;
@@ -58,5 +59,13 @@ public partial class SettingsWindow : UI.BevelWindow
             s.ShellEnabled = ShellEnabledCheck.IsChecked ?? true;
             s.ShowHiddenFiles = ShowHiddenCheck.IsChecked ?? false;
         }, CancellationToken.None);
+
+        // Whitelisted per-theme override (bevel-wym): persisted under theme:<id> and applied
+        // live — the Application-level resource shadow flips every bevel immediately.
+        var crisp = CrispBevelsCheck.IsChecked == true;
+        await _settings.UpdateThemeOverridesAsync(
+            _settings.Current.ThemeId, o => o.CrispBevels = crisp ? true : null, CancellationToken.None);
+        if (Avalonia.Application.Current is { } app)
+            UI.ThemeOptions.ApplyCrispBevels(app, crisp);
     }
 }
