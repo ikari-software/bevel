@@ -17,7 +17,9 @@ namespace Bevel.Pal.MacOS;
 public class HelperLifecycle : IHostedService, IDisposable
 {
     private readonly ILogger<HelperLifecycle> _logger;
-    private readonly string _helperBinaryPath;
+    // Resolved lazily at first launch (not in the ctor) so a fail-closed resolution error
+    // surfaces through the monitor's retry loop instead of aborting construction (bevel-tyv).
+    private string? _helperBinaryPath;
     private readonly string _socketDir;
     private Process? _helperProcess;
     private HelperClient? _client;
@@ -48,12 +50,11 @@ public class HelperLifecycle : IHostedService, IDisposable
         _logger = logger;
         NonceToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         _socketDir = Path.Combine(Path.GetTempPath(), "bevel-helper");
-        _helperBinaryPath = ResolveHelperBinary();
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("HelperLifecycle: starting helper from {Path}", _helperBinaryPath);
+        _logger.LogInformation("HelperLifecycle: starting helper monitor");
 
         // Start the single crash-monitor loop and return immediately. The loop performs
         // the initial launch on its first iteration, so a missing/broken helper never
@@ -86,6 +87,16 @@ public class HelperLifecycle : IHostedService, IDisposable
     /// </summary>
     protected virtual async Task LaunchAndConnectAsync(CancellationToken ct)
     {
+        // Resolve (and cache) the trusted helper path on first launch. Fail-closed: this throws
+        // rather than exec an attacker-controlled binary, and the throw is owned by the monitor's
+        // retry loop (bevel-tyv).
+        var helperPath = _helperBinaryPath ??= ResolveHelperBinary(
+            Environment.GetEnvironmentVariable("BEVEL_HELPER_PATH"),
+            AppDomain.CurrentDomain.BaseDirectory,
+            AllowEnvOverride,
+            File.Exists);
+        _logger.LogInformation("HelperLifecycle: resolved helper binary {Path}", helperPath);
+
         HardenSocketDirectory(_socketDir);
         SocketPath = Path.Combine(_socketDir, $"helper-{Guid.NewGuid():N}.sock");
 
@@ -94,7 +105,7 @@ public class HelperLifecycle : IHostedService, IDisposable
 
         var psi = new ProcessStartInfo
         {
-            FileName = _helperBinaryPath,
+            FileName = helperPath,
             Arguments = $"--socket {SocketPath} --parent-pid {Environment.ProcessId}",
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -284,52 +295,78 @@ public class HelperLifecycle : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Resolves the path to the BevelHelper Swift binary.
+    /// Whether the <c>BEVEL_HELPER_PATH</c> development override is honored. Only in DEBUG builds:
+    /// a shipped (Release) app ignores the env entirely, so a hostile environment can never
+    /// redirect the privileged helper's trust anchor (SEC1 / bevel-tyv).
+    /// </summary>
+    private static bool AllowEnvOverride =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
+    /// <summary>
+    /// Resolves the path to the trusted BevelHelper binary. Fail-closed: returns only an
+    /// ABSOLUTE, existing path and throws when none is found — it never falls back to an
+    /// unqualified name resolved off <c>$PATH</c>, which a hostile PATH could hijack (SEC1).
     ///
     /// Search order:
-    ///   1. BEVEL_HELPER_PATH env var (for development)
-    ///   2. App bundle: Contents/MacOS/BevelHelper
-    ///   3. sibling native/helper-macos/.build/debug/BevelHelper (dev build)
-    ///   4. sibling native/helper-macos/.build/release/BevelHelper
+    ///   1. BEVEL_HELPER_PATH — dev builds only (<paramref name="allowEnvOverride"/>), and only
+    ///      when absolute + existing; a relative or missing value is a hard error, not a fallthrough.
+    ///   2. App bundle: Contents/MacOS/BevelHelper.
+    ///   3. Sibling dev build outputs (native/helper-macos/.build/{debug,release}/BevelHelper).
     /// </summary>
-    private static string ResolveHelperBinary()
+    /// <param name="fileExists">File-existence probe (injected so the resolver is unit-testable).</param>
+    internal static string ResolveHelperBinary(
+        string? envPath, string baseDirectory, bool allowEnvOverride, Func<string, bool> fileExists)
     {
-        // 1. Environment override.
-        var envPath = Environment.GetEnvironmentVariable("BEVEL_HELPER_PATH");
-        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+        // 1. Development environment override — ignored outside DEBUG so it can't be a shipped
+        //    attack surface. When honored it must be absolute (a relative path would resolve
+        //    against the attacker-influenced CWD) and must exist; otherwise fail loudly.
+        if (allowEnvOverride && !string.IsNullOrEmpty(envPath))
+        {
+            if (!Path.IsPathRooted(envPath) || !fileExists(envPath))
+                throw new InvalidOperationException(
+                    $"BEVEL_HELPER_PATH must be an absolute path to an existing helper binary; got '{envPath}'.");
             return envPath;
+        }
 
-        // 2. App bundle.
-        var appBundlePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "MacOS", "BevelHelper");
-        if (File.Exists(appBundlePath))
-            return Path.GetFullPath(appBundlePath);
+        // 2. App bundle (absolute via GetFullPath).
+        var appBundlePath = Path.GetFullPath(Path.Combine(baseDirectory, "..", "MacOS", "BevelHelper"));
+        if (fileExists(appBundlePath))
+            return appBundlePath;
 
-        // 3. Dev build paths.
-        var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        var repoRoot = FindRepoRoot(exeDir);
+        // 3. Dev build outputs next to the repo (absolute).
+        var repoRoot = FindRepoRoot(baseDirectory, fileExists);
         if (repoRoot is not null)
         {
             var devDebug = Path.Combine(repoRoot, "native", "helper-macos", ".build", "debug", "BevelHelper");
-            if (File.Exists(devDebug))
+            if (fileExists(devDebug))
                 return devDebug;
 
             var devRelease = Path.Combine(repoRoot, "native", "helper-macos", ".build", "release", "BevelHelper");
-            if (File.Exists(devRelease))
+            if (fileExists(devRelease))
                 return devRelease;
         }
 
-        return "BevelHelper"; // Fallback: hope it's on PATH.
+        // 4. No PATH fallback: refusing to guess is the security property. A missing helper is a
+        //    clear configuration error, never an exec of an attacker-controlled name off $PATH.
+        throw new InvalidOperationException(
+            "Could not locate the BevelHelper binary in the app bundle or dev build outputs. " +
+            "In a development build set BEVEL_HELPER_PATH to an absolute path, or ensure the app " +
+            "bundle contains Contents/MacOS/BevelHelper.");
     }
 
     /// <summary>
     /// Walks up from <paramref name="startDir"/> looking for Bevel.sln to find the repo root.
     /// </summary>
-    private static string? FindRepoRoot(string startDir)
+    private static string? FindRepoRoot(string startDir, Func<string, bool> fileExists)
     {
         var dir = startDir;
         for (var i = 0; i < 10; i++)
         {
-            if (File.Exists(Path.Combine(dir, "Bevel.sln")))
+            if (fileExists(Path.Combine(dir, "Bevel.sln")))
                 return dir;
             dir = Path.GetDirectoryName(dir);
             if (dir is null) break;
