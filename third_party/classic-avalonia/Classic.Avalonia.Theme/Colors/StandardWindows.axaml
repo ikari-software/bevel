@@ -25,8 +25,11 @@
   <Color x:Key="{x:Static common:SystemColors.InfoColorKey}">#ffffffe1</Color>
   <Color x:Key="{x:Static common:SystemColors.InfoTextColorKey}">Black</Color>
   <Color x:Key="{x:Static common:SystemColors.MenuColorKey}">#ffd4d0c8</Color>
-  <Color x:Key="{x:Static common:SystemColors.MenuBarColorKey}">#ffece9d8</Color>
-  <Color x:Key="{x:Static common:SystemColors.MenuHighlightColorKey}">#ff316ac5</Color>
+  <!-- Win2000 "Windows Standard" (Bevel fork, bevel-sp5): the menu bar shares the Menu face
+       and menu selection uses the Highlight navy — #ece9d8/#316ac5 were XP-era values that
+       postdate this scheme (spec 05-theming.md §8.1). -->
+  <Color x:Key="{x:Static common:SystemColors.MenuBarColorKey}">#ffd4d0c8</Color>
+  <Color x:Key="{x:Static common:SystemColors.MenuHighlightColorKey}">#ff0a246a</Color>
   <Color x:Key="{x:Static common:SystemColors.MenuTextColorKey}">Black</Color>
   <Color x:Key="{x:Static common:SystemColors.ScrollBarColorKey}">#ffd4d0c8</Color>
   <Color x:Key="{x:Static common:SystemColors.WindowColorKey}">White</Color>

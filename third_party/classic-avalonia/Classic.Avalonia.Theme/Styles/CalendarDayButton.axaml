@@ -4,7 +4,7 @@
                     x:ClassModifier="internal">
   <ControlTheme x:Key="{x:Type CalendarDayButton}"
                 TargetType="CalendarDayButton">
-    <Setter Property="Background" Value="#CFCAC1" />
+    <Setter Property="Background" Value="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}" /> <!-- was literal #CFCAC1; scheme face (bevel-sp5) -->
     <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeSmall}" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
