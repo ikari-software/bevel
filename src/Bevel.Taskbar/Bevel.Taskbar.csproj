@@ -6,6 +6,12 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- The test project drives WorkAreaMitigator.MitigateOnceAsync (internal) a tick at a
+       time, free of the poll loop's timing. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" />
   </ItemGroup>

@@ -68,6 +68,20 @@ public partial class App : Application
             };
             taskbarWin.Show();
 
+            // Work-area overlap mitigation (bevel-m2.13): in the default Nudge strategy,
+            // shrink windows whose bottom edge crosses the taskbar band so they sit above it.
+            // The band comes from the taskbar window in the window manager's coordinate space
+            // (top-left global points). Feature-detection, per-window rate-limiting, and
+            // drag-suspension all live inside the engine; the poll is dormant on PALs that
+            // can't reposition. Disposed on app exit so the loop stops cleanly.
+            if (services.GetService<Bevel.Pal.Abstractions.IWindowManager>() is { } mitigationWm)
+            {
+                var mitigator = new Taskbar.WorkAreaMitigator(
+                    mitigationWm, settings, taskbarWin.GetWorkAreaBand);
+                mitigator.Start();
+                desktop.Exit += (_, _) => mitigator.Dispose();
+            }
+
             // File manager window(s) — built via the shared factory so the SAME object graph
             // the modules register actually drives the running app: the VfsRoot has both the
             // file AND computer providers (My Computer works), plus settings and file

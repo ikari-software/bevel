@@ -52,6 +52,54 @@ public sealed class TaskbarWindow : BevelWindow
         ApplyTaskbarBehaviors();
         // Claim the bottom edge: auto-hide the Dock while the taskbar is up.
         _ = _dockController?.SetAutoHideAsync(true);
+
+        // Publish the taskbar band for WorkAreaMitigator (bevel-m2.13). Screen geometry is
+        // only known once opened; recompute on move/scale so display reconfigs are picked up.
+        RecomputeWorkAreaBand();
+        PositionChanged += (_, _) => RecomputeWorkAreaBand();
+        ScalingChanged += (_, _) => RecomputeWorkAreaBand();
+    }
+
+    private readonly object _bandLock = new();
+    private PalRect? _workAreaBand;
+
+    /// <summary>
+    /// The taskbar's occupied band in the window manager's coordinate space — top-left-origin
+    /// global POINTS, matching the CGWindowList/AX bounds that <see cref="IWindowManager"/>
+    /// reports. It is the bottom <see cref="TaskbarTheme.TaskbarHeight"/> strip of the primary
+    /// display. Null until the window has opened and screen geometry is known.
+    ///
+    /// Thread-safe: the value is computed on the UI thread (screen access is UI-thread-only)
+    /// and cached, so the WorkAreaMitigator's background loop can read it without touching
+    /// Avalonia off-thread. Passed to the mitigator as a delegate (<c>GetWorkAreaBand</c>).
+    /// </summary>
+    public PalRect? GetWorkAreaBand()
+    {
+        lock (_bandLock) return _workAreaBand;
+    }
+
+    private void RecomputeWorkAreaBand()
+    {
+        PalRect? band = null;
+        var primary = Screens?.Primary ?? Screens?.All?.FirstOrDefault();
+        if (primary is not null)
+        {
+            // Screen.Bounds is device pixels; window-manager bounds are points. Divide by the
+            // display scale so Overlaps() compares like with like — a no-op at scale 1.0, but
+            // the difference that keeps the band correct on a Retina display (scale 2.0).
+            var scale = primary.Scaling <= 0 ? 1.0 : primary.Scaling;
+            var xPts = primary.Bounds.X / scale;
+            var yPts = primary.Bounds.Y / scale;
+            var widthPts = primary.Bounds.Width / scale;
+            var heightPts = primary.Bounds.Height / scale;
+            var barH = TaskbarTheme.TaskbarHeight;
+            band = new PalRect(
+                (int)Math.Round(xPts),
+                (int)Math.Round(yPts + heightPts - barH),
+                (int)Math.Round(widthPts),
+                barH);
+        }
+        lock (_bandLock) _workAreaBand = band;
     }
 
     /// <summary>
@@ -119,10 +167,13 @@ public sealed class TaskbarWindow : BevelWindow
 
     private IntPtr TryGetNativeHandle()
     {
+        // Avalonia returns the content NSView on macOS; resolve its owning NSWindow so
+        // setLevel:/setCollectionBehavior: land on the right object. The previous
+        // INativePlatformHandleSurface cast failed (the macOS window handle doesn't
+        // implement it), returned Zero, and left the taskbar at window level 0 — behind
+        // ordinary windows and their drop shadows.
         var handle = ((TopLevel)this).TryGetPlatformHandle();
-        if (handle is INativePlatformHandleSurface surface)
-            return surface.Handle;
-        return IntPtr.Zero;
+        return handle is null ? IntPtr.Zero : TaskbarNative.ResolveWindow(handle.Handle);
     }
 }
 
@@ -150,14 +201,39 @@ internal static class TaskbarNative
 
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_intptr_intptr(IntPtr receiver, IntPtr selector, int arg);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern IntPtr objc_msgSend_ret(IntPtr receiver, IntPtr selector);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern byte objc_msgSend_bool_sel(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     private static readonly IntPtr sel_setLevel;
     private static readonly IntPtr sel_setCollectionBehavior;
+    private static readonly IntPtr sel_window;
+    private static readonly IntPtr sel_respondsToSelector;
 
     static TaskbarNative()
     {
         sel_setLevel = SelectorCache.Get("setLevel:");
         sel_setCollectionBehavior = SelectorCache.Get("setCollectionBehavior:");
+        sel_window = SelectorCache.Get("window");
+        sel_respondsToSelector = SelectorCache.Get("respondsToSelector:");
+    }
+
+    /// <summary>
+    /// Resolves the NSWindow for a native handle. Avalonia hands back the content NSView on
+    /// macOS, but setLevel:/setCollectionBehavior: are NSWindow methods. If the object already
+    /// responds to setLevel: it is the window; otherwise fetch <c>[nsView window]</c>. Checking
+    /// respondsToSelector: first avoids "unrecognized selector" crashes across Avalonia versions
+    /// that might hand back the window directly.
+    /// </summary>
+    public static IntPtr ResolveWindow(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return IntPtr.Zero;
+        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_setLevel) != 0)
+            return handle; // already an NSWindow
+        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_window) != 0)
+            return objc_msgSend_ret(handle, sel_window); // NSView → its NSWindow
+        return IntPtr.Zero;
     }
 
     public static void SetWindowLevel(IntPtr nsWindow, int level)
