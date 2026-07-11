@@ -388,10 +388,21 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
 
         if let axWin = axMap[cgID] {
-            // Standard windows only — excludes panels, sheets, popovers, tooltips and
-            // other non-standard subroles that regular apps also expose at layer 0.
+            // isMinimized — read FIRST, because the subrole/title filters below must exempt
+            // minimized windows (bevel-m2.3). Minimized windows are off-screen, so `.optionAll`
+            // on the CGWindowList query is required; CGWindowList alone cannot report it.
+            var minVal: CFTypeRef?
+            let minRes = AXUIElementCopyAttributeValue(axWin, kAXMinimizedAttribute as CFString, &minVal)
+            win.isMinimized = (minRes == .success) && (minVal as? Bool == true)
+
+            // Standard windows only — excludes panels, sheets, popovers, tooltips and other
+            // non-standard subroles that regular apps also expose at layer 0. Minimized windows
+            // are exempt: some apps (e.g. Jump Desktop) report a non-standard subrole such as
+            // AXDialog for a *miniaturized* window, but it was a real taskbar window and must
+            // stay listed while minimized (bevel-m2.3) — otherwise its button vanishes on minimize.
             var subroleVal: CFTypeRef?
-            if AXUIElementCopyAttributeValue(axWin, kAXSubroleAttribute as CFString, &subroleVal) == .success,
+            if !win.isMinimized,
+               AXUIElementCopyAttributeValue(axWin, kAXSubroleAttribute as CFString, &subroleVal) == .success,
                let subrole = subroleVal as? String,
                subrole != kAXStandardWindowSubrole {
                 dbg("drop cg=\(cgID) '\(win.appName)' reason=subrole=\(subrole)")
@@ -408,12 +419,6 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     win.title = t
                 }
             }
-
-            // isMinimized — minimized windows are off-screen, so `.optionAll` on the
-            // CGWindowList query is required; CGWindowList alone cannot report it.
-            var minVal: CFTypeRef?
-            let minRes = AXUIElementCopyAttributeValue(axWin, kAXMinimizedAttribute as CFString, &minVal)
-            win.isMinimized = (minRes == .success) && (minVal as? Bool == true)
         } else {
             win.isMinimized = false
         }
@@ -598,6 +603,19 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let result = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
         guard result == .success else {
             throw axErrorToRPC(result, windowID: windowID)
+        }
+
+        // AXRaise only reorders the window *within* its own app. A taskbar-button click must
+        // also make the owning app frontmost — otherwise, with Bevel's taskbar at a high window
+        // level (holding key focus after the click), the window comes forward but its app never
+        // becomes active, so it "doesn't always come up". Setting kAXFrontmostAttribute is the
+        // accessibility-native way to activate the app (works from this permitted helper, and
+        // isn't deprecated like NSRunningApplication.activate(options:)). Best-effort: the raise
+        // already succeeded, so a frontmost failure isn't fatal.
+        var pid: pid_t = 0
+        if AXUIElementGetPid(axWin, &pid) == .success {
+            let appElement = AXUIElementCreateApplication(pid)
+            AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         }
     }
 
