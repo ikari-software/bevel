@@ -52,6 +52,12 @@ public partial class TaskbarView : UserControl
         base.OnLoaded(e);
 
         _startMenu ??= new StartMenu(_appEnv);
+        // The menu hosts its content in a Popup, which can only open once the control is
+        // attached to a visual tree (it needs a TopLevel). It contributes no layout size —
+        // its root Panel measures to zero — so parenting it in the taskbar grid is
+        // invisible but is what lets the Start menu actually appear on screen.
+        if (_startMenu.Parent is null)
+            RootGrid.Children.Add(_startMenu);
         StartButton.Click += OnStartButtonClick;
         // Re-flow button widths whenever the strip resizes (window buttons shrink to fit).
         WindowButtonScroller.SizeChanged += (_, _) => LayoutButtons();

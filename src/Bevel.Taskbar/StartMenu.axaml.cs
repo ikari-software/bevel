@@ -1,25 +1,24 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
-using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
 
 /// <summary>
-/// Win2000-style Start Menu with cascading Programs submenu, keyboard navigation,
-/// and the full classic menu structure (Programs/Documents/Settings/Search/Help/Run/
-/// Log Off/Shut Down). Backed by IAppEnvironment for installed-app enumeration.
+/// Win2000-style Start menu (bevel-m2.11): a navy sidebar banner beside a single-column
+/// cascading menu, popped up above the Start button. The item column is a vertical
+/// <see cref="Menu"/> rendered with the default MenuItem theme, so selection highlight,
+/// icon column, cascade arrows, and etched separators all come from the classic theme
+/// (see StartMenu.axaml). Cascading groups (Programs/Documents/Settings/Search) are
+/// populated here; Programs is enumerated from <see cref="IAppEnvironment"/>.
+///
+/// Per-item glyphs (the Win2000 folder/document/settings icons) are intentionally absent
+/// until the icon set (bevel-assets) exists — the MenuItem theme already reserves the
+/// 19px icon column, so wiring <c>MenuItem.Icon</c> later needs no layout change.
 /// </summary>
 public partial class StartMenu : UserControl
 {
-    public bool IsOpen => MenuPopup.IsOpen;
-
     private readonly IAppEnvironment? _appEnv;
-    private CancellationTokenSource? _programsLoadCts;
     private bool _programsLoaded;
 
     public StartMenu() : this(null) { }
@@ -28,309 +27,99 @@ public partial class StartMenu : UserControl
     {
         InitializeComponent();
         _appEnv = appEnv;
+        BuildStaticSubmenus();
     }
 
-    // ── Public accessors for named controls (tests + host wiring) ──────
+    public bool IsOpen => MenuPopup.IsOpen;
 
-    public Popup MenuPopupControl => MenuPopup;
-    public Popup ProgramsPopupControl => ProgramsPopup;
-    public Popup SubmenuPopupControl => SubmenuPopup;
-    public Border MenuBorderControl => MenuBorder;
-    public Border ProgramsBorderControl => ProgramsBorder;
-    public StackPanel MenuItemsPanelControl => MenuItemsPanel;
-    public StackPanel ProgramsItemsPanelControl => ProgramsItemsPanel;
-    public StackPanel SubmenuItemsPanelControl => SubmenuItemsPanel;
-    public Border ProgramsItemControl => ProgramsItem;
-    public Border DocumentsItemControl => DocumentsItem;
-    public Border SettingsItemControl => SettingsItem;
-    public Border SearchItemControl => SearchItem;
-    public Border HelpItemControl => HelpItem;
-    public Border RunItemControl => RunItem;
-    public Border LogOffItemControl => LogOffItem;
-    public Border ShutDownItemControl => ShutDownItem;
+    /// <summary>The menu's popup, exposed for host wiring and headless render tests.</summary>
+    public Avalonia.Controls.Primitives.Popup MenuPopupControl => MenuPopup;
 
-    // ── Test helpers ──────────────────────────────────────────────────
-
-    /// <summary>Opens the Programs submenu (for testing).</summary>
-    public void OpenProgramsTest()
-    {
-        _ = LoadProgramsWithDelay();
-        OpenProgramsPopup();
-    }
-
-    /// <summary>Opens the menu at the Start button's position.</summary>
+    /// <summary>Opens the menu above the Start button and readies the Programs cascade.</summary>
     public async Task OpenAsync(Control placementTarget)
     {
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
-        MenuBorder.Focus();
+        // Populate Programs now so its cascade is ready before the pointer reaches it,
+        // rather than racing a hover-triggered load.
+        await LoadProgramsAsync();
     }
 
-    /// <summary>Closes the menu and all cascading submenus.</summary>
-    public void Close()
+    /// <summary>Closes the menu; the Menu's own cascade popups close with it.</summary>
+    public void Close() => MenuPopup.IsOpen = false;
+
+    // ── Cascading groups ───────────────────────────────────────────────
+
+    private void BuildStaticSubmenus()
     {
-        ProgramsPopup.IsOpen = false;
-        SubmenuPopup.IsOpen = false;
-        MenuPopup.IsOpen = false;
+        // Programs: placeholder so the cascade arrow shows before enumeration completes;
+        // replaced by the real list on first open (LoadProgramsAsync).
+        ProgramsItem.Items.Add(Disabled("(Loading…)"));
+
+        // Documents: recent-documents list (empty for now — no MRU tracking yet).
+        DocumentsItem.Items.Add(Disabled("(No recent documents)"));
+
+        AddLeaf(SettingsItem, "Control Panel", () => { });
+        AddLeaf(SettingsItem, "Network and Dial-up Connections", () => { });
+        AddLeaf(SettingsItem, "Printers", () => { });
+        AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { });
+
+        AddLeaf(SearchItem, "For Files or Folders…", () => { });
+        AddLeaf(SearchItem, "On the Internet…", () => { });
     }
 
-    // ── Main menu event handlers ──────────────────────────────────────
-
-    private void OnMenuKeyDown(object? sender, KeyEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Key.Escape:
-                Close();
-                e.Handled = true;
-                break;
-            case Key.Down:
-                FocusNextItem();
-                e.Handled = true;
-                break;
-            case Key.Up:
-                FocusPrevItem();
-                e.Handled = true;
-                break;
-            case Key.Enter when TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is Control item:
-                ActivateItem(item);
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private void OnProgramsPointerEntered(object? sender, PointerEventArgs e)
-    {
-        if (!_programsLoaded)
-        {
-            _ = LoadProgramsWithDelay();
-        }
-        else
-        {
-            OpenProgramsPopup();
-        }
-    }
-
-    private void OnProgramsPointerExited(object? sender, PointerEventArgs e)
-    {
-        // Keep open — the 400ms close timer is handled by the popup's own logic.
-    }
-
-    private void OnProgramsClicked(object? sender, PointerPressedEventArgs e)
-    {
-        _ = LoadProgramsWithDelay();
-        OpenProgramsPopup();
-    }
-
-    private void OnDocumentsClicked(object? sender, PointerPressedEventArgs e)
-    {
-        // Placeholder: MRU documents list.
-        PopulateSubmenu("Documents", new[] { "(No recent documents)" });
-        SubmenuPopup.PlacementTarget = DocumentsItem;
-        SubmenuPopup.IsOpen = true;
-    }
-
-    private void OnSettingsClicked(object? sender, PointerPressedEventArgs e)
-    {
-        PopulateSubmenu("Settings", new[] { "Control Panel", "Taskbar & Start Menu", "Folder Options" });
-        SubmenuPopup.PlacementTarget = SettingsItem;
-        SubmenuPopup.IsOpen = true;
-    }
-
-    private void OnSearchClicked(object? sender, PointerPressedEventArgs e)
-    {
-        PopulateSubmenu("Search", new[] { "For Files or Folders...", "On the Internet..." });
-        SubmenuPopup.PlacementTarget = SearchItem;
-        SubmenuPopup.IsOpen = true;
-    }
-
-    private void OnHelpClicked(object? sender, PointerPressedEventArgs e)
-    {
-        // Placeholder: open help.
-        Close();
-    }
-
-    private void OnRunClicked(object? sender, PointerPressedEventArgs e)
-    {
-        // Placeholder: open Run dialog.
-        Close();
-    }
-
-    private void OnLogOffClicked(object? sender, PointerPressedEventArgs e)
-    {
-        Close();
-    }
-
-    private void OnShutDownClicked(object? sender, PointerPressedEventArgs e)
-    {
-        Close();
-    }
-
-    // ── Programs submenu ──────────────────────────────────────────────
-
-    private async Task LoadProgramsWithDelay()
+    private async Task LoadProgramsAsync()
     {
         if (_programsLoaded || _appEnv is null) return;
-
-        _programsLoadCts?.Cancel();
-        _programsLoadCts = new CancellationTokenSource();
-
-        // 400ms hover delay before opening.
-        try
-        {
-            await Task.Delay(400, _programsLoadCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
+        _programsLoaded = true;
 
         try
         {
-            var apps = await _appEnv.EnumerateInstalledAppsAsync(_programsLoadCts.Token);
-            if (_programsLoadCts.IsCancellationRequested) return;
-
-            Dispatcher.UIThread.Post(() =>
+            var apps = await _appEnv.EnumerateInstalledAppsAsync();
+            ProgramsItem.Items.Clear();
+            if (apps.Count == 0)
             {
-                ProgramsItemsPanel.Children.Clear();
-                foreach (var app in apps)
-                {
-                    var item = CreateMenuItem(app.DisplayName, () => LaunchApp(app.AppId));
-                    ProgramsItemsPanel.Children.Add(item);
-                }
-                _programsLoaded = true;
-            });
+                ProgramsItem.Items.Add(Disabled("(No programs found)"));
+                return;
+            }
+            foreach (var app in apps)
+            {
+                var id = app.AppId; // capture per iteration
+                AddLeaf(ProgramsItem, app.DisplayName, () => Launch(id));
+            }
         }
         catch
         {
-            // App enumeration failed — show empty state.
-            Dispatcher.UIThread.Post(() =>
-            {
-                ProgramsItemsPanel.Children.Clear();
-                ProgramsItemsPanel.Children.Add(new TextBlock
-                {
-                    Text = "(No programs found)",
-                    FontSize = 11,
-                    Foreground = Brushes.Gray,
-                    Margin = new Thickness(4, 2),
-                });
-                _programsLoaded = true;
-            });
+            ProgramsItem.Items.Clear();
+            ProgramsItem.Items.Add(Disabled("(No programs found)"));
         }
     }
 
-    private void OpenProgramsPopup()
+    private async void Launch(string appId)
     {
-        ProgramsPopup.PlacementTarget = ProgramsItem;
-        ProgramsPopup.IsOpen = true;
-    }
-
-    private void OnProgramsPopupKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
+        if (_appEnv is not null)
         {
-            ProgramsPopup.IsOpen = false;
-            e.Handled = true;
+            try { await _appEnv.LaunchAsync(appId); }
+            catch { /* best effort */ }
         }
-    }
-
-    private async void LaunchApp(string appId)
-    {
-        if (_appEnv is null) return;
-        try
-        {
-            await _appEnv.LaunchAsync(appId);
-        }
-        catch { /* best effort */ }
         Close();
     }
 
-    // ── Submenu helpers ───────────────────────────────────────────────
+    // ── Leaf handlers (XAML-wired) ─────────────────────────────────────
 
-    private void PopulateSubmenu(string title, string[] items)
+    private void OnHelpClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnRunClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLogOffClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnShutDownClick(object? sender, RoutedEventArgs e) => Close();
+
+    // ── Helpers ────────────────────────────────────────────────────────
+
+    private void AddLeaf(MenuItem parent, string header, Action action)
     {
-        SubmenuItemsPanel.Children.Clear();
-        foreach (var item in items)
-        {
-            SubmenuItemsPanel.Children.Add(CreateMenuItem(item, () => { }));
-        }
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) => { action(); Close(); };
+        parent.Items.Add(item);
     }
 
-    private void OnSubmenuPopupKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            SubmenuPopup.IsOpen = false;
-            e.Handled = true;
-        }
-    }
-
-    // ── Keyboard navigation ───────────────────────────────────────────
-
-    private void FocusNextItem()
-    {
-        var children = MenuItemsPanel.Children;
-        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-        var idx = focused is Control fc ? children.IndexOf(fc) : -1;
-        for (int i = idx + 1; i < children.Count; i++)
-        {
-            if (children[i] is Control c && c.Focusable)
-            {
-                c.Focus();
-                return;
-            }
-        }
-    }
-
-    private void FocusPrevItem()
-    {
-        var children = MenuItemsPanel.Children;
-        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-        var idx = focused is Control fc ? children.IndexOf(fc) : 0;
-        for (int i = idx - 1; i >= 0; i--)
-        {
-            if (children[i] is Control c && c.Focusable)
-            {
-                c.Focus();
-                return;
-            }
-        }
-    }
-
-    private void ActivateItem(Control? item)
-    {
-        if (item is null) return;
-        // Simulate a click on the item.
-        if (item == ProgramsItem) { _ = LoadProgramsWithDelay(); OpenProgramsPopup(); }
-        else if (item == DocumentsItem) OnDocumentsClicked(null, null!);
-        else if (item == SettingsItem) OnSettingsClicked(null, null!);
-        else if (item == SearchItem) OnSearchClicked(null, null!);
-        else if (item == HelpItem) OnHelpClicked(null, null!);
-        else if (item == RunItem) OnRunClicked(null, null!);
-        else if (item == LogOffItem) OnLogOffClicked(null, null!);
-        else if (item == ShutDownItem) OnShutDownClicked(null, null!);
-    }
-
-    // ── Menu item factory ─────────────────────────────────────────────
-
-    private static Border CreateMenuItem(string text, Action onClick)
-    {
-        var border = new Border
-        {
-            Padding = new Thickness(4, 2),
-            Background = Brushes.Transparent,
-            Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock
-            {
-                Text = text,
-                FontSize = 11,
-            },
-        };
-
-        border.PointerEntered += (_, _) => border.Background = Brushes.Navy;
-        border.PointerExited += (_, _) => border.Background = Brushes.Transparent;
-        border.PointerPressed += (_, _) => onClick();
-
-        return border;
-    }
+    private static MenuItem Disabled(string text) => new() { Header = text, IsEnabled = false };
 }

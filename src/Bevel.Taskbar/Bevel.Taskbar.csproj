@@ -14,6 +14,8 @@
     <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
     <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
     <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+    <!-- Start menu uses classic:ClassicBorderDecorator (the raised 3D menu border) in XAML. -->
+    <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />
   </ItemGroup>
 
 </Project>
