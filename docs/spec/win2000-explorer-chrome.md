@@ -28,7 +28,7 @@ system metric cross-checked against the screenshots; **[~]** estimate, confirm o
 | `ActiveTitleLeft` | `#0A246A` | 10,36,106 | title gradient start — **[S/M]** |
 | `ActiveTitleRight` | `#A6CAF0` | 166,202,240 | title gradient end (measured x470 ≈ 158,193,233) — **[M]** |
 | `InactiveTitleLeft` | `#808080` | 128,128,128 | inactive gradient start — **[~]** |
-| `InactiveTitleRight` | `#B5B5B5` | 181,181,181 | inactive gradient end — **[~]** |
+| `InactiveTitleRight` | `#B5B5B5` | 181,181,181 | inactive gradient end — **[~]** (unmeasured estimate, not a pixel sample; `05-theming.md` §8.1 ships `#C0C0C0` and flags this as open — bevel-8g5) |
 | `TitleText` | `#FFFFFF` | 255,255,255 | caption text — **[S]** |
 | `Text` | `#000000` | 0,0,0 | control text — **[M]** |
 | `GrayText` | `#808080` | 128,128,128 | disabled text — **[S]** |
@@ -73,14 +73,21 @@ ETCHED  (menu/toolbar separators, group lines):
 | **Title bar** | **18** | [M] | horizontal gradient L→R; `SM_CYCAPTION`; y4–21 |
 | etched separator | 2 | [M] | `#808080` over `#FFFFFF` |
 | **Menu bar** | **~20** | [M] | text baseline ≈ y35; `SM_CYMENU` |
-| **Toolbar** | **~26** | [M] | 16×16 icons, buttons ~22–24; y≈45–70 |
+| **Toolbar** | **~22** | [M] | 16×16 icons, buttons ~22–24; y≈45–70 |
 | sunken edge | 2 | [M] | |
 | **Address bar** | **~22** | [M] | white sunken combo; y75–92 |
 | sunken client edge | 2 | [M] | list view is sunken |
 | **Client** | fill | [M] | `#FFFFFF`; from y≈102 |
 | **Status bar** (bottom) | ~20–22 | [~] | Face, sunken panels, diagonal grip |
 
-Title-top → client-top ≈ **94 DIP** of chrome (18 + 20 + 26 + 22 + border + separators).
+Title-top → client-top ≈ **90 DIP** of chrome (18 + 20 + 22 + 22 + border + separators).
+
+_Corrected 2026-07-11 (bevel-8g5): originally measured ~26; two independent public-corpus
+re-measurements (docs/reference/win2000/explorer-file-manager.md,
+docs/reference/win2000/window-chrome-controls.md) both land ~22, agreeing with
+`05-theming.md` §8.4's existing `ToolBar` value — the ~26 figure here was the outlier, not
+the other way around. Left unpromoted as a formal `Bevel.Metric.*` (no code consumes a
+toolbar-height metric yet); a future promotion should use 22, not 26._
 
 ---
 
@@ -93,7 +100,7 @@ has a 1–2 DIP gap before it. Buttons are raised, `X`/`_`/`□` glyphs in black
 **Menu bar** — ~20 DIP, Face bg. Items Tahoma 8pt, black, ~6 DIP horizontal padding. Hover =
 raised 1 DIP outline; open = sunken.
 
-**Toolbar** — ~26 DIP, Face bg. 16×16 icons. First button ("Back") shows icon **+ text
+**Toolbar** — ~22 DIP, Face bg. 16×16 icons. First button ("Back") shows icon **+ text
 label**; others icon-only with a dropdown chevron where applicable. Buttons flat until hover
 (raised) / press (sunken). Vertical etched separators between groups.
 
@@ -147,9 +154,9 @@ Deltas surfaced by measurement:
 - **Canonical wins:** menu bar = `MenuBarHeight 19` / `MenuItemHeight 17` (05 §3), not my ~20
   estimate; tooltip = `InfoWindow #FFFFE1` (05), not white.
 - **Promote to `05-theming.md` §3 metrics** (currently only in 06's ASCII, unpinned):
-  `Bevel.Metric.ToolbarHeight ≈ 26` (add a `ToolbarHeightWithText` variant), `AddressBarHeight
-  ≈ 22`, `StatusBarHeight ≈ 20–22` — so file-manager chrome reads metrics, never literals
-  (satisfies ENG-01 / MET-01).
+  `Bevel.Metric.ToolbarHeight ≈ 22` (corrected from an original ~26 estimate — see §3's note;
+  add a `ToolbarHeightWithText` variant), `AddressBarHeight ≈ 22`, `StatusBarHeight ≈ 20–22` —
+  so file-manager chrome reads metrics, never literals (satisfies ENG-01 / MET-01).
 - Everything else — palette, edge composites, title gradient, caption/edge/scrollbar metrics
   — is already correct in 05/06 and measurement-confirmed.
 
@@ -198,3 +205,5 @@ mapping is unchanged. Tracked as `bevel-38y` sub-work.
 
 _Measured 2026-07-06 from public reference screenshots for the Bevel Win2000 theme. Related:
 `05-theming.md`, `06-file-manager.md`; beads `bevel-38y` (semantic token layer), `bevel-wp3`._
+_Toolbar height and the InactiveTitleRight estimate reconciled 2026-07-11 against the public
+reference corpus (`docs/reference/win2000/`, bevel-t97) — bevel-8g5._

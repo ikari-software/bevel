@@ -237,6 +237,19 @@ Default scheme "Windows Standard" (values from Win2000 `HKCU\Control Panel\Color
 | AppWorkspace | `#808080` | InfoWindow (tooltip) | `#FFFFE1` |
 | Desktop background | `#3A6EA5` | | |
 
+_Verified 2026-07-11 against `docs/reference/win2000/` (bevel-8g5, following the public
+reference corpus from bevel-t97): `Highlight`/`ActiveTitle` `#0A246A`, `ButtonFace`/`Menu`
+`#D4D0C8`, and `ButtonDkShadow` `#404040` are each independently confirmed by direct pixel
+sampling of multiple real Win2000 screenshots — see window-chrome-controls.md, taskbar-start-menu.md,
+color-schemes-accessibility.md — despite a secondary hobbyist reference table (quppa.net)
+listing `#000080`/`#C0C0C0`/`#000000` instead; this spec's values are the measurement-backed
+ones. **Open, not yet resolved:** `GradientInactiveTitle` here is `#C0C0C0`, but that same
+secondary table (quppa.net) gives `#B5B5B5` for the inactive-caption gradient endpoint, and
+win2000-explorer-chrome.md's own figure for this value was itself only an unmeasured estimate
+(not a pixel sample) — corrected there to note the same open question rather than presenting
+either figure as resolved. Neither hex has a genuine screenshot pixel-measurement backing it
+yet; leave `#C0C0C0` shipping until one does.
+
 - **W2K-01** The full classic *color scheme* system ships: the manifest capability `classic-color-schemes` enables a settings page with the stock schemes (Windows Standard, Brick, Desert, Eggplant, High Contrast Black/White, Lilac, Maple, Marine, Plum, Pumpkin, Rainy Day, Red White and Blue, Rose, Slate, Spruce, Storm, Teal, Wheat) as palette-variant dictionaries generated from a schemes JSON. High-contrast schemes double as our accessibility story for this theme. **v1 ships theme presets only** (resolved 2026-07-04): the stock schemes above are selectable, but the full Win2000 "Appearance" dialog (per-element color/font editing) is **deferred**. The engine stays per-element capable — schemes are already per-element palette dictionaries — so the editor is a later UI surface over an unchanged data model, not new engine work.
 
 ### 8.2 Bevel algebra
