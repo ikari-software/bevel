@@ -26,6 +26,10 @@ native/**/.build/
 native/**/DerivedData/
 *.xcuserstate
 
+# --- Swift test rigs build output (tests/rigs/**) ---
+tests/rigs/**/.build/
+tests/rigs/**/DerivedData/
+
 # Note: .beads/ is intentionally NOT ignored — beads is a git-backed tracker.
 
 # Beads / Dolt files (added by bd init)

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using Bevel.Pal.Fake;
 using Xunit;
@@ -15,19 +14,20 @@ public class PalContractTests
     {
         yield return new object[] { new FakeWindowManager() };
 
-        // macOS PAL: only on macOS runners, and only when the helper is not needed
-        // (contract tests verify interface shape, not live window data).
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            // The MacOSWindowManager requires HelperLifecycle. For contract tests,
-            // we create a lightweight wrapper that exercises the interface shape
-            // without requiring a real helper connection.
-            yield return new object[] { new FakeWindowManager
-            {
-                // Override capabilities to match macOS: SupportsReposition = true.
-                // This lets the contract tests verify the macOS-specific code paths.
-            } };
-        }
+        // The real macOS IWindowManager (MacOSWindowManager) is deliberately NOT yielded
+        // here. It lives in Bevel.Pal.MacOS, which this platform-neutral contract project
+        // does not reference (and must not — PAL-05/ARCH-03), and it only satisfies the
+        // behavioral assertions below with a LIVE helper process plus a permissioned GUI
+        // session. Its real-implementation contract coverage therefore lives in
+        // Bevel.Pal.MacOS.Tests/LiveMacOSWindowManagerTests (R21):
+        //   • Real_impl_reports_macOS_capabilities — always-on; exercises the real class.
+        //   • Real_helper_roundtrip_backed_by_spawner — env-gated (BEVEL_LIVE_HELPER_TESTS=1);
+        //     drives the real MacOSWindowManager over a real helper, backed by the
+        //     WindowSpawner rig.
+        // Enumeration/correlation correctness is proven deterministically at the helper
+        // level by the Swift WindowServiceSpawnerTests. Previously this method yielded a
+        // second FakeWindowManager mislabeled as "macOS", which made the suite look like
+        // it covered the real PAL when it did not.
     }
 
     [Theory]
