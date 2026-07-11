@@ -58,14 +58,6 @@ public sealed class MacOSFileOperations : IFileOperations
     public Task RenameAsync(string path, string newName, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
 }
 
-public sealed class MacOSIconProvider : IIconProvider
-{
-    public ValueTask<PalImage> GetIconAsync(string pathOrExtension, int size, CancellationToken ct = default)
-        => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler? IconInvalidated;
-}
-
 public sealed class MacOSAudioPlayback : IAudioPlayback
 {
     public Capabilities Capabilities => NotYet.Unavailable;

@@ -17,6 +17,7 @@ public partial class TaskbarView : UserControl
     private StartMenu? _startMenu;
     private IAppEnvironment? _appEnv;
     private IWindowManager? _windowManager;
+    private IIconProvider? _iconProvider;
     private readonly Dictionary<string, Button> _windowButtons = new();
     private int _buttonWidth = 160;
 
@@ -31,10 +32,12 @@ public partial class TaskbarView : UserControl
     /// (App.axaml.cs) after construction — Bevel.Taskbar cannot reference
     /// concrete PALs (ARCH-03), so the services arrive from outside.
     /// </summary>
-    public void Initialize(IAppEnvironment? appEnv, IWindowManager? windowManager, int buttonWidth = 160)
+    public void Initialize(IAppEnvironment? appEnv, IWindowManager? windowManager,
+        IIconProvider? iconProvider = null, int buttonWidth = 160)
     {
         _appEnv = appEnv;
         _windowManager = windowManager;
+        _iconProvider = iconProvider;
         _buttonWidth = buttonWidth;
 
         if (_windowManager is not null)
@@ -51,7 +54,7 @@ public partial class TaskbarView : UserControl
     {
         base.OnLoaded(e);
 
-        _startMenu ??= new StartMenu(_appEnv);
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider);
         // The menu hosts its content in a Popup, which can only open once the control is
         // attached to a visual tree (it needs a TopLevel). It contributes no layout size —
         // its root Panel measures to zero — so parenting it in the taskbar grid is

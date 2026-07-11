@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Bevel.Pal.Abstractions;
+using Bevel.UI;
 
 namespace Bevel.Taskbar;
 
@@ -19,14 +20,16 @@ namespace Bevel.Taskbar;
 public partial class StartMenu : UserControl
 {
     private readonly IAppEnvironment? _appEnv;
+    private readonly IIconProvider? _iconProvider;
     private bool _programsLoaded;
 
-    public StartMenu() : this(null) { }
+    public StartMenu() : this(null, null) { }
 
-    public StartMenu(IAppEnvironment? appEnv)
+    public StartMenu(IAppEnvironment? appEnv, IIconProvider? iconProvider = null)
     {
         InitializeComponent();
         _appEnv = appEnv;
+        _iconProvider = iconProvider;
         BuildStaticSubmenus();
     }
 
@@ -85,7 +88,10 @@ public partial class StartMenu : UserControl
             foreach (var app in apps)
             {
                 var id = app.AppId; // capture per iteration
-                AddLeaf(ProgramsItem, app.DisplayName, () => Launch(id));
+                var item = new MenuItem { Header = app.DisplayName };
+                item.Click += (_, _) => Launch(id); // Launch closes the menu itself
+                await SetIconAsync(item, app.IconPath);
+                ProgramsItem.Items.Add(item);
             }
         }
         catch
@@ -119,6 +125,24 @@ public partial class StartMenu : UserControl
         var item = new MenuItem { Header = header };
         item.Click += (_, _) => { action(); Close(); };
         parent.Items.Add(item);
+    }
+
+    /// <summary>
+    /// Sets a MenuItem's icon from the PAL icon provider (the app's real macOS icon for
+    /// Programs entries). The MenuItem theme reserves the 19px icon column and reveals it
+    /// via the ':icon' pseudo-class when Icon is non-null. No-op without a provider/path —
+    /// the fixed shell items (Documents/Settings/…) stay icon-less until bevel-assets.
+    /// </summary>
+    private async Task SetIconAsync(MenuItem item, string? iconPath)
+    {
+        if (_iconProvider is null || string.IsNullOrEmpty(iconPath)) return;
+        try
+        {
+            var pal = await _iconProvider.GetIconAsync(iconPath, 16);
+            if (PalImageBitmap.ToBitmap(pal) is { } bitmap)
+                item.Icon = new Image { Source = bitmap, Width = 16, Height = 16 };
+        }
+        catch { /* leave the item icon-less */ }
     }
 
     private static MenuItem Disabled(string text) => new() { Header = text, IsEnabled = false };

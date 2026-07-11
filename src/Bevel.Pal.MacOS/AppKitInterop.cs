@@ -68,6 +68,9 @@ internal static class AppKitInterop
     public static extern IntPtr SendIntPtr_IntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
 
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern IntPtr SendIntPtr_IntPtr_IntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool SendBool_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
 

@@ -57,6 +57,7 @@ public partial class App : Application
             taskbarView.Initialize(
                 services.GetService<Bevel.Pal.Abstractions.IAppEnvironment>(),
                 services.GetService<Bevel.Pal.Abstractions.IWindowManager>(),
+                services.GetService<Bevel.Pal.Abstractions.IIconProvider>(),
                 buttonWidth: settings.Current.TaskbarButtonWidth);
             if (services.GetService<Bevel.Pal.Abstractions.IWindowManager>() is Pal.MacOS.MacOSWindowManager macWm)
                 _ = macWm.StartPollAsync();
