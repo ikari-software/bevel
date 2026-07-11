@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.Taskbar;
 
-/// <summary>Self-registers the taskbar module's services (DI-01). Placeholder at M0.</summary>
+/// <summary>Self-registers the taskbar module's services (DI-01).</summary>
 public sealed class TaskbarModule : IModule
 {
     public string Name => "Taskbar";
@@ -11,5 +11,7 @@ public sealed class TaskbarModule : IModule
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddTransient<TaskbarView>();
+        services.AddTransient<TaskbarWindow>();
+        services.AddTransient<OnboardingWindow>();
     }
 }

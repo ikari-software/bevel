@@ -21,22 +21,6 @@ internal static class NotYet
     };
 }
 
-public sealed class MacOSWindowManager : IWindowManager
-{
-    public Capabilities Capabilities => NotYet.Unavailable;
-
-    public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-
-    public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-    public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-    public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler<ForeignWindow>? WindowOpened;
-    public event EventHandler<ForeignWindow>? WindowClosed;
-    public event EventHandler<ForeignWindow>? WindowChanged;
-}
-
 public sealed class MacOSSystemTrayHost : ISystemTrayHost
 {
     public Capabilities Capabilities => NotYet.Unavailable;
@@ -49,22 +33,6 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost
     public event EventHandler<TrayItem>? ItemAdded;
     public event EventHandler<TrayItem>? ItemRemoved;
     public event EventHandler<TrayItem>? ItemUpdated;
-}
-
-public sealed class MacOSDesktopEnvironment : IDesktopEnvironment
-{
-    public Capabilities Capabilities => NotYet.Unavailable;
-
-    public ValueTask<IReadOnlyList<MonitorInfo>> GetMonitorsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<MonitorInfo>>(Array.Empty<MonitorInfo>());
-
-    public Task ReserveWorkAreaAsync(MonitorId monitor, DockEdge edge, int thicknessPx, CancellationToken ct = default)
-        => throw new NotImplementedException(NotYet.Message);
-
-    public Task SetWallpaperVisibleToHostAsync(bool hostWallpaperHidden, CancellationToken ct = default)
-        => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler? MonitorsChanged;
 }
 
 public sealed class MacOSShellSession : IShellSession
@@ -96,31 +64,6 @@ public sealed class MacOSIconProvider : IIconProvider
         => throw new NotImplementedException(NotYet.Message);
 
     public event EventHandler? IconInvalidated;
-}
-
-public sealed class MacOSAppEnvironment : IAppEnvironment
-{
-    public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<RunningApp>>(Array.Empty<RunningApp>());
-
-    public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<InstalledApp>>(Array.Empty<InstalledApp>());
-
-    public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler<RunningApp>? AppLaunched;
-    public event EventHandler<RunningApp>? AppTerminated;
-}
-
-public sealed class MacOSPermissionBroker : IPermissionBroker
-{
-    public ValueTask<PermissionState> GetStateAsync(ShellPermission permission, CancellationToken ct = default)
-        => ValueTask.FromResult(PermissionState.Unknown);
-
-    public Task<PermissionState> RequestAsync(ShellPermission permission, CancellationToken ct = default)
-        => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler<ShellPermission>? PermissionChanged;
 }
 
 public sealed class MacOSAudioPlayback : IAudioPlayback

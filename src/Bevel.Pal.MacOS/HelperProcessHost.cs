@@ -25,9 +25,11 @@ internal interface IHelperProcessHost : IDisposable
     /// <summary>True while the helper process is alive.</summary>
     bool IsAlive { get; }
 
-    /// <summary>Launches the helper and waits until it answers Ping. Throws on failure —
-    /// the monitor loop owns retry/restart policy.</summary>
-    Task LaunchAndConnectAsync(CancellationToken ct);
+    /// <summary>Launches the helper and waits until it answers Ping. The
+    /// <paramref name="capabilities"/> set determines which capability-scoped tokens
+    /// the client is authorised to use (U2). Throws on failure — the monitor loop
+    /// owns retry/restart policy.</summary>
+    Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null);
 
     /// <summary>Kills the helper process (if any) and tears down the client connection.
     /// Safe to call at any time, including when nothing is running.</summary>
@@ -62,7 +64,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
         _socketDir = Path.Combine(Path.GetTempPath(), "bevel-helper");
     }
 
-    public async Task LaunchAndConnectAsync(CancellationToken ct)
+    public async Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
     {
         // Resolve (and cache) the trusted helper path on first launch. Fail-closed: this throws
         // rather than exec an attacker-controlled binary, and the throw is owned by the monitor's
@@ -75,7 +77,10 @@ internal sealed class HelperProcessHost : IHelperProcessHost
         _logger.LogInformation("HelperLifecycle: resolved helper binary {Path}", helperPath);
 
         HardenSocketDirectory(_socketDir);
-        SocketPath = Path.Combine(_socketDir, $"helper-{Guid.NewGuid():N}.sock");
+        // macOS sun_path caps UDS paths at 104 bytes; $TMPDIR is already ~50 chars,
+        // so keep the filename short (8-hex suffix, not a full GUID) or bind() fails
+        // with unixDomainSocketPathTooLong and the helper crash-loops.
+        SocketPath = Path.Combine(_socketDir, $"h-{Guid.NewGuid():N}"[..12] + ".sock");
 
         if (File.Exists(SocketPath))
             File.Delete(SocketPath);
@@ -98,6 +103,16 @@ internal sealed class HelperProcessHost : IHelperProcessHost
         _helperProcess = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start helper process.");
 
+        // Drain and log the helper's stdout/stderr. Redirected pipes that are never
+        // read can wedge the child once the buffer fills, and the helper's crash
+        // reason is otherwise invisible (it only goes to stderr).
+        _helperProcess.OutputDataReceived += (_, e) =>
+        { if (e.Data is not null) _logger.LogInformation("helper: {Line}", e.Data); };
+        _helperProcess.ErrorDataReceived += (_, e) =>
+        { if (e.Data is not null) _logger.LogWarning("helper! {Line}", e.Data); };
+        _helperProcess.BeginOutputReadLine();
+        _helperProcess.BeginErrorReadLine();
+
         _logger.LogInformation("HelperLifecycle: helper started, PID={PID}", _helperProcess.Id);
 
         // Subscribe to exit event for crash detection.
@@ -106,7 +121,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
 
         // Wait for the helper to be reachable (poll gRPC endpoint).
         _client = new HelperClient();
-        await WaitForReadyAsync(ct);
+        await WaitForReadyAsync(ct, capabilities);
 
         _logger.LogInformation("HelperLifecycle: helper connected, version={Version}", await _client.PingAsync(ct));
     }
@@ -127,7 +142,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
     /// Polls the helper's gRPC Ping until it responds, with exponential backoff.
     /// Times out after 5 seconds.
     /// </summary>
-    private async Task WaitForReadyAsync(CancellationToken ct)
+    private async Task WaitForReadyAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
     {
         var timeout = TimeSpan.FromSeconds(5);
         var sw = Stopwatch.StartNew();
@@ -145,7 +160,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
                 attemptCts.CancelAfter(TimeSpan.FromSeconds(1));
                 try
                 {
-                    _client!.Connect(SocketPath, NonceToken);
+                    _client!.Connect(SocketPath, NonceToken, capabilities);
                     _ = await _client.PingAsync(attemptCts.Token);
                     return; // Ready.
                 }

@@ -97,7 +97,8 @@ enum BevelHelper {
         let watchdog = ReverseWatchdog(parentPID: args.parentPID)
         Task { await watchdog.run() }
 
-        let supervision = SupervisionServiceImpl(helperVersion: version, expectedToken: args.token)
+        let supervision = SupervisionServiceImpl(helperVersion: version, expectedKey: args.token)
+        let windowService = WindowServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
 
         do {
             let server = GRPCServer(
@@ -105,7 +106,7 @@ enum BevelHelper {
                     address: .unixDomainSocket(path: args.socketPath),
                     transportSecurity: .plaintext
                 ),
-                services: [supervision]
+                services: [supervision, windowService]
             )
 
             fputs("BevelHelper v\(version) ready on \(args.socketPath)\n", stderr)

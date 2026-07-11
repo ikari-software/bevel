@@ -66,13 +66,27 @@ public class HelperClientTests
     }
 
     [Fact]
-    public void BuildAuthMetadata_carries_the_token_header()
+    public void BuildAuthMetadata_carries_capability_scoped_token()
     {
-        // bevel-164: the nonce must ride along with every RPC as metadata.
-        var md = HelperClient.BuildAuthMetadata("nonce-123");
+        // U2: the token is now "capability:<hmac>" not the raw nonce.
+        var md = HelperClient.BuildAuthMetadata("nonce-key", "supervision");
         var entry = Assert.Single(md);
         Assert.Equal(HelperClient.TokenHeader, entry.Key);
-        Assert.Equal("nonce-123", entry.Value);
+        Assert.StartsWith("supervision:", entry.Value);
+        // The HMAC portion must be non-empty hex.
+        var parts = entry.Value!.Split(':');
+        Assert.Equal(2, parts.Length);
+        Assert.Equal("supervision", parts[0]);
+        Assert.Equal(64, parts[1].Length); // SHA256 → 32 bytes → 64 hex chars
+    }
+
+    [Fact]
+    public void BuildAuthMetadata_different_capabilities_produce_different_tokens()
+    {
+        var mdSuper = HelperClient.BuildAuthMetadata("key", "supervision");
+        var mdWindows = HelperClient.BuildAuthMetadata("key", "windows");
+        Assert.NotEqual(mdSuper.GetValue(HelperClient.TokenHeader),
+                        mdWindows.GetValue(HelperClient.TokenHeader));
     }
 
     [Theory]
@@ -80,6 +94,6 @@ public class HelperClientTests
     [InlineData("")]
     public void BuildAuthMetadata_is_empty_without_a_token(string? token)
     {
-        Assert.Empty(HelperClient.BuildAuthMetadata(token));
+        Assert.Empty(HelperClient.BuildAuthMetadata(token, "supervision"));
     }
 }

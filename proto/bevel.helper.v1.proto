@@ -19,8 +19,107 @@ service SupervisionService {
   rpc Ping(PingRequest) returns (PingReply);
 }
 
+// ── WindowService ────────────────────────────────────────────────────────────
+// CGWindowList enumeration + AXUIElement-driven window control.
+// Snapshot-then-deltas change stream (IPC-01).
+service WindowService {
+  // Enumerate all on-screen layer-0 windows with their TaskbarWindow descriptors.
+  rpc ListWindows(ListWindowsRequest) returns (ListWindowsReply);
+
+  // Bring a window to the foreground.
+  rpc Activate(WindowRef) returns (ActivateReply);
+
+  // Minimize a window into the Dock.
+  rpc Minimize(WindowRef) returns (MinimizeReply);
+
+  // Restore a minimized window.
+  rpc Restore(WindowRef) returns (RestoreReply);
+
+  // Close a window.
+  rpc Close(WindowRef) returns (CloseReply);
+
+  // Reposition/resize a window to an absolute target rect (device pixels, AppKit origin).
+  rpc Reposition(RepositionRequest) returns (RepositionReply);
+
+  // Subscribe to window events: opens with a full Snapshot, then streams
+  // Deltas as AXObserver callbacks fire (backstopped by a reconciliation poll).
+  rpc Changes(ChangesRequest) returns (stream WindowChange);
+}
+
+// ── Common messages ──────────────────────────────────────────────────────────
+
 message PingRequest {}
 
 message PingReply {
   string helper_version = 1;
 }
+
+// Stable identifier for a window within this helper session.
+message WindowRef {
+  string window_id = 1;
+}
+
+// Complete descriptor of a window suitable for taskbar-style display.
+message TaskbarWindow {
+  string window_id = 1;
+  string title = 2;
+  string app_name = 3;
+  string app_bundle_id = 4;
+  int32 pid = 5;
+  bool is_minimized = 6;
+  bool is_focused = 7;
+  PixelRect frame = 8;
+  // App icon as PNG bytes (from the owning app's bundle id), or empty if unavailable.
+  bytes app_icon_png = 9;
+}
+
+message PixelRect {
+  int32 x = 1;
+  int32 y = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+// WindowChange is the payload for the Changes server-streaming RPC.
+// An initial burst of SNAPSHOT messages represents the full window list;
+// subsequent DELTA messages represent individual changes.
+message WindowChange {
+  enum Kind {
+    SNAPSHOT = 0;
+    OPENED = 1;
+    CLOSED = 2;
+    FOCUSED = 3;
+    TITLE_CHANGED = 4;
+    MINIMIZED = 5;
+    DEMINIMIZED = 6;
+    MOVED = 7;
+  }
+  Kind kind = 1;
+  TaskbarWindow window = 2;
+}
+
+// ── Request / Reply wrappers ─────────────────────────────────────────────────
+
+message ListWindowsRequest {}
+
+message ListWindowsReply {
+  repeated TaskbarWindow windows = 1;
+}
+
+message ActivateReply {}
+
+message MinimizeReply {}
+
+message RestoreReply {}
+
+message CloseReply {}
+
+message ChangesRequest {}
+
+// Reposition target: window + absolute device-pixel rect (AppKit bottom-left origin).
+message RepositionRequest {
+  string window_id = 1;
+  PixelRect target = 2;
+}
+
+message RepositionReply {}

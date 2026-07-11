@@ -1,0 +1,170 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.Taskbar.StartMenu">
+    <!-- Root panel wrapping all popups (UserControl requires single Content child) -->
+    <Panel>
+        <!-- Win2000 Start Menu: left banner + right menu column, popped up above the taskbar -->
+        <Popup x:Name="MenuPopup"
+               IsLightDismissEnabled="True"
+               Placement="Top"
+               WindowManagerAddShadowHint="False">
+            <Border x:Name="MenuBorder"
+                    Width="240"
+                    Background="{DynamicResource Bevel.Brush.Menu}"
+                    BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
+                    BorderThickness="1"
+                    Focusable="True"
+                    KeyDown="OnMenuKeyDown">
+                <Grid ColumnDefinitions="28,*">
+                    <!-- Left banner: rotated "Bevel" text, Win2000 style -->
+                    <Border Grid.Column="0"
+                            Background="{DynamicResource Bevel.Brush.GradientActiveTitle}"
+                            Width="28">
+                        <TextBlock x:Name="BannerText"
+                                   Text="Bevel"
+                                   FontFamily="{DynamicResource Bevel.Font.UI}"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource Bevel.Brush.ActiveTitleText}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <TextBlock.RenderTransform>
+                                <RotateTransform Angle="-90" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Border>
+
+                    <!-- Right column: menu items -->
+                    <StackPanel Grid.Column="1"
+                                x:Name="MenuItemsPanel"
+                                Margin="2,2,2,4"
+                                Spacing="0">
+                        <!-- Programs ▸ -->
+                        <Border x:Name="ProgramsItem"
+                                Padding="4,2"
+                                Background="Transparent"
+                                Cursor="Hand"
+                                PointerEntered="OnProgramsPointerEntered"
+                                PointerExited="OnProgramsPointerExited"
+                                PointerPressed="OnProgramsClicked">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Programs" FontSize="11"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                                <TextBlock Grid.Column="1" Text="▶" FontSize="8" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Documents ▸ -->
+                        <Border x:Name="DocumentsItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnDocumentsClicked">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Documents" FontSize="11"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                                <TextBlock Grid.Column="1" Text="▶" FontSize="8" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Settings ▸ -->
+                        <Border x:Name="SettingsItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnSettingsClicked">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Settings" FontSize="11"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                                <TextBlock Grid.Column="1" Text="▶" FontSize="8" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Search ▸ -->
+                        <Border x:Name="SearchItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnSearchClicked">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Search" FontSize="11"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                                <TextBlock Grid.Column="1" Text="▶" FontSize="8" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Help -->
+                        <Border x:Name="HelpItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnHelpClicked">
+                            <TextBlock Text="Help" FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                        </Border>
+
+                        <!-- Run... -->
+                        <Border x:Name="RunItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnRunClicked">
+                            <TextBlock Text="Run..." FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                        </Border>
+
+                        <!-- Separator -->
+                        <Border Height="6" />
+                        <Border Height="1" Background="{DynamicResource Bevel.Brush.ButtonShadow}" Margin="2,0" />
+                        <Border Height="6" />
+
+                        <!-- Log Off... -->
+                        <Border x:Name="LogOffItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnLogOffClicked">
+                            <TextBlock Text="Log Off..." FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                        </Border>
+
+                        <!-- Shut Down... -->
+                        <Border x:Name="ShutDownItem"
+                                Padding="4,2" Background="Transparent" Cursor="Hand"
+                                PointerPressed="OnShutDownClicked">
+                            <TextBlock Text="Shut Down..." FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.MenuText}" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Popup>
+
+        <!-- Cascading Programs submenu popup -->
+        <Popup x:Name="ProgramsPopup"
+               IsLightDismissEnabled="True"
+               WindowManagerAddShadowHint="False">
+            <Border x:Name="ProgramsBorder"
+                    MinWidth="180" MaxWidth="320" MaxHeight="400"
+                    Background="{DynamicResource Bevel.Brush.Menu}"
+                    BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
+                    BorderThickness="1"
+                    Focusable="True"
+                    KeyDown="OnProgramsPopupKeyDown">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ProgramsItemsPanel" Margin="2" Spacing="0" />
+                </ScrollViewer>
+            </Border>
+        </Popup>
+
+        <!-- Cascading submenu popups (Documents, Settings, Search) -->
+        <Popup x:Name="SubmenuPopup"
+               IsLightDismissEnabled="True"
+               WindowManagerAddShadowHint="False">
+            <Border x:Name="SubmenuBorder"
+                    MinWidth="160" MaxWidth="300"
+                    Background="{DynamicResource Bevel.Brush.Menu}"
+                    BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
+                    BorderThickness="1"
+                    Focusable="True"
+                    KeyDown="OnSubmenuPopupKeyDown">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="SubmenuItemsPanel" Margin="2" Spacing="0" />
+                </ScrollViewer>
+            </Border>
+        </Popup>
+    </Panel>
+</UserControl>

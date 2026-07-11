@@ -65,6 +65,10 @@ public sealed class SettingsService
             ThemeId = GetString("themeId") ?? "win2000",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
+            WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
+                ? was : WorkAreaStrategy.Nudge,
+            RunAtLogin = GetBool("runAtLogin") ?? false,
+            TaskbarButtonWidth = GetInt("taskbarButtonWidth") ?? 160,
         };
 
         _themeOverrides.Clear();
@@ -82,6 +86,9 @@ public sealed class SettingsService
         _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId);
         _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled);
         _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles);
+        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString());
+        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin);
+        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, JsonOpts);
 
@@ -111,6 +118,10 @@ public sealed class SettingsService
     private bool? GetBool(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? el.GetBoolean() : null;
+
+    private int? GetInt(string key)
+        => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Number
+            ? el.GetInt32() : null;
 }
 
 /// <summary>Typed settings model.</summary>
@@ -119,6 +130,28 @@ public sealed class BevelSettings
     public string ThemeId { get; set; } = "win2000";
     public bool ShellEnabled { get; set; } = true;
     public bool ShowHiddenFiles { get; set; }
+
+    /// <summary>M2: work-area strategy (how the taskbar coexists with the Dock).</summary>
+    public WorkAreaStrategy WorkAreaStrategy { get; set; } = WorkAreaStrategy.Nudge;
+
+    /// <summary>M2: whether Bevel's desktop+taskbar should launch at login.</summary>
+    public bool RunAtLogin { get; set; }
+
+    /// <summary>M2: fixed width (logical px) of taskbar window buttons; 0 = fit-to-content.</summary>
+    public int TaskbarButtonWidth { get; set; } = 160;
+}
+
+/// <summary>M2: taskbar work-area coexistence strategy.</summary>
+public enum WorkAreaStrategy
+{
+    /// <summary>Default: Dock auto-hidden + AX repositioning of overlapping windows.</summary>
+    Nudge,
+
+    /// <summary>Opt-in strict: Dock visible at minimum size, taskbar height matches inset.</summary>
+    DockShim,
+
+    /// <summary>No mitigation; windows may underlap the taskbar.</summary>
+    None,
 }
 
 /// <summary>

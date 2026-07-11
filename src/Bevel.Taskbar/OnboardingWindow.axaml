@@ -1,0 +1,96 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Bevel.Taskbar.OnboardingWindow"
+        Title="Bevel Settings"
+        Width="420" Height="380"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        SystemDecorations="Full">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Text="Bevel M2 — Taskbar Settings"
+                   FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
+
+        <!-- Settings content -->
+        <StackPanel Grid.Row="1" Spacing="12">
+
+            <!-- Accessibility permission -->
+            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Accessibility Permission"
+                               FontWeight="Bold" FontSize="12" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border x:Name="PermStatusDot" Width="12" Height="12"
+                                CornerRadius="6" Margin="0,3,0,0" />
+                        <TextBlock x:Name="PermStatusText"
+                                   Text="Checking..."
+                                   FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button x:Name="GrantAccessibilityBtn"
+                            Content="Open Security &#38; Privacy Settings"
+                            FontSize="11" Padding="8,4"
+                            IsVisible="False" />
+                    <TextBlock x:Name="PermHint"
+                               Text="Grant Accessibility to enable window management."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- Work-area strategy -->
+            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Work-Area Strategy"
+                               FontWeight="Bold" FontSize="12" />
+                    <TextBlock Text="How the taskbar handles the macOS Dock."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" />
+
+                    <RadioButton x:Name="WASNudge"
+                                 Content="Window Nudging (default)"
+                                 FontSize="11" GroupName="WorkArea">
+                        <RadioButton.IsChecked>True</RadioButton.IsChecked>
+                    </RadioButton>
+                    <TextBlock Text="Dock auto-hides; overlapping windows are nudged up."
+                               FontSize="10" Foreground="Gray"
+                               Margin="20,0,0,0" />
+
+                    <RadioButton x:Name="WASDockShim"
+                                 Content="Dock Shim (strict)"
+                                 FontSize="11" GroupName="WorkArea" />
+                    <TextBlock x:Name="DockShimNote"
+                               Text="Dock stays visible; taskbar height matches Dock inset. (Measurement required)"
+                               FontSize="10" Foreground="Gray"
+                               Margin="20,0,0,0" />
+
+                    <RadioButton x:Name="WASNone"
+                                 Content="None"
+                                 FontSize="11" GroupName="WorkArea" />
+                    <TextBlock Text="No mitigation; windows may underlap the taskbar."
+                               FontSize="10" Foreground="Gray"
+                               Margin="20,0,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Run at login -->
+            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="6">
+                    <CheckBox x:Name="RunAtLoginCheck"
+                              Content="Launch Bevel at login"
+                              FontSize="12" />
+                    <TextBlock Text="Starts the desktop and taskbar when you log in."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+
+        <!-- Close button -->
+        <Button Grid.Row="2" Content="Close" HorizontalAlignment="Right"
+                x:Name="CloseBtn" Width="80" Margin="0,12,0,0" />
+    </Grid>
+</Window>

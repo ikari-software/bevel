@@ -22,6 +22,7 @@ public class HelperLifecycle : IHostedService, IDisposable
     private readonly IHelperProcessHost _host;
     private readonly IClock _clock;
     private readonly TimeSpan _pollInterval;
+    private readonly IReadOnlySet<string> _capabilities;
     private CancellationTokenSource? _monitorCts;
     private Task? _monitorTask;
     private bool _disposed;
@@ -39,19 +40,22 @@ public class HelperLifecycle : IHostedService, IDisposable
     public bool IsRunning => _host.IsAlive;
 
     public HelperLifecycle(ILogger<HelperLifecycle> logger)
-        : this(logger, new HelperProcessHost(logger), SystemClock.Instance, pollInterval: TimeSpan.FromSeconds(1))
+        : this(logger, new HelperProcessHost(logger), SystemClock.Instance, pollInterval: TimeSpan.FromSeconds(1),
+              capabilities: new HashSet<string> { "supervision" })
     {
     }
 
     /// <summary>Composition seam for tests: a fake host + manual clock make the monitor
     /// loop's behavior (relaunch-per-crash, backoff, stop) fully deterministic.</summary>
     internal HelperLifecycle(
-        ILogger<HelperLifecycle> logger, IHelperProcessHost host, IClock clock, TimeSpan pollInterval)
+        ILogger<HelperLifecycle> logger, IHelperProcessHost host, IClock clock, TimeSpan pollInterval,
+        IReadOnlySet<string>? capabilities = null)
     {
         _logger = logger;
         _host = host;
         _clock = clock;
         _pollInterval = pollInterval;
+        _capabilities = capabilities ?? new HashSet<string> { "supervision" };
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -113,7 +117,7 @@ public class HelperLifecycle : IHostedService, IDisposable
 
                 try
                 {
-                    await _host.LaunchAndConnectAsync(ct);
+                    await _host.LaunchAndConnectAsync(ct, _capabilities);
                     _logger.LogInformation("HelperLifecycle: helper (re)established");
                     retryDelay = _pollInterval; // healthy again — reset backoff
                 }

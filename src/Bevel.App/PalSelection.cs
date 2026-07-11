@@ -1,5 +1,7 @@
 namespace Bevel.App;
 
+using System.Runtime.InteropServices;
+
 /// <summary>Which concrete PAL the composition root wires up (DI-02).</summary>
 public enum PalKind
 {
@@ -39,7 +41,12 @@ public static class PalSelector
             };
         }
 
-        // TODO: default to PalKind.MacOS via a PlatformDetector once the macOS PAL is real.
+        // Default PAL: on macOS, prefer the real macOS PAL so the shell shows live
+        // windows out of the box; elsewhere fall back to the deterministic Fake PAL
+        // (the app must still boot on Linux/CI for tests and the UI previewer).
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return PalKind.MacOS;
+
         return PalKind.Fake;
     }
 }

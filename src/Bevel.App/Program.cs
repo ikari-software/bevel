@@ -1,6 +1,7 @@
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Runtime.InteropServices;
 
 namespace Bevel.App;
 
@@ -22,12 +23,21 @@ internal static class Program
         using var host = builder.Build();
         App.Services = host.Services;
 
+        // Let a termination signal (SIGTERM / SIGINT / Ctrl-C) drive a clean Avalonia
+        // shutdown so window OnClosed handlers and hosted-service Dispose run (e.g. the
+        // Dock controller restores the user's Dock preference). .NET on macOS does NOT
+        // surface SIGTERM via Console.CancelKeyPress/AppDomain.ProcessExit, so register a
+        // POSIX signal handler explicitly (bevel-3kz).
+        var appBuilder = BuildAvaloniaApp();
+        PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.RequestExit());
+        PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.RequestExit());
+
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
         host.Start();
         try
         {
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            appBuilder.StartWithClassicDesktopLifetime(args);
         }
         finally
         {

@@ -28,7 +28,7 @@ public class HelperLifecycleTests
         public HelperClient? Client => null;
         public bool IsAlive => _alive;
 
-        public Task LaunchAndConnectAsync(CancellationToken ct)
+        public Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
         {
             Interlocked.Increment(ref LaunchCount);
             if (FailLaunch)

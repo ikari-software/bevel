@@ -34,6 +34,7 @@ public static class CompositionRoot
         services.AddSingleton<IAppEnvironment, Pal.Fake.FakeAppEnvironment>();
         services.AddSingleton<IPermissionBroker, Pal.Fake.FakePermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.Fake.FakeAudioPlayback>();
+        services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
         return services;
     }
 
@@ -48,6 +49,7 @@ public static class CompositionRoot
         services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
+        services.AddSingleton<IDockController, Pal.MacOS.MacOSDockController>();
         services.AddSingleton<IVolumeLabelSource, Pal.MacOS.MacOSVolumeLabelSource>();
         services.AddSingleton<Pal.MacOS.HelperLifecycle>();
         services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());

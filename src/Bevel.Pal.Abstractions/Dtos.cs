@@ -7,6 +7,9 @@ namespace Bevel.Pal.Abstractions;
 /// <summary>Opaque identifier for a foreign (non-shell) top-level window.</summary>
 public readonly record struct ForeignWindowId(string Value);
 
+/// <summary>Rectangle with integer coordinates, independent of any UI framework.</summary>
+public readonly record struct PalRect(int X, int Y, int Width, int Height);
+
 /// <summary>Opaque identifier for a host-OS tray / status item.</summary>
 public readonly record struct TrayItemId(string Value);
 
@@ -70,7 +73,8 @@ public enum DeleteMode
 public sealed record Capabilities(
     bool Available,
     TrayCapability TrayMode,
-    IReadOnlyList<string> Notes)
+    IReadOnlyList<string> Notes,
+    bool SupportsReposition = false)
 {
     public static Capabilities None { get; } =
         new(Available: false, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
@@ -82,7 +86,10 @@ public sealed record ForeignWindow(
     string Title,
     string? AppId,
     bool IsMinimized,
-    bool IsFocused);
+    bool IsFocused,
+    PalRect Bounds,
+    /// <summary>App icon PNG bytes (from the owning app), or empty when unavailable.</summary>
+    byte[]? IconPng = null);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere).</summary>
 public sealed record TrayItem(
@@ -92,6 +99,8 @@ public sealed record TrayItem(
 /// <summary>Physical monitor geometry.</summary>
 public sealed record MonitorInfo(
     MonitorId Id,
+    int X,
+    int Y,
     int WidthPx,
     int HeightPx,
     bool IsPrimary);

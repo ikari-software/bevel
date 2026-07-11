@@ -13,11 +13,14 @@ public interface IWindowManager
     ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default);
     Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default);
     Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default);
+    Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);
     Task CloseAsync(ForeignWindowId id, CancellationToken ct = default);
+    Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default);
 
     event EventHandler<ForeignWindow>? WindowOpened;
     event EventHandler<ForeignWindow>? WindowClosed;
     event EventHandler<ForeignWindow>? WindowChanged;
+    event EventHandler<ForeignWindow>? ForegroundChanged;
 }
 
 /// <summary>Host-OS tray/status-item capture and mirroring (macOS pillar 3).</summary>
@@ -108,7 +111,7 @@ public interface IAudioPlayback
 }
 
 /// <summary>
-/// Native display labels for mounted volumes (My Computer, bevel-1cc). .NET on Unix reports
+/// <summary>Native display labels for mounted volumes (My Computer, bevel-1cc). .NET on Unix reports
 /// DriveInfo.VolumeLabel as the mount path itself, so real labels ("Macintosh HD") need a
 /// platform lookup. Implementations must be cheap and synchronous — called once per volume
 /// during enumeration; cache anything slow.
@@ -118,4 +121,20 @@ public interface IVolumeLabelSource
     /// <summary>The user-facing label of the volume mounted at <paramref name="mountPath"/>,
     /// or null when the platform has none (callers fall back to the mount path).</summary>
     string? LabelFor(string mountPath);
+}
+
+/// <summary>
+/// macOS Dock control. Lets the shell claim the bottom edge by auto-hiding the Dock while the
+/// taskbar is visible, restoring the user's original preference when the shell quits (bevel-3kz).
+/// </summary>
+public interface IDockController
+{
+    Capabilities Capabilities { get; }
+
+    /// <summary>
+    /// Enables (<paramref name="enabled"/>=true) or disables (false) Dock auto-hide. On enable,
+    /// the current user preference is captured once and restored on the matching disable — so
+    /// Bevel never leaves the Dock hidden if the user had it showing.
+    /// </summary>
+    Task SetAutoHideAsync(bool enabled, CancellationToken ct = default);
 }

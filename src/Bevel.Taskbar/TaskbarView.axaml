@@ -1,6 +1,49 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Bevel.Taskbar.TaskbarView">
-    <TextBlock Text="Bevel.Taskbar — module placeholder (window list · start · tray · clock)"
-               HorizontalAlignment="Center" VerticalAlignment="Center" />
+             xmlns:tb="clr-namespace:Bevel.Taskbar"
+             x:Class="Bevel.Taskbar.TaskbarView"
+             Height="30">
+    <!-- Taskbar layout: Start · window-button area (flex, capped) · tray+clock (fixed, always visible) -->
+    <Grid ColumnDefinitions="Auto,*,Auto" Height="30"
+          Background="{DynamicResource SystemButtonFaceBrush}">
+
+        <!-- Start button -->
+        <Button x:Name="StartButton" Grid.Column="0"
+                Width="60" Height="28" Margin="1,1,0,1"
+                Content="Start"
+                FontWeight="Bold" FontSize="11"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center" />
+
+        <!-- Divider after Start -->
+        <Border Grid.Column="0" Width="2" Height="26" Margin="62,2,0,2"
+                Background="{DynamicResource SystemButtonHighlightBrush}"
+                BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                BorderThickness="0,0,1,0" />
+
+        <!-- Window button area (fills available space between Start and tray; capped so
+             the tray+clock are never pushed off-screen). Overflow clips. -->
+        <ScrollViewer x:Name="WindowButtonScroller" Grid.Column="1"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollBarVisibility="Disabled"
+                      VerticalAlignment="Center"
+                      Margin="2,0,0,0">
+            <StackPanel x:Name="WindowButtonArea"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center" />
+        </ScrollViewer>
+
+        <!-- Divider before system tray area -->
+        <Border Grid.Column="2" Width="2" Height="26" Margin="2,2,0,2"
+                Background="{DynamicResource SystemButtonHighlightBrush}"
+                BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                BorderThickness="0,0,1,0" />
+
+        <!-- System tray + clock area (fixed width; always visible) -->
+        <StackPanel x:Name="TrayArea" Grid.Column="2"
+                    Orientation="Horizontal"
+                    Margin="0,1,2,1">
+            <tb:ClockWidget x:Name="Clock" />
+        </StackPanel>
+    </Grid>
 </UserControl>

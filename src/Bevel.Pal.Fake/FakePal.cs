@@ -11,15 +11,16 @@ internal static class FakeData
     public static Capabilities Caps { get; } = new(
         Available: true,
         TrayMode: TrayCapability.Mirrored,
-        Notes: new[] { "fake-pal" });
+        Notes: new[] { "fake-pal" },
+        SupportsReposition: true);
 }
 
 public sealed class FakeWindowManager : IWindowManager
 {
     private static readonly IReadOnlyList<ForeignWindow> Windows = new[]
     {
-        new ForeignWindow(new ForeignWindowId("w1"), "Untitled - Notepad", "fake.notepad", false, true),
-        new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.explorer", false, false),
+        new ForeignWindow(new ForeignWindowId("w1"), "Untitled - Notepad", "fake.notepad", false, true, new PalRect(100, 100, 800, 600)),
+        new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.explorer", false, false, new PalRect(200, 200, 1024, 768)),
     };
 
     public Capabilities Capabilities => FakeData.Caps;
@@ -29,11 +30,14 @@ public sealed class FakeWindowManager : IWindowManager
 
     public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
 
     public event EventHandler<ForeignWindow>? WindowOpened;
     public event EventHandler<ForeignWindow>? WindowClosed;
     public event EventHandler<ForeignWindow>? WindowChanged;
+    public event EventHandler<ForeignWindow>? ForegroundChanged;
 }
 
 public sealed class FakeSystemTrayHost : ISystemTrayHost
@@ -60,7 +64,7 @@ public sealed class FakeDesktopEnvironment : IDesktopEnvironment
 {
     private static readonly IReadOnlyList<MonitorInfo> Monitors = new[]
     {
-        new MonitorInfo(new MonitorId("m1"), 1920, 1080, true),
+        new MonitorInfo(new MonitorId("m1"), 0, 0, 1920, 1080, true),
     };
 
     public Capabilities Capabilities => FakeData.Caps;
@@ -155,4 +159,11 @@ public sealed class FakeAudioPlayback : IAudioPlayback
     public bool Muted { get; set; }
 
     public Task PlayAsync(string wavPath, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+public sealed class FakeDockController : IDockController
+{
+    public Capabilities Capabilities => FakeData.Caps;
+
+    public Task SetAutoHideAsync(bool enabled, CancellationToken ct = default) => Task.CompletedTask;
 }

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Bevel.Core;
 using Bevel.Core.Vfs;
 using Bevel.Desktop;
@@ -14,12 +15,26 @@ public partial class App : Application
 {
     public static IServiceProvider? Services { get; set; }
 
+    /// <summary>Captured desktop lifetime, used to drive a clean shutdown from a signal handler.</summary>
+    private static IClassicDesktopStyleApplicationLifetime? _lifetime;
+
+    /// <summary>Requests a clean Avalonia shutdown. Safe to call before the UI is up (no-op).
+    /// Marshals to the UI thread because signal handlers run on a foreign thread.</summary>
+    public static void RequestExit()
+    {
+        var lifetime = _lifetime;
+        if (lifetime is null) return;
+        // Signal handlers execute on a non-UI thread; Avalonia shutdown must run on the UI thread.
+        Dispatcher.UIThread.Post(() => lifetime.Shutdown());
+    }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            _lifetime = desktop;
             var services = Services
                 ?? throw new InvalidOperationException("DI container not initialized before UI startup.");
 
@@ -34,6 +49,23 @@ public partial class App : Application
             // Desktop window (behind everything, wallpaper + icon grid).
             var desktopWin = new DesktopWindow { Content = new DesktopView() };
             desktopWin.Show();
+
+            // Taskbar window (bottom bar: Start, window buttons, clock). The view can't
+            // resolve PAL services itself (ARCH-03), so hand them over here; the window
+            // manager's reconciliation poll is what feeds the window-button list.
+            var taskbarView = new Taskbar.TaskbarView();
+            taskbarView.Initialize(
+                services.GetService<Bevel.Pal.Abstractions.IAppEnvironment>(),
+                services.GetService<Bevel.Pal.Abstractions.IWindowManager>(),
+                buttonWidth: settings.Current.TaskbarButtonWidth);
+            if (services.GetService<Bevel.Pal.Abstractions.IWindowManager>() is Pal.MacOS.MacOSWindowManager macWm)
+                _ = macWm.StartPollAsync();
+            var taskbarWin = new Taskbar.TaskbarWindow(
+                services.GetService<Bevel.Pal.Abstractions.IDockController>())
+            {
+                Content = taskbarView,
+            };
+            taskbarWin.Show();
 
             // File manager window(s) — built via the shared factory so the SAME object graph
             // the modules register actually drives the running app: the VfsRoot has both the

@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.Taskbar.ClockWidget">
+    <TextBlock x:Name="TimeDisplay"
+               FontSize="11"
+               VerticalAlignment="Center"
+               HorizontalAlignment="Right"
+               Margin="4,0,6,0" />
+</UserControl>
