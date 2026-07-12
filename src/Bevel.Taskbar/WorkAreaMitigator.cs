@@ -4,18 +4,29 @@ using Bevel.Pal.Abstractions;
 namespace Bevel.Taskbar;
 
 /// <summary>
-/// Work-area overlap mitigation engine (U12, Nudge strategy). Detects windows whose
-/// bottom edge crosses into the taskbar band and shrinks them to sit above it, via
-/// IWindowManager.RepositionAsync — rate-limited per window so an app that re-asserts
-/// its own frame can't cause a reposition fight (02 Req 9.2), and suspended while a
-/// window is in motion so a drag/resize isn't fought mid-gesture (02 Req 9.x).
+/// Work-area overlap mitigation engine (U12, Nudge strategy). Shrinks windows whose bottom
+/// edge crosses into the taskbar band so they sit above it, via IWindowManager.RepositionAsync.
+///
+/// Event-driven for snappiness: it reacts to window open/move/resize/focus events and mitigates
+/// a short <see cref="SettleDelay"/> after activity stops — so a maximize/zoom is corrected in
+/// a few hundred ms, not on a slow poll tick. A live drag keeps re-arming that debounce, so the
+/// bar is never fought mid-gesture; we act once, after the window comes to rest. A slow safety
+/// poll re-checks in case an app doesn't emit AX move/resize events. Repositions are rate-limited
+/// per window (02 Req 9.2) so an app that re-asserts its own frame can't cause a reposition fight.
 /// </summary>
 public sealed class WorkAreaMitigator : IDisposable
 {
     /// <summary>Never shrink a window below this height — a squashed window is worse than an overlap.</summary>
     private const int MinUsableHeight = 100;
 
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    /// <summary>How long window activity must be quiet before we mitigate. A live drag/resize
+    /// emits a stream of events that keep re-arming this, so it only fires once motion stops —
+    /// kept short so the correction feels immediate. If an app emits events too sparsely and
+    /// this fires mid-animation, the animation's final event simply re-arms and corrects it.</summary>
+    private static readonly TimeSpan SettleDelay = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>Backstop for apps that don't emit AX move/resize events: re-check periodically.</summary>
+    private static readonly TimeSpan SafetyPollInterval = TimeSpan.FromSeconds(3);
 
     private readonly IWindowManager _windowManager;
     private readonly SettingsService _settings;
@@ -23,9 +34,11 @@ public sealed class WorkAreaMitigator : IDisposable
     private readonly TimeProvider _time;
     private readonly TimeSpan _rateLimit = TimeSpan.FromSeconds(2);
     private readonly Dictionary<string, DateTime> _lastReposition = new();
-    private readonly Dictionary<string, PalRect> _lastBounds = new();
-    private CancellationTokenSource? _cts;
-    private Task? _loopTask;
+    private readonly object _gate = new();
+    private CancellationTokenSource? _settleCts;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+    private bool _started;
     private bool _disposed;
 
     /// <param name="taskbarBand">Supplies the taskbar's current screen rect in the window
@@ -43,37 +56,69 @@ public sealed class WorkAreaMitigator : IDisposable
         _time = timeProvider ?? TimeProvider.System;
     }
 
-    /// <summary>Starts the overlap detection loop. Idempotent.</summary>
+    /// <summary>Subscribes to window activity and starts the safety poll. Idempotent.</summary>
     public void Start()
     {
-        if (_loopTask is not null) return;
-        _cts = new CancellationTokenSource();
-        _loopTask = RunAsync(_cts.Token);
+        lock (_gate)
+        {
+            if (_started || _disposed) return;
+            _started = true;
+            // React the instant a window opens, moves, resizes, or focus changes — those are the
+            // moments a window can slide under the taskbar. Bursts (a live drag) coalesce via the
+            // settle debounce so we act once, after motion stops.
+            _windowManager.WindowOpened += OnActivity;
+            _windowManager.WindowChanged += OnActivity;
+            _windowManager.ForegroundChanged += OnActivity;
+            _pollCts = new CancellationTokenSource();
+            _pollTask = SafetyPollAsync(_pollCts.Token);
+        }
     }
 
-    private async Task RunAsync(CancellationToken ct)
+    private void OnActivity(object? sender, ForeignWindow w) => ArmSettle();
+
+    /// <summary>(Re)arms the settle debounce: cancels any pending pass and schedules a fresh one
+    /// <see cref="SettleDelay"/> from now. Repeated activity keeps pushing it out until the
+    /// window comes to rest, which is the drag/resize suspension — we never nudge mid-gesture.</summary>
+    private void ArmSettle()
+    {
+        CancellationTokenSource cts;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _settleCts?.Cancel();
+            _settleCts = cts = new CancellationTokenSource();
+        }
+        _ = SettleAndMitigateAsync(cts.Token);
+    }
+
+    private async Task SettleAndMitigateAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(SettleDelay, _time, ct); }
+        catch (OperationCanceledException) { return; } // superseded by newer activity, or disposed
+        // Gate here (not at wire-up): the user can switch strategy at runtime, and a PAL that
+        // can't reposition must never be asked to.
+        if (_settings.Current.WorkAreaStrategy != WorkAreaStrategy.Nudge) return;
+        if (!_windowManager.Capabilities.SupportsReposition) return;
+        try { await MitigateOnceAsync(ct); }
+        catch (OperationCanceledException) { }
+        catch { /* best effort — the next event or safety tick retries */ }
+    }
+
+    private async Task SafetyPollAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            try
-            {
-                await Task.Delay(PollInterval, ct);
-                // Gate every tick: the user can switch strategy at runtime, and a PAL that
-                // can't reposition (feature detection) must never be asked to.
-                if (_settings.Current.WorkAreaStrategy != WorkAreaStrategy.Nudge) continue;
-                if (!_windowManager.Capabilities.SupportsReposition) continue;
-                await MitigateOnceAsync(ct);
-            }
+            try { await Task.Delay(SafetyPollInterval, _time, ct); }
             catch (OperationCanceledException) { break; }
-            catch { /* best effort — next tick retries */ }
+            ArmSettle(); // route through the same debounce so the poll never fights a live drag
         }
     }
 
     /// <summary>
-    /// One mitigation pass. Nudges every stationary, non-minimized window that overlaps the
-    /// taskbar band and isn't rate-limited. Returns the number of windows repositioned.
-    /// Internal so the decision logic can be driven a tick at a time under test, free of the
-    /// poll loop's timing.
+    /// One mitigation pass. Nudges every non-minimized window that overlaps the taskbar band
+    /// and isn't rate-limited. Returns the number of windows repositioned. Internal so the
+    /// decision logic can be driven directly under test, free of the event/debounce timing
+    /// (motion suspension lives in <see cref="ArmSettle"/>, verified live).
     /// </summary>
     internal async Task<int> MitigateOnceAsync(CancellationToken ct = default)
     {
@@ -87,14 +132,6 @@ public sealed class WorkAreaMitigator : IDisposable
         {
             var id = w.Id.Value;
             live.Add(id);
-
-            // Drag/resize suspension: if the frame changed since the last tick the window is
-            // in motion (or just appeared) — record it and leave it alone this pass. A window
-            // that has come to rest is nudged on the following tick. This also means we never
-            // re-nudge a window we just moved (its frame changed), which the rate-limit backs up.
-            var moved = !_lastBounds.TryGetValue(id, out var prev) || prev != w.Bounds;
-            _lastBounds[id] = w.Bounds;
-            if (moved) continue;
 
             if (w.IsMinimized || !Overlaps(w.Bounds, band) || !RateLimitCheck(id))
                 continue;
@@ -112,12 +149,9 @@ public sealed class WorkAreaMitigator : IDisposable
         return repositioned;
     }
 
-    /// <summary>Drops per-window bookkeeping for windows that are no longer present.</summary>
+    /// <summary>Drops rate-limit bookkeeping for windows that are no longer present.</summary>
     private void Prune(HashSet<string> live)
     {
-        if (_lastBounds.Count > live.Count)
-            foreach (var stale in _lastBounds.Keys.Where(k => !live.Contains(k)).ToList())
-                _lastBounds.Remove(stale);
         if (_lastReposition.Count > live.Count)
             foreach (var stale in _lastReposition.Keys.Where(k => !live.Contains(k)).ToList())
                 _lastReposition.Remove(stale);
@@ -135,10 +169,18 @@ public sealed class WorkAreaMitigator : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _loopTask = null;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            if (_started)
+            {
+                _windowManager.WindowOpened -= OnActivity;
+                _windowManager.WindowChanged -= OnActivity;
+                _windowManager.ForegroundChanged -= OnActivity;
+            }
+            _settleCts?.Cancel();
+            _pollCts?.Cancel();
+        }
     }
 }

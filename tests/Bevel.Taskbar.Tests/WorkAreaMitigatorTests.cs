@@ -6,10 +6,11 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// bevel-m2.13: the Nudge-strategy overlap engine. Drives <see cref="WorkAreaMitigator"/>
-/// one tick at a time (MitigateOnceAsync) with a recording window manager and an injected
-/// clock, so the decision logic is asserted free of the poll loop's timing. The band is a
-/// fixed bottom-30-point strip of a 1600×1000-point screen: y ∈ [970, 1000).
+/// bevel-m2.13: the Nudge-strategy overlap engine. Drives <see cref="WorkAreaMitigator"/>'s
+/// decision pass (MitigateOnceAsync) directly with a recording window manager and an injected
+/// clock, free of the event/debounce timing (motion suspension lives in the settle debounce and
+/// is verified live). The band is a fixed bottom-30-point strip of a 1600×1000-point screen:
+/// y ∈ [970, 1000).
 /// </summary>
 public class WorkAreaMitigatorTests
 {
@@ -22,18 +23,12 @@ public class WorkAreaMitigatorTests
         => new(wm, new SettingsService(), () => Band, clock);
 
     [Fact]
-    public async Task Overlapping_stationary_window_is_nudged_to_sit_above_the_band()
+    public async Task Overlapping_window_is_nudged_to_sit_above_the_band()
     {
         // Bottom edge (1100) crosses the band; top (800) leaves 170pt of usable height.
         var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
-        var clock = new FixedClock();
-        var m = Make(wm, clock);
+        var m = Make(wm, new FixedClock());
 
-        // First tick only records the frame (drag-suspension can't tell "new" from "moving").
-        Assert.Equal(0, await m.MitigateOnceAsync());
-        Assert.Empty(wm.Repositions);
-
-        // Second tick: the window is stationary and overlapping → nudged.
         Assert.Equal(1, await m.MitigateOnceAsync());
         var (id, target) = Assert.Single(wm.Repositions);
         Assert.Equal("w1", id.Value);
@@ -48,7 +43,6 @@ public class WorkAreaMitigatorTests
         var m = Make(wm, new FixedClock());
 
         await m.MitigateOnceAsync();
-        await m.MitigateOnceAsync();
 
         Assert.Empty(wm.Repositions);
     }
@@ -61,13 +55,12 @@ public class WorkAreaMitigatorTests
         var m = Make(wm, new FixedClock());
 
         await m.MitigateOnceAsync();
-        await m.MitigateOnceAsync();
 
         Assert.Empty(wm.Repositions);
     }
 
     [Fact]
-    public async Task Window_still_squashed_below_minimum_is_left_alone()
+    public async Task Window_that_would_be_squashed_below_minimum_is_left_alone()
     {
         // Top at 900 → available height above the band is only 70pt (< 100 floor):
         // shrinking it here would be worse than the overlap, so it's skipped.
@@ -75,38 +68,19 @@ public class WorkAreaMitigatorTests
         var m = Make(wm, new FixedClock());
 
         await m.MitigateOnceAsync();
-        await m.MitigateOnceAsync();
 
         Assert.Empty(wm.Repositions);
-    }
-
-    [Fact]
-    public async Task A_window_in_motion_is_suspended_until_it_settles()
-    {
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
-        var m = Make(wm, new FixedClock());
-
-        await m.MitigateOnceAsync();                 // tick 1: prime
-        Assert.Empty(wm.Repositions);
-
-        wm.Set(Win("w1", new PalRect(0, 810, 800, 300))); // moved (still overlapping)
-        await m.MitigateOnceAsync();                 // tick 2: in motion → suspended
-        Assert.Empty(wm.Repositions);
-
-        await m.MitigateOnceAsync();                 // tick 3: settled → nudged
-        Assert.Single(wm.Repositions);
     }
 
     [Fact]
     public async Task Reposition_is_rate_limited_per_window()
     {
         // The fake holds the window's frame fixed after the nudge (a real window would move,
-        // hitting drag-suspension) so this isolates the per-window rate limiter.
+        // and the event debounce would gate re-checks) so this isolates the per-window limiter.
         var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
         var clock = new FixedClock();
         var m = Make(wm, clock);
 
-        await m.MitigateOnceAsync();      // prime
         await m.MitigateOnceAsync();      // nudge #1
         Assert.Single(wm.Repositions);
 
@@ -118,7 +92,7 @@ public class WorkAreaMitigatorTests
         Assert.Equal(2, wm.Repositions.Count);
     }
 
-    /// <summary>Records reposition calls and lets a test swap the window list between ticks.</summary>
+    /// <summary>Records reposition calls and lets a test swap the window list between passes.</summary>
     private sealed class RecordingWindowManager : IWindowManager
     {
         private IReadOnlyList<ForeignWindow> _windows;
@@ -145,7 +119,7 @@ public class WorkAreaMitigatorTests
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
 
-#pragma warning disable CS0067 // required by the interface; the mitigator polls, it doesn't subscribe
+#pragma warning disable CS0067 // required by the interface; the mitigator subscribes, tests don't raise
         public event EventHandler<ForeignWindow>? WindowOpened;
         public event EventHandler<ForeignWindow>? WindowClosed;
         public event EventHandler<ForeignWindow>? WindowChanged;
