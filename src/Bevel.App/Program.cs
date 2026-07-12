@@ -29,8 +29,10 @@ internal static class Program
         // surface SIGTERM via Console.CancelKeyPress/AppDomain.ProcessExit, so register a
         // POSIX signal handler explicitly (bevel-3kz).
         var appBuilder = BuildAvaloniaApp();
-        PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.RequestExit());
-        PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.RequestExit());
+        // Keep the registrations rooted for the whole process lifetime: PosixSignalRegistration
+        // unregisters its handler once the instance is garbage-collected.
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.RequestExit());
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.RequestExit());
 
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
@@ -41,8 +43,13 @@ internal static class Program
         }
         finally
         {
-            // Stop hosted services cleanly on exit (kills the helper, ends the monitor).
-            host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            // Stop hosted services cleanly on exit (kills the helper, restores the Dock).
+            // Run on the thread pool, NOT this thread: after the desktop lifetime returns,
+            // Avalonia's SynchronizationContext is still installed here, so a plain
+            // .GetResult() would post StopAsync's await-continuations back to this blocked
+            // main thread and deadlock — the helper never stops and the process hangs on
+            // SIGTERM (only kill -9 works). Task.Run detaches from that context (bevel-fu5).
+            Task.Run(() => host.StopAsync(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
         }
     }
 

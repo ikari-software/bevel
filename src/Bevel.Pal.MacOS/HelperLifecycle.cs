@@ -80,7 +80,9 @@ public class HelperLifecycle : IHostedService, IDisposable
             // can't race the monitor mutating host state mid-relaunch (review #13). The
             // cancel above unblocks any in-flight launch/Ping promptly; the cap is a
             // worst-case backstop covering the readiness timeout.
-            try { await _monitorTask.WaitAsync(TimeSpan.FromSeconds(8), cancellationToken); }
+            // ConfigureAwait(false): this is library/hosted-service code and must not resume on
+            // a caller's SynchronizationContext (host shutdown blocks the UI thread — bevel-fu5).
+            try { await _monitorTask.WaitAsync(TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false); }
             catch (Exception ex) when (ex is TimeoutException or OperationCanceledException) { }
         }
         _host.Kill();
