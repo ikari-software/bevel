@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Bevel.App.Supervision;
 
@@ -36,7 +37,14 @@ internal sealed class RoleProcess : IRoleProcess
         try
         {
             if (!_process.HasExited)
-                _process.Kill(entireProcessTree: true);
+            {
+                // Graceful first: SIGTERM lets the child run its own teardown — the taskbar restores the
+                // Dock, the core stops the Swift helper — instead of being torn down mid-state. Give it a
+                // short grace, then hard-kill the whole tree if it hasn't exited (a wedged child must not
+                // block a restart/quit forever).
+                if (!TrySigterm(_process.Id) || !_process.WaitForExit(GraceMs))
+                    _process.Kill(entireProcessTree: true);
+            }
         }
         catch (InvalidOperationException) { /* already exited / never started */ }
         _process.Dispose();
@@ -44,4 +52,19 @@ internal sealed class RoleProcess : IRoleProcess
     }
 
     public void Dispose() => Kill();
+
+    private const int GraceMs = 3000;
+    private const int Sigterm = 15;
+
+    /// <summary>Sends SIGTERM to the child (POSIX). Returns false on non-Unix or on failure, so the
+    /// caller falls back to a hard kill.</summary>
+    private static bool TrySigterm(int pid)
+    {
+        if (OperatingSystem.IsWindows()) return false;
+        try { return NativeKill(pid, Sigterm) == 0; }
+        catch { return false; }
+    }
+
+    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int NativeKill(int pid, int sig);
 }

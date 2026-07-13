@@ -35,6 +35,17 @@ public partial class App : Application
         if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.Quit))
             return;
 
+        ShutdownLocal();
+    }
+
+    /// <summary>
+    /// Shuts down THIS process's Avalonia lifetime directly, without fanning out to the launcher. This
+    /// is what a supervised child does on SIGTERM: the launcher already decided to stop it, so it must
+    /// tear its own windows down cleanly (restoring the Dock, stopping the helper) rather than telling
+    /// the launcher to quit again. Safe before the UI is up (no-op).
+    /// </summary>
+    public static void ShutdownLocal()
+    {
         var lifetime = _lifetime;
         if (lifetime is null) return;
         // Signal handlers execute on a non-UI thread; Avalonia shutdown must run on the UI thread.

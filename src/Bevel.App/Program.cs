@@ -56,8 +56,11 @@ internal static class Program
         var appBuilder = BuildAvaloniaApp();
         // Keep the registrations rooted for the whole process lifetime: PosixSignalRegistration
         // unregisters its handler once the instance is garbage-collected.
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.RequestExit());
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.RequestExit());
+        // A SIGTERM here means "shut THIS process down" — from the launcher tearing the shell down, or
+        // a bare kill. Shut down locally (don't fan back out to the launcher, which sent it): the child
+        // must run its own window teardown so the Dock is restored and the helper stopped.
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.ShutdownLocal());
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.ShutdownLocal());
 
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
