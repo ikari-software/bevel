@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dependency-light C#-to-C# IPC transport for the shell "core" process.
+       BCL only (System.Net.Sockets / System.Security.Cryptography / System.Buffers) —
+       deliberately NO ASP.NET Core, NO gRPC, NO NuGet: the whole point is to move
+       shell state between processes without dragging a web server into a
+       memory-conscious daemon. TargetFramework/Nullable/ImplicitUsings come from
+       Directory.Build.props. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.ShellCore.Ipc.Tests" />
+  </ItemGroup>
+
+</Project>
