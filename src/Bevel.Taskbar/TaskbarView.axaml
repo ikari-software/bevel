@@ -1,49 +1,135 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:tb="clr-namespace:Bevel.Taskbar"
+             xmlns:classic="clr-namespace:Classic.Avalonia.Theme;assembly=Classic.Avalonia.Theme"
              x:Class="Bevel.Taskbar.TaskbarView"
-             Height="30">
-    <!-- Taskbar layout: Start · window-button area (flex, capped) · tray+clock (fixed, always visible) -->
-    <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto" Height="30"
+             ClipToBounds="False">
+    <Panel>
+    <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
+          ClipToBounds="False"
           Background="{DynamicResource SystemButtonFaceBrush}">
 
-        <!-- Start button -->
+        <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
+             to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
         <Button x:Name="StartButton" Grid.Column="0"
-                Width="60" Height="28" Margin="1,1,0,1"
-                Content="Start"
+                Width="74" Margin="1,1,0,1"
                 FontWeight="Bold" FontSize="11"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center" />
+                Focusable="False"
+                Padding="6,0"
+                HorizontalContentAlignment="Left"
+                VerticalAlignment="Stretch">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                <!-- OS badge injected in code (StartLogo): Windows flag / Apple / Tux by host OS. -->
+                <ContentControl x:Name="StartLogoHost"
+                                Width="16" Height="16" VerticalAlignment="Center" />
+                <TextBlock Text="Start" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
 
-        <!-- Divider after Start -->
-        <Border Grid.Column="0" Width="2" Height="26" Margin="62,2,0,2"
+        <!-- Divider after Start (full height) -->
+        <Border Grid.Column="0" Width="2" Margin="76,1,0,1"
+                VerticalAlignment="Stretch"
                 Background="{DynamicResource SystemButtonHighlightBrush}"
                 BorderBrush="{DynamicResource SystemButtonShadowBrush}"
                 BorderThickness="0,0,1,0" />
 
-        <!-- Window button area (fills available space between Start and tray; capped so
-             the tray+clock are never pushed off-screen). Overflow clips. -->
+        <!-- Window button area: data-bound to the background model's Windows collection (bevel-d2z).
+             HorizontalScrollBarVisibility=Disabled constrains the width so the WrapPanel wraps into
+             rows as the bar grows taller. Each button's Width/Opacity are animated (XP-style: grow
+             from 0 on open, shrink to 0 on close, smooth resize as the strip fills) via the
+             template transitions; the code-behind layout pass pushes the shared target width. -->
         <ScrollViewer x:Name="WindowButtonScroller" Grid.Column="1"
-                      HorizontalScrollBarVisibility="Hidden"
+                      HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Disabled"
-                      VerticalAlignment="Center"
-                      Margin="2,0,0,0">
-            <StackPanel x:Name="WindowButtonArea"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center" />
+                      VerticalAlignment="Stretch"
+                      Margin="2,1,0,1">
+            <ItemsControl x:Name="WindowButtonArea" ItemsSource="{Binding Windows}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" VerticalAlignment="Top" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="tb:TaskItemViewModel">
+                        <!-- A checked classic ToggleButton renders with the authentic sunken/
+                             hatched active-task state. Binding is one-way: native window state,
+                             not the click gesture itself, remains authoritative. -->
+                        <ToggleButton Command="{Binding ActivateCommand}"
+                                      IsChecked="{Binding IsFocused, Mode=OneWay}"
+                                      Focusable="False"
+                                      Width="{Binding Width}"
+                                      Opacity="{Binding Opacity}"
+                                      FontWeight="{Binding TitleWeight}"
+                                      MinWidth="0"
+                                      Height="24" Margin="1,2" Padding="4,0" FontSize="11"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Center"
+                                      ClipToBounds="True">
+                            <ToggleButton.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+                                </Transitions>
+                            </ToggleButton.Transitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        ClipToBounds="True" Opacity="{Binding ContentOpacity}"
+                                        IsHitTestVisible="False">
+                                <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                       Margin="0,0,4,0" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" />
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           IsHitTestVisible="False" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </ScrollViewer>
 
-        <!-- Divider before system tray area -->
-        <Border Grid.Column="2" Width="2" Height="26" Margin="2,2,0,2"
+        <!-- Divider before system tray area (full height) -->
+        <Border Grid.Column="2" Width="2" Margin="2,1,0,1"
+                VerticalAlignment="Stretch"
                 Background="{DynamicResource SystemButtonHighlightBrush}"
                 BorderBrush="{DynamicResource SystemButtonShadowBrush}"
                 BorderThickness="0,0,1,0" />
 
-        <!-- System tray + clock area (fixed width; always visible) -->
+        <!-- System tray + clock area: full bar height (no dead space above it). Win2000 recesses
+             the notification area into a sunken well; ClassicBorderDecorator draws the inset bevel
+             and the clock centres within the taller well. -->
         <StackPanel x:Name="TrayArea" Grid.Column="2"
                     Orientation="Horizontal"
+                    VerticalAlignment="Stretch"
                     Margin="0,1,2,1">
-            <tb:ClockWidget x:Name="Clock" />
+            <classic:ClassicBorderDecorator BorderStyle="Sunken" BorderThickness="2"
+                                            Padding="4,0"
+                                            VerticalAlignment="Stretch"
+                                            Background="{DynamicResource SystemButtonFaceBrush}">
+                <tb:ClockWidget x:Name="Clock" VerticalAlignment="Center" />
+            </classic:ClassicBorderDecorator>
         </StackPanel>
+
+        <!-- Resize grip: dragging the top edge grows/shrinks the bar in whole button-row steps.
+             Transparent (not null) so it's hit-testable; spans the full width. -->
+        <Border x:Name="ResizeGrip" Grid.Column="0" Grid.ColumnSpan="3"
+                Height="4" VerticalAlignment="Top"
+                Background="Transparent" Cursor="SizeNorthSouth" />
     </Grid>
+
+        <!-- Win2000 tooltips above task buttons. A Popup (not ToolTip.Tip) positions in screen
+             space above the bar; helper isBevelTransient() filters the small parent-PID surface. -->
+        <Popup x:Name="TooltipPopup"
+               IsLightDismissEnabled="False"
+               Placement="Top"
+               VerticalOffset="-2"
+               WindowManagerAddShadowHint="False">
+            <Border Background="#FFFFE1"
+                    BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
+                    BorderThickness="1" Padding="4,2" MaxWidth="420">
+                <TextBlock x:Name="TaskbarTooltipText"
+                           Foreground="#000000"
+                           FontSize="11" TextWrapping="Wrap" />
+            </Border>
+        </Popup>
+    </Panel>
 </UserControl>

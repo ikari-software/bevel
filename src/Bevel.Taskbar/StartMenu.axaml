@@ -69,6 +69,11 @@
 
                         <MenuItem x:Name="LogOffItem" Header="L_og Off…" Click="OnLogOffClick" />
                         <MenuItem x:Name="ShutDownItem" Header="Sh_ut Down…" Click="OnShutDownClick" />
+
+                        <Separator />
+
+                        <MenuItem x:Name="RestartItem" Header="_Restart Bevel" Click="OnRestartClick" />
+                        <MenuItem x:Name="QuitItem" Header="_Quit Bevel" Click="OnQuitClick" />
                     </Menu>
                 </Grid>
             </classic:ClassicBorderDecorator>

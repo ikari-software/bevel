@@ -1,13 +1,11 @@
-using System.IO;
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
-using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Threading;
-using Bevel.Core;
+using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -16,202 +14,294 @@ public partial class TaskbarView : UserControl
 {
     private StartMenu? _startMenu;
     private IAppEnvironment? _appEnv;
-    private IWindowManager? _windowManager;
     private IIconProvider? _iconProvider;
-    private readonly Dictionary<string, Button> _windowButtons = new();
-    private int _buttonWidth = 160;
+    private Action? _quit;
+    private Action? _restart;
+    private int _maxButtonWidth = 160;
+    private TaskbarWindow? _window;
+    private TaskbarViewModel? _vm;
+    private bool _resizing;
+    private DispatcherTimer? _tooltipTimer;
+    private Control? _tooltipAnchor;
+    private bool _wired;
+    private bool _layoutQueued;
 
     public TaskbarView() => InitializeComponent();
 
     public Button StartButtonControl => StartButton;
-    public StackPanel WindowButtonAreaControl => WindowButtonArea;
+    public ItemsControl WindowButtonAreaControl => WindowButtonArea;
     public ClockWidget ClockControl => Clock;
 
     /// <summary>
-    /// Wires the taskbar to its PAL services. Called by the composition root
-    /// (App.axaml.cs) after construction — Bevel.Taskbar cannot reference
-    /// concrete PALs (ARCH-03), so the services arrive from outside.
+    /// Supplies the Start menu's app environment + icon provider and the max button width. The
+    /// window-button list itself now comes from the bound <see cref="TaskbarViewModel"/>
+    /// (DataContext) via the background <see cref="ShellModel"/> — the taskbar no longer
+    /// subscribes to window events or builds/mutates buttons by hand (bevel-d2z).
     /// </summary>
-    public void Initialize(IAppEnvironment? appEnv, IWindowManager? windowManager,
-        IIconProvider? iconProvider = null, int buttonWidth = 160)
+    public void Initialize(
+        IAppEnvironment? appEnv,
+        IIconProvider? iconProvider = null,
+        int buttonWidth = 160,
+        Action? quit = null,
+        Action? restart = null)
     {
         _appEnv = appEnv;
-        _windowManager = windowManager;
         _iconProvider = iconProvider;
-        _buttonWidth = buttonWidth;
-
-        if (_windowManager is not null)
-        {
-            _windowManager.WindowOpened += (_, w) => Dispatcher.UIThread.Post(() => UpsertButton(w));
-            _windowManager.WindowClosed += (_, w) => Dispatcher.UIThread.Post(() => RemoveButton(w));
-            _windowManager.WindowChanged += (_, w) => Dispatcher.UIThread.Post(() => UpsertButton(w));
-            _windowManager.ForegroundChanged += (_, w) => Dispatcher.UIThread.Post(() => UpsertButton(w));
-            _ = RefreshWindowButtonsAsync();
-        }
+        _maxButtonWidth = buttonWidth;
+        _quit = quit;
+        _restart = restart;
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
     {
         base.OnLoaded(e);
 
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider);
-        // The menu hosts its content in a Popup, which can only open once the control is
-        // attached to a visual tree (it needs a TopLevel). It contributes no layout size —
-        // its root Panel measures to zero — so parenting it in the taskbar grid is
-        // invisible but is what lets the Start menu actually appear on screen.
+        _vm = DataContext as TaskbarViewModel;
+        _window = TopLevel.GetTopLevel(this) as TaskbarWindow;
+
+        // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
+        // the off-thread collection instead of enumerating + rendering icons on the UI thread.
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu);
+        // The menu hosts its content in a Popup, which only opens once attached to a visual tree
+        // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
+        // grid is invisible but is what lets the Start menu appear on screen.
         if (_startMenu.Parent is null)
             RootGrid.Children.Add(_startMenu);
-        StartButton.Click += OnStartButtonClick;
-        // Re-flow button widths whenever the strip resizes (window buttons shrink to fit).
-        WindowButtonScroller.SizeChanged += (_, _) => LayoutButtons();
-        AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
-    }
 
-    // ── Window buttons (U11) ────────────────────────────────────────────
-
-    private async Task RefreshWindowButtonsAsync()
-    {
-        if (_windowManager is null) return;
-        try
+        // Subscribe exactly once. OnLoaded runs again on every re-attach to the visual tree; without
+        // this guard a reparent would double-wire every handler (double tooltips, double reflows).
+        // DataContext is assigned at construction (App.axaml.cs) so _vm is already live here.
+        if (!_wired)
         {
-            var windows = await _windowManager.EnumerateAsync();
-            Dispatcher.UIThread.Post(() =>
-            {
-                var live = new HashSet<string>(windows.Select(w => w.Id.Value));
-                foreach (var stale in _windowButtons.Keys.Where(k => !live.Contains(k)).ToList())
-                {
-                    WindowButtonArea.Children.Remove(_windowButtons[stale]);
-                    _windowButtons.Remove(stale);
-                }
-                foreach (var w in windows) UpsertButton(w);
-            });
-        }
-        catch { /* helper not up yet — reconciliation poll retries */ }
-    }
+            _wired = true;
+            // Host-OS badge on the Start button: Windows flag / Apple / Tux, self-drawn vectors.
+            StartLogoHost.Content = StartLogo.For(16);
+            StartButton.Click += OnStartButtonClick;
+            AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
 
-    private void UpsertButton(ForeignWindow w)
-    {
-        if (string.IsNullOrEmpty(w.Title) && string.IsNullOrEmpty(w.AppId)) return;
+            // Re-flow button widths when the strip resizes, the row count changes, or the window
+            // list changes. Every trigger routes through QueueLayout so a burst (e.g. K buttons
+            // realized at once) collapses to a single Background-priority reflow instead of K+1.
+            WindowButtonScroller.SizeChanged += (_, _) => QueueLayout();
+            if (_vm is not null)
+                _vm.Windows.CollectionChanged += OnWindowsChanged;
+            // Re-run the width pass when a button's container is realized, so a newly-opened
+            // window's button — created at Width 0 — animates up to the target AFTER it has rendered
+            // at 0 (the XP grow-in), rather than being snapped to the target before it ever draws.
+            WindowButtonArea.ContainerPrepared += OnButtonContainerPrepared;
+            WindowButtonArea.ContainerClearing += OnButtonContainerClearing;
+            // Bubble-phase handlers catch hovers even if a future template change leaves inner
+            // content hit-testable; per-button direct handlers remain for redundancy.
+            WindowButtonArea.AddHandler(InputElement.PointerEnteredEvent, OnTaskButtonPointerEntered, RoutingStrategies.Bubble);
+            WindowButtonArea.AddHandler(InputElement.PointerExitedEvent, OnTaskButtonPointerExited, RoutingStrategies.Bubble);
 
-        if (!_windowButtons.TryGetValue(w.Id.Value, out var btn))
-        {
-            btn = new Button
-            {
-                Height = 24,
-                Margin = new Thickness(1, 0),
-                Padding = new Thickness(4, 0),
-                FontSize = 11,
-                // Stretch so the icon+title fill the button and the title elides as it shrinks.
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalContentAlignment = VerticalAlignment.Center,
-            };
-            var id = w.Id;
-            btn.Click += async (_, _) => await OnWindowButtonClick(id);
-            _windowButtons[w.Id.Value] = btn;
-            WindowButtonArea.Children.Add(btn);
-            LayoutButtons();
+            // Drag-to-resize the bar in whole button-row steps (bevel-0ml).
+            if (_window is not null)
+                _window.RowsChanged += _ => ApplyRowLayout();
+            ResizeGrip.PointerPressed += OnGripPressed;
+            ResizeGrip.PointerMoved += OnGripMoved;
+            ResizeGrip.PointerReleased += OnGripReleased;
         }
 
-        // Icon (left) + title (right). Icon set once; title/boldness update live.
-        if (btn.Content is not StackPanel panel)
-        {
-            panel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center,
-                ClipToBounds = true,
-            };
-            var img = new Image
-            {
-                Width = 16,
-                Height = 16,
-                Margin = new Thickness(0, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            var txt = new TextBlock
-            {
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            };
-            panel.Children.Add(img);
-            panel.Children.Add(txt);
-            btn.Content = panel;
-        }
-
-        var icon = (Image)panel.Children[0];
-        var label = (TextBlock)panel.Children[1];
-        label.Text = string.IsNullOrEmpty(w.Title) ? w.AppId : w.Title;
-
-        if (w.IconPng is { Length: > 0 } && icon.Source is null)
-        {
-            try
-            {
-                using var ms = new MemoryStream(w.IconPng);
-                icon.Source = new Bitmap(ms);
-            }
-            catch { /* invalid PNG — leave blank */ }
-        }
-
-        btn.Tag = w; // latest state, used by the click toggle
-        btn.FontWeight = w.IsFocused ? FontWeight.Bold : FontWeight.Normal;
-    }
-
-    private void RemoveButton(ForeignWindow w)
-    {
-        if (_windowButtons.Remove(w.Id.Value, out var btn))
-        {
-            WindowButtonArea.Children.Remove(btn);
-            LayoutButtons();
-        }
+        StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
+        ApplyRowLayout();
+        // A posted pass after the scroller has real bounds, so the initially-seeded buttons get a
+        // width (they start at 0) even if their SizeChanged fired before we subscribed. Also wires
+        // pointer handlers for containers realized before ContainerPrepared was subscribed.
+        QueueLayout();
     }
 
     /// <summary>
-    /// Sizes window buttons Win2000-style: they share the available strip width
-    /// (available / count), clamped between a minimum (half the max) and the max
-    /// (<see cref="_buttonWidth"/>, from TaskbarButtonWidth). Titles elide as buttons
-    /// shrink; below the minimum they hold and the strip clips. Additional display
-    /// modes (icon-only tier, fixed width, a user-set minimum) are tracked as backlog.
+    /// Collapses the many layout triggers (strip resize, collection change, each container
+    /// realization) into one Background-priority reflow. <see cref="LayoutButtons"/> is an O(n)
+    /// pass that also allocates, so running it once per burst instead of once per trigger matters
+    /// when a window-open realizes several buttons in the same dispatcher frame.
+    /// </summary>
+    private void QueueLayout()
+    {
+        if (_layoutQueued) return;
+        _layoutQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _layoutQueued = false;
+            LayoutButtons();
+            WireAllTaskButtons();
+        }, DispatcherPriority.Background);
+    }
+
+    private void OnWindowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        HideTaskbarTooltip();
+        QueueLayout();
+    }
+
+    /// <summary>Win2000 hover delay (SPI_GETMOUSEHOVERTIME default).</summary>
+    private static readonly TimeSpan TooltipShowDelay = TimeSpan.FromMilliseconds(400);
+
+    private void OnButtonContainerPrepared(object? sender, ContainerPreparedEventArgs e)
+    {
+        if (e.Container is Control container)
+            WireTaskButton(container);
+        QueueLayout();
+    }
+
+    private void OnButtonContainerClearing(object? sender, ContainerClearingEventArgs e)
+    {
+        if (e.Container is Control container && FindTaskButton(container) is { } button)
+        {
+            button.PointerEntered -= OnTaskButtonPointerEntered;
+            button.PointerExited -= OnTaskButtonPointerExited;
+            if (ReferenceEquals(_tooltipAnchor, button))
+                HideTaskbarTooltip();
+        }
+    }
+
+    private void WireAllTaskButtons()
+    {
+        foreach (var container in WindowButtonArea.GetRealizedContainers())
+        {
+            if (container is Control control)
+                WireTaskButton(control);
+        }
+    }
+
+    private void WireTaskButton(Control container)
+    {
+        if (FindTaskButton(container) is not { } button) return;
+        button.PointerEntered -= OnTaskButtonPointerEntered;
+        button.PointerExited -= OnTaskButtonPointerExited;
+        button.PointerEntered += OnTaskButtonPointerEntered;
+        button.PointerExited += OnTaskButtonPointerExited;
+    }
+
+    private static ToggleButton? FindTaskButton(Control container) =>
+        container as ToggleButton ?? container.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault();
+
+    private void OnTaskButtonPointerEntered(object? sender, PointerEventArgs e)
+    {
+        var anchor = (e.Source as Control)?.FindAncestorOfType<ToggleButton>()
+                     ?? sender as ToggleButton;
+        if (anchor?.DataContext is not TaskItemViewModel vm)
+            return;
+
+        _tooltipAnchor = anchor;
+        _tooltipTimer?.Stop();
+        _tooltipTimer = new DispatcherTimer { Interval = TooltipShowDelay };
+        _tooltipTimer.Tick += (_, _) =>
+        {
+            _tooltipTimer?.Stop();
+            if (ReferenceEquals(_tooltipAnchor, anchor))
+                ShowTaskbarTooltip(anchor, vm);
+        };
+        _tooltipTimer.Start();
+    }
+
+    private void OnTaskButtonPointerExited(object? sender, PointerEventArgs e)
+    {
+        var anchor = (e.Source as Control)?.FindAncestorOfType<ToggleButton>()
+                     ?? sender as ToggleButton;
+        _tooltipTimer?.Stop();
+        if (anchor is null || !ReferenceEquals(_tooltipAnchor, anchor)) return;
+        _tooltipAnchor = null;
+        HideTaskbarTooltip();
+    }
+
+    private void ShowTaskbarTooltip(Control anchor, TaskItemViewModel vm)
+    {
+        if (anchor is not ToggleButton button) return;
+        TaskbarTooltipText.Text = vm.StatusText;
+        TooltipPopup.PlacementTarget = button;
+        TooltipPopup.IsOpen = true;
+    }
+
+    private void HideTaskbarTooltip()
+    {
+        _tooltipTimer?.Stop();
+        _tooltipAnchor = null;
+        TooltipPopup.IsOpen = false;
+        TooltipPopup.PlacementTarget = null;
+    }
+
+    /// <summary>Start button height cap, in button rows (user: "cap start at 2x-3x row height").</summary>
+    private const int StartMaxRows = 3;
+
+    /// <summary>
+    /// Pins the content height to the current row count and re-flows the buttons. The window's
+    /// content presenter doesn't reliably stretch to a runtime height change, so without an
+    /// explicit height the RootGrid sizes to its content and the full-height Start button and tray
+    /// don't track the taller bar's real edges (bevel-0ml).
+    /// </summary>
+    private void ApplyRowLayout()
+    {
+        RootGrid.Height = TaskbarTheme.HeightForRows(_window?.Rows ?? 1);
+        LayoutButtons();
+    }
+
+    // ── Drag-to-resize (bevel-0ml) ──────────────────────────────────────
+
+    private void OnGripPressed(object? sender, PointerPressedEventArgs e)
+    {
+        HideTaskbarTooltip();
+        _resizing = true;
+        e.Pointer.Capture(ResizeGrip);
+        e.Handled = true;
+    }
+
+    private void OnGripMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_resizing || _window is null) return;
+        var primary = _window.Screens?.Primary ?? _window.Screens?.All?.FirstOrDefault();
+        if (primary is null) return;
+
+        var scale = primary.Scaling <= 0 ? 1.0 : primary.Scaling;
+        var screenY = ResizeGrip.PointToScreen(e.GetPosition(ResizeGrip)).Y;
+        var screenBottom = primary.Bounds.Y + primary.Bounds.Height;
+        var desiredHeight = (screenBottom - screenY) / scale;
+        var rows = (int)Math.Round((desiredHeight - TaskbarTheme.TaskbarHeight) / TaskbarTheme.RowHeight) + 1;
+        _window.SetRows(rows);
+    }
+
+    private void OnGripReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_resizing) return;
+        _resizing = false;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    // ── Window-button sizing (U11) ──────────────────────────────────────
+
+    /// <summary>
+    /// Win2000 shrink-to-fit: live buttons share the strip width (available / perRow), clamped
+    /// between a floor (half the max) and the max. Pushes the computed width onto each live VM —
+    /// the template's Width transition animates the change, so this drives both the steady-state
+    /// resize as the strip fills AND the XP grow-in (from the VM's initial Width 0). Buttons that
+    /// are animating out (<see cref="TaskItemViewModel.IsClosing"/>) are skipped so they finish
+    /// shrinking to 0 instead of being snapped back.
     /// </summary>
     private void LayoutButtons()
     {
-        var count = _windowButtons.Count;
-        if (count == 0) return;
+        if (_vm is null) return;
+        var live = _vm.Windows.Where(w => !w.IsClosing).ToList();
+        if (live.Count == 0) return;
 
         var available = WindowButtonScroller.Bounds.Width;
         if (available <= 0) return; // not laid out yet — SizeChanged will re-run this
 
-        var max = _buttonWidth;                  // max button width (e.g. 160)
-        var min = Math.Max(1, _buttonWidth / 2); // shrink floor: half the max
-        const double perButtonMargin = 2;        // Margin(1,0) => 2px horizontal
-        var width = Math.Clamp((available / count) - perButtonMargin, min, max);
+        // Distribute across the bar's rows: with R rows each row holds ceil(count / R) buttons,
+        // each taking an equal share of the row width; the WrapPanel wraps them into those rows.
+        var rows = Math.Max(1, _window?.Rows ?? 1);
+        var perRow = (int)Math.Ceiling(live.Count / (double)rows);
+        var max = _maxButtonWidth;                  // max button width (e.g. 160)
+        var min = Math.Max(1, _maxButtonWidth / 2); // shrink floor: half the max
+        const double perButtonMargin = 2;           // Margin(1,·) => 2px horizontal
+        var width = Math.Clamp((available / perRow) - perButtonMargin, min, max);
 
-        foreach (var btn in _windowButtons.Values)
-            btn.Width = width;
-    }
-
-    private async Task OnWindowButtonClick(ForeignWindowId id)
-    {
-        if (_windowManager is null) return;
-        try
+        foreach (var vm in live)
         {
-            // Classic Win2000 toggle. Minimizing NEVER removes the button — the
-            // window stays in the list (bevel-m2.3):
-            //   minimized       → restore + raise (a raise alone won't de-miniaturize)
-            //   focused (up)    → minimize
-            //   otherwise       → activate
-            var state = _windowButtons.TryGetValue(id.Value, out var b) && b.Tag is ForeignWindow fw ? fw : null;
-            if (state is { IsMinimized: true })
-            {
-                await _windowManager.RestoreAsync(id);
-                await _windowManager.ActivateAsync(id);
-            }
-            else if (state is { IsFocused: true })
-                await _windowManager.MinimizeAsync(id);
-            else
-                await _windowManager.ActivateAsync(id);
-            await RefreshWindowButtonsAsync();
+            vm.Width = width;   // transitions animate the resize / grow-in
+            vm.Opacity = 1;     // reveal (buttons are added at Opacity 0)
         }
-        catch { /* helper unavailable — buttons refresh on next poll */ }
     }
 
     // ── Start menu ──────────────────────────────────────────────────────

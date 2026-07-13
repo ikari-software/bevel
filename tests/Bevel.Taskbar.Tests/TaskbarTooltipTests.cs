@@ -1,0 +1,79 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Bevel.Pal.Abstractions;
+using Xunit;
+
+namespace Bevel.Taskbar.Tests;
+
+public sealed class TaskbarTooltipTests
+{
+    [AvaloniaFact]
+    public void Window_buttons_do_not_use_avalonian_tooltip_popup()
+    {
+        var model = new ShellModel(null, null, null);
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null) { Content = view };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var fw = new ForeignWindow(new ForeignWindowId("w1"), "Sample window title", "App", false, false, default);
+        model.Windows.Add(new TaskItemViewModel(fw, new NoOpWindowManager()) { Width = 120, Opacity = 1 });
+        Dispatcher.UIThread.RunJobs();
+
+        var button = view.WindowButtonAreaControl.GetVisualDescendants().OfType<ToggleButton>().Single();
+        Assert.Null(ToolTip.GetTip(button));
+        Assert.NotNull(view.FindControl<Popup>("TooltipPopup"));
+        Assert.NotNull(view.FindControl<TextBlock>("TaskbarTooltipText"));
+    }
+
+    [AvaloniaFact]
+    public void Tooltip_popup_opens_with_placement_target()
+    {
+        var model = new ShellModel(null, null, null);
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null) { Content = view, Width = 800, Height = 40 };
+
+        var fw = new ForeignWindow(new ForeignWindowId("w1"), "Sample window title", "App", false, false, default);
+        model.Windows.Add(new TaskItemViewModel(fw, new NoOpWindowManager()) { Width = 120, Opacity = 1 });
+
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var button = view.WindowButtonAreaControl.GetVisualDescendants().OfType<ToggleButton>().Single();
+        var popup = view.FindControl<Popup>("TooltipPopup");
+        var text = view.FindControl<TextBlock>("TaskbarTooltipText");
+        Assert.NotNull(popup);
+        Assert.NotNull(text);
+
+        text!.Text = "Sample window title — Open (click to activate)";
+        popup!.PlacementTarget = button;
+        popup.IsOpen = true;
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(popup.IsOpen);
+        Assert.Same(button, popup.PlacementTarget);
+    }
+
+    private sealed class NoOpWindowManager : IWindowManager
+    {
+        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>([]);
+        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
+        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
+        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
+        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+    }
+}

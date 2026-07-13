@@ -16,6 +16,12 @@
     <PackageReference Include="Avalonia" />
   </ItemGroup>
 
+  <!-- Start-button OS badges: Windows flag + Tux ship as SVG assets (avares://Bevel.Taskbar/Assets/…),
+       parsed to vector paths by StartLogo; the Apple mark stays self-drawn vector. -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
     <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
@@ -33,7 +34,10 @@ public sealed class WorkAreaMitigator : IDisposable
     private readonly Func<PalRect?> _taskbarBand;
     private readonly TimeProvider _time;
     private readonly TimeSpan _rateLimit = TimeSpan.FromSeconds(2);
-    private readonly Dictionary<string, DateTime> _lastReposition = new();
+    // Thread-safe: a settle pass already inside MitigateOnceAsync (awaiting slow RepositionAsync
+    // IPC) is not reliably cancelled before a newly-armed pass starts, so two passes can touch this
+    // concurrently on thread-pool threads. ConcurrentDictionary keeps that from tearing the map.
+    private readonly ConcurrentDictionary<string, DateTime> _lastReposition = new();
     private readonly object _gate = new();
     private CancellationTokenSource? _settleCts;
     private CancellationTokenSource? _pollCts;
@@ -75,6 +79,14 @@ public sealed class WorkAreaMitigator : IDisposable
     }
 
     private void OnActivity(object? sender, ForeignWindow w) => ArmSettle();
+
+    /// <summary>
+    /// Kicks an immediate (debounced) mitigation pass for a trigger outside the window event
+    /// stream — chiefly a display reconfiguration, which moves the taskbar band without moving any
+    /// window, so no WindowChanged/Opened event would otherwise fire. Routes through the same
+    /// settle debounce, so it can't fight a live drag and coalesces with concurrent activity.
+    /// </summary>
+    public void RequestMitigation() => ArmSettle();
 
     /// <summary>(Re)arms the settle debounce: cancels any pending pass and schedules a fresh one
     /// <see cref="SettleDelay"/> from now. Repeated activity keeps pushing it out until the
@@ -154,7 +166,7 @@ public sealed class WorkAreaMitigator : IDisposable
     {
         if (_lastReposition.Count > live.Count)
             foreach (var stale in _lastReposition.Keys.Where(k => !live.Contains(k)).ToList())
-                _lastReposition.Remove(stale);
+                _lastReposition.TryRemove(stale, out _);
     }
 
     private static bool Overlaps(PalRect w, PalRect band)
@@ -180,7 +192,9 @@ public sealed class WorkAreaMitigator : IDisposable
                 _windowManager.ForegroundChanged -= OnActivity;
             }
             _settleCts?.Cancel();
+            _settleCts?.Dispose();
             _pollCts?.Cancel();
+            _pollCts?.Dispose();
         }
     }
 }

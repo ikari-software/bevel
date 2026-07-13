@@ -92,6 +92,28 @@ public class WorkAreaMitigatorTests
         Assert.Equal(2, wm.Repositions.Count);
     }
 
+    [Fact]
+    public async Task RequestMitigation_triggers_a_pass_outside_the_window_event_stream()
+    {
+        // Models a display reconfiguration: no window moved (so no WindowChanged fires), yet the
+        // band is now occupied by an overlapping window and must be nudged. Real clock so the
+        // settle debounce actually elapses; poll with a generous deadline to stay non-flaky.
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var m = new WorkAreaMitigator(wm, new SettingsService(), () => Band);
+        m.Start();
+
+        m.RequestMitigation();
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (wm.Repositions.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        var (id, target) = Assert.Single(wm.Repositions);
+        Assert.Equal("w1", id.Value);
+        Assert.Equal(new PalRect(0, 800, 800, 170), target);
+        m.Dispose();
+    }
+
     /// <summary>Records reposition calls and lets a test swap the window list between passes.</summary>
     private sealed class RecordingWindowManager : IWindowManager
     {

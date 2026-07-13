@@ -18,10 +18,25 @@ namespace Bevel.Taskbar;
 public sealed class TaskbarWindow : BevelWindow
 {
     private readonly IDockController? _dockController;
+    private int _rows;
 
-    public TaskbarWindow(IDockController? dockController = null)
+    /// <summary>Current number of button rows (Win2000 drag-to-resize, bevel-0ml).</summary>
+    public int Rows => _rows;
+
+    /// <summary>Raised after the row count changes (drag-resize) so the view can re-flow
+    /// buttons and the composition root can persist the new count.</summary>
+    public event Action<int>? RowsChanged;
+
+    /// <summary>Raised after a display reconfiguration (resolution/arrangement change) has
+    /// re-anchored the bar and refreshed the work-area band, so the host can kick an immediate
+    /// window re-nudge — a display change moves no window, so the mitigator's event stream would
+    /// otherwise stay silent until its slow safety poll.</summary>
+    public event Action? WorkAreaChanged;
+
+    public TaskbarWindow(IDockController? dockController = null, int rows = 1)
     {
         _dockController = dockController;
+        _rows = Math.Max(1, rows);
         Title = "Bevel Taskbar";
         WindowState = WindowState.Normal;
         SystemDecorations = SystemDecorations.None;
@@ -30,13 +45,46 @@ public sealed class TaskbarWindow : BevelWindow
         ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
 
         // The ClassicWindow theme sets MinHeight=50; without overriding it the taskbar
-        // window is clamped to 50px (leaving a gray gap above the 30px content). Lock the
-        // window to exactly the taskbar height.
-        MinHeight = TaskbarTheme.TaskbarHeight;
-        MaxHeight = TaskbarTheme.TaskbarHeight;
+        // window is clamped to 50px (leaving a gray gap above the content). Lock the window
+        // to exactly the taskbar height for the current row count.
+        var h = TaskbarTheme.HeightForRows(_rows);
+        MinHeight = h;
+        MaxHeight = h;
 
         // Position at the bottom of the primary display.
         PositionAtPrimaryDisplayBottom();
+    }
+
+    /// <summary>Largest row count that keeps the bar within ~40% of the display height.</summary>
+    public int MaxRows
+    {
+        get
+        {
+            var primary = Screens?.Primary ?? Screens?.All?.FirstOrDefault();
+            if (primary is null) return 4;
+            var scale = primary.Scaling <= 0 ? 1.0 : primary.Scaling;
+            var heightPts = primary.Bounds.Height / scale;
+            var cap = (int)((heightPts * 0.4 - TaskbarTheme.TaskbarHeight) / TaskbarTheme.RowHeight) + 1;
+            return Math.Clamp(cap, 1, 8);
+        }
+    }
+
+    /// <summary>
+    /// Sets the taskbar to <paramref name="rows"/> button rows (clamped to [1, <see cref="MaxRows"/>]),
+    /// growing the bottom-anchored window upward, refreshing the work-area band, and raising
+    /// <see cref="RowsChanged"/>. No-op if the count is unchanged.
+    /// </summary>
+    public void SetRows(int rows)
+    {
+        rows = Math.Clamp(rows, 1, MaxRows);
+        if (rows == _rows) return;
+        _rows = rows;
+        var h = TaskbarTheme.HeightForRows(_rows);
+        MinHeight = h;
+        MaxHeight = h;
+        PositionAtPrimaryDisplayBottom(); // re-anchors the bottom edge and sets Height
+        RecomputeWorkAreaBand();
+        RowsChanged?.Invoke(_rows);
     }
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
@@ -58,6 +106,39 @@ public sealed class TaskbarWindow : BevelWindow
         RecomputeWorkAreaBand();
         PositionChanged += (_, _) => RecomputeWorkAreaBand();
         ScalingChanged += (_, _) => RecomputeWorkAreaBand();
+
+        // A resolution/arrangement change (applicationDidChangeScreenParameters on macOS) moves
+        // the bottom edge but neither Avalonia nor the OS re-anchors our borderless bar, and no
+        // window emits a move event — so re-anchor the bar, refresh the band, and re-nudge here.
+        if (Screens is not null)
+            Screens.Changed += OnScreensChanged;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (Screens is not null)
+            Screens.Changed -= OnScreensChanged;
+        base.OnClosed(e);
+    }
+
+    /// <summary>Re-anchors the bar to the (possibly resized) primary display, refreshes the
+    /// work-area band, and signals the host to re-nudge windows onto the new work area.</summary>
+    private void OnScreensChanged(object? sender, EventArgs e)
+    {
+        // A shorter display may no longer fit the current row count; keep the bar within bounds.
+        var previousRows = _rows;
+        _rows = Math.Clamp(_rows, 1, MaxRows);
+        var h = TaskbarTheme.HeightForRows(_rows);
+        MinHeight = h;
+        MaxHeight = h;
+
+        PositionAtPrimaryDisplayBottom(); // re-anchor bottom edge + span the new full width
+        RecomputeWorkAreaBand();          // refresh the band the mitigator reads
+        // If the display forced fewer rows, the view's content height (RootGrid.Height, set only via
+        // ApplyRowLayout on RowsChanged) and the persisted count would otherwise stay stale.
+        if (_rows != previousRows)
+            RowsChanged?.Invoke(_rows);
+        WorkAreaChanged?.Invoke();         // kick an immediate re-nudge (no window moved on its own)
     }
 
     private readonly object _bandLock = new();
@@ -92,7 +173,7 @@ public sealed class TaskbarWindow : BevelWindow
             var yPts = primary.Bounds.Y / scale;
             var widthPts = primary.Bounds.Width / scale;
             var heightPts = primary.Bounds.Height / scale;
-            var barH = TaskbarTheme.TaskbarHeight;
+            var barH = TaskbarTheme.HeightForRows(_rows);
             band = new PalRect(
                 (int)Math.Round(xPts),
                 (int)Math.Round(yPts + heightPts - barH),
@@ -138,6 +219,8 @@ public sealed class TaskbarWindow : BevelWindow
 
         // kCGMainMenuWindowLevel = 24; taskbar sits just below the menu bar.
         TaskbarNative.SetWindowLevel(handle, TaskbarNative.CGMainMenuWindowLevel - 1);
+        TaskbarNative.SetCanBecomeKeyWindow(handle, false);
+        TaskbarNative.SetAcceptsMouseMovedEvents(handle, true);
         TaskbarNative.SetCollectionBehavior(handle,
             TaskbarNative.NSWindowCollectionBehaviorCanJoinAllSpaces |
             TaskbarNative.NSWindowCollectionBehaviorStationary |
@@ -158,7 +241,7 @@ public sealed class TaskbarWindow : BevelWindow
         if (primary is null) return;
 
         var bounds = primary.Bounds;
-        var taskbarHeight = TaskbarTheme.TaskbarHeight;
+        var taskbarHeight = TaskbarTheme.HeightForRows(_rows);
 
         Position = new PixelPoint(bounds.X, bounds.Y + bounds.Height - taskbarHeight);
         Width = bounds.Width;
@@ -178,10 +261,16 @@ public sealed class TaskbarWindow : BevelWindow
 }
 
 /// <summary>Taskbar-specific theme constants.</summary>
-internal static class TaskbarTheme
+public static class TaskbarTheme
 {
-    /// <summary>Taskbar height in logical pixels, matching Win2000 classic.</summary>
+    /// <summary>Single-row taskbar height in logical pixels, matching Win2000 classic.</summary>
     public const int TaskbarHeight = 30;
+
+    /// <summary>Height added per extra button row when the bar is dragged taller (bevel-0ml).</summary>
+    public const int RowHeight = 28;
+
+    /// <summary>Total taskbar height (logical px) for <paramref name="rows"/> button rows.</summary>
+    public static int HeightForRows(int rows) => TaskbarHeight + (Math.Max(1, rows) - 1) * RowHeight;
 }
 
 /// <summary>
@@ -207,14 +296,21 @@ internal static class TaskbarNative
     private static extern byte objc_msgSend_bool_sel(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     private static readonly IntPtr sel_setLevel;
+    private static readonly IntPtr sel_setCanBecomeKeyWindow;
     private static readonly IntPtr sel_setCollectionBehavior;
+    private static readonly IntPtr sel_setAcceptsMouseMovedEvents;
     private static readonly IntPtr sel_window;
     private static readonly IntPtr sel_respondsToSelector;
+
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern void objc_msgSend_void_intptr_bool(IntPtr receiver, IntPtr selector, byte arg);
 
     static TaskbarNative()
     {
         sel_setLevel = SelectorCache.Get("setLevel:");
+        sel_setCanBecomeKeyWindow = SelectorCache.Get("setCanBecomeKeyWindow:");
         sel_setCollectionBehavior = SelectorCache.Get("setCollectionBehavior:");
+        sel_setAcceptsMouseMovedEvents = SelectorCache.Get("setAcceptsMouseMovedEvents:");
         sel_window = SelectorCache.Get("window");
         sel_respondsToSelector = SelectorCache.Get("respondsToSelector:");
     }
@@ -238,6 +334,19 @@ internal static class TaskbarNative
 
     public static void SetWindowLevel(IntPtr nsWindow, int level)
         => objc_msgSend_void_intptr_intptr(nsWindow, sel_setLevel, level);
+
+    public static void SetCanBecomeKeyWindow(IntPtr nsWindow, bool canBecomeKey)
+    {
+        if (objc_msgSend_bool_sel(nsWindow, sel_respondsToSelector, sel_setCanBecomeKeyWindow) != 0)
+            objc_msgSend_void_intptr_bool(nsWindow, sel_setCanBecomeKeyWindow, canBecomeKey ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>macOS requires this for hover/pointer-enter on borderless utility windows.</summary>
+    public static void SetAcceptsMouseMovedEvents(IntPtr nsWindow, bool accepts)
+    {
+        if (objc_msgSend_bool_sel(nsWindow, sel_respondsToSelector, sel_setAcceptsMouseMovedEvents) != 0)
+            objc_msgSend_void_intptr_bool(nsWindow, sel_setAcceptsMouseMovedEvents, accepts ? (byte)1 : (byte)0);
+    }
 
     public static void SetCollectionBehavior(IntPtr nsWindow, int behavior)
         => objc_msgSend_void_intptr_intptr(nsWindow, sel_setCollectionBehavior, behavior);

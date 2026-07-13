@@ -9,17 +9,16 @@ namespace Bevel.Pal.MacOS;
 /// <summary>
 /// Real macOS IWindowManager over the WindowService gRPC client.
 /// Maps wire TaskbarWindow/PixelRect to Bevel.Pal.Abstractions.ForeignWindow/PalRect,
-/// subscribes to the Changes stream for live events, and runs a reconciliation
-/// poll as a mandatory backstop for dropped AX notifications.
+/// subscribes to the Changes stream for live events. The helper's reconciliation
+/// poll (500ms) is the single diff authority — this layer does NOT re-diff via
+/// ListWindows; a second C# reconcile was re-emitting spurious open/close events.
 /// </summary>
 public sealed class MacOSWindowManager : IWindowManager, IDisposable
 {
     private readonly HelperLifecycle _helperLifecycle;
     private readonly ILogger<MacOSWindowManager> _logger;
     private readonly IClock _clock;
-    private readonly TimeSpan _pollInterval;
-    private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
+    private readonly TimeSpan _streamRetryInterval;
     private CancellationTokenSource? _streamCts;
     private Task? _streamTask;
     private HashSet<string> _knownWindowIds = new();
@@ -39,17 +38,17 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     public event EventHandler<ForeignWindow>? ForegroundChanged;
 
     public MacOSWindowManager(HelperLifecycle helperLifecycle, ILogger<MacOSWindowManager> logger)
-        : this(helperLifecycle, logger, SystemClock.Instance, TimeSpan.FromSeconds(1))
+        : this(helperLifecycle, logger, SystemClock.Instance, TimeSpan.FromSeconds(2))
     {
     }
 
     internal MacOSWindowManager(HelperLifecycle helperLifecycle, ILogger<MacOSWindowManager> logger,
-        IClock clock, TimeSpan pollInterval)
+        IClock clock, TimeSpan streamRetryInterval)
     {
         _helperLifecycle = helperLifecycle;
         _logger = logger;
         _clock = clock;
-        _pollInterval = pollInterval;
+        _streamRetryInterval = streamRetryInterval;
     }
 
     // ── IWindowManager ──────────────────────────────────────────────────
@@ -122,45 +121,20 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         }
     }
 
-    // ── Reconciliation poll + Changes stream ──────────────────────────
+    // ── Changes stream (helper is the diff authority) ─────────────────
 
     public Task StartPollAsync(CancellationToken ct = default)
     {
-        if (_pollTask is not null && _streamTask is not null) return Task.CompletedTask;
+        if (_streamTask is not null) return Task.CompletedTask;
 
-        if (_pollTask is null)
-        {
-            _pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _pollTask = PollLoopAsync(_pollCts.Token);
-        }
-
-        if (_streamTask is null)
-        {
-            _streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _streamTask = StreamLoopAsync(_streamCts.Token);
-        }
-
+        _streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _streamTask = StreamLoopAsync(_streamCts.Token);
         return Task.CompletedTask;
-    }
-
-    private async Task PollLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                await _clock.Delay(_pollInterval, ct);
-                await ReconcileAsync(ct);
-            }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex) { _logger.LogWarning(ex, "Reconciliation poll failed"); }
-        }
     }
 
     /// <summary>
     /// Subscribes to the Changes stream: applies the initial SNAPSHOT, then live
-    /// deltas (opened/closed/focused/title/moved/minimized) as they arrive so the
-    /// taskbar updates without waiting for the 1s poll.
+    /// deltas (opened/closed/focused/title/moved/minimized) as the helper emits them.
     /// </summary>
     private async Task StreamLoopAsync(CancellationToken ct)
     {
@@ -198,7 +172,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                             if (w is not null)
                             {
                                 WindowChanged?.Invoke(this, w);
-                                ForegroundChanged?.Invoke(this, w);
+                                if (w.IsFocused)
+                                    ForegroundChanged?.Invoke(this, w);
                             }
                             break;
                         case WindowChange.Types.Kind.TitleChanged:
@@ -215,7 +190,7 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             {
                 // Helper not up yet — wait and resubscribe.
                 _logger.LogWarning("Changes stream unavailable, retrying: {Message}", ex.Message);
-                await _clock.Delay(_pollInterval, ct);
+                await _clock.Delay(_streamRetryInterval, ct);
             }
             catch (Exception ex)
             {
@@ -223,30 +198,9 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                 // startup window before the socket is ready. Delay before resubscribing so
                 // we don't tight-loop and flood the log until the helper connects.
                 _logger.LogWarning(ex, "Changes stream failed");
-                await _clock.Delay(_pollInterval, ct);
+                await _clock.Delay(_streamRetryInterval, ct);
             }
         }
-    }
-
-    private async Task ReconcileAsync(CancellationToken ct)
-    {
-        var windows = await EnumerateAsync(ct);
-        var currentIds = new HashSet<string>(windows.Select(w => w.Id.Value));
-
-        foreach (var oldId in _knownWindowIds)
-        {
-            if (!currentIds.Contains(oldId))
-                WindowClosed?.Invoke(this, new ForeignWindow(
-                    new ForeignWindowId(oldId), "", null, false, false, default));
-        }
-
-        foreach (var w in windows)
-        {
-            if (!_knownWindowIds.Contains(w.Id.Value))
-                WindowOpened?.Invoke(this, w);
-        }
-
-        _knownWindowIds = currentIds;
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
@@ -284,9 +238,7 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _pollCts?.Cancel();
         _streamCts?.Cancel();
-        _pollCts?.Dispose();
         _streamCts?.Dispose();
     }
 }
