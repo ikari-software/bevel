@@ -34,6 +34,11 @@
     <!-- Settings store: raw ADO.NET SQLite provider (no EF Core — this is a lean shell).
          Backs SettingsService with a WAL DB shared across shell processes (bevel-gww.5). -->
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <!-- Pin the native SQLite bundle forward past Microsoft.Data.Sqlite 10.0.9's transitive
+         2.1.11 (NU1903 / GHSA-2m69-gcr7-jv3q). 3.0.x is the first patched line — there is no
+         2.1.12 — and bundles lib.e_sqlite3 3.53.3. Direct-referenced in Bevel.Core so the
+         override wins over the transitive resolve (bevel-711). -->
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
 
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />

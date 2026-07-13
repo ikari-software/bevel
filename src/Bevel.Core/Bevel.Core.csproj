@@ -14,6 +14,9 @@
     <PackageReference Include="System.Reactive" />
     <!-- SQLite-backed settings store (WAL, shared across shell processes; bevel-gww.5). -->
     <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Force the patched native SQLite bundle over the transitive 2.1.11 (NU1903; bevel-711).
+         Direct reference makes the Directory.Packages.props pin authoritative. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
   </ItemGroup>
 
   <ItemGroup>
