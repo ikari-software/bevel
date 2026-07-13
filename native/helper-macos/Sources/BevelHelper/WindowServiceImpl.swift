@@ -72,6 +72,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// not the shell whose windows we'd otherwise mirror back onto its own taskbar.
     let parentPID: pid_t
 
+    /// Last observed frontmost application that is not the shell itself.
+    /// Read and written from both the reconciliation poll and gRPC handler
+    /// threads, so every access MUST hold `stateLock`.
+    private var lastForeignFrontmostPID: pid_t?
+
     // MARK: - State
 
     /// Current window snapshot keyed by CGWindowID, updated by reconciliation poll.
@@ -87,6 +92,21 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Per-pid AXObservers.
     private var axObservers: [pid_t: AXObserver] = [:]
+
+    /// Dedicated CFRunLoop that actually pumps the AXObservers and the NSWorkspace
+    /// app-launch hook. Without this, observer sources were added to `CFRunLoopGetCurrent()`
+    /// inside the poll `Task` (a cooperative-pool thread that never runs a run loop), so AX
+    /// notifications never fired and the 1s poll was the ONLY detector — the "new windows
+    /// appear ~1s late" bug. Set once on the AX thread; read after `axRunLoopReady`.
+    private var axRunLoop: CFRunLoop?
+    private let axRunLoopReady = DispatchSemaphore(value: 0)
+    /// Token for the NSWorkspace didLaunchApplication observer, so it can be removed
+    /// on shutdown. Assigned on the AX thread before `axRunLoopReady` is signalled and
+    /// read after `shutdown()`, so the semaphore provides the necessary ordering.
+    private var launchObserverToken: NSObjectProtocol?
+    /// Serializes observer registration, which can now come from two threads (the poll's
+    /// `ensureObservers` and the launch hook's `addObserver`).
+    private let observerLock = NSLock()
 
     /// Active Changes subscribers. Each holds the gRPC response writer directly,
     /// so the stream stays open until cancelled (no AsyncStream lifecycle pitfalls).
@@ -112,6 +132,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     init(expectedKey: String, parentPID: pid_t = 0) {
         self.expectedKey = expectedKey
         self.parentPID = parentPID
+        startAXRunLoopThread() // must be ready before any observer is registered
         startReconciliationPoll()
     }
 
@@ -125,7 +146,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         stateLock.unlock()
 
         pollTask?.cancel()
+
+        // Remove the NSWorkspace launch hook so it can't invoke addObserver after
+        // shutdown. Nil'd out so a second shutdown()/deinit is a no-op.
+        if let token = launchObserverToken {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+            launchObserverToken = nil
+        }
+
+        // Tear down AXObservers (and their run-loop sources) BEFORE the run loop is
+        // stopped and before the instance can be deallocated — see removeAllObservers.
         removeAllObservers()
+        if let runLoop = axRunLoop { CFRunLoopStop(runLoop) }
         finishAllSubscribers()
     }
 
@@ -302,13 +334,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                         try await writer.write(change)
                     }
                     let subID = self.addSubscriber(writer)
-                    // Hold the writer open: writer.write throws when the client
-                    // disconnects, which ends this producer.
-                    while true {
+                    // Remove this subscriber whenever the producer ends — whether the
+                    // loop below falls through on cancellation or Task.sleep throws when
+                    // the client disconnects. Without this, disconnected clients' writers
+                    // accumulate in `subscribers` forever.
+                    defer { self.removeSubscriber(subID) }
+                    // Hold the writer open until the client disconnects; the producer
+                    // Task is cancelled on disconnect, ending this loop.
+                    while !Task.isCancelled {
                         try await Task.sleep(nanoseconds: 1_000_000_000)
                     }
-                    // Unreachable, but satisfies the return type.
-                    self.removeSubscriber(subID)
                     return [:]
                 }
             }
@@ -332,7 +367,6 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let owner = $0[kCGWindowOwnerPID as String] as? pid_t ?? -1
             return ($0[kCGWindowLayer as String] as? Int32 ?? 99) == 0
                 && owner != ownPID
-                && owner != parentPID   // exclude the shell's own windows
         }
     }
 
@@ -423,7 +457,27 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             win.isMinimized = false
         }
 
-        win.isFocused = (pid == frontmostPID) && isFocusedWindow(cgID: cgID, axMap: axMap, pid: pid)
+        // AX/CG can expose an empty title for one reconciliation tick while an existing
+        // window is being renamed. Identity is the stable CGWindowID, not its mutable title:
+        // retain the last accepted title while that same PID/window remains AX-correlated.
+        // Without this, the no-title gate below emits CLOSED and then OPENED on the next
+        // 500ms poll, making the taskbar button shrink and regrow instead of updating in place.
+        let previousTitle: String? = stateLock.withLock {
+            guard let previous = windowStore[cgID], previous.pid == win.pid else { return nil }
+            return previous.title
+        }
+        win.title = titleForStableDiff(
+            current: win.title,
+            previous: previousTitle,
+            hasAXWindow: axMap[cgID] != nil
+        )
+
+        win.isFocused = isTaskbarFocusedWindow(
+            cgID: cgID,
+            pid: pid,
+            axMap: axMap,
+            frontmostPID: frontmostPID
+        )
 
         // Drop phantom windows: a layer-0 CGWindow with a zero-area frame is not a
         // real user window (system overlays, off-screen scaffolding) and would show
@@ -443,8 +497,98 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return nil
         }
 
+        // Bevel hosts both shell chrome and ordinary applications (File Manager/Explorer) in
+        // the parent process. Excluding the whole PID hid every first-party app from its own
+        // taskbar. Only reserved shell surfaces and transient Avalonia popups (tooltips, menus)
+        // are dropped; File Manager / Explorer windows are legal taskbar windows.
+        if isShellChrome(pid: pid, title: win.title) {
+            dbg("drop cg=\(cgID) '\(win.appName)' reason=shell-chrome title='\(win.title)'")
+            return nil
+        }
+        if isBevelTransient(
+            pid: pid,
+            cgID: cgID,
+            axMap: axMap,
+            isMinimized: win.isMinimized,
+            frameWidth: Int(win.frame.width),
+            frameHeight: Int(win.frame.height)
+        ) {
+            dbg("drop cg=\(cgID) '\(win.appName)' reason=bevel-transient title='\(win.title)'")
+            return nil
+        }
+
         dbg("keep cg=\(cgID) '\(win.appName)' title='\(win.title)' min=\(win.isMinimized) frame=\(win.frame.width)x\(win.frame.height) hasAX=\(axMap[cgID] != nil)")
         return win
+    }
+
+    /// Internal for focused unit coverage via `@testable import BevelHelper`.
+    func isShellChrome(pid: pid_t, title: String) -> Bool {
+        guard pid == parentPID else { return false }
+        return title == "Bevel Desktop" || title == "Bevel Taskbar"
+    }
+
+    /// Avalonia tooltip/menu popups from the shell process are layer-0 but not standard
+    /// document windows. Without this filter, hovering a taskbar button spawns a tooltip
+    /// window that becomes a phantom taskbar button and reflows the strip.
+    func isBevelTransient(
+        pid: pid_t,
+        cgID: CGWindowID,
+        axMap: [CGWindowID: AXUIElement],
+        isMinimized: Bool,
+        frameWidth: Int = 0,
+        frameHeight: Int = 0
+    ) -> Bool {
+        guard pid == parentPID, !isMinimized else { return false }
+        // Tooltip popups are small; File Manager / Explorer windows are not.
+        if frameWidth > 0, frameHeight > 0, frameWidth < 320, frameHeight < 160 {
+            return true
+        }
+        guard let axWin = axMap[cgID] else {
+            // No AX correlation: treat as transient only when the surface is tooltip-sized
+            // or the frame is unknown (common for ephemeral Avalonia popups).
+            return frameWidth == 0 || frameHeight == 0
+                || (frameWidth < 320 && frameHeight < 160)
+        }
+        var subroleVal: CFTypeRef?
+        if AXUIElementCopyAttributeValue(axWin, kAXSubroleAttribute as CFString, &subroleVal) == .success,
+           let subrole = subroleVal as? String,
+           subrole != kAXStandardWindowSubrole {
+            return true
+        }
+        return false
+    }
+
+    /// Pressed-state: the focused window of the effective frontmost *foreign* app.
+    /// When Bevel itself is frontmost (taskbar interaction), keep projecting the last
+    /// foreign frontmost app so the strip still shows which real window is active.
+    private func isTaskbarFocusedWindow(
+        cgID: CGWindowID,
+        pid: pid_t,
+        axMap: [CGWindowID: AXUIElement],
+        frontmostPID: pid_t?
+    ) -> Bool {
+        // Update + read the shared last-foreign-frontmost under the lock. Compute
+        // the effective frontmost inside the same critical section, then release the
+        // lock BEFORE the AX call in isFocusedWindow (never call into AX while locked).
+        let effectiveFrontmost: pid_t? = stateLock.withLock {
+            if let frontmostPID, frontmostPID != parentPID {
+                lastForeignFrontmostPID = frontmostPID
+            }
+            return (frontmostPID == parentPID) ? lastForeignFrontmostPID : frontmostPID
+        }
+        guard let effectiveFrontmost, pid == effectiveFrontmost else { return false }
+        return isFocusedWindow(cgID: cgID, axMap: axMap, pid: pid)
+    }
+
+    /// Preserve presentation data across a transient observation gap without changing identity.
+    /// Internal for focused unit coverage via `@testable import BevelHelper`.
+    func titleForStableDiff(current: String, previous: String?, hasAXWindow: Bool) -> String {
+        guard current.isEmpty,
+              hasAXWindow,
+              let previous,
+              !previous.isEmpty
+        else { return current }
+        return previous
     }
 
     /// Enumerate all layer-0 windows (including minimized), each with a full
@@ -452,7 +596,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func enumerateWindows() -> [Bevel_Helper_V1_TaskbarWindow] {
         let entries = layer0Entries(options: .optionAll)
         let pidSet = Set(entries.compactMap { $0[kCGWindowOwnerPID as String] as? pid_t })
-        let axMap = correlateAXElements(forPIDs: pidSet)
+        let axMap = correlateAXElements(forPIDs: pidSet, entries: entries)
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         return entries.compactMap { describe(entry: $0, axMap: axMap, frontmostPID: frontmostPID) }
     }
@@ -517,8 +661,41 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Build a `[CGWindowID: AXUIElement]` map for the given PIDs using
     /// `_AXUIElementGetWindow`, with a frame-comparison fallback.
-    private func correlateAXElements(forPIDs pids: Set<pid_t>) -> [CGWindowID: AXUIElement] {
+    ///
+    /// The fallback is load-bearing: `_AXUIElementGetWindow` does NOT resolve a
+    /// CGWindowID for every AX window. Finder's folder/browser windows are the known
+    /// offender — the SPI returns a non-success/zero id for them, so without a fallback
+    /// they never enter `axMap`. `describe()` then sees `hasAX=false`, cannot read the
+    /// window's AXTitle (the folder name), finds `kCGWindowName` empty (needs Screen
+    /// Recording), and drops the window at the no-title gate — no taskbar button ever
+    /// appears (bevel-3rs). The fallback matches such an AX window to a same-PID CG
+    /// window by frame so it lands in `axMap` keyed by its real CGWindowID, letting the
+    /// existing AX-title fallback fill in the folder name. Restricting to the same PID
+    /// (and rejecting zero-area AX frames) keeps this from mis-correlating phantom junk.
+    ///
+    /// `entries` are the CGWindowList records the caller already fetched — passed in so
+    /// the fallback has the CGWindowID↔frame candidates without a second CG query.
+    private func correlateAXElements(
+        forPIDs pids: Set<pid_t>,
+        entries: [[String: Any]]
+    ) -> [CGWindowID: AXUIElement] {
         var map: [CGWindowID: AXUIElement] = [:]
+
+        // Group CG candidates by owner PID for the frame-comparison fallback. Only same-PID
+        // windows are compared so identical frames across different apps can't cross-correlate.
+        var cgByPID: [pid_t: [(cgID: CGWindowID, frame: CGRect)]] = [:]
+        for entry in entries {
+            guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID,
+                  let pid = entry[kCGWindowOwnerPID as String] as? pid_t else { continue }
+            let bounds = entry[kCGWindowBounds as String] as? NSDictionary
+            let rect = CGRect(
+                x: (bounds?["X"] as? CGFloat) ?? 0,
+                y: (bounds?["Y"] as? CGFloat) ?? 0,
+                width: (bounds?["Width"] as? CGFloat) ?? 0,
+                height: (bounds?["Height"] as? CGFloat) ?? 0
+            )
+            cgByPID[pid, default: []].append((cgID: cgID, frame: rect))
+        }
 
         for pid in pids {
             let axApp = AXUIElementCreateApplication(pid)
@@ -535,6 +712,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 let mapResult = _AXUIElementGetWindow(axWin, &cgId)
                 if mapResult == .success, cgId != 0 {
                     map[cgId] = axWin
+                    continue
+                }
+                // SPI could not resolve the CGWindowID (observed for Finder folder windows).
+                // Recover the correlation by frame so the window still gets an AX title.
+                if let candidates = cgByPID[pid],
+                   let axFrame = axWindowFrame(axWin),
+                   let matched = frameMatchedCGID(
+                       axFrame: axFrame,
+                       candidates: candidates,
+                       claimed: Set(map.keys)
+                   ) {
+                    map[matched] = axWin
                 }
             }
         }
@@ -542,21 +731,65 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return map
     }
 
+    /// Read an AX window's on-screen frame (top-left origin, global screen coordinates —
+    /// the SAME coordinate space as `kCGWindowBounds`, so the two are directly comparable).
+    /// Returns nil if either attribute is missing or is not a well-formed `AXValue`.
+    private func axWindowFrame(_ axWin: AXUIElement) -> CGRect? {
+        var posVal: CFTypeRef?
+        var sizeVal: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axWin, kAXPositionAttribute as CFString, &posVal) == .success,
+              AXUIElementCopyAttributeValue(axWin, kAXSizeAttribute as CFString, &sizeVal) == .success,
+              let posVal, CFGetTypeID(posVal) == AXValueGetTypeID(),
+              let sizeVal, CFGetTypeID(sizeVal) == AXValueGetTypeID()
+        else { return nil }
+        var pt = CGPoint.zero
+        var sz = CGSize.zero
+        AXValueGetValue(posVal as! AXValue, .cgPoint, &pt)
+        AXValueGetValue(sizeVal as! AXValue, .cgSize, &sz)
+        return CGRect(origin: pt, size: sz)
+    }
+
+    /// Frame-comparison correlation core. Given an AX window's frame and the same-PID CG
+    /// candidate windows, return the CGWindowID of the first not-yet-claimed CG window whose
+    /// frame matches within a small tolerance. A zero-area AX frame never matches: it cannot
+    /// disambiguate and would otherwise latch onto the title-less phantom strips the no-title
+    /// gate exists to reject — so junk stays out of `axMap`. Pure and deterministic; internal
+    /// for focused unit coverage via `@testable import BevelHelper`.
+    func frameMatchedCGID(
+        axFrame: CGRect,
+        candidates: [(cgID: CGWindowID, frame: CGRect)],
+        claimed: Set<CGWindowID>
+    ) -> CGWindowID? {
+        guard axFrame.width > 0, axFrame.height > 0 else { return nil }
+        let tolerance: CGFloat = 2.0
+        for cand in candidates where !claimed.contains(cand.cgID) {
+            if abs(cand.frame.origin.x - axFrame.origin.x) <= tolerance,
+               abs(cand.frame.origin.y - axFrame.origin.y) <= tolerance,
+               abs(cand.frame.width - axFrame.width) <= tolerance,
+               abs(cand.frame.height - axFrame.height) <= tolerance {
+                return cand.cgID
+            }
+        }
+        return nil
+    }
+
     /// Determine whether a CGWindowID is the focused window of its owning app.
     private func isFocusedWindow(cgID: CGWindowID, axMap: [CGWindowID: AXUIElement], pid: pid_t) -> Bool {
-        // Try the AXUIElement approach first.
-        if axMap[cgID] != nil {
-            var focused: CFTypeRef?
-            let axApp = AXUIElementCreateApplication(pid)
-            let result = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused)
-            if result == .success, let focusedElem = focused {
-                // Compare CFEqual
-                let focusedAX = focusedElem as! AXUIElement
-                var focusedCGID: CGWindowID = 0
-                if _AXUIElementGetWindow(focusedAX, &focusedCGID) == .success {
-                    return focusedCGID == cgID
-                }
-            }
+        // Query the app's focused window via AX — do not require axMap[cgID]; correlation
+        // can fail for one tick while the window is still the real foreground surface.
+        var focused: CFTypeRef?
+        let axApp = AXUIElementCreateApplication(pid)
+        let result = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused)
+        guard result == .success, let focusedElem = focused else { return false }
+        // A misbehaving app's AX server can return an unexpected CFType here; verify the
+        // runtime type before casting so a bad value falls back to "not focused" instead
+        // of crashing the whole helper. (`as?` on CF types is a compile error — the static
+        // cast "always succeeds" — so guard on the CFTypeID, then the cast cannot fail.)
+        guard CFGetTypeID(focusedElem) == AXUIElementGetTypeID() else { return false }
+        let focusedAX = focusedElem as! AXUIElement
+        var focusedCGID: CGWindowID = 0
+        if _AXUIElementGetWindow(focusedAX, &focusedCGID) == .success {
+            return focusedCGID == cgID
         }
         return false
     }
@@ -578,7 +811,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             throw RPCError(code: .notFound, message: "Window \(windowID) not found")
         }
 
-        let axMap = correlateAXElements(forPIDs: [pid])
+        let axMap = correlateAXElements(forPIDs: [pid], entries: [entry])
         guard let axWin = axMap[cgID] else {
             throw RPCError(code: .notFound, message: "AXUIElement for window \(windowID) not available")
         }
@@ -641,7 +874,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         var closeButton: CFTypeRef?
         let attrResult = AXUIElementCopyAttributeValue(
             axWin, kAXCloseButtonAttribute as CFString, &closeButton)
-        guard attrResult == .success, let button = closeButton else {
+        // Verify the CFTypeID before casting — a hostile AX server could return a
+        // non-AXUIElement CFType, and a force cast would crash the whole helper.
+        guard attrResult == .success, let button = closeButton,
+              CFGetTypeID(button) == AXUIElementGetTypeID() else {
             throw RPCError(code: .internalError,
                            message: "Close button not found for window \(windowID)")
         }
@@ -702,18 +938,33 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     /// Broadcast a `WindowChange` to all active Changes subscribers.
-    /// Synchronous: copies the subscriber set under the lock, then dispatches
-    /// each write onto `writeQueue` (gRPC writers are not concurrent-safe).
+    /// Copies the subscriber set under the lock, then serializes every write on
+    /// `writeQueue` (gRPC writers are not concurrent-safe). Each async write is
+    /// bridged back to the serial queue via a semaphore so the next write does not
+    /// start until the current one finishes — the actual serialization the previous
+    /// fire-and-forget `Task` never provided. `.async` (not `.sync`) is used so a
+    /// caller already running on `writeQueue` could never deadlock.
     private func broadcast(_ change: Bevel_Helper_V1_WindowChange) {
         stateLock.lock()
         let active = subscribers
         stateLock.unlock()
         guard !active.isEmpty else { return }
-        for (_, writer) in active {
-            writeQueue.async {
-                _ = Task { [writer] in
-                    _ = try? await writer.write(change)
+        for (id, writer) in active {
+            writeQueue.async { [weak self] in
+                let done = DispatchSemaphore(value: 0)
+                // The write is async; run it on the cooperative pool and block this
+                // serial-queue slot until it completes so writes stay strictly ordered.
+                // A write throws once the client is gone — drop its dead writer so the
+                // subscriber set does not grow without bound.
+                Task { [writer] in
+                    do {
+                        try await writer.write(change)
+                    } catch {
+                        self?.removeSubscriber(id)
+                    }
+                    done.signal()
                 }
+                done.wait()
             }
         }
     }
@@ -725,14 +976,21 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let notifStr = notification as String
         guard let kind = axNotificationToChangeKind(notifStr) else { return }
 
-        // Extract the CGWindowID from the element.
+        // Resolve the CGWindowID. App-level notifications (focus changed) arrive on the
+        // application AX element, not the focused window — map through kAXFocusedWindow.
         var cgID: CGWindowID = 0
-        let result = _AXUIElementGetWindow(element, &cgID)
-        if result != .success || cgID == 0 {
-            // For app-level notifications (created/destroyed/focused), try to
-            // get the focused window of the app.
-            // For element-level notifications, we expect a valid CGWindowID.
-            return
+        var elementForBuild = element
+        if _AXUIElementGetWindow(element, &cgID) != .success || cgID == 0 {
+            if notifStr == kAXFocusedWindowChangedNotification as String {
+                var focused: CFTypeRef?
+                if AXUIElementCopyAttributeValue(element, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+                   let focusedElem = focused,
+                   CFGetTypeID(focusedElem) == AXUIElementGetTypeID() {
+                    elementForBuild = focusedElem as! AXUIElement
+                    _ = _AXUIElementGetWindow(elementForBuild, &cgID)
+                }
+            }
+            if cgID == 0 { return }
         }
 
         // Build a TaskbarWindow for this CGWindowID from the current store.
@@ -754,12 +1012,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             case .titleChanged:
                 // Try to read the current title from AX.
                 var title: CFTypeRef?
-                if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &title) == .success,
+                if AXUIElementCopyAttributeValue(elementForBuild, kAXTitleAttribute as CFString, &title) == .success,
                    let titleStr = title as? String {
                     updated.title = titleStr
                 }
-            case .moved, .focused:
-                // Frame/focus will be refreshed by the reconciliation poll.
+            case .focused:
+                updated.isFocused = true
+            case .moved:
                 break
             default:
                 break
@@ -767,7 +1026,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             change.window = updated
         } else {
             // Window not in store — try to build a descriptor from element.
-            if let fresh = buildTaskbarWindowFromAX(element: element, cgID: cgID) {
+            if var fresh = buildTaskbarWindowFromAX(element: elementForBuild, cgID: cgID) {
+                if kind == .focused { fresh.isFocused = true }
                 change.window = fresh
             }
         }
@@ -800,13 +1060,15 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         var rect = Bevel_Helper_V1_PixelRect()
         if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success,
            AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &size) == .success {
-            if let posVal = position {
+            // Guard on the CFTypeID before casting — a misbehaving AX server could hand
+            // back a non-AXValue CFType, which a force cast would crash on.
+            if let posVal = position, CFGetTypeID(posVal) == AXValueGetTypeID() {
                 var pt = CGPoint.zero
                 AXValueGetValue(posVal as! AXValue, .cgPoint, &pt)
                 rect.x = Int32(pt.x)
                 rect.y = Int32(pt.y)
             }
-            if let sizeVal = size {
+            if let sizeVal = size, CFGetTypeID(sizeVal) == AXValueGetTypeID() {
                 var sz = CGSize.zero
                 AXValueGetValue(sizeVal as! AXValue, .cgSize, &sz)
                 rect.width = Int32(sz.width)
@@ -818,68 +1080,103 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return win
     }
 
-    /// Register per-app AXObservers for all currently visible window owners.
+    /// Dedicated CFRunLoop thread that pumps the AXObservers and the app-launch hook (see
+    /// `axRunLoop`). Blocks until the run loop reference is published, so `init` can start the
+    /// poll — which registers observers — knowing the run loop exists.
+    private func startAXRunLoopThread() {
+        let thread = Thread { [weak self] in
+            guard let self else { return }
+            self.axRunLoop = CFRunLoopGetCurrent()
+
+            // App-launch hook: register a launching app's observer BEFORE it draws its first
+            // window, so kAXWindowCreatedNotification fires instantly instead of waiting for the
+            // next poll tick. Delivered on this thread's run loop.
+            self.launchObserverToken = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification,
+                object: nil, queue: nil
+            ) { [weak self] note in
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                else { return }
+                self.addObserver(for: app.processIdentifier)
+            }
+
+            self.axRunLoopReady.signal()
+
+            // A no-op port keeps the run loop from returning immediately when it has no sources.
+            RunLoop.current.add(NSMachPort(), forMode: .common)
+            CFRunLoopRun()
+        }
+        thread.name = "bevel.ax.runloop"
+        thread.start()
+        axRunLoopReady.wait()
+    }
+
+    /// Register per-app AXObservers for all currently visible window owners, and drop observers
+    /// for owners that are gone. Called from the reconciliation poll.
     private func ensureObservers(for pids: Set<pid_t>) {
         let ownPID = getpid()
         let currentPIDs: Set<pid_t> = stateLock.withLock { Set(axObservers.keys) }
 
-        // Add observers for new PIDs.
-        let newPIDs = pids.subtracting(currentPIDs).subtracting([ownPID])
-        for pid in newPIDs {
-            var observer: AXObserver?
-            let refcon = Unmanaged.passUnretained(self).toOpaque()
-            let result = AXObserverCreate(pid, axObserverCallback, &observer)
-            guard result == .success, let observer else { continue }
-
-            // Register notifications.
-            let appElement = AXUIElementCreateApplication(pid)
-            let appNotifications: [String] = [
-                kAXFocusedWindowChangedNotification,
-                kAXWindowCreatedNotification,
-                kAXUIElementDestroyedNotification,
-            ]
-            for notif in appNotifications {
-                AXObserverAddNotification(observer, appElement, notif as CFString, refcon)
-            }
-
-            // Register per-window notifications on existing windows.
-            var windows: CFTypeRef?
-            if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windows) == .success,
-               let windowList = windows as? [AXUIElement] {
-                for axWin in windowList {
-                    let windowNotifications: [String] = [
-                        kAXTitleChangedNotification,
-                        kAXWindowMiniaturizedNotification,
-                        kAXWindowDeminiaturizedNotification,
-                        kAXMovedNotification,
-                        kAXResizedNotification,
-                    ]
-                    for notif in windowNotifications {
-                        AXObserverAddNotification(observer, axWin, notif as CFString, refcon)
-                    }
-                }
-            }
-
-            CFRunLoopAddSource(
-                CFRunLoopGetCurrent(),
-                AXObserverGetRunLoopSource(observer),
-                .defaultMode
-            )
-
-            stateLock.withLock { axObservers[pid] = observer }
+        for pid in pids.subtracting(currentPIDs).subtracting([ownPID]) {
+            addObserver(for: pid)
         }
 
         // Remove observers for PIDs that are no longer visible.
-        let stalePIDs = currentPIDs.subtracting(pids)
-        for pid in stalePIDs {
+        guard let runLoop = axRunLoop else { return }
+        for pid in currentPIDs.subtracting(pids) {
             if let observer = stateLock.withLock({ axObservers.removeValue(forKey: pid) }) {
-                CFRunLoopRemoveSource(
-                    CFRunLoopGetCurrent(),
-                    AXObserverGetRunLoopSource(observer),
-                    .defaultMode
-                )
+                CFRunLoopRemoveSource(runLoop, AXObserverGetRunLoopSource(observer), .defaultMode)
             }
         }
+    }
+
+    /// Register an AXObserver for a single app (idempotent), adding its run-loop source to the AX
+    /// run loop so its notifications actually fire. Safe to call from the poll thread AND the
+    /// launch hook — `observerLock` serializes the check-create-insert.
+    private func addObserver(for pid: pid_t) {
+        guard pid != getpid(), let runLoop = axRunLoop else { return }
+        // Never (re)register an observer after shutdown — the launch hook or an
+        // in-flight poll could otherwise resurrect observers we just tore down.
+        if (stateLock.withLock { isShutdown }) { return }
+
+        observerLock.lock()
+        defer { observerLock.unlock() }
+        if (stateLock.withLock { axObservers[pid] }) != nil { return }
+
+        var observer: AXObserver?
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        guard AXObserverCreate(pid, axObserverCallback, &observer) == .success, let observer else { return }
+
+        let appElement = AXUIElementCreateApplication(pid)
+        for notif in [
+            kAXFocusedWindowChangedNotification,
+            kAXWindowCreatedNotification,
+            kAXUIElementDestroyedNotification,
+        ] {
+            AXObserverAddNotification(observer, appElement, notif as CFString, refcon)
+        }
+
+        // Register per-window notifications on existing windows.
+        var windows: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windows) == .success,
+           let windowList = windows as? [AXUIElement] {
+            for axWin in windowList {
+                for notif in [
+                    kAXTitleChangedNotification,
+                    kAXWindowMiniaturizedNotification,
+                    kAXWindowDeminiaturizedNotification,
+                    kAXMovedNotification,
+                    kAXResizedNotification,
+                ] {
+                    AXObserverAddNotification(observer, axWin, notif as CFString, refcon)
+                }
+            }
+        }
+
+        CFRunLoopAddSource(runLoop, AXObserverGetRunLoopSource(observer), .defaultMode)
+        CFRunLoopWakeUp(runLoop)
+        stateLock.withLock { axObservers[pid] = observer }
     }
 
     private func removeAllObservers() {
@@ -888,13 +1185,41 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             axObservers.removeAll()
             return copy
         }
-        for (_, observer) in all {
-            CFRunLoopRemoveSource(
-                CFRunLoopGetCurrent(),
-                AXObserverGetRunLoopSource(observer),
-                .defaultMode
-            )
+        guard let runLoop = axRunLoop, !all.isEmpty else { return }
+        // Snapshot the sources into a plain array so the teardown closure captures
+        // only locals (never self — that would resurrect a deallocating instance).
+        let sources = all.values.map { AXObserverGetRunLoopSource($0) }
+        // Remove the run-loop sources ON the AX run-loop thread. AXObserver callbacks
+        // fire on that same thread, so performing removal there guarantees no callback
+        // is executing when the source disappears. Combined with dropping our strong
+        // refs to the observers above (ARC then invalidates them), this closes the race
+        // where a callback could fire with a now-dangling `passUnretained` refcon while
+        // the instance is being torn down in shutdown()/deinit.
+        performOnAXRunLoopSync {
+            for source in sources {
+                CFRunLoopRemoveSource(runLoop, source, .defaultMode)
+            }
         }
+    }
+
+    /// Run `work` synchronously on the AX run-loop thread. AXObserver callbacks execute
+    /// on that thread, so work scheduled here can never overlap an in-flight callback.
+    /// When already on that thread (teardown triggered from within a callback), run inline
+    /// to avoid waiting on ourselves. Callers must ensure the run loop is still running
+    /// (i.e. before CFRunLoopStop) or the block would never execute.
+    private func performOnAXRunLoopSync(_ work: @escaping () -> Void) {
+        guard let runLoop = axRunLoop else { work(); return }
+        if CFEqual(CFRunLoopGetCurrent(), runLoop) {
+            work()
+            return
+        }
+        let done = DispatchSemaphore(value: 0)
+        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
+            work()
+            done.signal()
+        }
+        CFRunLoopWakeUp(runLoop)
+        done.wait()
     }
 
     // MARK: - Reconciliation poll (LOAD-BEARING)
@@ -907,7 +1232,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             while !Task.isCancelled {
                 guard let self else { break }
                 self.reconcile()
-                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
+                // 500ms backstop. The AX run loop now delivers window-created notifications
+                // near-instantly for observed apps, so this only covers the gap before an app's
+                // observer is registered and AX events macOS drops (halved from 1s — bevel latency).
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
             }
         }
     }
@@ -926,7 +1254,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         // Build fresh descriptors via the SAME builder ListWindows uses, so the poll
         // path carries icons + minimized state (bevel-m2.1 / bevel-m2.3).
-        let axMap = correlateAXElements(forPIDs: currentPIDs.subtracting([ownPID]))
+        let axMap = correlateAXElements(forPIDs: currentPIDs.subtracting([ownPID]), entries: entries)
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         var newStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]

@@ -28,6 +28,52 @@ final class WindowServiceTests: XCTestCase {
         XCTAssertTrue(ownWindows.isEmpty, "Own process windows must be excluded from enumeration")
     }
 
+    func testParentProcessExcludesOnlyReservedShellChrome() {
+        let parent: pid_t = 4242
+        let svc = WindowServiceImpl(expectedKey: "test-key", parentPID: parent)
+
+        XCTAssertTrue(svc.isShellChrome(pid: parent, title: "Bevel Desktop"))
+        XCTAssertTrue(svc.isShellChrome(pid: parent, title: "Bevel Taskbar"))
+        XCTAssertFalse(svc.isShellChrome(pid: parent, title: "Exploring - /Users"))
+        XCTAssertFalse(svc.isShellChrome(pid: parent, title: "Properties"))
+        XCTAssertFalse(svc.isShellChrome(pid: 9999, title: "Bevel Desktop"))
+    }
+
+    func testBevelTransientDropsShellPopupsWithoutAX() {
+        let parent: pid_t = 4242
+        let svc = WindowServiceImpl(expectedKey: "test-key", parentPID: parent)
+        let axMap: [CGWindowID: AXUIElement] = [:]
+
+        XCTAssertTrue(svc.isBevelTransient(pid: parent, cgID: 99, axMap: axMap, isMinimized: false))
+        XCTAssertTrue(svc.isBevelTransient(
+            pid: parent, cgID: 100, axMap: axMap, isMinimized: false, frameWidth: 120, frameHeight: 40))
+        XCTAssertFalse(svc.isBevelTransient(
+            pid: parent, cgID: 101, axMap: axMap, isMinimized: false, frameWidth: 800, frameHeight: 600))
+        XCTAssertFalse(svc.isBevelTransient(pid: 9999, cgID: 99, axMap: axMap, isMinimized: false))
+        XCTAssertFalse(svc.isBevelTransient(pid: parent, cgID: 99, axMap: axMap, isMinimized: true))
+    }
+
+    func testStableDiffRetainsTitleOnlyForKnownAXWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+
+        XCTAssertEqual(
+            svc.titleForStableDiff(
+                current: "", previous: "Before rename", hasAXWindow: true),
+            "Before rename")
+        XCTAssertEqual(
+            svc.titleForStableDiff(
+                current: "After rename", previous: "Before rename", hasAXWindow: true),
+            "After rename")
+        XCTAssertEqual(
+            svc.titleForStableDiff(
+                current: "", previous: "Phantom", hasAXWindow: false),
+            "")
+        XCTAssertEqual(
+            svc.titleForStableDiff(
+                current: "", previous: nil, hasAXWindow: true),
+            "")
+    }
+
     func testEnumerateWindowsHasExpectedFields() {
         let svc = WindowServiceImpl(expectedKey: "test-key")
         let windows = svc.enumerateWindows()
@@ -48,6 +94,82 @@ final class WindowServiceTests: XCTestCase {
     }
 
     // MARK: - AX correlation
+
+    /// bevel-3rs: `_AXUIElementGetWindow` fails to resolve a CGWindowID for some AX
+    /// windows (Finder folder/browser windows are the known case). The frame-comparison
+    /// fallback must then correlate the AX window to its same-PID CG window by frame, so
+    /// the window lands in axMap, the AX-title fallback fills in the folder name, and the
+    /// window is KEPT instead of dropped at the no-title gate.
+    func testFrameFallbackCorrelatesFinderLikeWindowBySameFrame() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        // A real Finder folder window: non-zero frame reported by both AX and CGWindowList.
+        let axFrame = CGRect(x: 200, y: 120, width: 900, height: 640)
+        let candidates: [(cgID: CGWindowID, frame: CGRect)] = [
+            (cgID: 1618, frame: CGRect(x: 200, y: 120, width: 900, height: 640)),
+        ]
+        XCTAssertEqual(
+            svc.frameMatchedCGID(axFrame: axFrame, candidates: candidates, claimed: []),
+            1618,
+            "An AX window whose CGWindowID could not be resolved by the SPI must correlate to its same-frame CG window")
+    }
+
+    /// Sub-pixel rounding between AX and CGWindowList coordinates must still match.
+    func testFrameFallbackToleratesSubPixelDrift() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let axFrame = CGRect(x: 200.4, y: 119.6, width: 900.8, height: 640.2)
+        let candidates: [(cgID: CGWindowID, frame: CGRect)] = [
+            (cgID: 1618, frame: CGRect(x: 200, y: 120, width: 900, height: 640)),
+        ]
+        XCTAssertEqual(
+            svc.frameMatchedCGID(axFrame: axFrame, candidates: candidates, claimed: []),
+            1618)
+    }
+
+    /// Guardrail: a zero-area AX frame must NOT match anything — otherwise the fallback
+    /// would latch onto the title-less phantom layer-0 strips the no-title gate rejects,
+    /// re-opening the floodgates the gate exists to close.
+    func testFrameFallbackRejectsZeroAreaAXFrame() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let candidates: [(cgID: CGWindowID, frame: CGRect)] = [
+            (cgID: 42, frame: CGRect(x: 0, y: 0, width: 0, height: 0)),
+            (cgID: 43, frame: CGRect(x: 10, y: 10, width: 500, height: 30)),
+        ]
+        XCTAssertNil(
+            svc.frameMatchedCGID(
+                axFrame: CGRect(x: 0, y: 0, width: 0, height: 0),
+                candidates: candidates, claimed: []),
+            "A zero-area AX frame must never correlate — junk stays out of axMap")
+    }
+
+    /// A titled Finder-like window and a title-less junk window differ ONLY in whether a
+    /// real same-frame AX window exists. When no candidate frame matches (the junk case),
+    /// no correlation is made, so describe() keeps hasAX=false and the no-title gate drops it.
+    func testFrameFallbackDoesNotCorrelateWhenNoFrameMatches() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let candidates: [(cgID: CGWindowID, frame: CGRect)] = [
+            (cgID: 1618, frame: CGRect(x: 200, y: 120, width: 900, height: 640)),
+        ]
+        XCTAssertNil(
+            svc.frameMatchedCGID(
+                axFrame: CGRect(x: 999, y: 999, width: 64, height: 64),
+                candidates: candidates, claimed: []),
+            "An AX window with no same-frame CG candidate must not be correlated")
+    }
+
+    /// Already-claimed CGWindowIDs (resolved directly by the SPI) must not be re-used by
+    /// the fallback, so two AX windows can't collapse onto one CG window.
+    func testFrameFallbackSkipsClaimedCGIDs() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let frame = CGRect(x: 200, y: 120, width: 900, height: 640)
+        let candidates: [(cgID: CGWindowID, frame: CGRect)] = [
+            (cgID: 1618, frame: frame),
+            (cgID: 1619, frame: frame),
+        ]
+        XCTAssertEqual(
+            svc.frameMatchedCGID(axFrame: frame, candidates: candidates, claimed: [1618]),
+            1619,
+            "The fallback must skip CGWindowIDs already correlated by the SPI")
+    }
 
     func testCorrelateAXElementsReturnsMap() {
         // This exercises the private _AXUIElementGetWindow path.
