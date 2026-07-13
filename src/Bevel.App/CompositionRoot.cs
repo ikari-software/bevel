@@ -3,6 +3,7 @@ using Bevel.Desktop;
 using Bevel.FileManager;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
+using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -13,12 +14,24 @@ namespace Bevel.App;
 /// </summary>
 public static class CompositionRoot
 {
-    /// <summary>Registers the selected concrete PAL's implementation of every abstraction.</summary>
-    public static IServiceCollection AddBevelPlatform(this IServiceCollection services, PalKind pal)
+    // Shared icon-pool geometry (bevel-gww.6). Co-located with the shell-core runtime dir so a
+    // supervisor cleaning that dir clears the pool too. 512 slots × up to 96×96 BGRA (covers 48pt@2x
+    // Retina) ≈ 19 MB, sparse: only pages for actually-published icons ever become resident.
+    private static string IconPoolPath => Path.Combine(Path.GetTempPath(), "bevel-core", "icons.pool");
+    private const int IconPoolSlotCapacity = 512;
+    private const int IconPoolMaxBgraBytes = 96 * 96 * 4;
+
+    /// <summary>
+    /// Registers the selected concrete PAL's implementation of every abstraction. <paramref name="role"/>
+    /// gates only what must be started EAGERLY (the helper hosted service): the plain singletons stay
+    /// registered for every role but are lazy, so a role that never resolves them costs nothing.
+    /// </summary>
+    public static IServiceCollection AddBevelPlatform(
+        this IServiceCollection services, PalKind pal, ShellRole role = ShellRole.All)
     {
         return pal switch
         {
-            PalKind.MacOS => services.AddMacOSPal(),
+            PalKind.MacOS => services.AddMacOSPal(role),
             _ => services.AddFakePal(),
         };
     }
@@ -38,21 +51,54 @@ public static class CompositionRoot
         return services;
     }
 
-    private static IServiceCollection AddMacOSPal(this IServiceCollection services)
+    private static IServiceCollection AddMacOSPal(this IServiceCollection services, ShellRole role)
     {
-        services.AddSingleton<IWindowManager, Pal.MacOS.MacOSWindowManager>();
+        // In-process macOS PAL services (AppKit/NSWorkspace in-proc) — every role uses these directly;
+        // they're lazy, so a role that never resolves one never constructs it.
         services.AddSingleton<ISystemTrayHost, Pal.MacOS.MacOSSystemTrayHost>();
         services.AddSingleton<IDesktopEnvironment, Pal.MacOS.MacOSDesktopEnvironment>();
         services.AddSingleton<IShellSession, Pal.MacOS.MacOSShellSession>();
         services.AddSingleton<IFileOperations, Pal.MacOS.MacOSFileOperations>();
-        services.AddSingleton<IIconProvider, Pal.MacOS.MacOSIconProvider>();
-        services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
+
+        // Icons go through the shared, memory-mapped BGRA pool (bevel-gww.6): each icon is rendered once
+        // and published to a file the other role processes map read-only, so a UI process never
+        // re-decodes an icon the owner already has. The pool is SINGLE-WRITER — only the all-in-one or
+        // the shell-core owner publishes; split UI roles are readers (miss -> private render). The pool
+        // is a container-owned singleton (disposed with the container); the decorator just borrows it.
+        services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
+            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes));
+        services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
+            new Pal.MacOS.MacOSIconProvider(),
+            sp.GetRequiredService<MmfBgraPool>(),
+            isWriter: role is ShellRole.All or ShellRole.Core));
+
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
         services.AddSingleton<IDockController, Pal.MacOS.MacOSDockController>();
         services.AddSingleton<IVolumeLabelSource, Pal.MacOS.MacOSVolumeLabelSource>();
-        services.AddSingleton<Pal.MacOS.HelperLifecycle>();
-        services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
+
+        // Window management + app environment: the single-source-of-truth split. In a SPLIT taskbar
+        // process these are shell-core CLIENTS (one UDS connection to the core, which owns the helper
+        // stream + the /Applications watchers). In the Core role, the all-in-one process, and the
+        // (lazy, unused) explorer/desktop roles they are the DIRECT macOS implementations.
+        if (role is ShellRole.Taskbar)
+        {
+            services.AddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
+            services.AddSingleton<IWindowManager, ShellCore.ShellCoreWindowManager>();
+            services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
+        }
+        else
+        {
+            services.AddSingleton<IWindowManager, Pal.MacOS.MacOSWindowManager>();
+            services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
+            services.AddSingleton<Pal.MacOS.HelperLifecycle>();
+
+            // Host the helper EAGERLY only where window management actually runs: the headless core
+            // and the all-in-one process. Explorer/Desktop keep the singleton lazy, never started.
+            if (role is ShellRole.Core or ShellRole.All)
+                services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
+        }
+
         return services;
     }
 

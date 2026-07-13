@@ -9,6 +9,14 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
+  <!-- ReadyToRun: crossgen IL->native at publish for faster cold start and more OS-shareable
+       (read-only) code pages across the multi-role processes. Guarded on a RID so a plain build
+       or RID-less publish is unaffected; CI already publishes self-contained per-RID. This is the
+       low-risk interim step (bevel phase 1) — PublishAot supersedes it once compiled bindings land. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
   </ItemGroup>
@@ -29,6 +37,7 @@
     <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
     <ProjectReference Include="..\Bevel.Pal.Fake\Bevel.Pal.Fake.csproj" />
     <ProjectReference Include="..\Bevel.Pal.MacOS\Bevel.Pal.MacOS.csproj" />
+    <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj" />
     <ProjectReference Include="..\Bevel.Desktop\Bevel.Desktop.csproj" />
     <ProjectReference Include="..\Bevel.Taskbar\Bevel.Taskbar.csproj" />

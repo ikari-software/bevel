@@ -1,9 +1,12 @@
 using Avalonia;
+using Bevel.App.Supervision;
+using Bevel.ShellCore.Ipc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace Bevel.App;
 
@@ -14,16 +17,36 @@ internal static class Program
     public static void Main(string[] args)
     {
         var pal = PalSelector.FromArgs(args);
+        var role = RoleSelector.FromArgs(args);
+        // Stash the role for App.OnFrameworkInitializationCompleted (same process, set before the
+        // lifetime starts — mirrors App.Services). Restart replays argv verbatim, so --role survives.
+        App.Role = role;
+
+        // The launcher supervises OTHER processes and hosts no PAL/DI/UI of its own — branch before the
+        // host is even built so it never constructs platform services.
+        if (role == ShellRole.Launcher)
+        {
+            RunLauncher(args);
+            return;
+        }
 
         // Compose via Microsoft.Extensions.Hosting (DI-01). The PAL is selected here,
         // at the composition root, and nowhere else (DI-02).
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services
-            .AddBevelPlatform(pal)
+            .AddBevelPlatform(pal, role)
             .AddBevelModules();
 
         using var host = builder.Build();
         App.Services = host.Services;
+
+        // The shell-core owner runs HEADLESS — no Avalonia, no window. It owns the single window/app
+        // projection and serves it to the UI role processes over the shell-core IPC.
+        if (role == ShellRole.Core)
+        {
+            RunShellCore(host);
+            return;
+        }
 
         // Let a termination signal (SIGTERM / SIGINT / Ctrl-C) drive a clean Avalonia
         // shutdown so window OnClosed handlers and hosted-service Dispose run (e.g. the
@@ -68,6 +91,164 @@ internal static class Program
             Thread.Sleep(400);
             Relaunch(args);
         }
+    }
+
+    /// <summary>
+    /// The <c>--role=core</c> entry point: a headless process that owns the single live window/app
+    /// projection and serves it to the UI roles over the shell-core IPC. No Avalonia, no dispatcher —
+    /// window management runs off the Swift helper's background gRPC stream and NSWorkspace, neither of
+    /// which needs an AppKit UI run loop. The main thread simply parks on a termination signal.
+    /// </summary>
+    private static void RunShellCore(IHost host)
+    {
+        // Start hosted services — for Core that's HelperLifecycle, which brings up the Swift helper the
+        // window manager talks to. Non-blocking; the helper degrades gracefully if it can't start.
+        host.Start();
+
+        var services = host.Services;
+        var windows = services.GetRequiredService<Bevel.Pal.Abstractions.IWindowManager>();
+        var apps = services.GetRequiredService<Bevel.Pal.Abstractions.IAppEnvironment>();
+
+        // Warm the window stream BEFORE the server enumerates (same ordering as the all-in-one path):
+        // the poll subscribes to the helper and primes the first enumerate.
+        if (windows is Pal.MacOS.MacOSWindowManager macWm)
+            _ = macWm.StartPollAsync();
+
+        var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
+        var server = new ShellCore.ShellCoreServer(windows, apps, socketPath, nonce);
+        server.StartAsync().GetAwaiter().GetResult();
+
+        // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
+        // newer binary; a bare shell sends it on quit. Cancel the default action so .NET does NOT
+        // terminate the process before the ordered teardown below runs (else the helper orphans).
+        using var stop = new ManualResetEventSlim(false);
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
+        stop.Wait();
+
+        // Ordered teardown: stop serving + drop PAL subscriptions first, then stop the helper. Both
+        // run off the thread pool to dodge any lingering synchronization context (bevel-fu5 pattern).
+        Task.Run(() => server.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+        Task.Run(() => host.StopAsync(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// The <c>--role=launcher</c> entry point (bevel-gww.4): the multi-process shell's parent. It spawns
+    /// the shell-core owner and the UI role processes in order, crash-restarts them, and listens on a
+    /// control socket so a taskbar-initiated quit/restart fans out to the whole set. A restart re-execs
+    /// this same binary for every child, so the shell comes back on the latest build.
+    /// </summary>
+    private static void RunLauncher(string[] args)
+    {
+        // Endpoints the launcher owns and hands to its children via env: the shell-core socket + nonce
+        // (so core and taskbar share one authenticated channel with no token-file race) and the
+        // launcher's own control socket + nonce (so the taskbar can reach us to quit/restart).
+        var coreSocket = ShellCore.ShellCoreEndpoint.SocketPath;
+        var coreToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var (controlSocket, controlNonce) = LauncherControl.CreateServerEndpoint();
+
+        var childEnv = new Dictionary<string, string>
+        {
+            ["BEVEL_CORE_SOCKET"] = coreSocket,
+            ["BEVEL_CORE_TOKEN"] = coreToken,
+            [LauncherControl.SocketEnv] = controlSocket,
+            [LauncherControl.TokenEnv] = Convert.ToHexString(controlNonce),
+        };
+
+        // Dependency order: the shell-core owner (brings up the helper + owns window/app state) first,
+        // then the UI roles that are its clients. Desktop/Explorer slot in here once their split paths
+        // are exercised; core + taskbar is the proven, integration-tested pair.
+        IRoleProcess[] processes =
+        {
+            new RoleProcess(ShellRole.Core, CreateRoleStartInfo(ShellRole.Core, args, childEnv)),
+            new RoleProcess(ShellRole.Taskbar, CreateRoleStartInfo(ShellRole.Taskbar, args, childEnv)),
+        };
+
+        var supervisor = new RoleProcessSupervisor(
+            processes,
+            pollInterval: TimeSpan.FromSeconds(1),
+            coreReadyProbe: ct => WaitForFileAsync(coreSocket, TimeSpan.FromSeconds(5), ct),
+            log: msg => Console.Error.WriteLine($"[launcher] {msg}"));
+
+        supervisor.StartAsync().GetAwaiter().GetResult();
+
+        using var stop = new ManualResetEventSlim(false);
+
+        // Control server: the taskbar's quit/restart buttons arrive here and fan out to the whole shell.
+        var control = new UdsMessageServer(controlSocket, controlNonce, async (payload, ct) =>
+        {
+            if (payload.Length >= 1)
+            {
+                switch ((LauncherControl.Command)payload.Span[0])
+                {
+                    case LauncherControl.Command.RestartAll:
+                        await supervisor.RestartAllAsync(ct).ConfigureAwait(false); break;
+                    case LauncherControl.Command.RestartCore:
+                        await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;
+                    case LauncherControl.Command.Quit:
+                        stop.Set(); break;
+                }
+            }
+            return new byte[] { 1 }; // ack
+        });
+        control.Start();
+
+        // Cancel the default signal action so the ordered teardown below actually runs — without this,
+        // .NET terminates the launcher before it can reap its children, orphaning the whole shell.
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
+        stop.Wait();
+
+        // Ordered teardown off the thread pool (no lingering sync context — bevel-fu5): kill every child
+        // FIRST (supervisor stop), so a slow control-server disposal can never leave the shell running
+        // headless; then dispose the control server.
+        Task.Run(async () =>
+        {
+            await supervisor.DisposeAsync().ConfigureAwait(false);
+            await control.DisposeAsync().ConfigureAwait(false);
+        }).GetAwaiter().GetResult();
+    }
+
+    /// <summary>Builds the start info for one child role process: the launcher's argv with its own
+    /// <c>--role</c> replaced by the child's, plus the inherited control/shell-core environment.</summary>
+    internal static ProcessStartInfo CreateRoleStartInfo(
+        ShellRole role, IReadOnlyList<string> launcherArgs, IReadOnlyDictionary<string, string> env)
+    {
+        var processPath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Cannot determine process path to launch role processes.");
+        var entryAssemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
+
+        var childArgs = launcherArgs
+            .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase))
+            .Append("--role=" + RoleToArg(role))
+            .ToList();
+
+        var startInfo = CreateRestartStartInfo(processPath, entryAssemblyPath, childArgs);
+        startInfo.WorkingDirectory = !string.IsNullOrEmpty(entryAssemblyPath)
+            ? Path.GetDirectoryName(entryAssemblyPath) ?? startInfo.WorkingDirectory
+            : Path.GetDirectoryName(processPath) ?? startInfo.WorkingDirectory;
+
+        foreach (var (key, value) in env)
+            startInfo.Environment[key] = value;
+
+        return startInfo;
+    }
+
+    private static string RoleToArg(ShellRole role) => role switch
+    {
+        ShellRole.Core => "core",
+        ShellRole.Taskbar => "taskbar",
+        ShellRole.Explorer => "explorer",
+        ShellRole.Desktop => "desktop",
+        _ => "all",
+    };
+
+    /// <summary>Polls for a file to appear (the shell-core socket) up to <paramref name="timeout"/>.</summary>
+    private static async Task WaitForFileAsync(string path, TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!File.Exists(path) && DateTime.UtcNow < deadline)
+            await Task.Delay(50, ct).ConfigureAwait(false);
     }
 
     private static void Relaunch(IReadOnlyList<string> args)
