@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Bevel.UI;
 using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Bevel.FileManager.Components;
@@ -12,37 +13,83 @@ namespace Bevel.FileManager.Components;
 /// Win2000 Explorer toolbar, never traced from Microsoft assets). Each glyph is composed in a
 /// 16-unit space and rasterized once at 2x into a 16-DIP <see cref="Bitmap"/> for the classic
 /// <c>ToolBarButton.SmallIcon</c> slot — crisp on HiDPI, gradients instead of dithering.
+/// Colors resolve from the active theme via <see cref="ThemeTokens"/> so glyphs adapt to all 14 schemes.
 /// </summary>
-internal static class ToolbarIcons
+public static class ToolbarIcons
 {
-    // ── Palette ────────────────────────────────────────────────────────
-    private static LinearGradientBrush V(string top, string bottom) => new()
-    {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse(top), 0), new GradientStop(Color.Parse(bottom), 1) },
-    };
-    private static SolidColorBrush S(string hex) => new(Color.Parse(hex));
+    // ── Theme-aware color resolution ──────────────────────────────────────
 
-    private static readonly IBrush White = Brushes.White;
-    private static readonly IBrush Green = V("#86D24E", "#4C9E20");
-    private static readonly IBrush GreenEdge = S("#2E6B12");
-    private static readonly IBrush Blue = V("#5B93E0", "#2F6FC9");
-    private static readonly IBrush BlueEdge = S("#22508F");
-    private static readonly IBrush Gray = S("#828890");
-    private static readonly IBrush FolderBack = V("#FFE49A", "#F0B03C");
-    private static readonly IBrush FolderFront = V("#FFF3CE", "#FFD064");
-    private static readonly IBrush FolderEdge = S("#9C6B15");
-    private static readonly IBrush Paper = V("#FFFFFF", "#ECECEC");
-    private static readonly IBrush PaperEdge = S("#7F9DB9");
-    private static readonly IBrush PaperLine = S("#B4C6D8");
-    private static readonly IBrush Red = S("#E13126");
-    private static readonly IBrush Board = S("#CBAE79");
-    private static readonly IBrush BoardEdge = S("#7A6030");
+    /// <summary>Resolve a color from the current theme resources by <see cref="ThemeTokens"/> key.
+    /// Falls back to parsing the hex if no Application context exists (e.g. headless tests).</summary>
+    private static Avalonia.Media.Color ResolveColor(string tokenKey, string fallbackHex)
+    {
+        try
+        {
+            if (Application.Current is { } app &&
+                app.TryFindResource(tokenKey, null, out var val))
+            {
+                if (val is SolidColorBrush scb) return scb.Color;
+                if (val is Color c) return c;
+            }
+        }
+        catch { /* ignore - no app context or resource missing */ }
+        return Color.Parse(fallbackHex);
+    }
+
+    private static LinearGradientBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
+        new()
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops =
+            {
+                new GradientStop(ResolveColor(topKey, topFallback), 0),
+                new GradientStop(ResolveColor(bottomKey, bottomFallback), 1),
+            },
+        };
+
+    private static SolidColorBrush S(string tokenKey, string fallbackHex) =>
+        new(ResolveColor(tokenKey, fallbackHex));
+
+    // ── Semantic color token aliases (Win2000 Standard fallbacks in comments) ──
+
+    private static readonly string TokBF = ThemeTokens.ColorButtonFace;           // #D4D0C8
+    private static readonly string TokBH = ThemeTokens.ColorButtonHighlight;      // #FFFFFF
+    private static readonly string TokBL = ThemeTokens.ColorButtonLight;          // #D4D0C8
+    private static readonly string TokBS = ThemeTokens.ColorButtonShadow;         // #808080
+    private static readonly string TokBD = ThemeTokens.ColorButtonDkShadow;       // #404040
+    private static readonly string TokW  = ThemeTokens.ColorWindow;               // #FFFFFF
+    private static readonly string TokWT = ThemeTokens.ColorWindowText;           // #000000
+    private static readonly string TokWF = ThemeTokens.ColorWindowFrame;          // #000000
+    private static readonly string TokGT = ThemeTokens.ColorGrayText;             // #808080
+    private static readonly string TokAT = ThemeTokens.ColorActiveTitle;          // #0A246A
+    private static readonly string TokGA = ThemeTokens.ColorGradientActiveTitle;  // #A6CAF0
+    private static readonly string TokHL = ThemeTokens.ColorHighlight;            // #0A246A
+    private static readonly string TokHT = ThemeTokens.ColorHighlightText;        // #FFFFFF
+    private static readonly string TokHK = ThemeTokens.ColorHotTracking;          // #000080
+
+    // ── Resolved brushes (lazy, theme-aware) ────────────────────────────────
+
+    private static IBrush White         => Brushes.White;
+    private static IBrush Green         => VGrad(TokHL, TokAT, "#0A246A", "#0A246A");          // toolbar green
+    private static IBrush GreenEdge     => S(TokBD, "#404040");
+    private static IBrush Blue          => VGrad(TokGA, TokAT, "#A6CAF0", "#0A246A");          // toolbar blue
+    private static IBrush BlueEdge      => S(TokBD, "#404040");
+    private static IBrush Gray          => S(TokBS, "#808080");
+    private static IBrush FolderBack    => VGrad(TokBF, TokBS, "#D4D0C8", "#808080");
+    private static IBrush FolderFront   => VGrad(TokBH, TokBL, "#FFFFFF", "#D4D0C8");
+    private static IBrush FolderEdge    => S(TokBD, "#404040");
+    private static IBrush Paper         => VGrad(TokW, TokBF, "#FFFFFF", "#D4D0C8");
+    private static IBrush PaperEdge     => S(TokHK, "#000080");
+    private static IBrush PaperLine     => S(TokBS, "#808080");
+    private static IBrush Red           => S(TokHL, "#0A246A"); // using highlight as red accent
+    private static IBrush Board         => VGrad(TokBF, TokBS, "#D4D0C8", "#808080");
+    private static IBrush BoardEdge     => S(TokBD, "#404040");
 
     // Folder path data is shared with the list-view glyphs — single source of truth in Glyphs.
 
     // ── Primitives ─────────────────────────────────────────────────────
+
     private static Path P(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.7) => new()
     {
         Data = Geometry.Parse(data),
@@ -87,6 +134,7 @@ internal static class ToolbarIcons
     private static Path FolderFlap() => P(Glyphs.FolderFrontData, FolderFront, FolderEdge, 0.5);
 
     // ── Glyphs ─────────────────────────────────────────────────────────
+
     public static Bitmap? Back() => Raster(
         E(1.4, 1.4, 13.2, 13.2, Green, GreenEdge, 0.6),
         P("M9.6,4.6 L5.0,8 L9.6,11.4 L9.6,9.1 L11.6,9.1 L11.6,6.9 L9.6,6.9 Z", White));
@@ -105,7 +153,7 @@ internal static class ToolbarIcons
 
     public static Bitmap? Folders() => Raster(
         Folder(), FolderFlap(),
-        P("M4.2,9.2 H8.2 M4.2,10.9 H10.6", null, S("#B67B1E"), 0.7));
+        P("M4.2,9.2 H8.2 M4.2,10.9 H10.6", null, S(TokBD, "#404040"), 0.7));
 
     public static Bitmap? History() => Raster(
         E(2.2, 2.2, 11.6, 11.6, White, Blue, 1.1),
@@ -147,12 +195,12 @@ internal static class ToolbarIcons
 
     public static Bitmap? Properties() => Raster(
         P("M3.6,1.8 H9.6 L12.2,4.4 V14.0 H3.6 Z", Paper, PaperEdge, 0.5),
-        P("M9.6,1.8 V4.4 H12.2 Z", S("#DCE7F2"), PaperEdge, 0.4),
-        P("M5.2,8.4 L7.0,10.4 L11.0,5.6", null, S("#2E8B2E"), 1.4));
+        P("M9.6,1.8 V4.4 H12.2 Z", VGrad(TokGA, TokAT, "#A6CAF0", "#0A246A"), PaperEdge, 0.4),
+        P("M5.2,8.4 L7.0,10.4 L11.0,5.6", null, S(TokHT, "#FFFFFF"), 1.4));
 
     public static Bitmap? Views() => Raster(
-        P("M3.4,3.4 H7.0 V7.0 H3.4 Z", S("#5B93E0"), BlueEdge, 0.4),
-        P("M9.0,3.4 H12.6 V7.0 H9.0 Z", S("#86C24E"), GreenEdge, 0.4),
-        P("M3.4,9.0 H7.0 V12.6 H3.4 Z", S("#E6C24A"), FolderEdge, 0.4),
-        P("M9.0,9.0 H12.6 V12.6 H9.0 Z", S("#E58A6A"), S("#A8482E"), 0.4));
+        P("M3.4,3.4 H7.0 V7.0 H3.4 Z", S(TokGA, "#A6CAF0"), BlueEdge, 0.4),
+        P("M9.0,3.4 H12.6 V7.0 H9.0 Z", S(TokHL, "#0A246A"), GreenEdge, 0.4),
+        P("M3.4,9.0 H7.0 V12.6 H3.4 Z", S(TokGA, "#A6CAF0"), FolderEdge, 0.4),
+        P("M9.0,9.0 H12.6 V12.6 H9.0 Z", S(TokHL, "#0A246A"), S(TokBD, "#404040"), 0.4));
 }

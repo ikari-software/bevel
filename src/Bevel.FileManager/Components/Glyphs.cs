@@ -5,80 +5,179 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 using Bevel.Core.Vfs;
+using Bevel.UI;
 
 namespace Bevel.FileManager.Components;
 
 /// <summary>Shared self-drawn vector icon glyphs (semantic icon key -> Control), used by
-/// ItemView (file listing), ToolbarIcons (folder path data) and PropertiesDialog. Authored in a
-/// 16-unit space and vector-scaled, so crisp at any DPI. Circles go through Ell() which emits a
-/// Path (not an Ellipse Shape) so nested circles stay concentric.</summary>
+/// ItemView (file listing), ToolbarIcons (folder path data) and PropertiesDialog.
+/// Authored in a 16-unit space and vector-scaled, so crisp at any DPI.
+/// Circles go through Ell() which emits a Path (not an Ellipse Shape) so nested circles stay concentric.
+/// Colors are resolved from the active theme via <see cref="ThemeTokens"/> so glyphs adapt to all 14 schemes.</summary>
 public static class Glyphs
 {
-    // Vector icons — crisp at any DPI (the "vectors + gradients, not dithered bitmaps" rule).
-    // Authored in a 16-unit space and scaled by a Viewbox to the requested size.
-    private static LinearGradientBrush VGrad(string top, string bottom) => new()
+    // ── Theme-aware color resolution ──────────────────────────────────────
+
+    /// <summary>Resolve a color from the current theme resources by <see cref="ThemeTokens"/> key.
+    /// Falls back to parsing the hex if no Application context exists (e.g. headless tests).</summary>
+    private static Avalonia.Media.Color ResolveColor(string tokenKey, string fallbackHex)
     {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-        GradientStops = { new GradientStop(Color.Parse(top), 0), new GradientStop(Color.Parse(bottom), 1) },
-    };
+        try
+        {
+            if (Application.Current is { } app &&
+                app.TryFindResource(tokenKey, null, out var val))
+            {
+                if (val is SolidColorBrush scb) return scb.Color;
+                if (val is Color c) return c;
+            }
+        }
+        catch { /* ignore - no app context or resource missing */ }
+        return Color.Parse(fallbackHex);
+    }
 
-    static readonly IBrush FolderBack = VGrad("#FFE49A", "#F0B03C");
-    static readonly IBrush FolderFront = VGrad("#FFF3CE", "#FFD064");
-    static readonly IBrush FolderEdge = new SolidColorBrush(Color.Parse("#9C6B15"));
-    static readonly IBrush PaperFill = VGrad("#FFFFFF", "#ECECEC");
-    static readonly IBrush PaperEdge = new SolidColorBrush(Color.Parse("#7F9DB9"));
-    static readonly IBrush PaperFold = new SolidColorBrush(Color.Parse("#DCE7F2"));
-    static readonly IBrush PaperLine = new SolidColorBrush(Color.Parse("#B4C6D8"));
+    /// <summary>Vertical gradient from two theme token keys.</summary>
+    private static LinearGradientBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
+        new()
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops =
+            {
+                new GradientStop(ResolveColor(topKey, topFallback), 0),
+                new GradientStop(ResolveColor(bottomKey, bottomFallback), 1),
+            },
+        };
 
-    static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
-        new() { Data = Geometry.Parse(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
+    /// <summary>Solid brush from theme token key.</summary>
+    private static SolidColorBrush S(string tokenKey, string fallbackHex) =>
+        new(ResolveColor(tokenKey, fallbackHex));
 
-    public const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
-    public const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";
-    private const string DocPageData = "M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z";
+    // ── Semantic color mappings (icon-specific tokens) ─────────────────────
+    // Each icon part has its own Bevel.Color.Icon* token so schemes can adapt
+    // them independently (e.g. dark schemes can lighten folder fills without
+    // changing the window background). Fallbacks match the original Win2000
+    // Windows Standard palette — used only when no Application.Current exists.
+    // At runtime the active scheme provides the real values.
 
-    private static SolidColorBrush SB(string hex) => new(Color.Parse(hex));
-    static readonly IBrush ExeTitle = SB("#0A246A");
-    static readonly IBrush ExeLine = SB("#9DB4C8");
-    static readonly IBrush Sky = SB("#A9D3F5");
-    static readonly IBrush Sun = SB("#FFD64A");
-    static readonly IBrush Mountain = SB("#5E9E52");
-    static readonly IBrush ZipLine = SB("#6B6B6B");
-    static readonly IBrush ZipTeeth = SB("#9A9A9A");
-    static readonly IBrush DriveBody = SB("#CBD0D6");
-    static readonly IBrush DriveEdge = SB("#7A8088");
-    static readonly IBrush DriveLed = SB("#62C462");
-    static readonly IBrush MonScreen = SB("#4F79A8");
-    static readonly IBrush MonInner = SB("#2E5B90");
-    static readonly IBrush MonEdge = SB("#3A3A3A");
-    static readonly IBrush MonStand = SB("#B8BCC2");
-    static readonly IBrush Note = SB("#5A50C8");
-    static readonly IBrush FilmDark = SB("#333941");
-    static readonly IBrush FilmEdge = SB("#20242A");
-    static readonly IBrush FilmFrame = SB("#6E9BD0");
-    static readonly IBrush Globe = SB("#2E86D8");
-    static readonly IBrush GlobeEdge = SB("#1E5FA0");
-    static readonly IBrush GearBody = SB("#B6BAC0");
-    static readonly IBrush GearEdge = SB("#70747A");
-    static readonly IBrush ConsoleBg = SB("#1E1E1E");
-    static readonly IBrush ConsoleTitle = SB("#3C3C3C");
-    static readonly IBrush FontInk = SB("#33373D");
-    static readonly IBrush PdfRed = SB("#D93A2B");
-    static readonly IBrush SheetGreen = SB("#217346");
-    static readonly IBrush SheetGrid = SB("#8FBFA3");
-    static readonly IBrush WordBlue = SB("#2B579A");
-    static readonly IBrush PptOrange = SB("#D24726");
-    static readonly IBrush DbBody = SB("#8FA9C4");
-    static readonly IBrush DbTop = SB("#C2D4E6");
-    static readonly IBrush DbEdge = SB("#5B7590");
-    static readonly IBrush CodeInk = SB("#3B4A57");
-    static readonly IBrush DiscBody = SB("#C7D2DE");
-    static readonly IBrush DiscSheen = SB("#EAF1F8");
+    // Folder
+    private static readonly string TokIFB  = ThemeTokens.ColorIconFolderBackTop;
+    private static readonly string TokIFBB = ThemeTokens.ColorIconFolderBackBottom;
+    private static readonly string TokIFF  = ThemeTokens.ColorIconFolderFrontTop;
+    private static readonly string TokIFFB = ThemeTokens.ColorIconFolderFrontBottom;
+    private static readonly string TokIFE  = ThemeTokens.ColorIconFolderEdge;
+    // Paper / document base
+    private static readonly string TokIPF  = ThemeTokens.ColorIconPaperFillTop;
+    private static readonly string TokIPFB = ThemeTokens.ColorIconPaperFillBottom;
+    private static readonly string TokIPE  = ThemeTokens.ColorIconPaperEdge;
+    private static readonly string TokIPO  = ThemeTokens.ColorIconPaperFold;
+    private static readonly string TokIPL  = ThemeTokens.ColorIconPaperLine;
+    // EXE
+    private static readonly string TokIET  = ThemeTokens.ColorIconExeTitle;
+    private static readonly string TokIEL  = ThemeTokens.ColorIconExeLine;
+    // Landscape
+    private static readonly string TokISK  = ThemeTokens.ColorIconSky;
+    private static readonly string TokISN  = ThemeTokens.ColorIconSun;
+    private static readonly string TokIMT  = ThemeTokens.ColorIconMountain;
+    // ZIP
+    private static readonly string TokIZL  = ThemeTokens.ColorIconZipLine;
+    private static readonly string TokIZT  = ThemeTokens.ColorIconZipTeeth;
+    // Drive
+    private static readonly string TokIDB  = ThemeTokens.ColorIconDriveBody;
+    private static readonly string TokIDBB = ThemeTokens.ColorIconDriveBody; // top of gradient (same token, gradient via opacity handled by scheme)
+    private static readonly string TokIDE  = ThemeTokens.ColorIconDriveEdge;
+    private static readonly string TokIDL  = ThemeTokens.ColorIconDriveLed;
+    // Monitor
+    private static readonly string TokIMS  = ThemeTokens.ColorIconMonitorScreen;
+    private static readonly string TokIMI  = ThemeTokens.ColorIconMonitorInner;
+    private static readonly string TokIME  = ThemeTokens.ColorIconMonitorEdge;
+    private static readonly string TokIMSt = ThemeTokens.ColorIconMonitorStand;
+    // Note / audio
+    private static readonly string TokINO  = ThemeTokens.ColorIconNote;
+    // Film / video
+    private static readonly string TokIFD  = ThemeTokens.ColorIconFilmDark;
+    private static readonly string TokIFE2 = ThemeTokens.ColorIconFilmEdge;
+    private static readonly string TokIFR  = ThemeTokens.ColorIconFilmFrame;
+    // Globe
+    private static readonly string TokIGL  = ThemeTokens.ColorIconGlobe;
+    private static readonly string TokIGE  = ThemeTokens.ColorIconGlobeEdge;
+    // Gear / settings
+    private static readonly string TokIGB  = ThemeTokens.ColorIconGearBody;
+    private static readonly string TokIGE2 = ThemeTokens.ColorIconGearEdge;
+    // Console
+    private static readonly string TokICB  = ThemeTokens.ColorIconConsoleBg;
+    private static readonly string TokICT  = ThemeTokens.ColorIconConsoleTitle;
+    // Font / ink
+    private static readonly string TokIFN  = ThemeTokens.ColorIconFontInk;
+    // PDF
+    private static readonly string TokIPR  = ThemeTokens.ColorIconPdfRed;
+    // Spreadsheet
+    private static readonly string TokISG  = ThemeTokens.ColorIconSheetGreen;
+    private static readonly string TokISGr = ThemeTokens.ColorIconSheetGrid;
+    // Word
+    private static readonly string TokIWB  = ThemeTokens.ColorIconWordBlue;
+    // PowerPoint
+    private static readonly string TokIPO2 = ThemeTokens.ColorIconPptOrange;
+    // Database
+    private static readonly string TokIDBd = ThemeTokens.ColorIconDbBody;
+    private static readonly string TOKIDT  = ThemeTokens.ColorIconDbTop;
+    private static readonly string TokIDDe = ThemeTokens.ColorIconDbEdge;
+    // Code
+    private static readonly string TokICD  = ThemeTokens.ColorIconCodeInk;
+    // Disc
+    private static readonly string TokIDC  = ThemeTokens.ColorIconDiscBody;
+    private static readonly string TokIDCS = ThemeTokens.ColorIconDiscSheen;
+
+    // ── Resolved brushes (lazy, theme-aware) ────────────────────────────────
+
+    private static IBrush FolderBack       => VGrad(TokIFB, TokIFBB, "#FFE49A", "#F0B03C");
+    private static IBrush FolderFront      => VGrad(TokIFF, TokIFFB, "#FFF3CE", "#FFD064");
+    private static IBrush FolderEdge       => S(TokIFE, "#9C6B15");
+    private static IBrush PaperFill        => VGrad(TokIPF, TokIPFB, "#FFFFFF", "#ECECEC");
+    private static IBrush PaperEdge        => S(TokIPE, "#7F9DB9");
+    private static IBrush PaperFold        => S(TokIPO, "#DCE7F2");
+    private static IBrush PaperLine        => S(TokIPL, "#B4C6D8");
+
+    private static IBrush ExeTitle         => S(TokIET, "#0A246A");
+    private static IBrush ExeLine          => S(TokIEL, "#9DB4C8");
+    private static IBrush Sky              => S(TokISK, "#A9D3F5");
+    private static IBrush Sun              => S(TokISN, "#FFD64A");
+    private static IBrush Mountain         => S(TokIMT, "#5E9E52");
+    private static IBrush ZipLine          => S(TokIZL, "#6B6B6B");
+    private static IBrush ZipTeeth         => S(TokIZT, "#9A9A9A");
+    private static IBrush DriveBody        => VGrad(TokIDB, TokIDBB, "#CBD0D6", "#B0B8C0");
+    private static IBrush DriveEdge        => S(TokIDE, "#7A8088");
+    private static IBrush DriveLed         => S(TokIDL, "#62C462");
+    private static IBrush MonScreen        => S(TokIMS, "#4F79A8");
+    private static IBrush MonInner         => S(TokIMI, "#2E5B90");
+    private static IBrush MonEdge          => S(TokIME, "#3A3A3A");
+    private static IBrush MonStand         => S(TokIMSt, "#B8BCC2");
+    private static IBrush Note             => S(TokINO, "#5A50C8");
+    private static IBrush FilmDark         => S(TokIFD, "#333941");
+    private static IBrush FilmEdge         => S(TokIFE2, "#20242A");
+    private static IBrush FilmFrame        => S(TokIFR, "#6E9BD0");
+    private static IBrush Globe            => S(TokIGL, "#2E86D8");
+    private static IBrush GlobeEdge        => S(TokIGE, "#1E5FA0");
+    private static IBrush GearBody         => S(TokIGB, "#B6BAC0");
+    private static IBrush GearEdge         => S(TokIGE2, "#70747A");
+    private static IBrush ConsoleBg        => S(TokICB, "#1E1E1E");
+    private static IBrush ConsoleTitle     => S(TokICT, "#3C3C3C");
+    private static IBrush FontInk          => S(TokIFN, "#33373D");
+    private static IBrush PdfRed           => S(TokIPR, "#D93A2B");
+    private static IBrush SheetGreen       => S(TokISG, "#217346");
+    private static IBrush SheetGrid        => S(TokISGr, "#8FBFA3");
+    private static IBrush WordBlue         => S(TokIWB, "#2B579A");
+    private static IBrush PptOrange        => S(TokIPO2, "#D24726");
+    private static IBrush DbBody           => S(TokIDBd, "#8FA9C4");
+    private static IBrush DbTop            => S(TOKIDT, "#C2D4E6");
+    private static IBrush DbEdge           => S(TokIDDe, "#5B7590");
+    private static IBrush CodeInk          => S(TokICD, "#3B4A57");
+    private static IBrush DiscBody         => VGrad(TokIDC, TokIDCS, "#C7D2DE", "#A8B4C2");
+    private static IBrush DiscSheen        => S(TokIDCS, "#EAF1F8");
 
     // The iridescent rainbow sweep of a real CD's data side — a conic gradient cycling hues once
     // around the platter (first stop == last so the wrap is seamless).
-    static readonly IBrush DiscRainbow = new ConicGradientBrush
+    // This is SCHEME-INVARIANT by design (physical phenomenon, not UI color).
+    private static readonly IBrush DiscRainbow = new ConicGradientBrush
     {
         Center = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
         Angle = 210,
@@ -94,6 +193,8 @@ public static class Glyphs
             new GradientStop(Color.Parse("#8FE9D0"), 1.00),
         },
     };
+
+    // ── Extension sets (unchanged) ────────────────────────────────────────
 
     static readonly HashSet<string> ExeExt = new(StringComparer.OrdinalIgnoreCase) { "exe", "com", "scr", "msi", "app" };
     static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase) { "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tif", "tiff", "svg" };
@@ -111,11 +212,20 @@ public static class Glyphs
     static readonly HashSet<string> CodeExt = new(StringComparer.OrdinalIgnoreCase) { "xml", "xaml", "json", "yaml", "yml", "toml", "css", "cs", "c", "cpp", "cc", "h", "hpp", "java", "go", "rs", "ts", "tsx", "swift", "kt" };
     static readonly HashSet<string> DiscExt = new(StringComparer.OrdinalIgnoreCase) { "iso", "img", "dmg", "vhd", "vhdx", "bin", "cue", "nrg", "toast" };
 
-    // A circle at top-left (x,y), diameter d — drawn as an absolute-coordinate Path, NOT an
-    // Ellipse Shape. An Ellipse on a Canvas positions size-dependently (its layout bounds depend
-    // on size/stroke), so nested different-sized ellipses — the CD platter/hub/spindle — drift
-    // off-centre from each other. Path geometry is absolute, so circles stay concentric with each
-    // other and with every Vec() path. Signature unchanged, so all call sites keep working.
+    // ── Geometry primitives ──────────────────────────────────────────────
+
+    static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
+        new() { Data = Geometry.Parse(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
+
+    public const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
+    public const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";
+    private const string DocPageData = "M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z";
+
+    /// <summary>A circle at top-left (x,y), diameter d — drawn as an absolute-coordinate Path, NOT an
+    /// Ellipse Shape. An Ellipse on a Canvas positions size-dependently (its layout bounds depend on
+    /// size/stroke), so nested different-sized ellipses — the CD platter/hub/spindle — drift
+    /// off-centre from each other. Path geometry is absolute, so circles stay concentric with each
+    /// other and with every Vec() path. Signature unchanged, so all call sites keep working.</summary>
     static Avalonia.Controls.Shapes.Path Ell(double x, double y, double d, IBrush? fill, IBrush? stroke = null, double sw = 0.4)
     {
         double r = d / 2, cx = x + r, cy = y + r;
@@ -140,6 +250,10 @@ public static class Glyphs
         if (id.StartsWith("folder")) { FolderGlyph(c); return; }
         if (id == "computer") { ComputerGlyph(c); return; }
         if (id.StartsWith("drive")) { DriveGlyph(c, id); return; }
+        if (id == "network") { NetworkGlyph(c); return; }
+        if (id == "trash.empty") { TrashGlyph(c, false); return; }
+        if (id == "trash.full") { TrashGlyph(c, true); return; }
+
         var ext = id.StartsWith("doc.") ? id[4..] : "";
         if (ExeExt.Contains(ext)) { ExeGlyph(c); return; }
         if (ImageExt.Contains(ext)) { ImageGlyph(c); return; }
@@ -159,6 +273,8 @@ public static class Glyphs
         if (DiscExt.Contains(ext)) { DiscGlyph(c); return; }
         DocGlyph(c);
     }
+
+    // ── Glyph implementations (geometry unchanged, colors now theme-aware) ──
 
     static void FolderGlyph(Canvas c)
     {
@@ -200,7 +316,7 @@ public static class Glyphs
 
     static void DriveGlyph(Canvas c, string id)
     {
-        if (id.Contains("cd")) { CdDriveGlyph(c); return; }   // CD-ROM drive → bay + disc in front
+        if (id.Contains("cd")) { CdDriveGlyph(c); return; }
         c.Children.Add(Vec("M2,5.5 H14 V11 H2 Z", DriveBody, DriveEdge, 0.5));
         c.Children.Add(Vec("M3.5,7 H10.5", null, DriveEdge, 0.5));
         c.Children.Add(Ell(11.5, 8.1, 1.4, DriveLed));
@@ -213,6 +329,37 @@ public static class Glyphs
         c.Children.Add(Vec("M3.3,3.8 H12.7 V6.6 H3.3 Z", MonInner));
         c.Children.Add(Vec("M7,10 H9 V11.4 H7 Z", MonStand));
         c.Children.Add(Vec("M5,12.6 H11 V13.6 H5 Z", MonStand, MonEdge, 0.3));
+    }
+
+    static void NetworkGlyph(Canvas c)
+    {
+        // Two connected monitors (Network Neighborhood metaphor)
+        // Left monitor
+        c.Children.Add(Vec("M1.5,3 H7.5 V8.5 H1.5 Z", MonEdge, MonEdge, 0.4));
+        c.Children.Add(Vec("M2.3,3.8 H6.7 V7.7 H2.3 Z", MonScreen));
+        c.Children.Add(Vec("M3.5,9 H5.5 V10 H3.5 Z", MonStand));
+        // Right monitor
+        c.Children.Add(Vec("M8.5,3 H14.5 V8.5 H8.5 Z", MonEdge, MonEdge, 0.4));
+        c.Children.Add(Vec("M9.3,3.8 H13.7 V7.7 H9.3 Z", MonScreen));
+        c.Children.Add(Vec("M10.5,9 H12.5 V10 H10.5 Z", MonStand));
+        // Connection line between them
+        c.Children.Add(Vec("M7.5,5.7 H8.5", null, MonEdge, 1.0));
+        c.Children.Add(Vec("M7.5,6.7 H8.5", null, MonEdge, 1.0));
+    }
+
+    static void TrashGlyph(Canvas c, bool full)
+    {
+        // Waste basket: trapezoid body + handle + (optional) crumpled paper
+        c.Children.Add(Vec("M3.5,5.5 H12.5 V12.5 L11.5,14 H4.5 Z", PaperFill, PaperEdge, 0.5));
+        c.Children.Add(Vec("M5.5,3.5 H10.5 V5 H5.5 Z", PaperFill, PaperEdge, 0.5)); // handle
+        c.Children.Add(Vec("M6.5,4 H9.5", null, PaperLine, 0.5)); // handle detail lines
+        c.Children.Add(Vec("M6.5,4.5 H9.5", null, PaperLine, 0.5));
+        if (full)
+        {
+            // Crumpled paper sticking out
+            c.Children.Add(Vec("M5.5,3.5 L7.5,1.5 L9.5,3.5 Z", PaperFill, PaperEdge, 0.4));
+            c.Children.Add(Vec("M7,2.8 L8,2.2 L8.5,3.2", null, PaperLine, 0.4));
+        }
     }
 
     static void AudioGlyph(Canvas c)

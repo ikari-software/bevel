@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bevel Icon Preview — Win2000 Theme</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    background: #008080;
+    color: #000;
+    padding: 16px;
+  }
+
+  .window {
+    background: #c0c0c0;
+    border: 2px solid;
+    border-color: #dfdfdf #404040 #404040 #dfdfdf;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .title-bar {
+    background: linear-gradient(90deg, #0a246a, #a6caf0);
+    color: #fff;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 3px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .title-bar-buttons { display: flex; gap: 2px; }
+  .title-bar-buttons span {
+    display: inline-block;
+    width: 16px; height: 14px;
+    background: #c0c0c0;
+    border: 1px solid;
+    border-color: #dfdfdf #404040 #404040 #dfdfdf;
+    text-align: center;
+    line-height: 12px;
+    font-size: 9px;
+    color: #000;
+  }
+
+  .window-body { padding: 8px; }
+
+  .toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #c0c0c0;
+    border-bottom: 1px solid #808080;
+    margin-bottom: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .toolbar label { font-weight: bold; margin-right: 4px; }
+  .toolbar select {
+    font-family: inherit;
+    font-size: 11px;
+    padding: 1px 4px;
+    border: 1px solid;
+    border-color: #808080 #dfdfdf #dfdfdf #808080;
+    background: #fff;
+  }
+  .toolbar .sep {
+    width: 1px;
+    height: 20px;
+    background: #808080;
+    margin: 0 4px;
+  }
+  .toolbar .info { color: #404040; margin-left: auto; }
+
+  .status-bar {
+    border-top: 1px solid #808080;
+    padding: 3px 8px;
+    color: #404040;
+    font-size: 11px;
+    display: flex;
+    gap: 12px;
+  }
+  .status-bar .grip {
+    width: 14px; height: 14px;
+    margin-left: auto;
+    background:
+      linear-gradient(135deg, transparent 33%, #fff 33%, #fff 40%, transparent 40%, transparent 60%, #fff 60%, #fff 67%, transparent 67%),
+      linear-gradient(135deg, transparent 33%, #808080 33%, #808080 40%, transparent 40%, transparent 60%, #808080 60%, #808080 67%, transparent 67%);
+    background-size: 4px 4px;
+  }
+
+  h3 {
+    font-size: 11px;
+    font-weight: bold;
+    padding: 4px 8px;
+    margin: 8px 0 4px;
+    border-bottom: 1px solid #808080;
+    background: #d4d0c8;
+  }
+  h3:first-child { margin-top: 0; }
+
+  .icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 4px;
+    padding: 8px;
+  }
+  .icon-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 4px;
+    border: 1px solid transparent;
+    cursor: default;
+    text-align: center;
+  }
+  .icon-cell:hover {
+    border-color: #0a246a;
+    background: #316ac5;
+    color: #fff;
+  }
+  .icon-cell img {
+    image-rendering: pixelated;
+    margin-bottom: 4px;
+  }
+  .icon-cell .name {
+    font-size: 10px;
+    word-break: break-all;
+    line-height: 1.3;
+  }
+
+  .size-row {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    padding: 8px;
+    flex-wrap: wrap;
+  }
+  .size-row .size-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .size-row .size-label { font-size: 9px; color: #808080; }
+
+  .filter-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-controls input[type="range"] {
+    width: 120px;
+  }
+  .filter-val { font-size: 10px; min-width: 24px; }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="title-bar">
+    <span>Bevel — Icon Preview</span>
+    <div class="title-bar-buttons">
+      <span>_</span><span>□</span><span>×</span>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label for="filter-mode">Filter:</label>
+    <select id="filter-mode" onchange="applyFilter()">
+      <option value="none">None (Default)</option>
+      <option value="classic">Classic Silver</option>
+      <option value="desert">Desert Sand</option>
+      <option value="marine">Marine Teal</option>
+      <option value="plum">Plum Purple</option>
+      <option value="rose">Rose Pink</option>
+      <option value="brick">Brick Olive</option>
+      <option value="maple">Maple Gold</option>
+      <option value="eggplant">Eggplant Violet</option>
+      <option value="pumpkin">Pumpkin Orange</option>
+      <option value="sprouce">Spruce Green</option>
+      <option value="wheat">Wheat Yellow</option>
+      <option value="storm">Storm Purple</option>
+      <option value="stars">Stars &amp; Stripes</option>
+    </select>
+    <div class="sep"></div>
+    <div class="filter-controls">
+      <label>Brightness:</label>
+      <input type="range" id="brightness" min="50" max="150" value="100" oninput="applyFilter()">
+      <span class="filter-val" id="brightness-val">100%</span>
+    </div>
+    <span class="info" id="icon-count"></span>
+  </div>
+
+  <div class="window-body" id="body"></div>
+
+  <div class="status-bar">
+    <span id="status-text">Ready</span>
+    <div class="grip"></div>
+  </div>
+</div>
+
+<script>
+const ICONS = [
+  'computer', 'network',
+  'folder', 'folder-open',
+  'drive-fixed', 'drive-cd', 'drive-net', 'drive-removable',
+  'trash-empty', 'trash-full',
+  'doc-generic', 'doc-exe', 'doc-png', 'doc-zip', 'doc-mp3',
+  'doc-avi', 'doc-htm', 'doc-dll', 'doc-bat', 'doc-ttf',
+  'doc-pdf', 'doc-xls', 'doc-doc', 'doc-ppt', 'doc-db',
+  'doc-xml', 'doc-iso'
+];
+
+const TOOLBAR_ICONS = [
+  'toolbar-back', 'toolbar-forward', 'toolbar-up',
+  'toolbar-search', 'toolbar-folders', 'toolbar-history',
+  'toolbar-move-to', 'toolbar-copy-to', 'toolbar-cut',
+  'toolbar-copy', 'toolbar-paste', 'toolbar-undo',
+  'toolbar-delete', 'toolbar-properties', 'toolbar-views'
+];
+
+const SIZES = [128, 64, 48, 32, 16];
+
+const FILTERS = {
+  none:      'none',
+  classic:   'sepia(0.3) saturate(0.8) brightness(1.05)',
+  desert:    'sepia(0.5) saturate(0.7) hue-rotate(-10deg) brightness(1.1)',
+  marine:    'hue-rotate(160deg) saturate(0.6) brightness(0.95)',
+  plum:      'hue-rotate(280deg) saturate(0.4) brightness(0.9)',
+  rose:      'hue-rotate(320deg) saturate(0.5) brightness(1.0)',
+  brick:     'sepia(0.4) hue-rotate(-20deg) saturate(0.6) brightness(0.9)',
+  maple:     'sepia(0.6) saturate(1.2) hue-rotate(10deg) brightness(1.05)',
+  eggplant:  'hue-rotate(260deg) saturate(0.5) brightness(0.85)',
+  pumpkin:   'sepia(0.4) saturate(1.4) hue-rotate(5deg) brightness(1.0)',
+  sprouce:   'hue-rotate(90deg) saturate(0.5) brightness(1.0)',
+  wheat:     'sepia(0.5) saturate(0.8) hue-rotate(20deg) brightness(1.1)',
+  storm:     'hue-rotate(270deg) saturate(0.3) brightness(0.95) contrast(1.1)',
+  stars:     'sepia(0.2) saturate(0.6) hue-rotate(340deg) brightness(1.0)'
+};
+
+function buildGallery() {
+  const body = document.getElementById('body');
+  let html = '';
+
+  html += '<h3>File &amp; System Icons</h3>';
+  html += '<div class="icon-grid">';
+  ICONS.forEach(name => {
+    html += `<div class="icon-cell" onclick="selectIcon('${name}')">
+      <img src="${name}-128.png" width="48" height="48" alt="${name}">
+      <span class="name">${name}</span>
+    </div>`;
+  });
+  html += '</div>';
+
+  html += '<h3>Toolbar Icons</h3>';
+  html += '<div class="icon-grid">';
+  TOOLBAR_ICONS.forEach(name => {
+    html += `<div class="icon-cell" onclick="selectIcon('${name}')">
+      <img src="${name}-48.png" width="32" height="32" alt="${name}">
+      <span class="name">${name}</span>
+    </div>`;
+  });
+  html += '</div>';
+
+  html += '<h3>Size Comparison</h3>';
+  html += '<div id="size-compare" style="padding:8px"></div>';
+
+  body.innerHTML = html;
+  document.getElementById('icon-count').textContent = `${ICONS.length + TOOLBAR_ICONS.length} icons`;
+  showSizeComparison(ICONS[0]);
+}
+
+function selectIcon(name) {
+  showSizeComparison(name);
+  document.getElementById('status-text').textContent = `Selected: ${name}`;
+}
+
+function showSizeComparison(name) {
+  const el = document.getElementById('size-compare');
+  const filter = document.getElementById('filter-mode').value;
+  const css = FILTERS[filter] || 'none';
+
+  let html = `<div style="margin-bottom:6px;font-weight:bold">Sizes: ${name}</div><div class="size-row">`;
+  SIZES.forEach(s => {
+    html += `<div class="size-item">
+      <img src="${name}-${s}.png" width="${Math.min(s, 128)}" height="${Math.min(s, 128)}"
+           style="filter:${css}; image-rendering:pixelated" alt="${name}-${s}">
+      <span class="size-label">${s}×${s}</span>
+    </div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function applyFilter() {
+  const filter = document.getElementById('filter-mode').value;
+  const brightness = document.getElementById('brightness').value;
+  document.getElementById('brightness-val').textContent = brightness + '%';
+
+  let css = FILTERS[filter] || 'none';
+  if (brightness !== '100') {
+    css = css === 'none' ? `brightness(${brightness/100})` : `${css} brightness(${brightness/100})`;
+  }
+
+  document.querySelectorAll('.icon-grid img, .size-row img').forEach(img => {
+    img.style.filter = css;
+  });
+
+  const selected = document.querySelector('.size-row .size-label');
+  if (selected) {
+    const name = selected.parentElement.querySelector('img')?.alt?.replace(/-\d+$/, '');
+    if (name) showSizeComparison(name);
+  }
+}
+
+buildGallery();
+</script>
+</body>
+</html>

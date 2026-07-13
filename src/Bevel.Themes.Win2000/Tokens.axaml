@@ -42,6 +42,52 @@
     <Color x:Key="Bevel.Color.HotTracking">#000080</Color>
     <Color x:Key="Bevel.Color.InfoWindow">#FFFFE1</Color>
     <Color x:Key="Bevel.Color.InfoText">#000000</Color>
+    <Color x:Key="Bevel.Color.IconFolderBackTop">#FFE49A</Color>
+    <Color x:Key="Bevel.Color.IconFolderBackBottom">#F0B03C</Color>
+    <Color x:Key="Bevel.Color.IconFolderFrontTop">#FFF3CE</Color>
+    <Color x:Key="Bevel.Color.IconFolderFrontBottom">#FFD064</Color>
+    <Color x:Key="Bevel.Color.IconFolderEdge">#9C6B15</Color>
+    <Color x:Key="Bevel.Color.IconPaperFillTop">#FFFFFF</Color>
+    <Color x:Key="Bevel.Color.IconPaperFillBottom">#ECECEC</Color>
+    <Color x:Key="Bevel.Color.IconPaperEdge">#7F9DB9</Color>
+    <Color x:Key="Bevel.Color.IconPaperFold">#DCE7F2</Color>
+    <Color x:Key="Bevel.Color.IconPaperLine">#B4C6D8</Color>
+    <Color x:Key="Bevel.Color.IconExeTitle">#0A246A</Color>
+    <Color x:Key="Bevel.Color.IconExeLine">#9DB4C8</Color>
+    <Color x:Key="Bevel.Color.IconSky">#A9D3F5</Color>
+    <Color x:Key="Bevel.Color.IconSun">#FFD64A</Color>
+    <Color x:Key="Bevel.Color.IconMountain">#5E9E52</Color>
+    <Color x:Key="Bevel.Color.IconZipLine">#6B6B6B</Color>
+    <Color x:Key="Bevel.Color.IconZipTeeth">#9A9A9A</Color>
+    <Color x:Key="Bevel.Color.IconDriveBody">#CBD0D6</Color>
+    <Color x:Key="Bevel.Color.IconDriveEdge">#7A8088</Color>
+    <Color x:Key="Bevel.Color.IconDriveLed">#62C462</Color>
+    <Color x:Key="Bevel.Color.IconMonitorScreen">#4F79A8</Color>
+    <Color x:Key="Bevel.Color.IconMonitorInner">#2E5B90</Color>
+    <Color x:Key="Bevel.Color.IconMonitorEdge">#3A3A3A</Color>
+    <Color x:Key="Bevel.Color.IconMonitorStand">#B8BCC2</Color>
+    <Color x:Key="Bevel.Color.IconNote">#5A50C8</Color>
+    <Color x:Key="Bevel.Color.IconFilmDark">#333941</Color>
+    <Color x:Key="Bevel.Color.IconFilmEdge">#20242A</Color>
+    <Color x:Key="Bevel.Color.IconFilmFrame">#6E9BD0</Color>
+    <Color x:Key="Bevel.Color.IconGlobe">#2E86D8</Color>
+    <Color x:Key="Bevel.Color.IconGlobeEdge">#1E5FA0</Color>
+    <Color x:Key="Bevel.Color.IconGearBody">#B6BAC0</Color>
+    <Color x:Key="Bevel.Color.IconGearEdge">#70747A</Color>
+    <Color x:Key="Bevel.Color.IconConsoleBg">#1E1E1E</Color>
+    <Color x:Key="Bevel.Color.IconConsoleTitle">#3C3C3C</Color>
+    <Color x:Key="Bevel.Color.IconFontInk">#33373D</Color>
+    <Color x:Key="Bevel.Color.IconPdfRed">#D93A2B</Color>
+    <Color x:Key="Bevel.Color.IconSheetGreen">#217346</Color>
+    <Color x:Key="Bevel.Color.IconSheetGrid">#8FBFA3</Color>
+    <Color x:Key="Bevel.Color.IconWordBlue">#2B579A</Color>
+    <Color x:Key="Bevel.Color.IconPptOrange">#D24726</Color>
+    <Color x:Key="Bevel.Color.IconDbBody">#8FA9C4</Color>
+    <Color x:Key="Bevel.Color.IconDbTop">#C2D4E6</Color>
+    <Color x:Key="Bevel.Color.IconDbEdge">#5B7590</Color>
+    <Color x:Key="Bevel.Color.IconCodeInk">#3B4A57</Color>
+    <Color x:Key="Bevel.Color.IconDiscBody">#C7D2DE</Color>
+    <Color x:Key="Bevel.Color.IconDiscSheen">#EAF1F8</Color>
 
     <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="{StaticResource Bevel.Color.ButtonFace}" />
     <SolidColorBrush x:Key="Bevel.Brush.ButtonHighlight" Color="{StaticResource Bevel.Color.ButtonHighlight}" />
@@ -68,6 +114,52 @@
     <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="{StaticResource Bevel.Color.HotTracking}" />
     <SolidColorBrush x:Key="Bevel.Brush.InfoWindow" Color="{StaticResource Bevel.Color.InfoWindow}" />
     <SolidColorBrush x:Key="Bevel.Brush.InfoText" Color="{StaticResource Bevel.Color.InfoText}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFolderBackTop" Color="{StaticResource Bevel.Color.IconFolderBackTop}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFolderBackBottom" Color="{StaticResource Bevel.Color.IconFolderBackBottom}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFolderFrontTop" Color="{StaticResource Bevel.Color.IconFolderFrontTop}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFolderFrontBottom" Color="{StaticResource Bevel.Color.IconFolderFrontBottom}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFolderEdge" Color="{StaticResource Bevel.Color.IconFolderEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPaperFillTop" Color="{StaticResource Bevel.Color.IconPaperFillTop}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPaperFillBottom" Color="{StaticResource Bevel.Color.IconPaperFillBottom}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPaperEdge" Color="{StaticResource Bevel.Color.IconPaperEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPaperFold" Color="{StaticResource Bevel.Color.IconPaperFold}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPaperLine" Color="{StaticResource Bevel.Color.IconPaperLine}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconExeTitle" Color="{StaticResource Bevel.Color.IconExeTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconExeLine" Color="{StaticResource Bevel.Color.IconExeLine}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconSky" Color="{StaticResource Bevel.Color.IconSky}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconSun" Color="{StaticResource Bevel.Color.IconSun}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconMountain" Color="{StaticResource Bevel.Color.IconMountain}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconZipLine" Color="{StaticResource Bevel.Color.IconZipLine}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconZipTeeth" Color="{StaticResource Bevel.Color.IconZipTeeth}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDriveBody" Color="{StaticResource Bevel.Color.IconDriveBody}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDriveEdge" Color="{StaticResource Bevel.Color.IconDriveEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDriveLed" Color="{StaticResource Bevel.Color.IconDriveLed}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconMonitorScreen" Color="{StaticResource Bevel.Color.IconMonitorScreen}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconMonitorInner" Color="{StaticResource Bevel.Color.IconMonitorInner}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconMonitorEdge" Color="{StaticResource Bevel.Color.IconMonitorEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconMonitorStand" Color="{StaticResource Bevel.Color.IconMonitorStand}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconNote" Color="{StaticResource Bevel.Color.IconNote}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFilmDark" Color="{StaticResource Bevel.Color.IconFilmDark}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFilmEdge" Color="{StaticResource Bevel.Color.IconFilmEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFilmFrame" Color="{StaticResource Bevel.Color.IconFilmFrame}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconGlobe" Color="{StaticResource Bevel.Color.IconGlobe}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconGlobeEdge" Color="{StaticResource Bevel.Color.IconGlobeEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconGearBody" Color="{StaticResource Bevel.Color.IconGearBody}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconGearEdge" Color="{StaticResource Bevel.Color.IconGearEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconConsoleBg" Color="{StaticResource Bevel.Color.IconConsoleBg}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconConsoleTitle" Color="{StaticResource Bevel.Color.IconConsoleTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconFontInk" Color="{StaticResource Bevel.Color.IconFontInk}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPdfRed" Color="{StaticResource Bevel.Color.IconPdfRed}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconSheetGreen" Color="{StaticResource Bevel.Color.IconSheetGreen}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconSheetGrid" Color="{StaticResource Bevel.Color.IconSheetGrid}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconWordBlue" Color="{StaticResource Bevel.Color.IconWordBlue}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconPptOrange" Color="{StaticResource Bevel.Color.IconPptOrange}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDbBody" Color="{StaticResource Bevel.Color.IconDbBody}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDbTop" Color="{StaticResource Bevel.Color.IconDbTop}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDbEdge" Color="{StaticResource Bevel.Color.IconDbEdge}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconCodeInk" Color="{StaticResource Bevel.Color.IconCodeInk}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDiscBody" Color="{StaticResource Bevel.Color.IconDiscBody}" />
+    <SolidColorBrush x:Key="Bevel.Brush.IconDiscSheen" Color="{StaticResource Bevel.Color.IconDiscSheen}" />
 
     <!-- ── Metrics (logical px at 1.0 scale) ──────────────────────────────── -->
 

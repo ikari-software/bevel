@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Bevel.FileManager/Bevel.FileManager.csproj" />
+    <ProjectReference Include="../Bevel.UI/Bevel.UI.csproj" />
+    <ProjectReference Include="../Bevel.Core/Bevel.Core.csproj" />
+    <ProjectReference Include="../Bevel.Themes.Win2000/Bevel.Themes.Win2000.csproj" />
+    <ProjectReference Include="../Bevel.App/Bevel.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Desktop" />
+  </ItemGroup>
+</Project>

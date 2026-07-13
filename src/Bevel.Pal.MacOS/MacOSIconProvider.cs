@@ -27,11 +27,19 @@ public sealed class MacOSIconProvider : IIconProvider
 
         var key = pathOrExtension + "|" + size;
         if (_cache.TryGetValue(key, out var cached))
-            return ValueTask.FromResult(cached);
+            return ValueTask.FromResult(cached);   // warm cache: instant, no thread hop
 
-        var image = Render(pathOrExtension, size) ?? Blank(size);
-        _cache[key] = image;
-        return ValueTask.FromResult(image);
+        // Cold render off the CALLING thread. The render (NSWorkspace iconForFile: → CGImage →
+        // BGRA blit) is ~5-8ms; done inline it froze the Start menu ~2s over 284 apps on the UI
+        // thread. Core rule: never block the UI thread — a UI-thread caller now awaits a
+        // thread-pool task instead. The render is already autorelease-pool-bracketed and holds no
+        // main-thread affinity, so it is safe off-thread; the cache is a ConcurrentDictionary.
+        return new ValueTask<PalImage>(Task.Run(() =>
+        {
+            var image = Render(pathOrExtension, size) ?? Blank(size);
+            _cache[key] = image;
+            return image;
+        }, ct));
     }
 
     private static PalImage Blank(int size) => new(size, size, new byte[size * size * 4]);
