@@ -31,6 +31,10 @@
     <!-- Reactive / Observable -->
     <PackageVersion Include="System.Reactive" Version="6.0.1" />
 
+    <!-- Settings store: raw ADO.NET SQLite provider (no EF Core — this is a lean shell).
+         Backs SettingsService with a WAL DB shared across shell processes (bevel-gww.5). -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />

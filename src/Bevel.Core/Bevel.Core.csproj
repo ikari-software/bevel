@@ -12,6 +12,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="System.Reactive" />
+    <!-- SQLite-backed settings store (WAL, shared across shell processes; bevel-gww.5). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,14 +1,27 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Data.Sqlite;
 
 namespace Bevel.Core;
 
 /// <summary>
 /// Persistent shell settings per the layered JSON model (01-architecture.md CFG-01..05).
-/// Single source of truth: ~/.config/bevel/settings.json.
-/// Unknown keys are preserved on save (round-trip safe).
+///
+/// P5 (bevel-gww.5): backed by a shared SQLite DB at ~/.config/bevel/settings.db so multiple
+/// shell processes (taskbar, explorer, desktop, core) can each open it and read CONCURRENTLY,
+/// with one-writer safety and a monotonically-incremented <c>version</c> that lets a process
+/// detect external writes (see <see cref="Version"/> / <see cref="ReloadIfChangedAsync"/>).
+///
+/// Storage shape is unchanged: the serialized <c>_raw</c> dictionary (the exact JSON that used to
+/// be settings.json) is stored verbatim in a single-row <c>settings(json)</c> blob, so the typed
+/// model + per-theme overrides round-trip byte-for-byte and unknown keys are preserved. The DB is
+/// just the transport. settings.json is still written on save as a passive human-readable export
+/// (mirrors this repo's beads .jsonl pattern) — the DB is the single source of truth for reads.
+///
+/// Live cross-process propagation is wired to the shell-core broadcast in a LATER phase; this
+/// phase only makes external changes DETECTABLE (poll <see cref="ReloadIfChangedAsync"/>).
 /// </summary>
-public sealed class SettingsService
+public sealed class SettingsService : IDisposable
 {
     private static readonly string DefaultConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
@@ -21,10 +34,20 @@ public sealed class SettingsService
     };
 
     private readonly string _configDir;
-    private readonly string _configPath;
+    private readonly string _configPath; // legacy settings.json: migration source + passive export
+    private readonly string _dbPath;
     private Dictionary<string, JsonElement> _raw = new();
     private BevelSettings _settings = new();
     private readonly Dictionary<string, ThemeOverrides> _themeOverrides = new();
+
+    // Persistent connection: one per process, opened lazily on first Load/Save. Modelling "a
+    // process opens the DB and keeps it open"; disposed with the service. WAL + Busy Timeout are
+    // set on this connection (busy_timeout is per-connection; WAL persists in the DB header).
+    private SqliteConnection? _connection;
+    private int _version; // last-loaded DB version; SaveAsync bumps it, ReloadIfChangedAsync compares
+
+    /// <summary>Raised after <see cref="ReloadIfChangedAsync"/> pulls in an external write.</summary>
+    public event Action? Changed;
 
     public SettingsService() : this(DefaultConfigDir)
     {
@@ -35,10 +58,18 @@ public sealed class SettingsService
     {
         _configDir = configDir;
         _configPath = Path.Combine(configDir, "settings.json");
+        _dbPath = Path.Combine(configDir, "settings.db");
     }
 
     /// <summary>Current settings snapshot.</summary>
     public BevelSettings Current => _settings;
+
+    /// <summary>
+    /// Last-loaded DB change version (monotonic; bumped on every write). A peer process that sees a
+    /// higher version in the DB knows the settings changed underneath it — poll
+    /// <see cref="ReloadIfChangedAsync"/> to pick the change up. 0 until first <see cref="LoadAsync"/>.
+    /// </summary>
+    public int Version => _version;
 
     /// <summary>
     /// Whitelisted overrides for <paramref name="themeId"/> (05-theming.md §1 layer 4),
@@ -47,23 +78,189 @@ public sealed class SettingsService
     public ThemeOverrides ThemeOverridesFor(string themeId)
         => _themeOverrides.TryGetValue(themeId, out var o) ? o : _themeOverrides[themeId] = new ThemeOverrides();
 
-    /// <summary>Load settings from disk, merging with defaults.</summary>
+    /// <summary>Load settings from the DB, merging with defaults; seeds the DB on first run.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
         Directory.CreateDirectory(_configDir);
+        var conn = await OpenAsync(ct).ConfigureAwait(false);
 
-        if (File.Exists(_configPath))
+        // ConfigureAwait(false) throughout: startup calls this as LoadAsync().GetResult() on the
+        // Avalonia UI thread. With the default context-capturing await, a continuation would be
+        // posted back to that blocked UI thread → deadlock (no windows, app ignores SIGTERM;
+        // bevel-zd6). Microsoft.Data.Sqlite's *Async methods complete synchronously so they never
+        // capture a context anyway, but ConfigureAwait(false) is kept on every await as the
+        // belt-and-suspenders guard the deadlock fix demands.
+        var (json, version) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
+
+        if (json is null)
         {
-            // ConfigureAwait(false): startup calls this as LoadAsync().GetResult() on the Avalonia
-            // UI thread. With the default context-capturing await, the continuation would be posted
-            // back to that blocked UI thread → deadlock (no windows, app ignores SIGTERM). Only
-            // bites when the file EXISTS; the first-run path skips the await entirely (bevel-*).
-            var json = await File.ReadAllTextAsync(_configPath, ct).ConfigureAwait(false);
+            // First run: no row yet. Import a legacy settings.json once if present (so users don't
+            // lose settings), otherwise start from defaults — mirroring today's "missing file
+            // yields defaults". Seed the single row at version 1.
+            if (File.Exists(_configPath))
+                json = await File.ReadAllTextAsync(_configPath, ct).ConfigureAwait(false);
+
+            _raw = json is null
+                ? new Dictionary<string, JsonElement>()
+                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
+                  ?? new Dictionary<string, JsonElement>();
+
+            _version = await WriteRowAsync(conn, JsonSerializer.Serialize(_raw, JsonOpts), ct)
+                .ConfigureAwait(false);
+        }
+        else
+        {
             _raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
                    ?? new Dictionary<string, JsonElement>();
+            _version = version;
         }
 
-        // Apply known values, falling back to defaults
+        ApplyRaw();
+    }
+
+    /// <summary>Write current settings to the DB (blob + version bump) in a transaction.</summary>
+    public async Task SaveAsync(CancellationToken ct = default)
+    {
+        var conn = await OpenAsync(ct).ConfigureAwait(false);
+        var json = SerializeRaw();
+        _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+
+        // Passive export: keep a human-readable settings.json mirror (the DB is the source of
+        // truth; nothing reads this file at runtime — see class summary).
+        await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Update a single setting and persist.</summary>
+    public async Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
+    {
+        update(_settings);
+        await SaveAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist.</summary>
+    public async Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
+    {
+        update(ThemeOverridesFor(themeId));
+        await SaveAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// If another process (or instance) bumped the DB <see cref="Version"/> past our last-loaded
+    /// one, re-read the row, refresh <see cref="Current"/> + overrides, raise <see cref="Changed"/>
+    /// and return true. Otherwise a cheap version probe returns false without touching state. This
+    /// is the minimal, additive hook a poll — or the later core broadcast — uses to react to
+    /// external writes.
+    /// </summary>
+    public async Task<bool> ReloadIfChangedAsync(CancellationToken ct = default)
+    {
+        var conn = await OpenAsync(ct).ConfigureAwait(false);
+        var (json, version) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
+        if (json is null || version == _version)
+            return false;
+
+        _raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
+               ?? new Dictionary<string, JsonElement>();
+        _version = version;
+        ApplyRaw();
+        Changed?.Invoke();
+        return true;
+    }
+
+    // ── SQLite plumbing ─────────────────────────────────────────────────────────────────────────
+
+    // Single-row schema: forward-compatible (the whole settings blob lives in one TEXT column, so
+    // new knobs need no migration), plus a monotonic version for external-change detection. The
+    // CHECK(id=1) pins it to exactly one row.
+    private const string CreateTableSql =
+        "CREATE TABLE IF NOT EXISTS settings (" +
+        "  id      INTEGER PRIMARY KEY CHECK(id = 1)," +
+        "  json    TEXT NOT NULL," +
+        "  version INTEGER NOT NULL);";
+
+    private async Task<SqliteConnection> OpenAsync(CancellationToken ct)
+    {
+        if (_connection is { State: System.Data.ConnectionState.Open } open)
+            return open;
+
+        // Journal Mode=WAL: concurrent readers + a single writer (readers never block the writer).
+        // Busy Timeout=3s (Default Timeout is the ADO name): a second writer retries for 3s instead
+        // of throwing "database is locked" immediately.
+        var cs = new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            DefaultTimeout = 3, // seconds; ADO command-level busy retry
+        }.ToString();
+
+        var conn = new SqliteConnection(cs);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        // WAL persists in the DB header (idempotent to re-set); busy_timeout is per-connection.
+        // Commands/readers/transactions are disposed with a *synchronous* `using`: their DisposeAsync
+        // completes synchronously for SQLite, and avoiding an implicit await keeps the deadlock
+        // invariant (every genuine I/O await carries ConfigureAwait(false)) airtight and greppable.
+        using (var pragma = conn.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;";
+            await pragma.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        using (var create = conn.CreateCommand())
+        {
+            create.CommandText = CreateTableSql;
+            await create.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        _connection = conn;
+        return conn;
+    }
+
+    private static async Task<(string? Json, int Version)> ReadRowAsync(SqliteConnection conn, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT json, version FROM settings WHERE id = 1;";
+        using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await reader.ReadAsync(ct).ConfigureAwait(false))
+            return (null, 0);
+        return (reader.GetString(0), reader.GetInt32(1));
+    }
+
+    // Upsert the single row and return the new version: first write (no row) seeds version 1,
+    // every later write increments atomically. Wrapped in a transaction so blob+version move together.
+    private static async Task<int> WriteRowAsync(SqliteConnection conn, string json, CancellationToken ct)
+    {
+        using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        // ON CONFLICT: seed→version 1; subsequent writes→version+1. Handles Save-without-Load too.
+        cmd.CommandText =
+            "INSERT INTO settings (id, json, version) VALUES (1, $json, 1) " +
+            "ON CONFLICT(id) DO UPDATE SET json = excluded.json, version = settings.version + 1 " +
+            "RETURNING version;";
+        cmd.Parameters.AddWithValue("$json", json);
+        var version = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return version;
+    }
+
+    /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).</summary>
+    private string SerializeRaw()
+    {
+        _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId);
+        _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled);
+        _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles);
+        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString());
+        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin);
+        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth);
+        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows);
+        foreach (var (id, overrides) in _themeOverrides)
+            _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, JsonOpts);
+        return JsonSerializer.Serialize(_raw, JsonOpts);
+    }
+
+    /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>
+    private void ApplyRaw()
+    {
         _settings = new BevelSettings
         {
             ThemeId = GetString("themeId") ?? "win2000",
@@ -84,41 +281,6 @@ public sealed class SettingsService
         }
     }
 
-    /// <summary>Write current settings to disk.</summary>
-    public async Task SaveAsync(CancellationToken ct = default)
-    {
-        // Update raw dict from typed settings
-        _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId);
-        _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled);
-        _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles);
-        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString());
-        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin);
-        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth);
-        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows);
-        foreach (var (id, overrides) in _themeOverrides)
-            _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, JsonOpts);
-
-        Directory.CreateDirectory(_configDir);
-        var json = JsonSerializer.Serialize(_raw, JsonOpts);
-        // ConfigureAwait(false) throughout: this service is blocked-on / fire-and-forgotten from
-        // the UI thread; never capture the UI SynchronizationContext (see LoadAsync deadlock note).
-        await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>Update a single setting and persist.</summary>
-    public async Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
-    {
-        update(_settings);
-        await SaveAsync(ct).ConfigureAwait(false);
-    }
-
-    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist.</summary>
-    public async Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
-    {
-        update(ThemeOverridesFor(themeId));
-        await SaveAsync(ct).ConfigureAwait(false);
-    }
-
     private string? GetString(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.String
             ? el.GetString() : null;
@@ -130,6 +292,13 @@ public sealed class SettingsService
     private int? GetInt(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Number
             ? el.GetInt32() : null;
+
+    /// <summary>Close the shared connection (additive; existing callers that never dispose are unaffected).</summary>
+    public void Dispose()
+    {
+        _connection?.Dispose();
+        _connection = null;
+    }
 }
 
 /// <summary>Typed settings model.</summary>
