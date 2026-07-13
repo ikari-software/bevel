@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
 using Avalonia.Media.Imaging;
@@ -27,6 +28,10 @@ public sealed class ShellModel : IDisposable
     private bool _disposed;
     /// <summary>Last known focused window; reconcile keeps this when the snapshot omits focus.</summary>
     private string? _focusedWindowId;
+
+    /// <summary>Decoded window-icon bitmaps keyed by a content hash of the PNG bytes (bevel-gww.8),
+    /// so byte-identical app icons across many windows are decoded once and shared.</summary>
+    private readonly ConcurrentDictionary<long, Bitmap> _windowIconCache = new();
 
     /// <summary>Open foreign windows, one entry per taskbar button. UI-thread-owned.</summary>
     public ObservableCollection<TaskItemViewModel> Windows { get; } = new();
@@ -269,19 +274,47 @@ public sealed class ShellModel : IDisposable
 
     private static readonly TimeSpan ExitAnimation = TimeSpan.FromMilliseconds(160);
 
-    /// <summary>Decodes the window's PNG icon off the UI thread, then assigns it on the UI thread.</summary>
-    private static void LoadWindowIcon(TaskItemViewModel vm, byte[]? png)
+    /// <summary>
+    /// Decodes the window's PNG icon off the UI thread, then assigns it on the UI thread — but only
+    /// once per distinct icon. Many windows of the same app carry byte-identical <c>IconPng</c>, so we
+    /// key decoded bitmaps by a content hash of the PNG and reuse the result: N windows of an app now
+    /// cost ONE decode and share one immutable image source (Avalonia bitmaps are safe to share across
+    /// Image controls). A dedicated in-process cache — not the shared MMF icon pool — because window
+    /// icons are process-local and transient, and the pool is single-writer (the taskbar is a reader in
+    /// split mode, so writing window icons there would be a second writer). See bevel-gww.8.
+    /// </summary>
+    private void LoadWindowIcon(TaskItemViewModel vm, byte[]? png)
     {
         if (png is not { Length: > 0 }) return;
+
+        var key = Fnv1a64(png);
+        if (_windowIconCache.TryGetValue(key, out var cached))
+        {
+            Dispatcher.UIThread.Post(() => vm.IconSource = cached); // already decoded — no thread hop needed
+            return;
+        }
+
         _ = Task.Run(() =>
         {
             try
             {
                 var bmp = new Bitmap(new MemoryStream(png));
-                Dispatcher.UIThread.Post(() => vm.IconSource = bmp);
+                // A near-simultaneous second window with the same icon may also be decoding; TryAdd keeps
+                // the first published bitmap and the loser's copy is simply dropped — both assign a valid image.
+                var winner = _windowIconCache.GetOrAdd(key, bmp);
+                Dispatcher.UIThread.Post(() => vm.IconSource = winner);
             }
             catch (Exception ex) { TaskbarLog.Swallowed("LoadWindowIcon", ex); } // invalid PNG — icon-less
         });
+    }
+
+    /// <summary>FNV-1a 64-bit over the PNG bytes — a cheap, stable content key for the icon cache.</summary>
+    internal static long Fnv1a64(byte[] data)
+    {
+        const ulong offset = 14695981039346656037UL, prime = 1099511628211UL;
+        ulong h = offset;
+        foreach (var b in data) { h ^= b; h *= prime; }
+        return unchecked((long)h);
     }
 
     // ── Programs ────────────────────────────────────────────────────────
