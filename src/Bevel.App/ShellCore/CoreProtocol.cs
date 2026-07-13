@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.App.ShellCore;
@@ -17,26 +18,36 @@ namespace Bevel.App.ShellCore;
 ///     actions and app launches an <c>IWindowManager</c>/<c>IAppEnvironment</c> client turns into RPCs.
 ///
 /// Serialization is plain UTF-8 JSON: the payloads are small and low-frequency (window events, not a
-/// hot loop), and JSON keeps the wire debuggable. Icon PNGs (~1 KB) ride along in the DTOs. A
-/// JsonSerializerContext for NativeAOT is P7's concern; reflection-based STJ is fine under JIT/R2R.
+/// hot loop), and JSON keeps the wire debuggable. Icon PNGs (~1 KB) ride along in the DTOs. It is
+/// source-generated via <see cref="CoreJsonContext"/> (reflection-free, so it survives NativeAOT —
+/// bevel-gww.7); enum-as-string + case-insensitive keep the frames debuggable and version-skew-tolerant.
 /// </summary>
 public static class CoreProtocol
 {
-    /// <summary>Enum-as-string (debuggable frames) + case-insensitive so a field rename on one side
-    /// degrades to a null rather than a hard parse failure across a version skew.</summary>
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
-    public static byte[] Serialize<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, Options);
+    public static byte[] Serialize<T>(T value) =>
+        JsonSerializer.SerializeToUtf8Bytes(value, TypeInfoFor(typeof(T)));
 
     public static T Deserialize<T>(ReadOnlySpan<byte> utf8) =>
-        JsonSerializer.Deserialize<T>(utf8, Options)
+        (T?)JsonSerializer.Deserialize(utf8, TypeInfoFor(typeof(T)))
         ?? throw new InvalidOperationException($"shell-core: null {typeof(T).Name} on the wire");
+
+    private static JsonTypeInfo TypeInfoFor(Type type) =>
+        CoreJsonContext.Default.GetTypeInfo(type)
+        ?? throw new InvalidOperationException($"shell-core: {type.Name} is not registered in CoreJsonContext");
 }
+
+/// <summary>Source-generated JSON metadata for the shell-core wire types (bevel-gww.7). Registering the
+/// three envelopes pulls in their whole payload graph (ForeignWindow / RunningApp / InstalledApp /
+/// PalRect); <c>UseStringEnumConverter</c> keeps enums as debuggable strings without a reflection
+/// converter.</summary>
+[JsonSourceGenerationOptions(
+    PropertyNameCaseInsensitive = true,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    UseStringEnumConverter = true)]
+[JsonSerializable(typeof(CoreEvent))]
+[JsonSerializable(typeof(CoreCommand))]
+[JsonSerializable(typeof(CoreResponse))]
+internal sealed partial class CoreJsonContext : JsonSerializerContext;
 
 /// <summary>Which shell-state change a <see cref="CoreEvent"/> carries.</summary>
 public enum CoreEventKind

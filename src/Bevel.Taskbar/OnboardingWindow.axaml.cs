@@ -20,6 +20,17 @@ public partial class OnboardingWindow : Window
     private readonly IPermissionBroker? _permissionBroker;
     private DispatcherTimer? _permPollTimer;
 
+    // Parameterless constructor for the Avalonia runtime XAML loader / previewer (resolves AVLN3001,
+    // which otherwise fires on every publish and is exactly the reachability class that breaks under
+    // AOT — bevel-gww.7). It ONLY inflates the XAML — it must not run the DI ctor's LoadSettings /
+    // permission-poll logic, which would dereference the unset service. The app always builds this
+    // window through the DI constructor below.
+    public OnboardingWindow()
+    {
+        _settings = null!;
+        InitializeComponent();
+    }
+
     public OnboardingWindow(SettingsService settings, IPermissionBroker? permissionBroker = null)
     {
         InitializeComponent();

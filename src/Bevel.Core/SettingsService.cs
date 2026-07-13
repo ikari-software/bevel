@@ -26,12 +26,9 @@ public sealed class SettingsService : IDisposable
     private static readonly string DefaultConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    // All (de)serialization goes through SettingsJsonContext's JsonTypeInfo overloads (bevel-gww.7):
+    // reflection-free and AOT/trim-clean, while the source-gen options preserve the indented,
+    // case-insensitive, skip-null formatting so the on-disk blob stays byte-compatible.
 
     private readonly string _configDir;
     private readonly string _configPath; // legacy settings.json: migration source + passive export
@@ -102,15 +99,15 @@ public sealed class SettingsService : IDisposable
 
             _raw = json is null
                 ? new Dictionary<string, JsonElement>()
-                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
+                : JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
                   ?? new Dictionary<string, JsonElement>();
 
-            _version = await WriteRowAsync(conn, JsonSerializer.Serialize(_raw, JsonOpts), ct)
+            _version = await WriteRowAsync(conn, JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement), ct)
                 .ConfigureAwait(false);
         }
         else
         {
-            _raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
+            _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
                    ?? new Dictionary<string, JsonElement>();
             _version = version;
         }
@@ -158,7 +155,7 @@ public sealed class SettingsService : IDisposable
         if (json is null || version == _version)
             return false;
 
-        _raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
+        _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
                ?? new Dictionary<string, JsonElement>();
         _version = version;
         ApplyRaw();
@@ -246,16 +243,16 @@ public sealed class SettingsService : IDisposable
     /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).</summary>
     private string SerializeRaw()
     {
-        _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId);
-        _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled);
-        _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles);
-        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString());
-        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin);
-        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth);
-        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows);
+        _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId, SettingsJsonContext.Default.String);
+        _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled, SettingsJsonContext.Default.Boolean);
+        _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
+        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
+        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
+        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
-            _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, JsonOpts);
-        return JsonSerializer.Serialize(_raw, JsonOpts);
+            _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
+        return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
     }
 
     /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>
@@ -277,7 +274,7 @@ public sealed class SettingsService : IDisposable
         foreach (var (key, el) in _raw)
         {
             if (key.StartsWith("theme:", StringComparison.Ordinal) && el.ValueKind == JsonValueKind.Object)
-                _themeOverrides[key["theme:".Length..]] = el.Deserialize<ThemeOverrides>(JsonOpts) ?? new ThemeOverrides();
+                _themeOverrides[key["theme:".Length..]] = el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
         }
     }
 

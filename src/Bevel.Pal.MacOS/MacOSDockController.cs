@@ -164,7 +164,10 @@ public sealed class MacOSDockController : IDockController, IDisposable
         try
         {
             Directory.CreateDirectory(MarkerDir);
-            File.WriteAllText(MarkerFile, JsonSerializer.Serialize(new { autohide = originalAutoHide }));
+            // Hand-write the one-field marker instead of serializing an anonymous type: anonymous types
+            // need reflection-based serialization, which trims away under NativeAOT (bevel-gww.7). The
+            // reader parses this back via JsonDocument (reflection-free).
+            File.WriteAllText(MarkerFile, $"{{\"autohide\":{(originalAutoHide ? "true" : "false")}}}");
         }
         catch (Exception ex)
         {

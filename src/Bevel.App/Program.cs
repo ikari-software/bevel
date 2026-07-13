@@ -155,12 +155,13 @@ internal static class Program
             [LauncherControl.TokenEnv] = Convert.ToHexString(controlNonce),
         };
 
-        // Dependency order: the shell-core owner (brings up the helper + owns window/app state) first,
-        // then the UI roles that are its clients. Desktop/Explorer slot in here once their split paths
-        // are exercised; core + taskbar is the proven, integration-tested pair.
+        // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
+        // first, then the UI surfaces — desktop behind, taskbar in front (mirroring the all-in-one
+        // creation order). Explorer stays on-demand (a window the user opens), not a supervised surface.
         IRoleProcess[] processes =
         {
             new RoleProcess(ShellRole.Core, CreateRoleStartInfo(ShellRole.Core, args, childEnv)),
+            new RoleProcess(ShellRole.Desktop, CreateRoleStartInfo(ShellRole.Desktop, args, childEnv)),
             new RoleProcess(ShellRole.Taskbar, CreateRoleStartInfo(ShellRole.Taskbar, args, childEnv)),
         };
 
@@ -216,7 +217,7 @@ internal static class Program
     {
         var processPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("Cannot determine process path to launch role processes.");
-        var entryAssemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
+        var entryAssemblyPath = EntryAssemblyLocation();
 
         var childArgs = launcherArgs
             .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase))
@@ -233,6 +234,13 @@ internal static class Program
 
         return startInfo;
     }
+
+    // Assembly.Location is empty under single-file / NativeAOT (IL3000) — which is exactly the signal
+    // the relaunch path wants: no side-by-side managed DLL to re-invoke through `dotnet`, so the empty
+    // string flows to CreateRestartStartInfo, which then launches the native ProcessPath directly.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000",
+        Justification = "Empty Location under single-file/AOT is handled: relaunch falls back to ProcessPath.")]
+    private static string EntryAssemblyLocation() => Assembly.GetEntryAssembly()?.Location ?? "";
 
     private static string RoleToArg(ShellRole role) => role switch
     {
@@ -258,7 +266,7 @@ internal static class Program
 
         try
         {
-            var entryAssemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
+            var entryAssemblyPath = EntryAssemblyLocation();
             var startInfo = CreateRestartStartInfo(processPath, entryAssemblyPath, args);
             startInfo.WorkingDirectory = !string.IsNullOrEmpty(entryAssemblyPath)
                 ? Path.GetDirectoryName(entryAssemblyPath) ?? startInfo.WorkingDirectory

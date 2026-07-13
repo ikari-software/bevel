@@ -11,6 +11,10 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
+    <!-- Compile all XAML bindings by default (bevel-gww.7): reflection bindings pull in the
+         reflection-binding machinery that NativeAOT trims, so compiled bindings are the AOT-safe
+         posture. Non-Avalonia projects ignore this. Every bound view needs an x:DataType. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
 </Project>

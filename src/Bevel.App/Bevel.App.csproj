@@ -9,11 +9,17 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
-  <!-- ReadyToRun: crossgen IL->native at publish for faster cold start and more OS-shareable
-       (read-only) code pages across the multi-role processes. Guarded on a RID so a plain build
-       or RID-less publish is unaffected; CI already publishes self-contained per-RID. This is the
-       low-risk interim step (bevel phase 1) — PublishAot supersedes it once compiled bindings land. -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+  <!-- Native publish strategy (RID-guarded, so a plain/RID-less build is unaffected).
+       Opt into NativeAOT with -p:BevelPublishAot=true (bevel-gww.7): a single Mach-O, no JIT, the
+       real per-process RSS win. The prerequisites are in place — compiled bindings by default, JSON
+       source-gen, DllImport interop (AOT-fine). InvariantGlobalization drops ICU. Absent the opt-in,
+       ReadyToRun stays the default: crossgen IL->native for faster cold start and OS-shareable
+       read-only code pages across the multi-role processes (the low-risk interim step). -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(BevelPublishAot)' == 'true'">
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(BevelPublishAot)' != 'true'">
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
