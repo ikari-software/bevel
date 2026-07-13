@@ -54,7 +54,11 @@ public sealed class SettingsService
 
         if (File.Exists(_configPath))
         {
-            var json = await File.ReadAllTextAsync(_configPath, ct);
+            // ConfigureAwait(false): startup calls this as LoadAsync().GetResult() on the Avalonia
+            // UI thread. With the default context-capturing await, the continuation would be posted
+            // back to that blocked UI thread → deadlock (no windows, app ignores SIGTERM). Only
+            // bites when the file EXISTS; the first-run path skips the await entirely (bevel-*).
+            var json = await File.ReadAllTextAsync(_configPath, ct).ConfigureAwait(false);
             _raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts)
                    ?? new Dictionary<string, JsonElement>();
         }
@@ -69,6 +73,7 @@ public sealed class SettingsService
                 ? was : WorkAreaStrategy.Nudge,
             RunAtLogin = GetBool("runAtLogin") ?? false,
             TaskbarButtonWidth = GetInt("taskbarButtonWidth") ?? 160,
+            TaskbarRows = GetInt("taskbarRows") ?? 1,
         };
 
         _themeOverrides.Clear();
@@ -89,26 +94,29 @@ public sealed class SettingsService
         _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString());
         _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin);
         _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth);
+        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, JsonOpts);
 
         Directory.CreateDirectory(_configDir);
         var json = JsonSerializer.Serialize(_raw, JsonOpts);
-        await File.WriteAllTextAsync(_configPath, json, ct);
+        // ConfigureAwait(false) throughout: this service is blocked-on / fire-and-forgotten from
+        // the UI thread; never capture the UI SynchronizationContext (see LoadAsync deadlock note).
+        await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
     }
 
     /// <summary>Update a single setting and persist.</summary>
     public async Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
     {
         update(_settings);
-        await SaveAsync(ct);
+        await SaveAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist.</summary>
     public async Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
     {
         update(ThemeOverridesFor(themeId));
-        await SaveAsync(ct);
+        await SaveAsync(ct).ConfigureAwait(false);
     }
 
     private string? GetString(string key)
@@ -139,6 +147,9 @@ public sealed class BevelSettings
 
     /// <summary>M2: fixed width (logical px) of taskbar window buttons; 0 = fit-to-content.</summary>
     public int TaskbarButtonWidth { get; set; } = 160;
+
+    /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
+    public int TaskbarRows { get; set; } = 1;
 }
 
 /// <summary>M2: taskbar work-area coexistence strategy.</summary>
