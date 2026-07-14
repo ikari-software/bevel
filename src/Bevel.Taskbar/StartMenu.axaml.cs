@@ -1,7 +1,9 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Bevel.Pal.Abstractions;
 
@@ -42,6 +44,7 @@ public partial class StartMenu : UserControl
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         BuildStaticSubmenus();
+        WireHoverToOpen();
     }
 
     public bool IsOpen => MenuPopup.IsOpen;
@@ -62,6 +65,34 @@ public partial class StartMenu : UserControl
 
     /// <summary>Closes the menu; the Menu's own cascade popups close with it.</summary>
     public void Close() => MenuPopup.IsOpen = false;
+
+    // ── Hover-to-open ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Makes the top-level rows cascade on hover, the way the real Start menu does. Avalonia's
+    /// <see cref="Menu"/> is modelled as a menu BAR: its top-level items stay collapsed until a
+    /// CLICK puts the bar into "open mode", after which hover switches between them. That's wrong
+    /// for a Start menu — the whole thing is already an open popup, so each row should behave like
+    /// a submenu item and open the instant the pointer arrives, with no click first. We drive that
+    /// ourselves on <see cref="InputElement.PointerEntered"/> of every top-level item.
+    /// </summary>
+    private void WireHoverToOpen()
+    {
+        foreach (var top in ItemsMenu.Items.OfType<MenuItem>())
+            top.PointerEntered += OnTopLevelItemEntered;
+    }
+
+    /// <summary>Opens the hovered row's cascade (if it has one) and collapses every sibling, so only
+    /// one submenu shows at a time — including collapsing an open cascade when the pointer moves onto
+    /// a leaf row (Help, Run, Shut Down…). Setting <see cref="MenuItem.IsSubMenuOpen"/> directly is
+    /// what the built-in handler only does once the bar is already open; doing it on first hover is
+    /// the whole fix.</summary>
+    private void OnTopLevelItemEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is not MenuItem entered) return;
+        foreach (var top in ItemsMenu.Items.OfType<MenuItem>())
+            top.IsSubMenuOpen = ReferenceEquals(top, entered) && top.HasSubMenu;
+    }
 
     // ── Cascading groups ───────────────────────────────────────────────
 

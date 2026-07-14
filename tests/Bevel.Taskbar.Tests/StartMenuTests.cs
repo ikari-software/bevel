@@ -1,6 +1,7 @@
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
@@ -33,6 +34,52 @@ public class StartMenuTests
         menu.Close();
         Dispatcher.UIThread.RunJobs();
         Assert.False(menu.IsOpen);
+    }
+
+    /// <summary>Raises a real PointerEntered on <paramref name="item"/>, as the mouse would live.</summary>
+    private static void HoverEnter(MenuItem item) =>
+        item.RaiseEvent(new PointerEventArgs(
+            InputElement.PointerEnteredEvent,
+            item,
+            new Pointer(0, PointerType.Mouse, isPrimary: true),
+            item,
+            default,
+            0,
+            new PointerPointProperties(),
+            KeyModifiers.None));
+
+    [AvaloniaFact]
+    public void Hovering_a_top_level_group_opens_its_cascade_without_a_click()
+    {
+        var menu = new StartMenu();
+        var programs = menu.FindControl<MenuItem>("ProgramsItem")!;
+        var settings = menu.FindControl<MenuItem>("SettingsItem")!;
+        Assert.False(programs.IsSubMenuOpen);
+
+        // First hover — no prior click — must cascade immediately (the menu-BAR default would not).
+        HoverEnter(programs);
+        Assert.True(programs.IsSubMenuOpen);
+
+        // Moving to a sibling switches the open cascade (one at a time).
+        HoverEnter(settings);
+        Assert.True(settings.IsSubMenuOpen);
+        Assert.False(programs.IsSubMenuOpen);
+    }
+
+    [AvaloniaFact]
+    public void Hovering_a_leaf_row_collapses_an_open_cascade()
+    {
+        var menu = new StartMenu();
+        var programs = menu.FindControl<MenuItem>("ProgramsItem")!;
+        var help = menu.FindControl<MenuItem>("HelpItem")!;
+
+        HoverEnter(programs);
+        Assert.True(programs.IsSubMenuOpen);
+
+        // A leaf has no submenu, so hovering it must close the previously-open group.
+        HoverEnter(help);
+        Assert.False(programs.IsSubMenuOpen);
+        Assert.False(help.IsSubMenuOpen);
     }
 
     [AvaloniaFact]
