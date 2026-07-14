@@ -18,6 +18,15 @@ public partial class ClockWidget : UserControl
     public ClockWidget()
     {
         InitializeComponent();
+
+        // Anchor the tooltip ABOVE the clock, not at the pointer (Avalonia's default). The taskbar
+        // sits at the screen bottom, so a pointer-placed tooltip lands under the cursor — moving onto
+        // it fires PointerExited on the clock, which hides the tooltip, which puts the cursor back on
+        // the clock, which reshows it: a flicker loop. Top placement keeps it clear of the cursor,
+        // matching the task-button tooltips' Placement=Top (bevel-nji follow-up).
+        ToolTip.SetPlacement(TimeDisplay, PlacementMode.Top);
+        ToolTip.SetVerticalOffset(TimeDisplay, -2);
+
         UpdateTime();
 
         // Double-click deep-links to System Settings → Date & Time.

@@ -129,6 +129,18 @@ public sealed class ShellModel : IDisposable
             .OrderBy(w => slotOf.TryGetValue(w.Id.Value, out var s) ? s : int.MaxValue)
             .ToList();
 
+        // Reconcile is the 2s backstop; log only when it actually changes the button SET (add/remove),
+        // not on every no-op tick — a set delta here is what reflows the strip.
+        var desiredIds = new HashSet<string>(desired.Select(w => w.Id.Value));
+        var added = desired.Where(w => !slotOf.ContainsKey(w.Id.Value)).ToList();
+        var removed = Windows.Where(vm => !vm.IsClosing && !desiredIds.Contains(vm.Id.Value)).ToList();
+        if (added.Count > 0 || removed.Count > 0)
+        {
+            TaskbarLog.Debug($"RECONCILE (2s backstop) live={live.Count} desired={desired.Count} " +
+                $"+[{string.Join(", ", added.Select(w => $"'{w.Title}'/{w.Id.Value}"))}] " +
+                $"-[{string.Join(", ", removed.Select(vm => $"'{vm.Title}'/{vm.Id.Value}"))}]");
+        }
+
         // Fold onto the shared keyed in-place diff. onRemove: BeginExit gives vanished windows the
         // XP exit animation and defers the actual removal; update: revive + refresh a survivor in
         // place (a re-add of a closing id revives its exact VM/container instead of rebuilding).
@@ -165,16 +177,22 @@ public sealed class ShellModel : IDisposable
 
     private void OnWindowOpened(object? sender, ForeignWindow w) => Post(() =>
     {
+        TaskbarLog.Debug($"event=WindowOpened {Meta(w)}");
         Upsert(w);
         if (w.IsFocused)
             ApplyExclusiveFocus(w.Id.Value);
     });
 
     /// <summary>Title/minimize/frame updates only — focus is not applied here.</summary>
-    private void OnWindowChanged(object? sender, ForeignWindow w) => Post(() => Upsert(w));
+    private void OnWindowChanged(object? sender, ForeignWindow w) => Post(() =>
+    {
+        TaskbarLog.Debug($"event=WindowChanged {Meta(w)}");
+        Upsert(w);
+    });
 
     private void OnForegroundChanged(object? sender, ForeignWindow w) => Post(() =>
     {
+        TaskbarLog.Debug($"event=ForegroundChanged {Meta(w)}");
         Upsert(w);
         if (w.IsFocused)
             ApplyExclusiveFocus(w.Id.Value);
@@ -191,6 +209,7 @@ public sealed class ShellModel : IDisposable
 
     private void OnWindowClosed(object? sender, ForeignWindow w) => Post(() =>
     {
+        TaskbarLog.Debug($"event=WindowClosed {Meta(w)}");
         if (_focusedWindowId == w.Id.Value)
             ApplyExclusiveFocus(null);
         Remove(w.Id.Value);
@@ -206,7 +225,10 @@ public sealed class ShellModel : IDisposable
         if (vm is not null)
             ApplyUpdate(vm, w);
         else if (_windows is not null)
+        {
+            TaskbarLog.Debug($"ADD button (Upsert) {Meta(w)} -> count {Windows.Count + 1}");
             Windows.Add(CreateItem(w));
+        }
     }
 
     /// <summary>Single-window remove for the instant event path — hands the button to the same
@@ -214,7 +236,10 @@ public sealed class ShellModel : IDisposable
     private void Remove(string id)
     {
         if (Find(id) is { } vm)
+        {
+            TaskbarLog.Debug($"REMOVE button (event) id={id} title='{vm.Title}' -> exit-anim");
             BeginExit(vm, () => Windows.Remove(vm));
+        }
     }
 
     /// <summary>A window earns a button once it has at least a title or an app id.</summary>
@@ -360,6 +385,10 @@ public sealed class ShellModel : IDisposable
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
+
+    /// <summary>Compact one-line metadata for a window event/mutation (BEVEL_DEBUG_TASKBAR trace).</summary>
+    private static string Meta(ForeignWindow w) =>
+        $"id={w.Id.Value} title='{w.Title}' app='{w.AppId}' min={w.IsMinimized} focus={w.IsFocused} earns={EarnsButton(w)}";
 
     private static void Post(Action action) => Dispatcher.UIThread.Post(action);
 

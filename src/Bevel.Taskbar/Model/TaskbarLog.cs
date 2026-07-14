@@ -15,4 +15,16 @@ internal static class TaskbarLog
     /// <summary>Records an exception that was caught and swallowed to keep the shell alive.</summary>
     public static void Swallowed(string context, Exception ex) =>
         Trace.TraceWarning($"[Bevel.Taskbar] swallowed in {context}: {ex.GetType().Name}: {ex.Message}");
+
+    /// <summary>Opt-in (BEVEL_DEBUG_TASKBAR=1) trace of every window-model reason and every button
+    /// collection change, so a live "phantom button / reflow" can be diagnosed from the log rather
+    /// than by chasing transient screenshots. Written to stderr so it lands in the process log.</summary>
+    private static readonly bool DebugEnabled =
+        Environment.GetEnvironmentVariable("BEVEL_DEBUG_TASKBAR") == "1";
+
+    public static void Debug(string message)
+    {
+        if (DebugEnabled)
+            Console.Error.WriteLine($"[TASKBAR] {message}");
+    }
 }

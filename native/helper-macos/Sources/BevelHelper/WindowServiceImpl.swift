@@ -993,6 +993,21 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             if cgID == 0 { return }
         }
 
+        // Apply the SAME app-eligibility gate the snapshot path (`describe`) uses: only apps with a
+        // regular activation policy own taskbar windows. The AX-observer stream otherwise broadcasts
+        // an `.opened`/change for EVERY window an observed app creates — including the tooltip/menu
+        // popups our OWN `.accessory` shell chrome (taskbar, desktop) spawns on hover. Those are a
+        // flood of empty-title 'Avalonia Application' windows that `describe` correctly drops
+        // (activationPolicy != .regular), so without this guard the two paths disagree: the event
+        // stream registers each popup as a phantom taskbar button (shifting the bar and dismissing
+        // the very tooltip) until the 2s snapshot reconcile prunes it (bevel-nji follow-up).
+        var eventPID: pid_t = 0
+        if AXUIElementGetPid(elementForBuild, &eventPID) == .success,
+           let app = NSRunningApplication(processIdentifier: eventPID),
+           app.activationPolicy != .regular {
+            return
+        }
+
         // Build a TaskbarWindow for this CGWindowID from the current store.
         stateLock.lock()
         let win = windowStore[cgID]

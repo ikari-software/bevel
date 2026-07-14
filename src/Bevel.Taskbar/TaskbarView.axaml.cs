@@ -124,6 +124,7 @@ public partial class TaskbarView : UserControl
         Dispatcher.UIThread.Post(() =>
         {
             _layoutQueued = false;
+            TaskbarLog.Debug($"LAYOUT reflow: {_vm?.Windows.Count ?? 0} buttons");
             LayoutButtons();
             WireAllTaskButtons();
         }, DispatcherPriority.Background);
@@ -131,8 +132,19 @@ public partial class TaskbarView : UserControl
 
     private void OnWindowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        TaskbarLog.Debug($"Windows.CollectionChanged action={e.Action} " +
+            $"new=[{Titles(e.NewItems)}] old=[{Titles(e.OldItems)}] -> HideTooltip + QueueLayout");
         HideTaskbarTooltip();
         QueueLayout();
+    }
+
+    private static string Titles(System.Collections.IList? items)
+    {
+        if (items is null) return "";
+        var names = new System.Collections.Generic.List<string>();
+        foreach (var it in items)
+            names.Add(it is TaskItemViewModel vm ? $"'{vm.Title}'" : it?.ToString() ?? "null");
+        return string.Join(", ", names);
     }
 
     /// <summary>Win2000 hover delay (SPI_GETMOUSEHOVERTIME default).</summary>
@@ -209,6 +221,7 @@ public partial class TaskbarView : UserControl
     private void ShowTaskbarTooltip(Control anchor, TaskItemViewModel vm)
     {
         if (anchor is not ToggleButton button) return;
+        TaskbarLog.Debug($"TOOLTIP show for '{vm.Title}' (open={TooltipPopup.IsOpen}->true)");
         TaskbarTooltipText.Text = vm.StatusText;
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
@@ -216,6 +229,8 @@ public partial class TaskbarView : UserControl
 
     private void HideTaskbarTooltip()
     {
+        if (TooltipPopup.IsOpen)
+            TaskbarLog.Debug("TOOLTIP hide (open=true->false)");
         _tooltipTimer?.Stop();
         _tooltipAnchor = null;
         TooltipPopup.IsOpen = false;
