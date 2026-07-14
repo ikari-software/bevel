@@ -92,6 +92,18 @@ public partial class App : Application
             // its own window. Only the taskbar role resolves the window manager / app environment, so
             // in the other roles those singletons (and the helper) are never constructed.
             var role = Role;
+
+            // Split-mode chrome (the taskbar and desktop processes) is the environment, not an app:
+            // it must have no Dock tile and stay out of Cmd-Tab. Marking the process .accessory also
+            // fixes bevel-nji — the Swift helper enumerates only .regular apps' windows, so the
+            // chrome's own transient popups (tooltips, menus) stop leaking into the taskbar's
+            // foreign-window list (where they registered as windows, shifted the bar, and dismissed
+            // themselves). NOT applied to All: that single process also hosts the file-manager window,
+            // which SHOULD appear in the taskbar, and activation policy can't distinguish it from a
+            // tooltip in the same process.
+            if (OperatingSystem.IsMacOS() && role is ShellRole.Taskbar or ShellRole.Desktop)
+                Pal.MacOS.ShellActivation.HideFromDock();
+
             if (role is ShellRole.All or ShellRole.Desktop)
                 CreateDesktopSurface(desktop);
             if (role is ShellRole.All or ShellRole.Taskbar)
