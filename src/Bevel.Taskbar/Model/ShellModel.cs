@@ -162,10 +162,13 @@ public sealed class ShellModel : IDisposable
     /// </summary>
     private void ApplyFocusFromSnapshot(IReadOnlyList<ForeignWindow> live, HashSet<string> liveIds)
     {
-        var focusedInSnap = live.Where(w => w.IsFocused).Select(w => $"'{w.Title}'").ToList();
-        var minimizedInSnap = live.Where(w => w.IsMinimized).Select(w => $"'{w.Title}'").ToList();
-        TaskbarLog.Debug($"SNAPSHOT focus=[{string.Join(", ", focusedInSnap)}] " +
-            $"minimized=[{string.Join(", ", minimizedInSnap)}]");
+        if (TaskbarLog.IsEnabled)
+        {
+            var focusedInSnap = live.Where(w => w.IsFocused).Select(w => $"'{w.Title}'").ToList();
+            var minimizedInSnap = live.Where(w => w.IsMinimized).Select(w => $"'{w.Title}'").ToList();
+            TaskbarLog.Debug($"SNAPSHOT focus=[{string.Join(", ", focusedInSnap)}] " +
+                $"minimized=[{string.Join(", ", minimizedInSnap)}]");
+        }
         var snapshotFocus = live.FirstOrDefault(w => w.IsFocused)?.Id.Value;
         if (snapshotFocus is not null)
         {

@@ -166,9 +166,10 @@ internal static class Program
         // everything and muddies focus/enumeration while we work on the bar. The core is still
         // required (the taskbar is an IPC client of it). Set BEVEL_ENABLE_DESKTOP=1 to bring the
         // desktop back.
-        var roles = new List<ShellRole> { ShellRole.Core, ShellRole.Taskbar };
-        if (Environment.GetEnvironmentVariable("BEVEL_ENABLE_DESKTOP") == "1")
-            roles.Insert(1, ShellRole.Desktop); // behind the taskbar, mirroring all-in-one order
+        // Desktop (when enabled) sits at index 1 — behind the taskbar, mirroring all-in-one order.
+        ShellRole[] roles = Environment.GetEnvironmentVariable("BEVEL_ENABLE_DESKTOP") == "1"
+            ? [ShellRole.Core, ShellRole.Desktop, ShellRole.Taskbar]
+            : [ShellRole.Core, ShellRole.Taskbar];
 
         var processes = roles
             .Select(r => (IRoleProcess)new RoleProcess(r, CreateRoleStartInfo(r, args, childEnv)))

@@ -22,6 +22,11 @@ internal static class TaskbarLog
     private static readonly bool DebugEnabled =
         Environment.GetEnvironmentVariable("BEVEL_DEBUG_TASKBAR") == "1";
 
+    /// <summary>True when BEVEL_DEBUG_TASKBAR tracing is on. Guard callers that must build a
+    /// message from non-trivial work (LINQ projections, joins) so that work is skipped when
+    /// tracing is off — <see cref="Debug"/> alone still allocates its argument first.</summary>
+    internal static bool IsEnabled => DebugEnabled;
+
     public static void Debug(string message)
     {
         if (DebugEnabled)

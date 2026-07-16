@@ -391,7 +391,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     private func describe(
         entry: [String: Any],
         axMap: [CGWindowID: AXUIElement],
-        frontmostPID: pid_t?
+        effectiveFrontmost: pid_t?
     ) -> Bevel_Helper_V1_TaskbarWindow? {
         guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID else { return nil }
         let pid = entry[kCGWindowOwnerPID as String] as? pid_t ?? 0
@@ -443,11 +443,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             // are exempt: some apps (e.g. Jump Desktop) report a non-standard subrole such as
             // AXDialog for a *miniaturized* window, but it was a real taskbar window and must
             // stay listed while minimized (bevel-m2.3) — otherwise its button vanishes on minimize.
-            var subroleVal: CFTypeRef?
-            if !win.isMinimized,
-               AXUIElementCopyAttributeValue(axWin, kAXSubroleAttribute as CFString, &subroleVal) == .success,
-               let subrole = subroleVal as? String,
-               subrole != kAXStandardWindowSubrole {
+            if !win.isMinimized, let subrole = nonStandardSubrole(of: axWin) {
                 dbg("drop cg=\(cgID) '\(win.appName)' reason=subrole=\(subrole)")
                 return nil
             }
@@ -485,7 +481,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             cgID: cgID,
             pid: pid,
             axMap: axMap,
-            frontmostPID: frontmostPID
+            effectiveFrontmost: effectiveFrontmost
         )
 
         // Drop phantom windows: a layer-0 CGWindow with a zero-area frame is not a
@@ -536,6 +532,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return title == "Bevel Desktop" || title == "Bevel Taskbar"
     }
 
+    /// If `element` exposes a subrole that is NOT the standard document-window subrole, return it
+    /// (for logging); otherwise nil. A missing or unreadable subrole counts as standard (nil) — the
+    /// caller keeps the window. Centralizes the AXSubrole read shared by `describe()`,
+    /// `isBevelTransient()`, and the AX-event fast-path so the three checks cannot drift.
+    private func nonStandardSubrole(of element: AXUIElement) -> String? {
+        var subroleVal: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleVal) == .success,
+              let subrole = subroleVal as? String,
+              subrole != kAXStandardWindowSubrole else { return nil }
+        return subrole
+    }
+
     /// Avalonia tooltip/menu popups from the shell process are layer-0 but not standard
     /// document windows. Without this filter, hovering a taskbar button spawns a tooltip
     /// window that becomes a phantom taskbar button and reflows the strip.
@@ -558,43 +566,39 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return frameWidth == 0 || frameHeight == 0
                 || (frameWidth < 320 && frameHeight < 160)
         }
-        var subroleVal: CFTypeRef?
-        if AXUIElementCopyAttributeValue(axWin, kAXSubroleAttribute as CFString, &subroleVal) == .success,
-           let subrole = subroleVal as? String,
-           subrole != kAXStandardWindowSubrole {
-            return true
-        }
-        return false
+        return nonStandardSubrole(of: axWin) != nil
     }
 
-    /// Pressed-state: the focused window of the effective frontmost *foreign* app.
-    /// When Bevel itself is frontmost (taskbar interaction), keep projecting the last
-    /// foreign frontmost app so the strip still shows which real window is active.
-    private func isTaskbarFocusedWindow(
-        cgID: CGWindowID,
-        pid: pid_t,
-        axMap: [CGWindowID: AXUIElement],
-        frontmostPID: pid_t?
-    ) -> Bool {
-        // "Foreign frontmost" must be a REAL Dock app (.regular activation policy) — not our own
-        // shell chrome. In the split shell the taskbar/desktop run as separate .accessory processes;
-        // keying off `parentPID` (the headless core) misclassified them as foreign, so every taskbar
-        // interaction reset the projection and the snapshot reported nothing focused (SNAPSHOT
-        // focus=[]), collapsing the pressed state. Activation policy is the split-safe signal: when a
-        // .regular app is frontmost, track it; when our .accessory chrome (or nothing) is frontmost,
-        // keep projecting the last real app so its button stays pressed (bevel-nji follow-up).
+    /// Resolve the effective frontmost *foreign* app for the current snapshot: the frontmost app
+    /// when it is a REAL Dock app (.regular activation policy), else the last such app so our own
+    /// .accessory shell chrome (taskbar/desktop) becoming frontmost does not clear the projection.
+    ///
+    /// In the split shell the taskbar/desktop run as separate .accessory processes; keying off
+    /// `parentPID` (the headless core) misclassified them as foreign, so every taskbar interaction
+    /// reset the projection and the snapshot reported nothing focused (SNAPSHOT focus=[]),
+    /// collapsing the pressed state. Activation policy is the split-safe signal (bevel-nji
+    /// follow-up). Computed ONCE per snapshot — the NSRunningApplication policy lookup and the
+    /// shared-state update must not run per window.
+    private func effectiveForeignFrontmost(_ frontmostPID: pid_t?) -> pid_t? {
         let frontmostIsForeign: Bool = frontmostPID.map { fpid in
             NSRunningApplication(processIdentifier: fpid)?.activationPolicy == .regular
         } ?? false
-
-        // Update + read the shared last-foreign-frontmost under the lock. NSRunningApplication is
-        // resolved ABOVE, outside the lock, and the AX call in isFocusedWindow runs BELOW it.
-        let effectiveFrontmost: pid_t? = stateLock.withLock {
+        return stateLock.withLock {
             if frontmostIsForeign, let frontmostPID {
                 lastForeignFrontmostPID = frontmostPID
             }
             return frontmostIsForeign ? frontmostPID : lastForeignFrontmostPID
         }
+    }
+
+    /// Pressed-state: true when `cgID` is the focused window of the snapshot's effective frontmost
+    /// foreign app (resolved once via `effectiveForeignFrontmost`).
+    private func isTaskbarFocusedWindow(
+        cgID: CGWindowID,
+        pid: pid_t,
+        axMap: [CGWindowID: AXUIElement],
+        effectiveFrontmost: pid_t?
+    ) -> Bool {
         guard let effectiveFrontmost, pid == effectiveFrontmost else { return false }
         return isFocusedWindow(cgID: cgID, axMap: axMap, pid: pid)
     }
@@ -617,7 +621,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let pidSet = Set(entries.compactMap { $0[kCGWindowOwnerPID as String] as? pid_t })
         let axMap = correlateAXElements(forPIDs: pidSet, entries: entries)
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        return entries.compactMap { describe(entry: $0, axMap: axMap, frontmostPID: frontmostPID) }
+        let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
+        return entries.compactMap { describe(entry: $0, axMap: axMap, effectiveFrontmost: effectiveFrontmost) }
     }
 
     // MARK: - App icon
@@ -1116,6 +1121,17 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         var cgID: CGWindowID = 0
         guard _AXUIElementGetWindow(focusedAX, &cgID) == .success, cgID != 0 else { return }
 
+        guard let change = focusedWindowChange(cgID: cgID, element: focusedAX) else { return }
+        dbg("activate-focus pid=\(pid) cg=\(cgID) '\(change.window.appName)' title='\(change.window.title)'")
+        broadcast(change)
+    }
+
+    /// Build a `.focused` WindowChange for `cgID`, preferring the enumerated `windowStore`
+    /// descriptor (already fully filtered) and falling back to an eligibility-gated
+    /// `buildTaskbarWindowFromAX`. Shared by the app-activation hook and any caller that has
+    /// already resolved the focused window's `(cgID, element)`. Returns nil when the window is
+    /// ineligible — nothing to broadcast.
+    private func focusedWindowChange(cgID: CGWindowID, element: AXUIElement) -> Bevel_Helper_V1_WindowChange? {
         stateLock.lock()
         let stored = windowStore[cgID]
         stateLock.unlock()
@@ -1126,14 +1142,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             var updated = stored
             updated.isFocused = true
             change.window = updated
-        } else if var fresh = buildTaskbarWindowFromAX(element: focusedAX, cgID: cgID) {
+        } else if var fresh = buildTaskbarWindowFromAX(element: element, cgID: cgID) {
             fresh.isFocused = true
             change.window = fresh
         } else {
-            return
+            return nil
         }
-        dbg("activate-focus pid=\(pid) cg=\(cgID) '\(change.window.appName)' title='\(change.window.title)'")
-        broadcast(change)
+        return change
     }
 
     /// Build a minimal TaskbarWindow from an AXUIElement + CGWindowID.
@@ -1162,10 +1177,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // phantom *focused* taskbar button that steals the pressed state from the real window it
         // shadows (the multi-window pressed-state bug). A brand-new real window still passes here
         // and the fast-path shows it instantly; the 500ms snapshot reconciles everything else.
-        var subroleVal: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleVal) == .success,
-           let subrole = subroleVal as? String,
-           subrole != kAXStandardWindowSubrole {
+        if let subrole = nonStandardSubrole(of: element) {
             dbg("event-drop cg=\(cgID) '\(win.appName)' reason=subrole=\(subrole)")
             return nil
         }
@@ -1390,11 +1402,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // path carries icons + minimized state (bevel-m2.1 / bevel-m2.3).
         let axMap = correlateAXElements(forPIDs: currentPIDs.subtracting([ownPID]), entries: entries)
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
 
         var newStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
         for entry in entries {
             guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID,
-                  let win = describe(entry: entry, axMap: axMap, frontmostPID: frontmostPID)
+                  let win = describe(entry: entry, axMap: axMap, effectiveFrontmost: effectiveFrontmost)
             else { continue }
             newStore[cgID] = win
         }
