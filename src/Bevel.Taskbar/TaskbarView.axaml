@@ -106,7 +106,25 @@
                                             Padding="4,0"
                                             VerticalAlignment="Stretch"
                                             Background="{DynamicResource SystemButtonFaceBrush}">
-                <tb:ClockWidget x:Name="Clock" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                    <!-- Disconnected indicator: a notification-area icon shown only while the taskbar
+                         has lost its link to the shell core. It reconnects automatically (backoff),
+                         and this clears itself when the link returns. -->
+                    <Grid x:Name="DisconnectedIndicator" Width="14" Height="14"
+                          IsVisible="{Binding IsDisconnected}"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Disconnected from the shell core — reconnecting…">
+                        <Ellipse Fill="#C0392B" Stroke="#7B241C" StrokeThickness="0.5" />
+                        <Rectangle Width="9" Height="2.2" RadiusX="1" RadiusY="1" Fill="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform>
+                                <RotateTransform Angle="45" />
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
+                    </Grid>
+                    <tb:ClockWidget x:Name="Clock" VerticalAlignment="Center" />
+                </StackPanel>
             </classic:ClassicBorderDecorator>
         </StackPanel>
 

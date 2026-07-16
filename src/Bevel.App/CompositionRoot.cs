@@ -48,6 +48,7 @@ public static class CompositionRoot
         services.AddSingleton<IPermissionBroker, Pal.Fake.FakePermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.Fake.FakeAudioPlayback>();
         services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
+        services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
         return services;
     }
 
@@ -86,12 +87,16 @@ public static class CompositionRoot
             services.AddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
             services.AddSingleton<IWindowManager, ShellCore.ShellCoreWindowManager>();
             services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
+            // The one core connection IS the link-health source the taskbar's tray indicator tracks.
+            services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
         }
         else
         {
             services.AddSingleton<IWindowManager, Pal.MacOS.MacOSWindowManager>();
             services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
             services.AddSingleton<Pal.MacOS.HelperLifecycle>();
+            // In-process window management: no link to lose, so the indicator stays hidden.
+            services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
 
             // Host the helper EAGERLY only where window management actually runs: the headless core
             // and the all-in-one process. Explorer/Desktop keep the singleton lazy, never started.

@@ -42,6 +42,14 @@ public sealed class UdsMessageClient : IAsyncDisposable
     /// </summary>
     public event Action<byte[]>? BroadcastReceived;
 
+    /// <summary>
+    /// Raised when the receive loop ends because the connection FAULTED (server dropped, pipe
+    /// broke) — not on a deliberate <see cref="ResetAsync"/>/<see cref="DisposeAsync"/> teardown.
+    /// Reconnect is the caller's concern (see the type remarks); this is the push signal that a
+    /// reconnect is due. Runs on the receive-loop thread.
+    /// </summary>
+    public event Action<Exception>? Disconnected;
+
     /// <param name="socketPath">Path of the server's UDS.</param>
     /// <param name="nonce">Per-session shared secret; must match the server's.</param>
     /// <param name="capability">Capability string presented in the handshake and HMAC'd with the nonce.</param>
@@ -170,6 +178,10 @@ public sealed class UdsMessageClient : IAsyncDisposable
         {
             // Disconnect or protocol fault: wake every waiter so no RequestAsync hangs.
             FailAllPending(ex);
+            // A cancelled token means a deliberate teardown (ResetAsync/DisposeAsync) — not a
+            // fault, so don't cry disconnect. Any other exit is a real drop worth reconnecting.
+            if (!ct.IsCancellationRequested)
+                Disconnected?.Invoke(ex);
         }
     }
 

@@ -138,3 +138,29 @@ public interface IDockController
     /// </summary>
     Task SetAutoHideAsync(bool enabled, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Health of a split UI process's link to the shell-core owner. The taskbar reaches window
+/// management and app actions over a single UDS connection; when that connection drops, commands
+/// fail and the strip goes stale until it reconnects. The taskbar shell surfaces this as a tray
+/// indicator. In the all-in-one process there is no link (window management is in-process), so a
+/// stub reports <see cref="IsConnected"/>=true forever.
+/// </summary>
+public interface IShellConnectionStatus
+{
+    /// <summary>True while the link to the core is live. Read it for the initial state, then track
+    /// <see cref="ConnectionChanged"/>. May be read from any thread.</summary>
+    bool IsConnected { get; }
+
+    /// <summary>Raised when the link goes down or comes back up (arg: connected?). Fires on a
+    /// transport/reconnect thread — marshal onto your UI dispatcher before touching bound state.</summary>
+    event EventHandler<bool>? ConnectionChanged;
+}
+
+/// <summary>Stub <see cref="IShellConnectionStatus"/> for processes with no core link (all-in-one,
+/// fake PAL): always connected, never raises.</summary>
+public sealed class AlwaysConnectedShellStatus : IShellConnectionStatus
+{
+    public bool IsConnected => true;
+    public event EventHandler<bool>? ConnectionChanged { add { } remove { } }
+}
