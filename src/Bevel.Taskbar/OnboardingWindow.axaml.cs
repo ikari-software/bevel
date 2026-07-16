@@ -51,6 +51,8 @@ public partial class OnboardingWindow : Window
         WASDockShim.IsCheckedChanged += OnWorkAreaChanged;
         WASNone.IsCheckedChanged += OnWorkAreaChanged;
         RunAtLoginCheck.IsCheckedChanged += OnRunAtLoginChanged;
+        FixedWidthCheck.IsCheckedChanged += OnFixedWidthChanged;
+        MinWidthSlider.ValueChanged += OnMinWidthChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -63,6 +65,14 @@ public partial class OnboardingWindow : Window
         WASNudge.IsChecked = s.WorkAreaStrategy == WorkAreaStrategy.Nudge;
         WASDockShim.IsChecked = s.WorkAreaStrategy == WorkAreaStrategy.DockShim;
         WASNone.IsChecked = s.WorkAreaStrategy == WorkAreaStrategy.None;
+
+        // Taskbar button modes (bevel-m2.10). Set before the handlers are wired (ctor order), so
+        // seeding these controls doesn't spuriously re-persist.
+        var fixedWidth = s.TaskbarButtonWidthMode == TaskbarButtonWidthMode.Fixed;
+        FixedWidthCheck.IsChecked = fixedWidth;
+        MinWidthSlider.Value = s.TaskbarMinButtonWidth;
+        MinWidthSlider.IsEnabled = !fixedWidth;   // min width only matters in shrink-to-fit
+        MinWidthValue.Text = $"{s.TaskbarMinButtonWidth} px";
     }
 
     private void StartPermissionPoll()
@@ -166,6 +176,23 @@ public partial class OnboardingWindow : Window
         {
             // Best-effort; leave the checkbox on its persisted value.
         }
+    }
+
+    private async void OnFixedWidthChanged(object? sender, RoutedEventArgs e)
+    {
+        if (FixedWidthCheck.IsChecked is not { } fixedWidth) return;
+        MinWidthSlider.IsEnabled = !fixedWidth;
+        var mode = fixedWidth ? TaskbarButtonWidthMode.Fixed : TaskbarButtonWidthMode.ShrinkToFit;
+        await _settings.UpdateAsync(s => s.TaskbarButtonWidthMode = mode);
+    }
+
+    private async void OnMinWidthChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        var value = (int)Math.Round(e.NewValue);
+        MinWidthValue.Text = $"{value} px";
+        // Persist only on an actual integer-step change, so a drag doesn't thrash the settings file.
+        if (_settings.Current.TaskbarMinButtonWidth == value) return;
+        await _settings.UpdateAsync(s => s.TaskbarMinButtonWidth = value);
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)

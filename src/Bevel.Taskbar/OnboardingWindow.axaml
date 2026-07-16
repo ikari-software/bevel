@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Bevel.Taskbar.OnboardingWindow"
         Title="Bevel Settings"
-        Width="420" Height="380"
+        Width="420" Height="440"
         WindowStartupLocation="CenterScreen"
         CanResize="False"
         SystemDecorations="Full">
@@ -11,8 +11,9 @@
         <TextBlock Grid.Row="0" Text="Bevel M2 — Taskbar Settings"
                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
 
-        <!-- Settings content -->
-        <StackPanel Grid.Row="1" Spacing="12">
+        <!-- Settings content (scrolls if it outgrows the fixed window) -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="12">
 
             <!-- Accessibility permission -->
             <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
@@ -74,6 +75,32 @@
                 </StackPanel>
             </Border>
 
+            <!-- Taskbar buttons (bevel-m2.10) -->
+            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Taskbar Buttons" FontWeight="Bold" FontSize="12" />
+
+                    <CheckBox x:Name="FixedWidthCheck"
+                              Content="Fixed-width buttons"
+                              FontSize="11" />
+                    <TextBlock Text="Buttons keep their full width and the strip scrolls when full, instead of shrinking to share the bar."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <TextBlock Text="Minimum width" FontSize="11" VerticalAlignment="Center" />
+                        <Slider x:Name="MinWidthSlider" Minimum="24" Maximum="160"
+                                Width="170" VerticalAlignment="Center" />
+                        <TextBlock x:Name="MinWidthValue" FontSize="11"
+                                   VerticalAlignment="Center" Width="46" />
+                    </StackPanel>
+                    <TextBlock Text="Shrink-to-fit keeps labels down to this width; below it, buttons collapse to icon-only."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                </StackPanel>
+            </Border>
+
             <!-- Run at login -->
             <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
                     BorderThickness="1" Padding="8" CornerRadius="2">
@@ -88,6 +115,7 @@
             </Border>
 
         </StackPanel>
+        </ScrollViewer>
 
         <!-- Close button -->
         <Button Grid.Row="2" Content="Close" HorizontalAlignment="Right"
