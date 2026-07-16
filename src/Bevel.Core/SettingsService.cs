@@ -251,6 +251,7 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
+        _raw["taskbarGroupWindows"] = JsonSerializer.SerializeToElement(_settings.TaskbarGroupWindows, SettingsJsonContext.Default.Boolean);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
@@ -272,6 +273,7 @@ public sealed class SettingsService : IDisposable
             TaskbarButtonWidthMode = Enum.TryParse<TaskbarButtonWidthMode>(GetString("taskbarButtonWidthMode"), out var twm)
                 ? twm : TaskbarButtonWidthMode.ShrinkToFit,
             TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
+            TaskbarGroupWindows = GetBool("taskbarGroupWindows") ?? false,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
         };
 
@@ -325,6 +327,10 @@ public sealed class BevelSettings
     /// <summary>bevel-m2.10: shrink-to-fit text floor (logical px) — buttons keep their label down to
     /// this width, then drop to icon-only below it. Default 80 (was hardcoded to half the max).</summary>
     public int TaskbarMinButtonWidth { get; set; } = 80;
+
+    /// <summary>bevel-m2.10.3: collapse an app's multiple windows into a single grouped taskbar button
+    /// (XP-style) with a flyout list. Off by default — the clean Win2000 look shows one button per window.</summary>
+    public bool TaskbarGroupWindows { get; set; }
 
     /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
     public int TaskbarRows { get; set; } = 1;

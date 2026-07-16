@@ -13,7 +13,7 @@ namespace Bevel.Taskbar;
 /// from the window's <see cref="ForeignWindow.IconPng"/>) is pushed to <see cref="IconSource"/>
 /// on the UI thread by <see cref="ShellModel"/>.
 /// </summary>
-public sealed class TaskItemViewModel : ObservableObject
+public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 {
     private readonly IWindowManager _windows;
     private string _title = "";
@@ -30,6 +30,7 @@ public sealed class TaskItemViewModel : ObservableObject
     {
         _windows = windows;
         Id = w.Id;
+        AppId = w.AppId;
         Update(w);
         if (w.IsFocused)
             SetFocused(true);
@@ -37,6 +38,10 @@ public sealed class TaskItemViewModel : ObservableObject
     }
 
     public ForeignWindowId Id { get; }
+
+    /// <summary>Owning app's identifier (bundle id), used to collapse multi-window apps into a group
+    /// (bevel-m2.10.3). Null/empty for windows with no known app — those never group.</summary>
+    public string? AppId { get; }
 
     public string Title
     {

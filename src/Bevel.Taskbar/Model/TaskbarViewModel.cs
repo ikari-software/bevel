@@ -16,6 +16,7 @@ namespace Bevel.Taskbar;
 public sealed class TaskbarViewModel : ObservableObject, IDisposable
 {
     private readonly IShellConnectionStatus? _connection;
+    private readonly TaskbarItemsProjector _projector;
     private bool _isDisconnected;
 
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
@@ -25,6 +26,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         Model = model;
         StartMenu = startMenu;
         _connection = connection;
+        _projector = new TaskbarItemsProjector(model.Windows);
         if (connection is not null)
         {
             _isDisconnected = !connection.IsConnected;
@@ -35,7 +37,16 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     public ShellModel Model { get; }
     public StartMenuViewModel StartMenu { get; }
 
+    /// <summary>The flat per-window collection (source of truth). Kept for callers/tests that want
+    /// the raw windows; the strip binds <see cref="Items"/> instead.</summary>
     public ObservableCollection<TaskItemViewModel> Windows => Model.Windows;
+
+    /// <summary>The displayed strip items — single-window buttons and, when grouping is on, app groups
+    /// (bevel-m2.10.3). With grouping off this mirrors <see cref="Windows"/> 1:1.</summary>
+    public ObservableCollection<ITaskbarItem> Items => _projector.Items;
+
+    /// <summary>Enables/disables XP-style window grouping (applied at startup from settings).</summary>
+    public void SetGrouping(bool grouping) => _projector.SetGrouping(grouping);
 
     /// <summary>True while the taskbar has lost its link to the shell core (commands fail and the
     /// strip is stale until it reconnects). Bound to the tray's disconnected indicator.</summary>
@@ -56,5 +67,6 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     {
         if (_connection is not null)
             _connection.ConnectionChanged -= OnConnectionChanged;
+        _projector.Dispose();
     }
 }
