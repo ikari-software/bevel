@@ -145,7 +145,9 @@ public partial class App : Application
             services.GetService<Bevel.Pal.Abstractions.IIconProvider>(),
             buttonWidth: settings.Current.TaskbarButtonWidth,
             quit: RequestExit,
-            restart: RequestRestart);
+            restart: RequestRestart,
+            widthMode: settings.Current.TaskbarButtonWidthMode,
+            minButtonWidth: settings.Current.TaskbarMinButtonWidth);
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

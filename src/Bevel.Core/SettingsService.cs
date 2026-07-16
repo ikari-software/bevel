@@ -249,6 +249,8 @@ public sealed class SettingsService : IDisposable
         _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
         _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin, SettingsJsonContext.Default.Boolean);
         _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
+        _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
+        _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
@@ -267,6 +269,9 @@ public sealed class SettingsService : IDisposable
                 ? was : WorkAreaStrategy.Nudge,
             RunAtLogin = GetBool("runAtLogin") ?? false,
             TaskbarButtonWidth = GetInt("taskbarButtonWidth") ?? 160,
+            TaskbarButtonWidthMode = Enum.TryParse<TaskbarButtonWidthMode>(GetString("taskbarButtonWidthMode"), out var twm)
+                ? twm : TaskbarButtonWidthMode.ShrinkToFit,
+            TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
         };
 
@@ -311,11 +316,28 @@ public sealed class BevelSettings
     /// <summary>M2: whether Bevel's desktop+taskbar should launch at login.</summary>
     public bool RunAtLogin { get; set; }
 
-    /// <summary>M2: fixed width (logical px) of taskbar window buttons; 0 = fit-to-content.</summary>
+    /// <summary>M2: maximum width (logical px) of a taskbar window button.</summary>
     public int TaskbarButtonWidth { get; set; } = 160;
+
+    /// <summary>bevel-m2.10: how button width is chosen — shrink-to-fit (default) or fixed at the max.</summary>
+    public TaskbarButtonWidthMode TaskbarButtonWidthMode { get; set; } = TaskbarButtonWidthMode.ShrinkToFit;
+
+    /// <summary>bevel-m2.10: shrink-to-fit text floor (logical px) — buttons keep their label down to
+    /// this width, then drop to icon-only below it. Default 80 (was hardcoded to half the max).</summary>
+    public int TaskbarMinButtonWidth { get; set; } = 80;
 
     /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
     public int TaskbarRows { get; set; } = 1;
+}
+
+/// <summary>bevel-m2.10: taskbar button width strategy.</summary>
+public enum TaskbarButtonWidthMode
+{
+    /// <summary>Default: buttons share the strip, shrinking as it fills (Win2000/XP behaviour).</summary>
+    ShrinkToFit,
+
+    /// <summary>Buttons stay at their max width and overflow scrolls (pre-shrink-to-fit behaviour).</summary>
+    Fixed,
 }
 
 /// <summary>M2: taskbar work-area coexistence strategy.</summary>

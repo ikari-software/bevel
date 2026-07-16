@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -18,6 +19,8 @@ public partial class TaskbarView : UserControl
     private Action? _quit;
     private Action? _restart;
     private int _maxButtonWidth = 160;
+    private int _minButtonWidth = 80;
+    private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
     private bool _resizing;
@@ -43,11 +46,16 @@ public partial class TaskbarView : UserControl
         IIconProvider? iconProvider = null,
         int buttonWidth = 160,
         Action? quit = null,
-        Action? restart = null)
+        Action? restart = null,
+        TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
+        int minButtonWidth = 80)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
         _maxButtonWidth = buttonWidth;
+        _widthMode = widthMode;
+        // Keep the text floor sane: never above the max, never below the icon-only floor.
+        _minButtonWidth = Math.Clamp(minButtonWidth, IconOnlyFloor, buttonWidth);
         _quit = quit;
         _restart = restart;
     }
@@ -305,13 +313,24 @@ public partial class TaskbarView : UserControl
 
     // ── Window-button sizing (U11) ──────────────────────────────────────
 
+    // Icon-only tier (bevel-m2.10): the narrowest a shrinking button goes, and the width at/above
+    // which it still shows its text label. Below LabelHideThreshold the label is dropped and only a
+    // centred icon remains (the hover tooltip still carries the full title).
+    private const int IconOnlyFloor = 24;
+    private const double LabelHideThreshold = 34;
+
     /// <summary>
-    /// Win2000 shrink-to-fit: live buttons share the strip width (available / perRow), clamped
-    /// between a floor (half the max) and the max. Pushes the computed width onto each live VM —
-    /// the template's Width transition animates the change, so this drives both the steady-state
-    /// resize as the strip fills AND the XP grow-in (from the VM's initial Width 0). Buttons that
-    /// are animating out (<see cref="TaskItemViewModel.IsClosing"/>) are skipped so they finish
-    /// shrinking to 0 instead of being snapped back.
+    /// Sizes the live window buttons per the configured display mode (bevel-m2.10):
+    /// <list type="bullet">
+    /// <item><b>Fixed</b> — every button stays at the max width and the strip scrolls when it overflows.</item>
+    /// <item><b>ShrinkToFit</b> (default) — buttons share the strip (available / perRow). They keep
+    /// their label down to the text floor (<see cref="_minButtonWidth"/>); when even that won't fit
+    /// they drop to icon-only and shrink to <see cref="IconOnlyFloor"/>.</item>
+    /// </list>
+    /// The computed width/label are pushed onto each live VM — the template's Width transition
+    /// animates the change, driving both the steady-state resize as the strip fills AND the XP
+    /// grow-in (from the VM's initial Width 0). Buttons animating out
+    /// (<see cref="TaskItemViewModel.IsClosing"/>) are skipped so they finish shrinking to 0.
     /// </summary>
     private void LayoutButtons()
     {
@@ -322,20 +341,42 @@ public partial class TaskbarView : UserControl
         var available = WindowButtonScroller.Bounds.Width;
         if (available <= 0) return; // not laid out yet — SizeChanged will re-run this
 
-        // Distribute across the bar's rows: with R rows each row holds ceil(count / R) buttons,
-        // each taking an equal share of the row width; the WrapPanel wraps them into those rows.
-        var rows = Math.Max(1, _window?.Rows ?? 1);
-        var perRow = (int)Math.Ceiling(live.Count / (double)rows);
-        var max = _maxButtonWidth;                  // max button width (e.g. 160)
-        var min = Math.Max(1, _maxButtonWidth / 2); // shrink floor: half the max
-        const double perButtonMargin = 2;           // Margin(1,·) => 2px horizontal
-        var width = Math.Clamp((available / perRow) - perButtonMargin, min, max);
+        var (width, showLabel) = ComputeButtonLayout(
+            _widthMode, available, live.Count, _window?.Rows ?? 1, _maxButtonWidth, _minButtonWidth);
 
         foreach (var vm in live)
         {
-            vm.Width = width;   // transitions animate the resize / grow-in
-            vm.Opacity = 1;     // reveal (buttons are added at Opacity 0)
+            vm.Width = width;         // transitions animate the resize / grow-in
+            vm.ShowLabel = showLabel; // icon-only tier when crowded
+            vm.Opacity = 1;           // reveal (buttons are added at Opacity 0)
         }
+    }
+
+    /// <summary>
+    /// Pure width/label policy for the window buttons (bevel-m2.10) — extracted so the mode logic is
+    /// unit-testable without a visual tree. <b>Fixed</b> → every button at <paramref name="max"/>.
+    /// <b>ShrinkToFit</b> → each button gets an equal share of the row (<paramref name="available"/> ÷
+    /// buttons-per-row); labelled down to the text floor (<paramref name="minButtonWidth"/>), then
+    /// icon-only down to <see cref="IconOnlyFloor"/>, dropping the label below
+    /// <see cref="LabelHideThreshold"/>.
+    /// </summary>
+    internal static (double Width, bool ShowLabel) ComputeButtonLayout(
+        TaskbarButtonWidthMode mode, double available, int count, int rows, double max, int minButtonWidth)
+    {
+        if (mode == TaskbarButtonWidthMode.Fixed || count <= 0)
+            return (max, true);
+
+        var perRow = (int)Math.Ceiling(count / (double)Math.Max(1, rows));
+        const double perButtonMargin = 2;   // Margin(1,·) => 2px horizontal
+        var ideal = (available / Math.Max(1, perRow)) - perButtonMargin;
+        var floor = Math.Clamp((double)minButtonWidth, IconOnlyFloor, max);
+
+        if (ideal >= floor)
+            return (Math.Min(ideal, max), true);   // roomy: labelled, up to the max
+
+        // Crowded past the text floor: shrink further, dropping the label once too narrow.
+        var width = Math.Clamp(ideal, IconOnlyFloor, floor);
+        return (width, width >= LabelHideThreshold);
     }
 
     // ── Start menu ──────────────────────────────────────────────────────

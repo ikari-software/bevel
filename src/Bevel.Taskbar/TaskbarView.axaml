@@ -73,12 +73,14 @@
                                 </Transitions>
                             </ToggleButton.Transitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" Opacity="{Binding ContentOpacity}"
                                         IsHitTestVisible="False">
                                 <Image Source="{Binding IconSource}" Width="16" Height="16"
-                                       Margin="0,0,4,0" VerticalAlignment="Center"
+                                       Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                           IsVisible="{Binding ShowLabel}"
                                            TextTrimming="CharacterEllipsis"
                                            IsHitTestVisible="False" />
                             </StackPanel>

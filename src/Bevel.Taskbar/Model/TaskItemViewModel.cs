@@ -1,4 +1,6 @@
 using System.Windows.Input;
+using Avalonia;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Bevel.Pal.Abstractions;
@@ -22,6 +24,7 @@ public sealed class TaskItemViewModel : ObservableObject
     private double _opacity;
     private bool _isClosing;
     private Bitmap? _iconSource;
+    private bool _showLabel = true;
 
     public TaskItemViewModel(ForeignWindow w, IWindowManager windows)
     {
@@ -67,6 +70,29 @@ public sealed class TaskItemViewModel : ObservableObject
         }
     }
     public Bitmap? IconSource { get => _iconSource; set => SetProperty(ref _iconSource, value); }
+
+    /// <summary>
+    /// Whether the button shows its text label. The layout pass clears this when buttons shrink past
+    /// the icon-only threshold (bevel-m2.10), collapsing the button to a centred icon — the hover
+    /// tooltip still carries the full title, so nothing is lost. Drives <see cref="IconMargin"/> and
+    /// <see cref="ContentAlignment"/> so the icon recentres when the label goes.
+    /// </summary>
+    public bool ShowLabel
+    {
+        get => _showLabel;
+        set
+        {
+            if (!SetProperty(ref _showLabel, value)) return;
+            OnPropertyChanged(nameof(IconMargin));
+            OnPropertyChanged(nameof(ContentAlignment));
+        }
+    }
+
+    /// <summary>Icon gets right padding only when a label follows it; icon-only buttons centre bare.</summary>
+    public Thickness IconMargin => ShowLabel ? new Thickness(0, 0, 4, 0) : default;
+
+    /// <summary>Left-align icon+label (Win2000 convention); centre the lone icon when the label is gone.</summary>
+    public HorizontalAlignment ContentAlignment => ShowLabel ? HorizontalAlignment.Left : HorizontalAlignment.Center;
 
     /// <summary>Bold label for the focused window (Win2000/XP taskbar convention).</summary>
     public FontWeight TitleWeight => IsFocused ? FontWeight.Bold : FontWeight.Normal;
