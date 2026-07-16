@@ -23,7 +23,11 @@ public sealed class ShellModel : IDisposable
     private readonly IWindowManager? _windows;
     private readonly IAppEnvironment? _appEnv;
     private readonly IconLoader _icons;
+    private readonly IShellConnectionStatus? _connection;
     private CancellationTokenSource? _cts;
+    /// <summary>Live token source of the reconcile loop's between-passes wait, cancelled to wake it
+    /// early (a reconnect pokes it so the strip re-syncs at once, not after the next interval).</summary>
+    private CancellationTokenSource? _reconcileWait;
     private bool _started;
     private bool _disposed;
     /// <summary>Last known focused window; reconcile keeps this when the snapshot omits focus.</summary>
@@ -50,11 +54,13 @@ public sealed class ShellModel : IDisposable
     /// <summary>Raised on the UI thread the moment <see cref="ProgramsLoaded"/> latches true.</summary>
     public event Action? ProgramsLoadedChanged;
 
-    public ShellModel(IWindowManager? windows, IAppEnvironment? appEnv, IIconProvider? icons)
+    public ShellModel(IWindowManager? windows, IAppEnvironment? appEnv, IIconProvider? icons,
+        IShellConnectionStatus? connection = null)
     {
         _windows = windows;
         _appEnv = appEnv;
         _icons = new IconLoader(icons);
+        _connection = connection;
     }
 
     /// <summary>The shared off-thread icon loader, for view-models that render their own icons.</summary>
@@ -78,6 +84,12 @@ public sealed class ShellModel : IDisposable
             _windows.WindowClosed += OnWindowClosed;
             _cts = new CancellationTokenSource();
             _ = ReconcileLoopAsync(_cts.Token);
+
+            // Inbound reconnect recovery: the core re-pushes its snapshot on reconnect, but a window
+            // that CLOSED during the gap isn't in it, so it would linger until the next reconcile.
+            // Poke the loop the moment the link is back so the full add/remove reconcile runs at once.
+            if (_connection is not null)
+                _connection.ConnectionChanged += OnConnectionChanged;
         }
 
         _ = LoadProgramsAsync();
@@ -104,9 +116,25 @@ public sealed class ShellModel : IDisposable
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { TaskbarLog.Swallowed("ReconcileLoop", ex); } // helper not up yet — retry next tick
 
-            try { await Task.Delay(ReconcileInterval, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
+            // Interruptible wait: OnConnectionChanged cancels this to force an immediate re-enumerate
+            // on reconnect. A linked source keeps real shutdown (ct) distinct from a poke.
+            using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Volatile.Write(ref _reconcileWait, wait);
+            try { await Task.Delay(ReconcileInterval, wait.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) { /* poked by a reconnect — reconcile now */ }
+            finally { Volatile.Write(ref _reconcileWait, null); }
         }
+    }
+
+    /// <summary>Reconnect handler: on link-up, wake the reconcile loop so it re-enumerates and prunes
+    /// anything that changed during the outage immediately. Fires off a transport thread.</summary>
+    private void OnConnectionChanged(object? sender, bool connected)
+    {
+        if (!connected) return;
+        var wait = Volatile.Read(ref _reconcileWait);
+        if (wait is null) return;
+        try { wait.Cancel(); } catch (ObjectDisposedException) { /* loop advanced past this wait */ }
     }
 
     /// <summary>UI thread. Prune windows absent from the fresh enumeration; upsert the present.</summary>
@@ -419,5 +447,8 @@ public sealed class ShellModel : IDisposable
             _windows.ForegroundChanged -= OnForegroundChanged;
             _windows.WindowClosed -= OnWindowClosed;
         }
+
+        if (_connection is not null)
+            _connection.ConnectionChanged -= OnConnectionChanged;
     }
 }

@@ -130,6 +130,40 @@ public sealed class ShellCoreIntegrationTests
         Assert.Contains("/Applications/Calculator.app", pal.Launched);
     }
 
+    // 4. A window action issued while the core link is DOWN is queued (not a dead click), then
+    //    replayed against the real PAL once the client reconnects to a core on the same endpoint.
+    [Fact]
+    public async Task CommandIssuedWhileDisconnected_IsReplayedOnReconnect()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+
+        var server = new ShellCoreServer(pal, pal, path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client should connect to the core");
+
+        // Drop the link: stopping the server faults the client's receive loop -> IsConnected flips.
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        // Issue a command while down: it must NOT throw and must NOT reach the PAL yet — it's queued.
+        await wm.ActivateAsync(new ForeignWindowId("win-42"), Ct);
+        Assert.DoesNotContain("win-42", pal.Activated);
+
+        // Bring a core back on the SAME socket + nonce (as the supervisor-respawned core would be).
+        await using var server2 = new ShellCoreServer(pal, pal, path, nonce);
+        await server2.StartAsync(Ct);
+
+        // The reconnect supervisor re-dials with backoff; on reconnect the queued action replays.
+        await WaitFor(() => pal.Activated.Contains("win-42"),
+            "the command queued while disconnected should replay against the PAL after reconnect");
+    }
+
     /// <summary>
     /// An in-memory PAL that plays both roles the core owns — window manager and app environment. It
     /// seeds the initial projection, lets a test raise deltas on demand, and records the commands the
