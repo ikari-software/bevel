@@ -109,6 +109,12 @@ public partial class TaskbarView : UserControl
             ResizeGrip.PointerPressed += OnGripPressed;
             ResizeGrip.PointerMoved += OnGripMoved;
             ResizeGrip.PointerReleased += OnGripReleased;
+
+            // Overflow chevrons (bevel-m2.10.2): scroll the wrapped button rows a row at a time, and
+            // keep their visible/enabled state in sync as the strip scrolls.
+            ScrollUpBtn.Click += (_, _) => ScrollRows(-1);
+            ScrollDownBtn.Click += (_, _) => ScrollRows(1);
+            WindowButtonScroller.ScrollChanged += (_, _) => UpdateOverflowChevrons();
         }
 
         StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
@@ -135,6 +141,7 @@ public partial class TaskbarView : UserControl
             TaskbarLog.Debug($"LAYOUT reflow: {_vm?.Windows.Count ?? 0} buttons");
             LayoutButtons();
             WireAllTaskButtons();
+            UpdateOverflowChevrons();
         }, DispatcherPriority.Background);
     }
 
@@ -377,6 +384,38 @@ public partial class TaskbarView : UserControl
         // Crowded past the text floor: shrink further, dropping the label once too narrow.
         var width = Math.Clamp(ideal, IconOnlyFloor, floor);
         return (width, width >= LabelHideThreshold);
+    }
+
+    /// <summary>
+    /// Shows the up/down overflow chevrons only when the wrapped button rows are taller than the bar,
+    /// and disables whichever arrow can't move further (bevel-m2.10.2). When everything fits again the
+    /// scroll offset is reset so buttons never stay parked out of view.
+    /// </summary>
+    private void UpdateOverflowChevrons()
+    {
+        var sv = WindowButtonScroller;
+        var overflow = sv.Extent.Height - sv.Viewport.Height > 0.5;
+        OverflowChevrons.IsVisible = overflow;
+
+        if (!overflow)
+        {
+            if (sv.Offset.Y > 0.5)
+                sv.Offset = sv.Offset.WithY(0);
+            return;
+        }
+
+        var maxY = sv.Extent.Height - sv.Viewport.Height;
+        ScrollUpBtn.IsEnabled = sv.Offset.Y > 0.5;
+        ScrollDownBtn.IsEnabled = sv.Offset.Y < maxY - 0.5;
+    }
+
+    /// <summary>Scrolls the button strip by one button-row in <paramref name="direction"/> (-1 up, +1 down).</summary>
+    private void ScrollRows(int direction)
+    {
+        var sv = WindowButtonScroller;
+        var maxY = Math.Max(0, sv.Extent.Height - sv.Viewport.Height);
+        var y = Math.Clamp(sv.Offset.Y + direction * TaskbarTheme.RowHeight, 0, maxY);
+        sv.Offset = sv.Offset.WithY(y);   // ScrollChanged re-runs UpdateOverflowChevrons for enabled state
     }
 
     // ── Start menu ──────────────────────────────────────────────────────

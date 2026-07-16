@@ -39,9 +39,14 @@
              rows as the bar grows taller. Each button's Width/Opacity are animated (XP-style: grow
              from 0 on open, shrink to 0 on close, smooth resize as the strip fills) via the
              template transitions; the code-behind layout pass pushes the shared target width. -->
-        <ScrollViewer x:Name="WindowButtonScroller" Grid.Column="1"
+        <!-- Column 1: the button strip plus an overflow chevron column (bevel-m2.10.2). The strip
+             wraps into rows (width-constrained); when the rows exceed the bar height the up/down
+             chevrons appear to scroll them. VerticalScrollBarVisibility=Hidden keeps the native
+             scrollbar out — the chevrons are the affordance — while still allowing the offset to move. -->
+        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+        <ScrollViewer x:Name="WindowButtonScroller" Grid.Column="0"
                       HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Hidden"
                       VerticalAlignment="Stretch"
                       Margin="2,1,0,1">
             <ItemsControl x:Name="WindowButtonArea" ItemsSource="{Binding Windows}">
@@ -89,6 +94,19 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+
+        <!-- Overflow chevrons: scroll the wrapped button rows a row at a time. Hidden until the rows
+             overflow the bar height (toggled in code). RepeatButtons so press-and-hold keeps scrolling. -->
+        <StackPanel x:Name="OverflowChevrons" Grid.Column="1" Orientation="Vertical"
+                    Width="16" Margin="1,1,2,1" IsVisible="False">
+            <RepeatButton x:Name="ScrollUpBtn" Content="▲" FontSize="7" Padding="0"
+                          Height="13" Focusable="False"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            <RepeatButton x:Name="ScrollDownBtn" Content="▼" FontSize="7" Padding="0"
+                          Height="13" Focusable="False" Margin="0,1,0,0"
+                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+        </StackPanel>
+        </Grid>
 
         <!-- Divider before system tray area (full height) -->
         <Border Grid.Column="2" Width="2" Margin="2,1,0,1"
