@@ -25,10 +25,10 @@
 
 | Token | Hex | Win2000 Role | Used For |
 |-------|-----|--------------|----------|
-| `Bevel.Color.ButtonFace` | `#D4D0C8` | 3D face | Folder back, toolbar button face, drive body |
-| `Bevel.Color.ButtonHighlight` | `#FFFFFF` | Top/left highlight | Folder front top edge, paper fold, window title highlight |
+| `Bevel.Color.ButtonFace` | `#D4D0C8` | 3D face | Toolbar button face, drive body |
+| `Bevel.Color.ButtonHighlight` | `#FFFFFF` | Top/left highlight | Paper fold, window title highlight |
 | `Bevel.Color.ButtonLight` | `#D4D0C8` | Light 3D edge | (alias of ButtonFace) |
-| `Bevel.Color.ButtonShadow` | `#808080` | Bottom/right shadow | Folder edge, paper edge, drive edge |
+| `Bevel.Color.ButtonShadow` | `#808080` | Bottom/right shadow | Paper edge, drive edge |
 | `Bevel.Color.ButtonDkShadow` | `#404040` | Deep shadow | CD drive slot, monitor bevel |
 | `Bevel.Color.Window` | `#FFFFFF` | Document background | Paper fill, toolbar button background |
 | `Bevel.Color.WindowText` | `#000000` | Primary text | File name lines, code brackets |
@@ -46,9 +46,9 @@
 
 | Glyph Brush | Maps To | Notes |
 |-------------|---------|-------|
-| `FolderBack` | `VGrad(ButtonFace, ButtonShadow)` | Manila folder base |
-| `FolderFront` | `VGrad(ButtonHighlight, ButtonFace)` | Folder flap |
-| `FolderEdge` | `ButtonDkShadow` | Folder outline |
+| `FolderBack` | `VGrad(IconFolderBackTop #FFE49A, IconFolderBackBottom #F0B03C)` | Manila folder base — **not** ButtonFace (see note) |
+| `FolderFront` | `VGrad(IconFolderFrontTop #FFF3CE, IconFolderFrontBottom #FFD064)` | Folder flap |
+| `FolderEdge` | `IconFolderEdge #9C6B15` | Folder outline |
 | `PaperFill` | `VGrad(Window, GrayText@50%)` | Document body |
 | `PaperEdge` | `ButtonShadow` | Document outline |
 | `PaperLine` | `ButtonShadow@50%` | Document text lines |
@@ -89,6 +89,13 @@
 | `DiscBody` | `VGrad(ButtonFace, ButtonShadow)` | Optical disc base |
 | `DiscSheen` | `ButtonHighlight` | Disc highlights |
 | `DiscRainbow` | ConicGradient (fixed hues) | CD iridescence — *scheme-invariant* |
+
+> **Folder colour (fixed bug).** The folder glyph is manila **yellow**, not the 3D **ButtonFace**
+> grey. An earlier draft of this spec mapped `FolderBack`/`FolderFront` onto `ButtonFace`/`ButtonShadow`,
+> which rendered a grey folder. The folder now has its **own** semantic tokens —
+> `IconFolderBackTop/Bottom`, `IconFolderFrontTop/Bottom`, `IconFolderEdge` (see `Tokens.axaml`,
+> `theme.json`, `ThemeTokens.cs`) — so it stays manila and scheme variants can retint it independently
+> of the button chrome. Do **not** reintroduce `ButtonFace` on the folder.
 
 ---
 
@@ -164,9 +171,11 @@
 // BEFORE (hardcoded)
 static readonly IBrush FolderBack = VGrad("#FFE49A", "#F0B03C");
 
-// AFTER (semantic) — resolved at render time via theme
-static readonly string FolderBackTop = ThemeTokens.ColorButtonFace;      // #D4D0C8
-static readonly string FolderBackBottom = ThemeTokens.ColorButtonShadow; // #808080
+// AFTER (semantic) — resolved at render time via theme.
+// NOTE: the folder has its OWN manila tokens — it must NOT map onto ButtonFace/ButtonShadow
+// (that produced a grey folder; fixed bug — see the "Folder colour" note in §2).
+static readonly string FolderBackTop = ThemeTokens.ColorIconFolderBackTop;       // #FFE49A
+static readonly string FolderBackBottom = ThemeTokens.ColorIconFolderBackBottom; // #F0B03C
 ```
 
 **Implementation pattern**: Since glyphs are created in code-behind (not XAML), resolve brushes from the `Application.Current.Resources` dictionary using `ThemeTokens.Color*` keys at glyph construction time.
