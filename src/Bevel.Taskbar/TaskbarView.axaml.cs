@@ -21,6 +21,7 @@ public partial class TaskbarView : UserControl
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
+    private bool _groupWindows;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
     private bool _resizing;
@@ -48,7 +49,8 @@ public partial class TaskbarView : UserControl
         Action? quit = null,
         Action? restart = null,
         TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
-        int minButtonWidth = 80)
+        int minButtonWidth = 80,
+        bool groupWindows = false)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -56,6 +58,7 @@ public partial class TaskbarView : UserControl
         _widthMode = widthMode;
         // Keep the text floor sane: never above the max, never below the icon-only floor.
         _minButtonWidth = Math.Clamp(minButtonWidth, IconOnlyFloor, buttonWidth);
+        _groupWindows = groupWindows;
         _quit = quit;
         _restart = restart;
     }
@@ -66,6 +69,10 @@ public partial class TaskbarView : UserControl
 
         _vm = DataContext as TaskbarViewModel;
         _window = TopLevel.GetTopLevel(this) as TaskbarWindow;
+
+        // Apply the grouping mode before the first layout so Items is already in its final shape
+        // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
+        _vm?.SetGrouping(_groupWindows);
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
@@ -92,7 +99,7 @@ public partial class TaskbarView : UserControl
             // realized at once) collapses to a single Background-priority reflow instead of K+1.
             WindowButtonScroller.SizeChanged += (_, _) => QueueLayout();
             if (_vm is not null)
-                _vm.Windows.CollectionChanged += OnWindowsChanged;
+                _vm.Items.CollectionChanged += OnWindowsChanged;   // grouped/ungrouped display set
             // Re-run the width pass when a button's container is realized, so a newly-opened
             // window's button — created at Width 0 — animates up to the target AFTER it has rendered
             // at 0 (the XP grow-in), rather than being snapped to the target before it ever draws.
@@ -216,8 +223,16 @@ public partial class TaskbarView : UserControl
     /// </summary>
     private void OnTaskButtonClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is ToggleButton button && button.DataContext is TaskItemViewModel vm)
-            button.IsChecked = vm.IsFocused;
+        if (sender is not ToggleButton button) return;
+        // Snap the local toggle back to the real focus projection — for a single window and for a
+        // group (whose pressed state means "some window of this app is focused"; its click opens the
+        // flyout, it doesn't toggle focus). Prevents the "stuck pressed" divergence.
+        button.IsChecked = button.DataContext switch
+        {
+            TaskItemViewModel vm => vm.IsFocused,
+            TaskGroupViewModel g => g.IsFocused,
+            _ => button.IsChecked,
+        };
     }
 
     private static ToggleButton? FindTaskButton(Control container) =>
@@ -342,7 +357,7 @@ public partial class TaskbarView : UserControl
     private void LayoutButtons()
     {
         if (_vm is null) return;
-        var live = _vm.Windows.Where(w => !w.IsClosing).ToList();
+        var live = _vm.Items.Where(w => !w.IsClosing).ToList();
         if (live.Count == 0) return;
 
         var available = WindowButtonScroller.Bounds.Width;

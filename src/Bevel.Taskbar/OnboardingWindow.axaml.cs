@@ -53,6 +53,7 @@ public partial class OnboardingWindow : Window
         RunAtLoginCheck.IsCheckedChanged += OnRunAtLoginChanged;
         FixedWidthCheck.IsCheckedChanged += OnFixedWidthChanged;
         MinWidthSlider.ValueChanged += OnMinWidthChanged;
+        GroupWindowsCheck.IsCheckedChanged += OnGroupWindowsChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -73,6 +74,8 @@ public partial class OnboardingWindow : Window
         MinWidthSlider.Value = s.TaskbarMinButtonWidth;
         MinWidthSlider.IsEnabled = !fixedWidth;   // min width only matters in shrink-to-fit
         MinWidthValue.Text = $"{s.TaskbarMinButtonWidth} px";
+
+        GroupWindowsCheck.IsChecked = s.TaskbarGroupWindows;
     }
 
     private void StartPermissionPoll()
@@ -193,6 +196,12 @@ public partial class OnboardingWindow : Window
         // Persist only on an actual integer-step change, so a drag doesn't thrash the settings file.
         if (_settings.Current.TaskbarMinButtonWidth == value) return;
         await _settings.UpdateAsync(s => s.TaskbarMinButtonWidth = value);
+    }
+
+    private async void OnGroupWindowsChanged(object? sender, RoutedEventArgs e)
+    {
+        if (GroupWindowsCheck.IsChecked is not { } group) return;
+        await _settings.UpdateAsync(s => s.TaskbarGroupWindows = group);
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)

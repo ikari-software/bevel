@@ -98,6 +98,13 @@
                     <TextBlock Text="Shrink-to-fit keeps labels down to this width; below it, buttons collapse to icon-only."
                                FontSize="10" Foreground="Gray"
                                TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                    <CheckBox x:Name="GroupWindowsCheck"
+                              Content="Group windows of the same app"
+                              FontSize="11" Margin="0,4,0,0" />
+                    <TextBlock Text="Collapses an app's windows into one button with a pop-up list (XP-style). Off keeps one button per window."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" Margin="20,0,0,0" />
                 </StackPanel>
             </Border>
 

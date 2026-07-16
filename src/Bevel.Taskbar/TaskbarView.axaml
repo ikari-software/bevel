@@ -49,14 +49,17 @@
                       VerticalScrollBarVisibility="Hidden"
                       VerticalAlignment="Stretch"
                       Margin="2,1,0,1">
-            <ItemsControl x:Name="WindowButtonArea" ItemsSource="{Binding Windows}">
+            <ItemsControl x:Name="WindowButtonArea" ItemsSource="{Binding Items}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal" VerticalAlignment="Top" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="tb:TaskItemViewModel">
+                <!-- The strip holds a mix of single-window buttons and (when grouping is on) app
+                     groups; Avalonia selects the template by the item's runtime type (bevel-m2.10.3).
+                     With grouping off, Items is the window VMs 1:1, so this is unchanged behaviour. -->
+                <ItemsControl.DataTemplates>
+                    <DataTemplate DataType="tb:TaskItemViewModel">
                         <!-- A checked classic ToggleButton renders with the authentic sunken/
                              hatched active-task state. Binding is one-way: native window state,
                              not the click gesture itself, remains authoritative. -->
@@ -91,7 +94,61 @@
                             </StackPanel>
                         </ToggleButton>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
+
+                    <!-- Grouped app: one button showing icon + "Name (N)", opening a flyout that lists
+                         the app's windows. IsChecked reflects whether any child window is focused. -->
+                    <DataTemplate DataType="tb:TaskGroupViewModel">
+                        <ToggleButton IsChecked="{Binding IsFocused, Mode=OneWay}"
+                                      Focusable="False"
+                                      Width="{Binding Width}"
+                                      Opacity="{Binding Opacity}"
+                                      MinWidth="0"
+                                      Height="24" Margin="1,2" Padding="4,0" FontSize="11"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Center"
+                                      ClipToBounds="True">
+                            <ToggleButton.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+                                </Transitions>
+                            </ToggleButton.Transitions>
+                            <ToggleButton.Flyout>
+                                <Flyout Placement="Top">
+                                    <ItemsControl ItemsSource="{Binding Windows}" MinWidth="160">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="tb:TaskItemViewModel">
+                                                <Button Command="{Binding ActivateCommand}"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        Padding="6,3" Background="Transparent" BorderThickness="0"
+                                                        FontWeight="{Binding TitleWeight}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                                               VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Flyout>
+                            </ToggleButton.Flyout>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        HorizontalAlignment="{Binding ContentAlignment}"
+                                        ClipToBounds="True" IsHitTestVisible="False">
+                                <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                       Margin="{Binding IconMargin}" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" />
+                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
+                                           IsVisible="{Binding ShowLabel}"
+                                           TextTrimming="CharacterEllipsis"
+                                           IsHitTestVisible="False" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </DataTemplate>
+                </ItemsControl.DataTemplates>
             </ItemsControl>
         </ScrollViewer>
 
