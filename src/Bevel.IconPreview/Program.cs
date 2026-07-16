@@ -49,6 +49,15 @@ internal static class Program
         ["doc-db"] = IconKey.File("db"),
         ["doc-xml"] = IconKey.File("xml"),
         ["doc-iso"] = IconKey.File("iso"),
+        // Start-menu fixed items (bevel-m2.14).
+        ["start-programs"] = new IconKey("start.programs"),
+        ["start-documents"] = new IconKey("start.documents"),
+        ["start-settings"] = new IconKey("start.settings"),
+        ["start-search"] = new IconKey("start.search"),
+        ["start-help"] = new IconKey("start.help"),
+        ["start-run"] = new IconKey("start.run"),
+        ["start-logoff"] = new IconKey("start.logoff"),
+        ["start-shutdown"] = new IconKey("start.shutdown"),
     };
 
     // Toolbar glyphs. Shared by ExportAllPngs() and PreviewWindow.BuildPreview().

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -5,6 +6,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -44,6 +47,7 @@ public partial class StartMenu : UserControl
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         BuildStaticSubmenus();
+        WireFixedItemIcons();
         WireHoverToOpen();
     }
 
@@ -92,6 +96,39 @@ public partial class StartMenu : UserControl
         if (sender is not MenuItem entered) return;
         foreach (var top in ItemsMenu.Items.OfType<MenuItem>())
             top.IsSubMenuOpen = ReferenceEquals(top, entered) && top.HasSubMenu;
+    }
+
+    // ── Fixed-item icons (bevel-m2.14) ─────────────────────────────────
+
+    // The Win2000 Start-menu glyphs are theme assets authored in Glyphs.cs and exported to PNG
+    // (Bevel.IconPreview) under the Win2000 theme assembly. Bevel.Taskbar doesn't reference the
+    // theme project, but avares:// resolves across any assembly loaded into the running app, so we
+    // load the 16px variant by URI. The MenuItem theme already reserves a 19px icon column.
+    private const string IconBase = "avares://Bevel.Themes.Win2000/Assets/Icons/";
+
+    private void WireFixedItemIcons()
+    {
+        SetItemIcon(ProgramsItem, "start-programs");
+        SetItemIcon(DocumentsItem, "start-documents");
+        SetItemIcon(SettingsItem, "start-settings");
+        SetItemIcon(SearchItem, "start-search");
+        SetItemIcon(HelpItem, "start-help");
+        SetItemIcon(RunItem, "start-run");
+        SetItemIcon(LogOffItem, "start-logoff");
+        SetItemIcon(ShutDownItem, "start-shutdown");
+    }
+
+    private static void SetItemIcon(MenuItem item, string name)
+    {
+        try
+        {
+            using var stream = AssetLoader.Open(new Uri($"{IconBase}{name}-16.png"));
+            item.Icon = new Image { Width = 16, Height = 16, Source = new Bitmap(stream) };
+        }
+        catch
+        {
+            // Asset unavailable (headless test with no theme assembly loaded) — leave the column empty.
+        }
     }
 
     // ── Cascading groups ───────────────────────────────────────────────

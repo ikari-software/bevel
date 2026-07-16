@@ -247,6 +247,7 @@ public static class Glyphs
 
     static void BuildGlyph(Canvas c, string id)
     {
+        if (id.StartsWith("start.")) { StartGlyph(c, id); return; }
         if (id.StartsWith("folder")) { FolderGlyph(c); return; }
         if (id == "computer") { ComputerGlyph(c); return; }
         if (id.StartsWith("drive")) { DriveGlyph(c, id); return; }
@@ -530,5 +531,123 @@ public static class Glyphs
         c.Children.Add(Vec("M9.5,7.4 H12.9", null, DriveEdge, 0.45));              // tray slot
         c.Children.Add(Ell(12.7, 4.3, 1.0, DriveLed));                            // activity LED
         DrawDisc(c, 5.6, 10.0, 3.7);                                              // disc, front-left
+    }
+
+    // ── Start-menu fixed-item glyphs (bevel-m2.14) ───────────────────────
+    // The eight standard Win2000 Start-menu entries. Authored in the same 16-unit
+    // vector space and theme-aware brushes as the file-type glyphs, exported to PNG
+    // by Bevel.IconPreview, and loaded by the Start menu as its fixed MenuItem icons.
+
+    static void StartGlyph(Canvas c, string id)
+    {
+        switch (id)
+        {
+            case "start.programs":  ProgramsGlyph(c); break;
+            case "start.documents": DocumentsGlyph(c); break;
+            case "start.settings":  SettingsGlyph(c); break;
+            case "start.search":    SearchGlyph(c); break;
+            case "start.help":      HelpGlyph(c); break;
+            case "start.run":       RunGlyph(c); break;
+            case "start.logoff":    LogOffGlyph(c); break;
+            case "start.shutdown":  ShutDownGlyph(c); break;
+            default:                DocGlyph(c); break;
+        }
+    }
+
+    // Programs — a manila folder with a small program window resting on it.
+    static void ProgramsGlyph(Canvas c)
+    {
+        c.Children.Add(Vec(FolderBackData, FolderBack, FolderEdge));
+        c.Children.Add(Vec(FolderFrontData, FolderFront, FolderEdge));
+        c.Children.Add(Vec("M7.8,2.0 H14.4 V7.0 H7.8 Z", PaperFill, PaperEdge, 0.4));   // window body
+        c.Children.Add(Vec("M7.8,2.0 H14.4 V3.5 H7.8 Z", ExeTitle));                    // title bar
+        c.Children.Add(Vec("M8.7,4.6 H13.5 M8.7,5.7 H12.3", null, ExeLine, 0.55));      // content lines
+    }
+
+    // Documents — a folder pocket holding a lined sheet that rises above the flap.
+    static void DocumentsGlyph(Canvas c)
+    {
+        c.Children.Add(Vec(FolderBackData, FolderBack, FolderEdge));
+        c.Children.Add(Vec("M5.5,2.2 H10.4 L12.4,4.2 V9.6 H5.5 Z", PaperFill, PaperEdge, 0.4));  // sheet
+        c.Children.Add(Vec("M10.4,2.2 V4.2 H12.4 Z", PaperFold, PaperEdge, 0.35));                // corner fold
+        c.Children.Add(Vec("M6.6,5.4 H11.2 M6.6,6.7 H11.2 M6.6,8.0 H9.6", null, PaperLine, 0.55)); // text lines
+        c.Children.Add(Vec(FolderFrontData, FolderFront, FolderEdge));                            // front flap over sheet
+    }
+
+    // Settings — the Control Panel window with a cog in front.
+    static void SettingsGlyph(Canvas c)
+    {
+        c.Children.Add(Vec("M1.8,3.0 H11.3 V10.8 H1.8 Z", PaperFill, PaperEdge, 0.45));  // window body
+        c.Children.Add(Vec("M1.8,3.0 H11.3 V4.6 H1.8 Z", ExeTitle));                     // title bar
+        c.Children.Add(Vec("M3.0,6.4 H9.2 M3.0,7.8 H7.6", null, ExeLine, 0.55));         // content lines
+        Gear(c, 11.1, 10.3, 4.0);                                                        // cog, front-right
+    }
+
+    // Search — a folder behind a magnifying glass.
+    static void SearchGlyph(Canvas c)
+    {
+        var frame = S(ThemeTokens.ColorWindowFrame, "#000000");
+        c.Children.Add(Vec(FolderBackData, FolderBack, FolderEdge));
+        c.Children.Add(Vec(FolderFrontData, FolderFront, FolderEdge));
+        double ld = 5.4, r = ld / 2, cx = 8.6 + r, cy = 3.8 + r;
+        c.Children.Add(Ell(8.6, 3.8, ld, Sky, frame, 0.7));                              // glass lens
+        double hx = cx + r * 0.72, hy = cy + r * 0.72;
+        c.Children.Add(Vec(FormattableString.Invariant($"M{hx:0.##},{hy:0.##} L{hx + 2.7:0.##},{hy + 2.7:0.##}"),
+            null, frame, 1.2));                                                          // handle
+    }
+
+    // Help — a blue book with a question mark on its page.
+    static void HelpGlyph(Canvas c)
+    {
+        var mark = S(ThemeTokens.ColorHighlight, "#0A246A");
+        c.Children.Add(Vec("M3.0,2.6 H12.2 a1,1 0 0 1 1,1 V13.4 H4.0 a1,1 0 0 1 -1,-1 Z", WordBlue, PaperEdge, 0.4)); // cover
+        c.Children.Add(Vec("M4.0,3.4 H12.4 V12.0 H4.0 Z", PaperFill, PaperEdge, 0.35));                                // page
+        c.Children.Add(Vec("M6.4,5.8 a1.7,1.7 0 0 1 3.3,0.7 c0,1.1 -1.35,1.35 -1.35,2.4", null, mark, 0.95));         // ? hook
+        c.Children.Add(Ell(7.85, 10.0, 1.05, mark));                                                                   // ? dot
+    }
+
+    // Run — a program window with a green "go" triangle.
+    static void RunGlyph(Canvas c)
+    {
+        c.Children.Add(Vec("M2.0,3.2 H11.0 V11.4 H2.0 Z", PaperFill, PaperEdge, 0.45));  // window body
+        c.Children.Add(Vec("M2.0,3.2 H11.0 V4.8 H2.0 Z", ExeTitle));                     // title bar
+        c.Children.Add(Vec("M3.2,6.6 H9.2 M3.2,8.0 H8.0 M3.2,9.4 H6.8", null, ExeLine, 0.55)); // lines
+        c.Children.Add(Vec("M10.4,7.6 L14.6,10.2 L10.4,12.8 Z", SheetGreen, PaperEdge, 0.3));   // launch triangle
+    }
+
+    // Log Off — an open door with an arrow leaving through it.
+    static void LogOffGlyph(Canvas c)
+    {
+        var frame = S(ThemeTokens.ColorButtonShadow, "#808080");
+        var door = S(ThemeTokens.ColorButtonFace, "#D4D0C8");
+        var arrow = S(ThemeTokens.ColorHighlight, "#0A246A");
+        c.Children.Add(Vec("M7.6,2.2 H13.4 V13.8 H7.6 Z", door, frame, 0.5));            // door panel
+        c.Children.Add(Ell(8.4, 7.3, 1.1, S(ThemeTokens.ColorWindowFrame, "#000000")));  // knob
+        c.Children.Add(Vec("M1.8,8.0 H6.6 M4.2,5.6 L6.8,8.0 L4.2,10.4", null, arrow, 1.2)); // out arrow
+    }
+
+    // Shut Down — the red power symbol (broken ring + stem).
+    static void ShutDownGlyph(Canvas c)
+    {
+        var red = PdfRed;
+        c.Children.Add(Vec("M5.7,5.2 A4.6,4.6 0 1 0 10.3,5.2", null, red, 1.5));  // ring, open at top
+        c.Children.Add(Vec("M8,2.6 V7.8", null, red, 1.5));                        // stem
+    }
+
+    // A small cog: eight radial teeth, a body disc and a bore — for Settings.
+    static void Gear(Canvas c, double cx, double cy, double d)
+    {
+        double r = d / 2;
+        for (int i = 0; i < 8; i++)
+        {
+            double a = i * Math.PI / 4;
+            double x1 = cx + Math.Cos(a) * r * 0.9, y1 = cy + Math.Sin(a) * r * 0.9;
+            double x2 = cx + Math.Cos(a) * (r + r * 0.45), y2 = cy + Math.Sin(a) * (r + r * 0.45);
+            c.Children.Add(Vec(FormattableString.Invariant($"M{x1:0.##},{y1:0.##} L{x2:0.##},{y2:0.##}"),
+                null, GearBody, r * 0.5));
+        }
+        c.Children.Add(Ell(cx - r, cy - r, d, GearBody, GearEdge, 0.4));   // body
+        double hr = r * 0.42;
+        c.Children.Add(Ell(cx - hr, cy - hr, hr * 2, PaperFill, GearEdge, 0.3)); // bore
     }
 }
