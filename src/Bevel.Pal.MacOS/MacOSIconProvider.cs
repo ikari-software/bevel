@@ -56,14 +56,20 @@ public sealed class MacOSIconProvider : IIconProvider
         pool = AppKitInterop.SendIntPtr(pool, AppKitInterop.Sel("init"));
         try
         {
-            // NSStringCreate uses +stringWithUTF8String:, which returns an AUTORELEASED
-            // string — the pool below drains it. Do NOT release it here: an extra release
-            // over-frees it and crashes intermittently (a no-op for short/tagged strings,
-            // a use-after-free once the path is a real heap string like an app bundle path).
+            // NSStringCreate now returns a +1 OWNED string (alloc/init, bevel-fo2), so we release
+            // it once when done — right after iconForFile: consumes it, before any early return.
             var nsPath = AppKitInterop.NSStringCreate(path);
             if (nsPath == IntPtr.Zero)
                 return null;
-            var icon = AppKitInterop.SendIntPtr_IntPtr(workspace, AppKitInterop.Sel("iconForFile:"), nsPath);
+            IntPtr icon;
+            try
+            {
+                icon = AppKitInterop.SendIntPtr_IntPtr(workspace, AppKitInterop.Sel("iconForFile:"), nsPath);
+            }
+            finally
+            {
+                AppKitInterop.SendVoid(nsPath, AppKitInterop.Sel("release"));
+            }
             if (icon == IntPtr.Zero)
                 return null;
 

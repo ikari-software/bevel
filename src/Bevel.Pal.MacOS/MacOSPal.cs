@@ -42,7 +42,22 @@ public sealed class MacOSShellSession : IShellSession
     public ValueTask<bool> IsRegisteredAsShellAsync(CancellationToken ct = default) => ValueTask.FromResult(false);
     public Task RegisterAsShellAsync(CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
     public Task UnregisterAsync(CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-    public Task SetRunAtLoginAsync(bool enabled, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
+
+    // Login-item integration is real (SMAppService, bevel-m2.12) even while the rest of the
+    // session surface is still an M0 stub. Runs on a thread-pool thread — SMAppService holds no
+    // main-thread affinity and MacOSIconProvider already establishes that off-thread objc is safe.
+    public Task SetRunAtLoginAsync(bool enabled, CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsMacOS()) return Task.CompletedTask;
+        return Task.Run(() => LoginItemRegistrar.SetEnabled(enabled), ct);
+    }
+
+    public ValueTask<bool> IsRunAtLoginEnabledAsync(CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsMacOS()) return ValueTask.FromResult(false);
+        return new ValueTask<bool>(Task.Run(LoginItemRegistrar.IsEnabled, ct));
+    }
+
     public Task LogOutAsync(LogoutKind kind, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
 
     public event EventHandler? SessionChanged;

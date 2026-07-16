@@ -88,7 +88,9 @@ public sealed class FakeShellSession : IShellSession
     public ValueTask<bool> IsRegisteredAsShellAsync(CancellationToken ct = default) => ValueTask.FromResult(false);
     public Task RegisterAsShellAsync(CancellationToken ct = default) => Task.CompletedTask;
     public Task UnregisterAsync(CancellationToken ct = default) => Task.CompletedTask;
-    public Task SetRunAtLoginAsync(bool enabled, CancellationToken ct = default) => Task.CompletedTask;
+    private bool _runAtLogin;
+    public Task SetRunAtLoginAsync(bool enabled, CancellationToken ct = default) { _runAtLogin = enabled; return Task.CompletedTask; }
+    public ValueTask<bool> IsRunAtLoginEnabledAsync(CancellationToken ct = default) => ValueTask.FromResult(_runAtLogin);
     public Task LogOutAsync(LogoutKind kind, CancellationToken ct = default) => Task.CompletedTask;
 
     public event EventHandler? SessionChanged;

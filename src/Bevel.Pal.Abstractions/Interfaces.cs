@@ -57,6 +57,10 @@ public interface IShellSession
     Task RegisterAsShellAsync(CancellationToken ct = default);
     Task UnregisterAsync(CancellationToken ct = default);
     Task SetRunAtLoginAsync(bool enabled, CancellationToken ct = default);
+
+    /// <summary>Whether the OS currently has the app registered to launch at login. Reflects real
+    /// login-item state (not the persisted preference), so a UI toggle can show what will happen.</summary>
+    ValueTask<bool> IsRunAtLoginEnabledAsync(CancellationToken ct = default);
     Task LogOutAsync(LogoutKind kind, CancellationToken ct = default);
 
     event EventHandler? SessionChanged;

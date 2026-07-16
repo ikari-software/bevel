@@ -78,6 +78,10 @@ internal static class AppKitInterop
     [return: MarshalAs(UnmanagedType.I4)]
     public static extern int SendInt(IntPtr receiver, IntPtr selector);
 
+    /// <summary>objc_msgSend returning a pointer-width signed integer (NSInteger) — e.g. an enum status.</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern nint SendNInt(IntPtr receiver, IntPtr selector);
+
     // ------------------------------------------------------------------
     //  Selector cache
     // ------------------------------------------------------------------
@@ -233,18 +237,26 @@ internal static class AppKitInterop
     //  NSString factory
     // ------------------------------------------------------------------
 
-    /// <summary>Creates [NSString stringWithUTF8String:]. Caller must release when done.</summary>
+    /// <summary>
+    /// Creates an NSString via <c>[[NSString alloc] initWithUTF8String:]</c> — a +1 OWNED instance
+    /// with no pending autorelease, so it is safe to use on any thread with no ambient autorelease
+    /// pool (a background icon render, say). The caller MUST <c>release</c> it exactly once when done.
+    /// (Was <c>+stringWithUTF8String:</c>, which returns an AUTORELEASED string the caller does not
+    /// own — callers that released it double-freed real heap strings; bevel-fo2.)
+    /// </summary>
     public static IntPtr NSStringCreate(string str)
     {
         var cls = GetClass("NSString");
         if (cls == IntPtr.Zero)
             return IntPtr.Zero;
 
-        var sel = Sel("stringWithUTF8String:");
         var utf8Ptr = Marshal.StringToHGlobalAnsi(str);
         try
         {
-            return SendIntPtr_IntPtr(cls, sel, utf8Ptr);
+            var alloced = SendIntPtr(cls, Sel("alloc"));
+            if (alloced == IntPtr.Zero)
+                return IntPtr.Zero;
+            return SendIntPtr_IntPtr(alloced, Sel("initWithUTF8String:"), utf8Ptr);
         }
         finally
         {

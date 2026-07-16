@@ -18,7 +18,12 @@ public partial class OnboardingWindow : Window
 {
     private readonly SettingsService _settings;
     private readonly IPermissionBroker? _permissionBroker;
+    private readonly IShellSession? _shellSession;
     private DispatcherTimer? _permPollTimer;
+
+    // Guards the run-at-login checkbox against feedback: when we set IsChecked programmatically
+    // (initial load, OS-status reconcile) we must NOT let OnRunAtLoginChanged re-register the OS.
+    private bool _suppressRunAtLogin;
 
     // Parameterless constructor for the Avalonia runtime XAML loader / previewer (resolves AVLN3001,
     // which otherwise fires on every publish and is exactly the reachability class that breaks under
@@ -31,14 +36,16 @@ public partial class OnboardingWindow : Window
         InitializeComponent();
     }
 
-    public OnboardingWindow(SettingsService settings, IPermissionBroker? permissionBroker = null)
+    public OnboardingWindow(SettingsService settings, IPermissionBroker? permissionBroker = null, IShellSession? shellSession = null)
     {
         InitializeComponent();
         _settings = settings;
         _permissionBroker = permissionBroker;
+        _shellSession = shellSession;
 
         LoadSettings();
         StartPermissionPoll();
+        _ = ReconcileRunAtLoginAsync();
 
         WASNudge.IsCheckedChanged += OnWorkAreaChanged;
         WASDockShim.IsCheckedChanged += OnWorkAreaChanged;
@@ -125,10 +132,40 @@ public partial class OnboardingWindow : Window
 
     private async void OnRunAtLoginChanged(object? sender, RoutedEventArgs e)
     {
+        if (_suppressRunAtLogin) return;
         if (RunAtLoginCheck.IsChecked is not { } enabled) return;
+
         await _settings.UpdateAsync(s => s.RunAtLogin = enabled);
 
-        // LoginItemRegistrar integration (U10 full) — deferred until U9 is done.
+        // Actually (un)register with the OS (SMAppService via the PAL) — not just persist the flag.
+        if (_shellSession is not null)
+            await _shellSession.SetRunAtLoginAsync(enabled);
+    }
+
+    /// <summary>
+    /// Reflects the REAL OS login-item state in the checkbox on open, so the toggle shows what will
+    /// actually happen at next login rather than only the persisted preference. Best-effort: if the
+    /// PAL can't answer (no ServiceManagement, not a signed bundle) the persisted value stands.
+    /// </summary>
+    private async Task ReconcileRunAtLoginAsync()
+    {
+        if (_shellSession is null) return;
+
+        try
+        {
+            var osEnabled = await _shellSession.IsRunAtLoginEnabledAsync();
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (RunAtLoginCheck.IsChecked == osEnabled) return;
+                _suppressRunAtLogin = true;
+                RunAtLoginCheck.IsChecked = osEnabled;
+                _suppressRunAtLogin = false;
+            });
+        }
+        catch
+        {
+            // Best-effort; leave the checkbox on its persisted value.
+        }
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)
