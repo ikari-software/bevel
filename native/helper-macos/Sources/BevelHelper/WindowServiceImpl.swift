@@ -104,6 +104,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// on shutdown. Assigned on the AX thread before `axRunLoopReady` is signalled and
     /// read after `shutdown()`, so the semaphore provides the necessary ordering.
     private var launchObserverToken: NSObjectProtocol?
+    /// NSWorkspace app-activation hook token. Fires the instant the frontmost app changes — the
+    /// signal AX's per-app window notifications miss on an app-to-app switch (Cmd-Tab, Dock, clicking
+    /// another app's window), so the taskbar pressed-state can follow focus that didn't originate
+    /// from a taskbar click. Same lifetime/threading contract as `launchObserverToken`.
+    private var activateObserverToken: NSObjectProtocol?
     /// Serializes observer registration, which can now come from two threads (the poll's
     /// `ensureObservers` and the launch hook's `addObserver`).
     private let observerLock = NSLock()
@@ -152,6 +157,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         if let token = launchObserverToken {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
             launchObserverToken = nil
+        }
+        if let token = activateObserverToken {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+            activateObserverToken = nil
         }
 
         // Tear down AXObservers (and their run-loop sources) BEFORE the run loop is
@@ -567,14 +576,24 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         axMap: [CGWindowID: AXUIElement],
         frontmostPID: pid_t?
     ) -> Bool {
-        // Update + read the shared last-foreign-frontmost under the lock. Compute
-        // the effective frontmost inside the same critical section, then release the
-        // lock BEFORE the AX call in isFocusedWindow (never call into AX while locked).
+        // "Foreign frontmost" must be a REAL Dock app (.regular activation policy) — not our own
+        // shell chrome. In the split shell the taskbar/desktop run as separate .accessory processes;
+        // keying off `parentPID` (the headless core) misclassified them as foreign, so every taskbar
+        // interaction reset the projection and the snapshot reported nothing focused (SNAPSHOT
+        // focus=[]), collapsing the pressed state. Activation policy is the split-safe signal: when a
+        // .regular app is frontmost, track it; when our .accessory chrome (or nothing) is frontmost,
+        // keep projecting the last real app so its button stays pressed (bevel-nji follow-up).
+        let frontmostIsForeign: Bool = frontmostPID.map { fpid in
+            NSRunningApplication(processIdentifier: fpid)?.activationPolicy == .regular
+        } ?? false
+
+        // Update + read the shared last-foreign-frontmost under the lock. NSRunningApplication is
+        // resolved ABOVE, outside the lock, and the AX call in isFocusedWindow runs BELOW it.
         let effectiveFrontmost: pid_t? = stateLock.withLock {
-            if let frontmostPID, frontmostPID != parentPID {
+            if frontmostIsForeign, let frontmostPID {
                 lastForeignFrontmostPID = frontmostPID
             }
-            return (frontmostPID == parentPID) ? lastForeignFrontmostPID : frontmostPID
+            return frontmostIsForeign ? frontmostPID : lastForeignFrontmostPID
         }
         guard let effectiveFrontmost, pid == effectiveFrontmost else { return false }
         return isFocusedWindow(cgID: cgID, axMap: axMap, pid: pid)
@@ -787,6 +806,23 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // cast "always succeeds" — so guard on the CFTypeID, then the cast cannot fail.)
         guard CFGetTypeID(focusedElem) == AXUIElementGetTypeID() else { return false }
         let focusedAX = focusedElem as! AXUIElement
+
+        // Element identity is authoritative when we have a correlated AX element for this window.
+        // axMap already worked around `_AXUIElementGetWindow`'s unreliability (via the frame-match
+        // fallback), so a SECOND SPI round-trip here — resolving the focused element back to a
+        // CGWindowID — just reintroduces that flakiness and can mis-map focus to the wrong window
+        // of a multi-window app. Compare the app's focused-window element to axMap[cgID] directly.
+        if let axWin = axMap[cgID] {
+            let match = CFEqual(axWin, focusedAX)
+            if debugWindows {
+                var fcg: CGWindowID = 0
+                let ok = _AXUIElementGetWindow(focusedAX, &fcg) == .success
+                dbg("focus? cg=\(cgID) identity=\(match) spiFocusedCG=\(ok ? String(fcg) : "n/a")")
+            }
+            return match
+        }
+        // No correlated AX element for this CGWindowID (the SPI could not map it at all) — fall
+        // back to the focused-window SPI round-trip as a best effort.
         var focusedCGID: CGWindowID = 0
         if _AXUIElementGetWindow(focusedAX, &focusedCGID) == .success {
             return focusedCGID == cgID
@@ -796,23 +832,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - Window control actions
 
-    private func axWindow(for windowID: String) throws -> AXUIElement {
+    /// Resolve the owning PID (always) and the window-level AXUIElement (best-effort) for a CGWindowID.
+    /// Some apps (notably Apple Music) expose no correlated AX window element, so callers that only
+    /// need to bring the app forward must not hard-fail on a missing window element.
+    private func resolveWindow(windowID: String) throws -> (pid: pid_t, axWin: AXUIElement?) {
         guard let cgID = CGWindowID(windowID) else {
             throw RPCError(code: .invalidArgument, message: "Invalid window_id: \(windowID)")
         }
-
-        // Re-enumerate AX elements for the PID associated with this window.
-        // `.optionAll` (not just on-screen) so a MINIMIZED window can still be
-        // resolved — otherwise Restore/Activate on a minimized window would fail
-        // with "not found" (bevel-m2.3).
+        // `.optionAll` (not just on-screen) so a MINIMIZED window can still be resolved — otherwise
+        // Restore/Activate on a minimized window would fail with "not found" (bevel-m2.3).
         guard let entry = layer0Entries(options: .optionAll).first(where: {
             ($0[kCGWindowNumber as String] as? CGWindowID) == cgID
         }), let pid = entry[kCGWindowOwnerPID as String] as? pid_t else {
             throw RPCError(code: .notFound, message: "Window \(windowID) not found")
         }
-
         let axMap = correlateAXElements(forPIDs: [pid], entries: [entry])
-        guard let axWin = axMap[cgID] else {
+        return (pid, axMap[cgID])
+    }
+
+    /// The window-level AX element, required by callers that act ON the window itself (minimize,
+    /// restore, close). Throws when it can't be correlated — those actions have no app-level fallback.
+    private func axWindow(for windowID: String) throws -> AXUIElement {
+        guard let axWin = try resolveWindow(windowID: windowID).axWin else {
             throw RPCError(code: .notFound, message: "AXUIElement for window \(windowID) not available")
         }
         return axWin
@@ -832,24 +873,27 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     func activateWindow(windowID: String) throws {
-        let axWin = try axWindow(for: windowID)
-        let result = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-        guard result == .success else {
-            throw axErrorToRPC(result, windowID: windowID)
+        let (pid, axWin) = try resolveWindow(windowID: windowID)
+
+        // AXRaise reorders the window WITHIN its own app. Best-effort: some apps (Apple Music) expose
+        // no correlated window element, so skip the raise there rather than failing the whole
+        // activation — the app-frontmost step below still brings the app (and its window) forward.
+        if let axWin {
+            _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
         }
 
-        // AXRaise only reorders the window *within* its own app. A taskbar-button click must
-        // also make the owning app frontmost — otherwise, with Bevel's taskbar at a high window
-        // level (holding key focus after the click), the window comes forward but its app never
-        // becomes active, so it "doesn't always come up". Setting kAXFrontmostAttribute is the
-        // accessibility-native way to activate the app (works from this permitted helper, and
-        // isn't deprecated like NSRunningApplication.activate(options:)). Best-effort: the raise
-        // already succeeded, so a frontmost failure isn't fatal.
-        var pid: pid_t = 0
-        if AXUIElementGetPid(axWin, &pid) == .success {
-            let appElement = AXUIElementCreateApplication(pid)
-            AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-        }
+        // Make the owning app frontmost. This is what actually brings a window up when Bevel's taskbar
+        // sits at a high window level (holding key focus after the click) — and it is the ONLY step
+        // available for apps without a window AX element. kAXFrontmostAttribute is the
+        // accessibility-native activation and works for most apps.
+        let appElement = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+
+        // Belt-and-suspenders for apps whose app-level AX is ALSO restricted, so kAXFrontmostAttribute
+        // silently no-ops (Apple Music is the canonical case — no window AX element AND no app-AX
+        // activation). NSRunningApplication.activate is not accessibility-dependent, so it brings such
+        // apps forward when the AX path can't. Harmless for the apps AX already handled.
+        NSRunningApplication(processIdentifier: pid)?.activate()
     }
 
     func minimizeWindow(windowID: String) throws {
@@ -1050,6 +1094,48 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         broadcast(change)
     }
 
+    /// Broadcast a `.focused` change for the currently-focused window of `pid`, driven by the
+    /// NSWorkspace app-activation hook. Mirrors the `.focused` handling in `enqueueAXEvent`: prefer
+    /// the enumerated `windowStore` descriptor (already fully filtered), else best-effort build one
+    /// through the eligibility-gated `buildTaskbarWindowFromAX`. Only real Dock apps own taskbar
+    /// focus — our own `.accessory` shell chrome activating (taskbar/desktop) must not reset it.
+    private func broadcastFocusForApp(pid: pid_t) {
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              app.activationPolicy == .regular else { return }
+
+        let axApp = AXUIElementCreateApplication(pid)
+        // Bound the AX round-trip: a hung/slow app must not stall the shared AX run-loop thread.
+        _ = _AXUIElementSetMessagingTimeout(axApp, 1.0)
+
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused) == .success,
+              let focusedElem = focused,
+              CFGetTypeID(focusedElem) == AXUIElementGetTypeID() else { return }
+        let focusedAX = focusedElem as! AXUIElement
+
+        var cgID: CGWindowID = 0
+        guard _AXUIElementGetWindow(focusedAX, &cgID) == .success, cgID != 0 else { return }
+
+        stateLock.lock()
+        let stored = windowStore[cgID]
+        stateLock.unlock()
+
+        var change = Bevel_Helper_V1_WindowChange()
+        change.kind = .focused
+        if let stored {
+            var updated = stored
+            updated.isFocused = true
+            change.window = updated
+        } else if var fresh = buildTaskbarWindowFromAX(element: focusedAX, cgID: cgID) {
+            fresh.isFocused = true
+            change.window = fresh
+        } else {
+            return
+        }
+        dbg("activate-focus pid=\(pid) cg=\(cgID) '\(change.window.appName)' title='\(change.window.title)'")
+        broadcast(change)
+    }
+
     /// Build a minimal TaskbarWindow from an AXUIElement + CGWindowID.
     private func buildTaskbarWindowFromAX(element: AXUIElement, cgID: CGWindowID) -> Bevel_Helper_V1_TaskbarWindow? {
         var win = Bevel_Helper_V1_TaskbarWindow()
@@ -1068,6 +1154,24 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &title) == .success,
            let titleStr = title as? String {
             win.title = titleStr
+        }
+
+        // Apply the snapshot path's (`describe`) eligibility gates so this AX-event fast-path can't
+        // emit a window `describe()` would reject. Firefox fires kAXFocusedWindowChangedNotification
+        // for an empty-title, non-standard Gecko utility window; without these gates it becomes a
+        // phantom *focused* taskbar button that steals the pressed state from the real window it
+        // shadows (the multi-window pressed-state bug). A brand-new real window still passes here
+        // and the fast-path shows it instantly; the 500ms snapshot reconciles everything else.
+        var subroleVal: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleVal) == .success,
+           let subrole = subroleVal as? String,
+           subrole != kAXStandardWindowSubrole {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=subrole=\(subrole)")
+            return nil
+        }
+        if win.title.isEmpty {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=no-title")
+            return nil
         }
 
         var position: CFTypeRef?
@@ -1114,6 +1218,21 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                       let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 else { return }
                 self.addObserver(for: app.processIdentifier)
+            }
+
+            // App-activation hook: the frontmost app changed. AX's per-app window notifications do
+            // NOT fire on an app-to-app switch (the new app's internal focused window is unchanged),
+            // so without this the taskbar could only catch external switches on the 2s snapshot poll
+            // — clicking a taskbar button updated instantly, but Cmd-Tab / Dock / clicking a window
+            // felt dead. Broadcast the newly-frontmost app's focused window immediately.
+            self.activateObserverToken = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil, queue: nil
+            ) { [weak self] note in
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                else { return }
+                self.broadcastFocusForApp(pid: app.processIdentifier)
             }
 
             self.axRunLoopReady.signal()

@@ -163,6 +163,7 @@ public partial class TaskbarView : UserControl
         {
             button.PointerEntered -= OnTaskButtonPointerEntered;
             button.PointerExited -= OnTaskButtonPointerExited;
+            button.Click -= OnTaskButtonClick;
             if (ReferenceEquals(_tooltipAnchor, button))
                 HideTaskbarTooltip();
         }
@@ -184,6 +185,24 @@ public partial class TaskbarView : UserControl
         button.PointerExited -= OnTaskButtonPointerExited;
         button.PointerEntered += OnTaskButtonPointerEntered;
         button.PointerExited += OnTaskButtonPointerExited;
+        button.Click -= OnTaskButtonClick;
+        button.Click += OnTaskButtonClick;
+    }
+
+    /// <summary>
+    /// The pressed (sunken) state is a pure reflection of the shell's exclusive focus projection —
+    /// <see cref="TaskItemViewModel.IsFocused"/>, bound OneWay to <c>IsChecked</c>. But a
+    /// <see cref="ToggleButton"/> flips <c>IsChecked</c> locally on click, and the OneWay binding only
+    /// re-asserts when <c>IsFocused</c> actually changes; when it doesn't (the clicked window doesn't
+    /// take focus, or it's already unfocused when another window later grabs focus), the local flip
+    /// sticks and the button stays pressed — leaving several buttons pressed at once. Snap it back to
+    /// <c>IsFocused</c> here so the click never diverges; the genuine pressed state then follows the
+    /// binding as focus events arrive.
+    /// </summary>
+    private void OnTaskButtonClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is ToggleButton button && button.DataContext is TaskItemViewModel vm)
+            button.IsChecked = vm.IsFocused;
     }
 
     private static ToggleButton? FindTaskButton(Control container) =>

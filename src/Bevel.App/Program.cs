@@ -161,12 +161,18 @@ internal static class Program
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
         // first, then the UI surfaces — desktop behind, taskbar in front (mirroring the all-in-one
         // creation order). Explorer stays on-demand (a window the user opens), not a supervised surface.
-        IRoleProcess[] processes =
-        {
-            new RoleProcess(ShellRole.Core, CreateRoleStartInfo(ShellRole.Core, args, childEnv)),
-            new RoleProcess(ShellRole.Desktop, CreateRoleStartInfo(ShellRole.Desktop, args, childEnv)),
-            new RoleProcess(ShellRole.Taskbar, CreateRoleStartInfo(ShellRole.Taskbar, args, childEnv)),
-        };
+        //
+        // TEMP (taskbar-focus iteration): the desktop surface is OFF by default — it sits behind
+        // everything and muddies focus/enumeration while we work on the bar. The core is still
+        // required (the taskbar is an IPC client of it). Set BEVEL_ENABLE_DESKTOP=1 to bring the
+        // desktop back.
+        var roles = new List<ShellRole> { ShellRole.Core, ShellRole.Taskbar };
+        if (Environment.GetEnvironmentVariable("BEVEL_ENABLE_DESKTOP") == "1")
+            roles.Insert(1, ShellRole.Desktop); // behind the taskbar, mirroring all-in-one order
+
+        var processes = roles
+            .Select(r => (IRoleProcess)new RoleProcess(r, CreateRoleStartInfo(r, args, childEnv)))
+            .ToArray();
 
         var supervisor = new RoleProcessSupervisor(
             processes,

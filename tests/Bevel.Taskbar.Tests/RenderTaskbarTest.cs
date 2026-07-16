@@ -1,7 +1,11 @@
+using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -43,6 +47,44 @@ public class RenderTaskbarTest
         var outPath = Environment.GetEnvironmentVariable("BEVEL_TASKBAR_RENDER_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-taskbar-2row.png");
         frame!.Save(outPath);
+    }
+
+    /// <summary>
+    /// Regression: the sunken/pressed state is bound OneWay to <see cref="TaskItemViewModel.IsFocused"/>,
+    /// but a ToggleButton flips IsChecked locally on click. If the clicked window doesn't take focus,
+    /// that local flip must not stick — otherwise several buttons show pressed at once (the "3 buttons
+    /// pressed" bug). The click handler snaps IsChecked back to IsFocused.
+    /// </summary>
+    [AvaloniaFact]
+    public void Clicking_an_unfocused_task_button_does_not_leave_it_stuck_pressed()
+    {
+        var model = new ShellModel(null, null, null);
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var wm = new StubWindowManager();
+
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null, rows: 1) { Content = view };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // One UNFOCUSED window.
+        var fw = new ForeignWindow(new ForeignWindowId("w0"), "Window", "App", false, false, default);
+        model.Windows.Add(new TaskItemViewModel(fw, wm) { Width = 150, Opacity = 1 });
+        Dispatcher.UIThread.RunJobs();
+
+        var button = view.WindowButtonAreaControl.GetRealizedContainers()
+            .Select(c => c as ToggleButton ?? c.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault())
+            .FirstOrDefault(b => b is not null);
+        Assert.NotNull(button);
+
+        // Simulate the ToggleButton's local self-toggle on click (IsChecked -> true) while the window
+        // is not focused, then raise Click as the real gesture does.
+        button!.IsChecked = true;
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        // Not focused → must not stay pressed.
+        Assert.False(button.IsChecked);
     }
 
     /// <summary>No-op window manager so TaskItemViewModel's activate command has a target.</summary>

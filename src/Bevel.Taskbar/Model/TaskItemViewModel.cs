@@ -158,6 +158,8 @@ public sealed class TaskItemViewModel : ObservableObject
     /// </summary>
     private async Task ToggleAsync()
     {
+        var action = IsMinimized ? "restore+activate" : IsFocused ? "minimize" : "activate";
+        TaskbarLog.Debug($"CLICK id={Id.Value} title='{Title}' min={IsMinimized} focus={IsFocused} -> {action}");
         try
         {
             if (IsMinimized)
@@ -173,7 +175,12 @@ public sealed class TaskItemViewModel : ObservableObject
             {
                 await _windows.ActivateAsync(Id);
             }
+            TaskbarLog.Debug($"CLICK done id={Id.Value} ({action})");
         }
-        catch (Exception ex) { TaskbarLog.Swallowed("TaskItem.Toggle", ex); } // helper unavailable — refreshes next poll
+        catch (Exception ex)
+        {
+            TaskbarLog.Debug($"CLICK FAILED id={Id.Value} ({action}): {ex.GetType().Name}: {ex.Message}");
+            TaskbarLog.Swallowed("TaskItem.Toggle", ex); // helper unavailable — refreshes next poll
+        }
     }
 }

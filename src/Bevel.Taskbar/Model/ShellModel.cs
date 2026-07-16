@@ -162,6 +162,10 @@ public sealed class ShellModel : IDisposable
     /// </summary>
     private void ApplyFocusFromSnapshot(IReadOnlyList<ForeignWindow> live, HashSet<string> liveIds)
     {
+        var focusedInSnap = live.Where(w => w.IsFocused).Select(w => $"'{w.Title}'").ToList();
+        var minimizedInSnap = live.Where(w => w.IsMinimized).Select(w => $"'{w.Title}'").ToList();
+        TaskbarLog.Debug($"SNAPSHOT focus=[{string.Join(", ", focusedInSnap)}] " +
+            $"minimized=[{string.Join(", ", minimizedInSnap)}]");
         var snapshotFocus = live.FirstOrDefault(w => w.IsFocused)?.Id.Value;
         if (snapshotFocus is not null)
         {
@@ -202,6 +206,11 @@ public sealed class ShellModel : IDisposable
     /// <summary>UI thread. Exactly one taskbar button may appear pressed at a time.</summary>
     private void ApplyExclusiveFocus(string? focusedId)
     {
+        if (_focusedWindowId != focusedId)
+        {
+            var title = Find(focusedId ?? "")?.Title ?? "(none)";
+            TaskbarLog.Debug($"FOCUS -> id={focusedId ?? "(null)"} title='{title}'");
+        }
         _focusedWindowId = focusedId;
         foreach (var vm in Windows)
             vm.SetFocused(vm.Id.Value == focusedId);
