@@ -46,6 +46,61 @@ service WindowService {
   rpc Changes(ChangesRequest) returns (stream WindowChange);
 }
 
+// ── TrayService ──────────────────────────────────────────────────────────────
+// Menu-bar status-item mirroring (the "Ice technique", 02-macos-platform.md §5):
+// CGWindowListCopyWindowInfo discovers status-item windows in the menu-bar layer;
+// each is keyed by (ownerPID, windowNumber) and correlated to its NSRunningApplication.
+// Icon pixels are the owning app's icon in limited mode (§5.5) or a per-window
+// ScreenCaptureKit grab once Screen Recording is granted (§5.3, M3-B). Snapshot-then-
+// deltas change stream (IPC-01).
+service TrayService {
+  // Enumerate the current menu-bar status items.
+  rpc ListTrayItems(ListTrayItemsRequest) returns (ListTrayItemsReply);
+
+  // Subscribe to tray changes: opens with a SNAPSHOT burst, then streams deltas.
+  rpc Changes(TrayChangesRequest) returns (stream TrayChange);
+}
+
+// A mirrored menu-bar status item.
+message TrayItem {
+  // Stable id within this helper session: "ownerPID:windowNumber".
+  string item_id = 1;
+  int32 owner_pid = 2;
+  string owner_bundle_id = 3;
+  string owner_name = 4;
+  // Hover text (AX title / window name); may be empty.
+  string tooltip = 5;
+  // Screen rect of the real item (device px, AppKit bottom-left origin) — for click-forwarding.
+  PixelRect bounds = 6;
+  // Icon PNG: a per-window ScreenCaptureKit capture when live, else the owning app's
+  // icon (limited mode, §5.5). Empty only if even the app icon is unavailable.
+  bytes icon_png = 7;
+  // False when icon_png is the generic app-icon fallback (Screen Recording not granted
+  // or capture failed) rather than a live status-item capture.
+  bool is_live = 8;
+}
+
+// TrayChange is the payload for the Changes server-streaming RPC: an initial burst of
+// SNAPSHOT messages is the full item list, then ADDED/REMOVED/UPDATED deltas.
+message TrayChange {
+  enum Kind {
+    SNAPSHOT = 0;
+    ADDED = 1;
+    REMOVED = 2;
+    UPDATED = 3;
+  }
+  Kind kind = 1;
+  TrayItem item = 2;
+}
+
+message ListTrayItemsRequest {}
+
+message ListTrayItemsReply {
+  repeated TrayItem items = 1;
+}
+
+message TrayChangesRequest {}
+
 // ── Common messages ──────────────────────────────────────────────────────────
 
 message PingRequest {}

@@ -25,6 +25,148 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+/// A mirrored menu-bar status item.
+public nonisolated struct Bevel_Helper_V1_TrayItem: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Stable id within this helper session: "ownerPID:windowNumber".
+  public var itemID: String = String()
+
+  public var ownerPid: Int32 = 0
+
+  public var ownerBundleID: String = String()
+
+  public var ownerName: String = String()
+
+  /// Hover text (AX title / window name); may be empty.
+  public var tooltip: String = String()
+
+  /// Screen rect of the real item (device px, AppKit bottom-left origin) — for click-forwarding.
+  public var bounds: Bevel_Helper_V1_PixelRect {
+    get {_bounds ?? Bevel_Helper_V1_PixelRect()}
+    set {_bounds = newValue}
+  }
+  /// Returns true if `bounds` has been explicitly set.
+  public var hasBounds: Bool {self._bounds != nil}
+  /// Clears the value of `bounds`. Subsequent reads from it will return its default value.
+  public mutating func clearBounds() {self._bounds = nil}
+
+  /// Icon PNG: a per-window ScreenCaptureKit capture when live, else the owning app's
+  /// icon (limited mode, §5.5). Empty only if even the app icon is unavailable.
+  public var iconPng: Data = Data()
+
+  /// False when icon_png is the generic app-icon fallback (Screen Recording not granted
+  /// or capture failed) rather than a live status-item capture.
+  public var isLive: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _bounds: Bevel_Helper_V1_PixelRect? = nil
+}
+
+/// TrayChange is the payload for the Changes server-streaming RPC: an initial burst of
+/// SNAPSHOT messages is the full item list, then ADDED/REMOVED/UPDATED deltas.
+public nonisolated struct Bevel_Helper_V1_TrayChange: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var kind: Bevel_Helper_V1_TrayChange.Kind = .snapshot
+
+  public var item: Bevel_Helper_V1_TrayItem {
+    get {_item ?? Bevel_Helper_V1_TrayItem()}
+    set {_item = newValue}
+  }
+  /// Returns true if `item` has been explicitly set.
+  public var hasItem: Bool {self._item != nil}
+  /// Clears the value of `item`. Subsequent reads from it will return its default value.
+  public mutating func clearItem() {self._item = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case snapshot // = 0
+    case added // = 1
+    case removed // = 2
+    case updated // = 3
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .snapshot
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .snapshot
+      case 1: self = .added
+      case 2: self = .removed
+      case 3: self = .updated
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .snapshot: return 0
+      case .added: return 1
+      case .removed: return 2
+      case .updated: return 3
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Bevel_Helper_V1_TrayChange.Kind] = [
+      .snapshot,
+      .added,
+      .removed,
+      .updated,
+    ]
+
+  }
+
+  public init() {}
+
+  fileprivate var _item: Bevel_Helper_V1_TrayItem? = nil
+}
+
+public nonisolated struct Bevel_Helper_V1_ListTrayItemsRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_ListTrayItemsReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var items: [Bevel_Helper_V1_TrayItem] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_TrayChangesRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Bevel_Helper_V1_PingRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -310,6 +452,186 @@ public nonisolated struct Bevel_Helper_V1_RepositionReply: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "bevel.helper.v1"
+
+nonisolated extension Bevel_Helper_V1_TrayItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TrayItem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{3}owner_pid\0\u{3}owner_bundle_id\0\u{3}owner_name\0\u{1}tooltip\0\u{1}bounds\0\u{3}icon_png\0\u{3}is_live\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.itemID) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.ownerPid) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.ownerBundleID) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.ownerName) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.tooltip) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._bounds) }()
+      case 7: try { try decoder.decodeSingularBytesField(value: &self.iconPng) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.isLive) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.itemID.isEmpty {
+      try visitor.visitSingularStringField(value: self.itemID, fieldNumber: 1)
+    }
+    if self.ownerPid != 0 {
+      try visitor.visitSingularInt32Field(value: self.ownerPid, fieldNumber: 2)
+    }
+    if !self.ownerBundleID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerBundleID, fieldNumber: 3)
+    }
+    if !self.ownerName.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerName, fieldNumber: 4)
+    }
+    if !self.tooltip.isEmpty {
+      try visitor.visitSingularStringField(value: self.tooltip, fieldNumber: 5)
+    }
+    try { if let v = self._bounds {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
+    if !self.iconPng.isEmpty {
+      try visitor.visitSingularBytesField(value: self.iconPng, fieldNumber: 7)
+    }
+    if self.isLive != false {
+      try visitor.visitSingularBoolField(value: self.isLive, fieldNumber: 8)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_TrayItem, rhs: Bevel_Helper_V1_TrayItem) -> Bool {
+    if lhs.itemID != rhs.itemID {return false}
+    if lhs.ownerPid != rhs.ownerPid {return false}
+    if lhs.ownerBundleID != rhs.ownerBundleID {return false}
+    if lhs.ownerName != rhs.ownerName {return false}
+    if lhs.tooltip != rhs.tooltip {return false}
+    if lhs._bounds != rhs._bounds {return false}
+    if lhs.iconPng != rhs.iconPng {return false}
+    if lhs.isLive != rhs.isLive {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_TrayChange: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TrayChange"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}item\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._item) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.kind != .snapshot {
+      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 1)
+    }
+    try { if let v = self._item {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_TrayChange, rhs: Bevel_Helper_V1_TrayChange) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs._item != rhs._item {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_TrayChange.Kind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SNAPSHOT\0\u{1}ADDED\0\u{1}REMOVED\0\u{1}UPDATED\0")
+}
+
+nonisolated extension Bevel_Helper_V1_ListTrayItemsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListTrayItemsRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ListTrayItemsRequest, rhs: Bevel_Helper_V1_ListTrayItemsRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_ListTrayItemsReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListTrayItemsReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}items\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.items.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.items, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ListTrayItemsReply, rhs: Bevel_Helper_V1_ListTrayItemsReply) -> Bool {
+    if lhs.items != rhs.items {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_TrayChangesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TrayChangesRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_TrayChangesRequest, rhs: Bevel_Helper_V1_TrayChangesRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
 
 nonisolated extension Bevel_Helper_V1_PingRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".PingRequest"

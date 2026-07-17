@@ -91,10 +91,18 @@ public sealed record ForeignWindow(
     /// <summary>App icon PNG bytes (from the owning app), or empty when unavailable.</summary>
     byte[]? IconPng = null);
 
-/// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere).</summary>
+/// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
+/// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when
+/// <see cref="IsLive"/>, else the owning app's icon (limited mode, spec §5.5); <see cref="Bounds"/>
+/// is the real item's screen rect used for click-forwarding.</summary>
 public sealed record TrayItem(
     TrayItemId Id,
-    string Tooltip);
+    string Tooltip,
+    string? OwnerBundleId = null,
+    string? OwnerName = null,
+    byte[]? IconPng = null,
+    PalRect? Bounds = null,
+    bool IsLive = false);
 
 /// <summary>Physical monitor geometry.</summary>
 public sealed record MonitorInfo(

@@ -99,6 +99,7 @@ enum BevelHelper {
 
         let supervision = SupervisionServiceImpl(helperVersion: version, expectedKey: args.token)
         let windowService = WindowServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
+        let trayService = TrayServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
 
         do {
             let server = GRPCServer(
@@ -106,7 +107,7 @@ enum BevelHelper {
                     address: .unixDomainSocket(path: args.socketPath),
                     transportSecurity: .plaintext
                 ),
-                services: [supervision, windowService]
+                services: [supervision, windowService, trayService]
             )
 
             fputs("BevelHelper v\(version) ready on \(args.socketPath)\n", stderr)
