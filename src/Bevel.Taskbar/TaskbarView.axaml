@@ -184,6 +184,22 @@
                                             VerticalAlignment="Stretch"
                                             Background="{DynamicResource SystemButtonFaceBrush}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                    <!-- Mirrored menu-bar status items (bevel-m3.1): 16px icons, hover tooltip = AX
+                         title. Empty in the split taskbar until the shell-core tray bridge lands. -->
+                    <ItemsControl ItemsSource="{Binding Tray.Items}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tb:TrayItemViewModel">
+                                <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                       VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
                     <!-- Disconnected indicator: a notification-area icon shown only while the taskbar
                          has lost its link to the shell core. It reconnects automatically (backoff),
                          and this clears itself when the link returns. -->

@@ -21,19 +21,7 @@ internal static class NotYet
     };
 }
 
-public sealed class MacOSSystemTrayHost : ISystemTrayHost
-{
-    public Capabilities Capabilities => NotYet.Unavailable;
-
-    public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
-
-    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => throw new NotImplementedException(NotYet.Message);
-
-    public event EventHandler<TrayItem>? ItemAdded;
-    public event EventHandler<TrayItem>? ItemRemoved;
-    public event EventHandler<TrayItem>? ItemUpdated;
-}
+// MacOSSystemTrayHost is now a real TrayService client — see MacOSSystemTrayHost.cs (bevel-m3.1).
 
 public sealed class MacOSShellSession : IShellSession
 {

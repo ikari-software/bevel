@@ -168,3 +168,21 @@ public sealed class AlwaysConnectedShellStatus : IShellConnectionStatus
     public bool IsConnected => true;
     public event EventHandler<bool>? ConnectionChanged { add { } remove { } }
 }
+
+/// <summary>An <see cref="ISystemTrayHost"/> that never surfaces items — a stand-in for roles that
+/// don't own the tray source yet (e.g. the split taskbar process before the shell-core tray bridge,
+/// bevel-m3.1). Reports an unavailable, mirrored tray and no-ops the reclaim call.</summary>
+public sealed class EmptySystemTrayHost : ISystemTrayHost
+{
+    public Capabilities Capabilities { get; } =
+        Capabilities.None with { Notes = new[] { "tray: no source in this role" } };
+
+    public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
+        => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
+
+    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
+
+    public event EventHandler<TrayItem>? ItemAdded { add { } remove { } }
+    public event EventHandler<TrayItem>? ItemRemoved { add { } remove { } }
+    public event EventHandler<TrayItem>? ItemUpdated { add { } remove { } }
+}

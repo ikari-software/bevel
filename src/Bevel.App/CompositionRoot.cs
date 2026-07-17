@@ -56,7 +56,6 @@ public static class CompositionRoot
     {
         // In-process macOS PAL services (AppKit/NSWorkspace in-proc) — every role uses these directly;
         // they're lazy, so a role that never resolves one never constructs it.
-        services.AddSingleton<ISystemTrayHost, Pal.MacOS.MacOSSystemTrayHost>();
         services.AddSingleton<IDesktopEnvironment, Pal.MacOS.MacOSDesktopEnvironment>();
         services.AddSingleton<IShellSession, Pal.MacOS.MacOSShellSession>();
         services.AddSingleton<IFileOperations, Pal.MacOS.MacOSFileOperations>();
@@ -89,11 +88,16 @@ public static class CompositionRoot
             services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
             // The one core connection IS the link-health source the taskbar's tray indicator tracks.
             services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
+            // The split taskbar has no helper connection, so no tray source yet — an empty stand-in
+            // until the shell-core tray bridge lands (bevel-m3.1 follow-up). All-in-one uses the real host.
+            services.AddSingleton<ISystemTrayHost, EmptySystemTrayHost>();
         }
         else
         {
             services.AddSingleton<IWindowManager, Pal.MacOS.MacOSWindowManager>();
             services.AddSingleton<IAppEnvironment, Pal.MacOS.MacOSAppEnvironment>();
+            // Direct tray host: talks to the helper's TrayService (needs HelperLifecycle, below).
+            services.AddSingleton<ISystemTrayHost, Pal.MacOS.MacOSSystemTrayHost>();
             services.AddSingleton<Pal.MacOS.HelperLifecycle>();
             // In-process window management: no link to lose, so the indicator stays hidden.
             services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();

@@ -164,6 +164,10 @@ public partial class App : Application
         desktop.Exit += (_, _) => shellModel.Dispose();
         if (services.GetService<Bevel.Pal.Abstractions.IWindowManager>() is Pal.MacOS.MacOSWindowManager macWm)
             _ = macWm.StartPollAsync();
+        // Start the tray Changes stream where the tray is helper-backed (all-in-one / core), so the
+        // mirrored menu-bar items flow to the taskbar's tray (bevel-m3.1).
+        if (services.GetService<Bevel.Pal.Abstractions.ISystemTrayHost>() is Pal.MacOS.MacOSSystemTrayHost macTray)
+            _ = macTray.StartPollAsync();
         var taskbarWin = new Taskbar.TaskbarWindow(
             services.GetService<Bevel.Pal.Abstractions.IDockController>(),
             settings.Current.TaskbarRows)

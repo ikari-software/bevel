@@ -21,12 +21,15 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
     /// as always connected). Drives the tray disconnected indicator.</param>
-    public TaskbarViewModel(ShellModel model, StartMenuViewModel startMenu, IShellConnectionStatus? connection = null)
+    public TaskbarViewModel(ShellModel model, StartMenuViewModel startMenu,
+        IShellConnectionStatus? connection = null, ISystemTrayHost? tray = null)
     {
         Model = model;
         StartMenu = startMenu;
         _connection = connection;
         _projector = new TaskbarItemsProjector(model.Windows);
+        Tray = new TrayViewModel(tray);
+        Tray.Start();
         if (connection is not null)
         {
             _isDisconnected = !connection.IsConnected;
@@ -36,6 +39,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     public ShellModel Model { get; }
     public StartMenuViewModel StartMenu { get; }
+
+    /// <summary>The notification-area tray (mirrored menu-bar status items, bevel-m3.1).</summary>
+    public TrayViewModel Tray { get; }
 
     /// <summary>The flat per-window collection (source of truth). Kept for callers/tests that want
     /// the raw windows; the strip binds <see cref="Items"/> instead.</summary>
@@ -68,5 +74,6 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         if (_connection is not null)
             _connection.ConnectionChanged -= OnConnectionChanged;
         _projector.Dispose();
+        Tray.Dispose();
     }
 }
