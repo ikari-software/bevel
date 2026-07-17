@@ -56,6 +56,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         FileHandle.standardError.write(Data(("[BEVEL-TRAY] " + msg() + "\n").utf8))
     }
 
+    /// Always logged (not just under debug) — this is the offline systray diagnostic (§5.10).
+    private func log(_ msg: String) {
+        FileHandle.standardError.write(Data(("[BEVEL-TRAY] " + msg + "\n").utf8))
+    }
+
+    /// Hard feature flag: BEVEL_TRAY_DISABLE=1 turns the systray subsystem off entirely (empty tray),
+    /// leaving the rest of the shell untouched (Req 10.1). The escape hatch when a build breaks it.
+    private let subsystemDisabled = ProcessInfo.processInfo.environment["BEVEL_TRAY_DISABLE"] == "1"
+
+    // Self-test gate (§5.10): live pixel capture is enabled only once a launch-time self-test proves
+    // the pipeline works on the current OS build; otherwise the tray degrades to limited mode (§5.5)
+    // rather than showing black/wrong frames. Guarded because enumerateWithCapture runs concurrently.
+    private let selfTestLock = NSLock()
+    private var selfTestDone = false
+    private var liveMirroringEnabled = true
+
     init(expectedKey: String, parentPID: pid_t = 0) {
         self.expectedKey = expectedKey
         self.parentPID = parentPID
@@ -213,6 +229,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Discovers the current menu-bar status items (Req 5.1/5.2). Left-to-right menu-bar order.
     func enumerateTrayItems() -> [Bevel_Helper_V1_TrayItem] {
+        if subsystemDisabled { return [] }   // hard feature flag (§10.1)
         let ownPID = getpid()
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
@@ -273,7 +290,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
-        guard CGPreflightScreenCaptureAccess() else { return items }   // limited mode (§5.5)
+        await ensureSelfTested()
+        // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
+        // mirroring on this OS build (§5.10) — never show black/wrong frames.
+        guard isLiveMirroringEnabled, CGPreflightScreenCaptureAccess() else { return items }
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true) else {
             return items
@@ -338,6 +358,73 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         "\(item.ownerBundleID)|\(item.ownerName)|\(item.tooltip)|\(item.bounds.x),\(item.bounds.width)|\(item.isLive)"
     }
 
+    // MARK: - Self-test gate (§5.10 / §10.1)
+
+    /// Runs the launch-time self-test exactly once (the first capture attempt triggers it), caching
+    /// whether live mirroring is safe on this OS build. Concurrent callers wait on the same result.
+    private func ensureSelfTested() async {
+        if selfTestLock.withLock({ selfTestDone }) { return }
+        // A rare concurrent first-call may run the (idempotent) self-test twice — harmless.
+        let ok = await runSelfTest()
+        selfTestLock.withLock { liveMirroringEnabled = ok; selfTestDone = true }
+    }
+
+    private var isLiveMirroringEnabled: Bool { selfTestLock.withLock { liveMirroringEnabled } }
+
+    /// Verifies the systray pipeline on the current OS build (Req 5.10): discover ≥1 item, confirm AX
+    /// availability (no-op locate proxy), and — when Screen Recording is granted — capture one frame
+    /// and confirm it's non-blank. A granted-but-broken capture disables live mirroring (→ limited
+    /// mode); a missing grant is NOT a failure (limited mode is the expected no-grant path). Result +
+    /// OS build are written to the offline diagnostic log.
+    private func runSelfTest() async -> Bool {
+        let build = osBuild()
+        let discovered = !enumerateTrayItems().isEmpty
+        let axOk = AXIsProcessTrusted()
+
+        var captureOk = true
+        let granted = CGPreflightScreenCaptureAccess()
+        if granted && discovered {
+            captureOk = await selfTestCapture()
+        }
+
+        // Live mirroring is safe iff a granted capture actually worked; without a grant we stay in
+        // limited mode regardless. Discovery/AX are logged for diagnosis but don't gate capture.
+        let live = granted ? captureOk : true
+        log("self-test build=\(build) discovered=\(discovered) ax=\(axOk) grant=\(granted) " +
+            "capture=\(captureOk) → liveMirroring=\(live)")
+        return live
+    }
+
+    /// Captures one status-item window and reports whether it has any non-transparent pixels — the
+    /// "verify non-blank" step. False means SCK returned black/blocked frames (pipeline broken).
+    private func selfTestCapture() async -> Bool {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true) else { return false }
+        guard let win = content.windows.first(where: {
+            $0.windowLayer == statusWindowLayer && $0.frame.origin.y <= 40
+            && $0.frame.width >= 8 && $0.frame.width <= 400
+        }) else { return false }   // granted but SCK sees no status window → broken
+
+        guard let png = await captureWindow(win), !png.isEmpty,
+              let rep = NSBitmapImageRep(data: png) else { return false }
+        for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
+            for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {
+                if (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 { return true }
+            }
+        }
+        return false   // fully transparent → blank
+    }
+
+    /// The current OS build string (e.g. "25G74"), for the self-test diagnostic and OS-change gating.
+    private func osBuild() -> String {
+        var size = 0
+        sysctlbyname("kern.osversion", nil, &size, nil, 0)
+        guard size > 0 else { return "?" }
+        var buf = [CChar](repeating: 0, count: size)
+        sysctlbyname("kern.osversion", &buf, &size, nil, 0)
+        return buf.withUnsafeBufferPointer { $0.baseAddress.map { String(cString: $0) } ?? "?" }
+    }
+
     // MARK: - Identity resolution (macOS 26-aware, §5.2)
 
     /// Resolves a status item's display name + limited-mode icon from its `kCGWindowName` (the real
@@ -393,6 +480,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Test seam for `friendlyName`.
     func friendlyNameForTest(_ raw: String) -> String { friendlyName(raw) }
+
+    /// Test seams for the self-test (§5.10).
+    func runSelfTestForTest() async -> Bool { await runSelfTest() }
+    func osBuildForTest() -> String { osBuild() }
 
     // MARK: - Icons (limited mode)
 

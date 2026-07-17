@@ -88,6 +88,25 @@ final class TrayServiceTests: XCTestCase {
                        "iStat Menus items must be filtered by the denylist")
     }
 
+    /// The self-test (§5.10) should pass on a normal desktop: capture works when granted, and a
+    /// missing grant is a valid limited-mode outcome (not a failure). Only a granted-but-broken
+    /// pipeline returns false — which would be a real regression to surface.
+    @MainActor
+    func testSelfTestPassesOnANormalDesktop() async {
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        let ok = await svc.runSelfTestForTest()
+        XCTAssertTrue(ok, "self-test should pass (working capture, or limited mode without a grant)")
+    }
+
+    func testOsBuildIsReadable() {
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        let build = svc.osBuildForTest()
+        XCTAssertFalse(build.isEmpty)
+        XCTAssertNotEqual(build, "?", "kern.osversion should resolve to a real build string")
+    }
+
     func testFriendlyNameStripsMenuExtraPrefixAndSuffix() {
         let svc = TrayServiceImpl(expectedKey: "test-key")
         XCTAssertEqual(svc.friendlyNameForTest("com.apple.menuextra.eject"), "Eject")
