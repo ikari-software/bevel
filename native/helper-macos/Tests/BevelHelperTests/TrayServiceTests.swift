@@ -65,6 +65,29 @@ final class TrayServiceTests: XCTestCase {
                        "a windowNumber that isn't on screen must not resolve to a click")
     }
 
+    func testDenylistHidesIstatAndNoiseButKeepsRealItems() {
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        // Denied: iStat Menus (all sub-items), Control Center chrome, Ice control items, our dups.
+        XCTAssertTrue(svc.isDenied(windowName: "com.bjango.istatmenus.cpu", ownerName: "Control Center"))
+        XCTAssertTrue(svc.isDenied(windowName: "com.bjango.istatmenus.battery", ownerName: "Control Center"))
+        XCTAssertTrue(svc.isDenied(windowName: "BentoBox-0", ownerName: "Control Center"))
+        XCTAssertTrue(svc.isDenied(windowName: "Ice.ControlItem.Visible", ownerName: "Ice"))
+        XCTAssertTrue(svc.isDenied(windowName: "Clock", ownerName: "Control Center"))
+        // Kept: real third-party + useful system items.
+        XCTAssertFalse(svc.isDenied(windowName: "/Applications/Parallels Toolbox.app", ownerName: "Control Center"))
+        XCTAssertFalse(svc.isDenied(windowName: "com.apple.menuextra.vpn", ownerName: "Control Center"))
+        XCTAssertFalse(svc.isDenied(windowName: "WiFi", ownerName: "Control Center"))
+        XCTAssertFalse(svc.isDenied(windowName: "Item-0", ownerName: "Control Center"))
+    }
+
+    func testDenylistExcludesDeniedItemsFromEnumeration() {
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        let items = svc.enumerateTrayItems()
+        // No enumerated item's identity should be an iStat sub-item (denied before it's built).
+        XCTAssertFalse(items.contains { $0.ownerBundleID.lowercased().contains("istatmenus") },
+                       "iStat Menus items must be filtered by the denylist")
+    }
+
     func testFriendlyNameStripsMenuExtraPrefixAndSuffix() {
         let svc = TrayServiceImpl(expectedKey: "test-key")
         XCTAssertEqual(svc.friendlyNameForTest("com.apple.menuextra.eject"), "Eject")

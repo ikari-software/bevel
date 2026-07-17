@@ -27,6 +27,25 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// menu bar itself is one below (24). We filter to this layer within the menu-bar Y-band.
     private let statusWindowLayer = 25
 
+    /// Case-insensitive substrings; a status item whose identity (kCGWindowName / owner) matches any
+    /// is NOT mirrored (bevel-m3.4). Defaults cover iStat Menus (live graphs — belong in the native
+    /// bar), Control Center's own menu chrome (BentoBox), Ice's control separators, and modules Bevel
+    /// already provides (its clock / Siri). Extend at launch via BEVEL_TRAY_DENY (comma-separated).
+    private lazy var denyList: [String] = {
+        var list = ["istatmenus", "bentobox", "ice.controlitem", "clock", "siri"]
+        if let extra = ProcessInfo.processInfo.environment["BEVEL_TRAY_DENY"] {
+            list += extra.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                        .filter { !$0.isEmpty }
+        }
+        return list
+    }()
+
+    /// True when a status item should be hidden from Bevel's tray per the denylist.
+    func isDenied(windowName: String, ownerName: String) -> Bool {
+        let hay = (windowName + " " + ownerName).lowercased()
+        return denyList.contains { hay.contains($0) }
+    }
+
     /// App-icon PNG cache keyed by bundle id — the icon render is off the hot path (limited mode).
     private let iconCacheLock = NSLock()
     private var iconCache: [String: Data] = [:]
@@ -214,6 +233,12 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
+
+            // Denylist (§5, bevel-m3.4): drop items we should not mirror — iStat Menus (live graphs
+            // that belong in the native bar; the spec's canonical example), Control Center's own
+            // chrome, and modules Bevel already renders (its clock). Filtered BEFORE capture so we
+            // never spend a ScreenCaptureKit grab on a denied item.
+            if isDenied(windowName: windowName, ownerName: ownerName) { continue }
 
             // On macOS 26, kCGWindowOwnerName is "Control Center" for every status item
             // (FB18327911); the real identity lives in kCGWindowName (a bundle id, an app path,
