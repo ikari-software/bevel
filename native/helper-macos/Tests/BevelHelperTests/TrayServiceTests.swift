@@ -1,4 +1,6 @@
 import XCTest
+import AppKit
+import CoreGraphics
 import GRPCCore
 @testable import BevelHelper
 
@@ -34,6 +36,24 @@ final class TrayServiceTests: XCTestCase {
         let own = getpid()
         XCTAssertTrue(svc.enumerateTrayItems().allSatisfy { $0.ownerPid != own },
                       "the helper's own process must never appear as a tray item")
+    }
+
+    /// M3-B: the capture path. With Screen Recording granted, at least one item should carry live
+    /// pixels (isLive); without it, everything stays limited-mode (isLive == false) — both are valid.
+    /// Establishes the WindowServer connection first (SCK aborts otherwise, CGS_REQUIRE_INIT).
+    @MainActor
+    func testCapturePathIsLiveWhenGrantedElseLimited() async {
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        let items = await svc.enumerateWithCapture()
+
+        if CGPreflightScreenCaptureAccess() {
+            XCTAssertTrue(items.contains { $0.isLive },
+                          "with Screen Recording granted, some items should be live-captured")
+        } else {
+            XCTAssertTrue(items.allSatisfy { !$0.isLive }, "without the grant, all items are limited-mode")
+        }
     }
 
     func testFriendlyNameStripsMenuExtraPrefixAndSuffix() {

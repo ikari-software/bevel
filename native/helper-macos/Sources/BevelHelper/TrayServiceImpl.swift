@@ -1,8 +1,10 @@
 import AppKit
 import ApplicationServices
+import CoreGraphics
 import Foundation
 import GRPCCore
 import GRPCProtobuf
+import ScreenCaptureKit
 
 /// Menu-bar status-item mirroring — the "Ice technique" (docs/spec/02-macos-platform.md §5).
 ///
@@ -56,7 +58,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 _ = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ListTrayItemsReply()
-                reply.items = self.enumerateTrayItems()
+                reply.items = await self.enumerateWithCapture()
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -78,9 +80,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 return StreamingServerResponse(of: Bevel_Helper_V1_TrayChange.self) { [weak self] writer in
                     guard let self else { return [:] }
 
-                    // 1. Full snapshot.
+                    // 1. Full snapshot (with live capture when Screen Recording is granted).
                     var lastByID: [String: Bevel_Helper_V1_TrayItem] = [:]
-                    for item in self.enumerateTrayItems() {
+                    for item in await self.enumerateWithCapture() {
                         var change = Bevel_Helper_V1_TrayChange()
                         change.kind = .snapshot
                         change.item = item
@@ -91,14 +93,15 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     // 2. Poll + diff until cancelled (client disconnect cancels the producer Task).
                     while !Task.isCancelled {
                         try await Task.sleep(nanoseconds: 2_000_000_000)
-                        let current = self.enumerateTrayItems()
+                        let current = await self.enumerateWithCapture()
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
                         for item in current { currentByID[item.itemID] = item }
 
-                        // Added / updated.
+                        // Added / updated. The signature excludes icon bytes so a live re-capture
+                        // (whose pixels can differ each frame) doesn't spam UPDATE for every item.
                         for item in current {
                             if let prev = lastByID[item.itemID] {
-                                if prev != item {
+                                if self.signature(prev) != self.signature(item) {
                                     try await writer.write(self.change(.updated, item))
                                 }
                             } else {
@@ -173,6 +176,79 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let sorted = found.sorted { $0.x < $1.x }.map { $0.item }
         dbg("enumerated \(sorted.count) status items: " + sorted.map { $0.ownerName }.joined(separator: ", "))
         return sorted
+    }
+
+    // MARK: - Live capture (ScreenCaptureKit, §5.3)
+
+    /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
+    /// ScreenCaptureKit capture on each (Req 5.3), marking it `isLive`. Without the grant — or if any
+    /// capture fails — the item keeps its limited-mode app icon (§5.5). One `SCShareableContent`
+    /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
+    func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
+        var items = enumerateTrayItems()
+        guard CGPreflightScreenCaptureAccess() else { return items }   // limited mode (§5.5)
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true) else {
+            return items
+        }
+        var byWindowID: [CGWindowID: SCWindow] = [:]
+        for win in content.windows { byWindowID[win.windowID] = win }
+
+        for i in items.indices {
+            let parts = items[i].itemID.split(separator: ":")
+            guard parts.count == 2, let num = UInt32(parts[1]),
+                  let scWin = byWindowID[CGWindowID(num)] else { continue }
+            if let png = await captureWindow(scWin) {
+                items[i].iconPng = png
+                items[i].isLive = true
+            }
+        }
+        return items
+    }
+
+    /// One-shot capture of a single status-item window, scoped to just that window (not a cropped
+    /// full-screen grab — Req 5.3), returned as a 16×16 PNG. Nil on failure (keeps the limited-mode icon).
+    private func captureWindow(_ scWindow: SCWindow) async -> Data? {
+        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+        let config = SCStreamConfiguration()
+        // Capture at 2× the window's point size for a crisp downscale to 16px.
+        config.width = max(16, Int(scWindow.frame.width * 2))
+        config.height = max(16, Int(scWindow.frame.height * 2))
+        config.showsCursor = false
+        config.ignoreShadowsSingleWindow = true
+        do {
+            let cgImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            return pngFromCGImage(cgImage)
+        } catch {
+            dbg("capture failed for windowID \(scWindow.windowID): \(error)")
+            return nil
+        }
+    }
+
+    /// Downscales a captured CGImage into a 16×16 PNG (same budget as the app-icon path).
+    private func pngFromCGImage(_ cgImage: CGImage) -> Data {
+        let target = NSSize(width: 16, height: 16)
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
+            return Data()
+        }
+        rep.size = target
+        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return Data() }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        let image = NSImage(cgImage: cgImage, size: target)
+        image.draw(in: NSRect(origin: .zero, size: target), from: .zero, operation: .copy, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:]) ?? Data()
+    }
+
+    /// Diff signature that EXCLUDES the icon bytes, so a re-capture (whose pixels can differ frame to
+    /// frame, e.g. an iStat graph) doesn't churn the change stream — only identity/geometry changes
+    /// count as an UPDATE.
+    private func signature(_ item: Bevel_Helper_V1_TrayItem) -> String {
+        "\(item.ownerBundleID)|\(item.ownerName)|\(item.tooltip)|\(item.bounds.x),\(item.bounds.width)|\(item.isLive)"
     }
 
     // MARK: - Identity resolution (macOS 26-aware, §5.2)

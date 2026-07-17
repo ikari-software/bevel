@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRPCCore
 import GRPCNIOTransportHTTP2
@@ -93,6 +94,12 @@ enum BevelHelper {
         atexit(removeSocketOnExit)
         signal(SIGTERM) { _ in Foundation.exit(0) }
         signal(SIGINT) { _ in Foundation.exit(0) }
+
+        // ScreenCaptureKit (tray live capture, §5.3) needs a WindowServer/CGS connection, which a bare
+        // CLI process lacks — SCScreenshotManager otherwise aborts with CGS_REQUIRE_INIT. Bring up
+        // NSApplication as a prohibited agent (headless: no Dock tile, no menu bar) to establish it.
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.prohibited)
 
         let watchdog = ReverseWatchdog(parentPID: args.parentPID)
         Task { await watchdog.run() }
