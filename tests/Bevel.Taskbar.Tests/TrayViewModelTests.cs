@@ -74,6 +74,38 @@ public class TrayViewModelTests
     public async Task Forward_with_null_host_is_a_safe_false()
         => Assert.False(await new TrayViewModel(null).Forward(new TrayItemId("x"), TrayButton.Left, TrayModifiers.None));
 
+    [AvaloniaFact]
+    public void Overflow_caps_the_visible_strip_and_the_flyout_holds_the_rest()
+    {
+        var host = new StubTray(Enumerable.Range(0, 10).Select(i => Item($"{i}:{i}0", $"T{i}")).ToArray());
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(10, vm.Items.Count);
+        Assert.Equal(TrayViewModel.VisibleCap, vm.VisibleItems.Count);
+        Assert.Equal(10 - TrayViewModel.VisibleCap, vm.OverflowItems.Count);
+        Assert.True(vm.HasOverflow);
+    }
+
+    [AvaloniaFact]
+    public async Task Using_an_overflowed_item_promotes_it_into_the_visible_set()
+    {
+        var host = new StubTray(Enumerable.Range(0, 10).Select(i => Item($"{i}:{i}0", $"T{i}")).ToArray());
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        Dispatcher.UIThread.RunJobs();
+
+        var overflowId = vm.OverflowItems.Last().Id;
+        Assert.DoesNotContain(vm.VisibleItems, i => i.Id.Equals(overflowId));
+
+        await vm.Forward(overflowId, TrayButton.Left, TrayModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains(vm.VisibleItems, i => i.Id.Equals(overflowId));      // promoted in
+        Assert.Equal(TrayViewModel.VisibleCap, vm.VisibleItems.Count);       // still capped
+    }
+
     private sealed class StubTray : ISystemTrayHost
     {
         private readonly List<TrayItem> _items;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -22,12 +23,44 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
-    /// <summary>The mirrored status items, in host order (left-to-right menu-bar order on macOS).</summary>
+    /// <summary>How many items show inline before the rest spill into the overflow flyout (bevel-m3.4).</summary>
+    public const int VisibleCap = 8;
+
+    private bool _hasOverflow;
+
+    /// <summary>The full mirrored item set, in host order (left-to-right menu-bar order on macOS).</summary>
     public ObservableCollection<TrayItemViewModel> Items { get; } = new();
 
-    /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5).</summary>
-    public Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
-        => _tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false);
+    /// <summary>The items shown inline in the tray strip (first <see cref="VisibleCap"/>).</summary>
+    public ObservableCollection<TrayItemViewModel> VisibleItems { get; } = new();
+
+    /// <summary>The items past the cap, reached through the overflow (») flyout.</summary>
+    public ObservableCollection<TrayItemViewModel> OverflowItems { get; } = new();
+
+    /// <summary>True when there are more items than fit inline — drives the overflow chevron.</summary>
+    public bool HasOverflow { get => _hasOverflow; private set => SetProperty(ref _hasOverflow, value); }
+
+    /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5), and promotes
+    /// it into the visible set (light LRU) so an item you use stays reachable inline.</summary>
+    public async Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
+    {
+        PromoteToVisible(id);
+        return await (_tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false));
+    }
+
+    /// <summary>Moves an item into the last inline slot if it's currently overflowed — a used item
+    /// earns its place in the visible strip without reshuffling the others.</summary>
+    private void PromoteToVisible(TrayItemId id)
+    {
+        var index = -1;
+        for (var i = 0; i < Items.Count; i++)
+            if (Items[i].Id.Equals(id)) { index = i; break; }
+        if (index >= VisibleCap)
+        {
+            Items.Move(index, VisibleCap - 1);
+            Reslice();
+        }
+    }
 
     /// <summary>Subscribes to the host and pulls the initial snapshot. Idempotent.</summary>
     public async void Start()
@@ -59,14 +92,40 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     private void Upsert(TrayItem item)
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(item.Id));
-        if (existing is not null) existing.Update(item);
-        else Items.Add(new TrayItemViewModel(item));
+        if (existing is not null) { existing.Update(item); return; } // in-place update — no reslice needed
+        Items.Add(new TrayItemViewModel(item));
+        Reslice();
     }
 
     private void Remove(TrayItemId id)
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(id));
-        if (existing is not null) Items.Remove(existing);
+        if (existing is null) return;
+        Items.Remove(existing);
+        Reslice();
+    }
+
+    /// <summary>Reconciles <see cref="VisibleItems"/> / <see cref="OverflowItems"/> to the first-N /
+    /// rest of <see cref="Items"/> in place (shared VM instances, so bindings/icons survive).</summary>
+    private void Reslice()
+    {
+        SyncTo(VisibleItems, Items.Take(VisibleCap));
+        SyncTo(OverflowItems, Items.Skip(VisibleCap));
+        HasOverflow = Items.Count > VisibleCap;
+    }
+
+    private static void SyncTo(ObservableCollection<TrayItemViewModel> target, IEnumerable<TrayItemViewModel> desired)
+    {
+        var want = desired.ToList();
+        for (var i = target.Count - 1; i >= 0; i--)
+            if (!want.Contains(target[i])) target.RemoveAt(i);
+        for (var i = 0; i < want.Count; i++)
+        {
+            if (i < target.Count && ReferenceEquals(target[i], want[i])) continue;
+            var cur = target.IndexOf(want[i]);
+            if (cur >= 0) target.Move(cur, i);
+            else target.Insert(i, want[i]);
+        }
     }
 
     public void Dispose()

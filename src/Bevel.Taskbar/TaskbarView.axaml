@@ -238,8 +238,9 @@
                     </ItemsControl>
 
                     <!-- Mirrored menu-bar status items (bevel-m3.1): 16px icons, hover tooltip = AX
-                         title. Empty in the split taskbar until the shell-core tray bridge lands. -->
-                    <ItemsControl ItemsSource="{Binding Tray.Items}" VerticalAlignment="Center">
+                         title. Only the first N show inline; the rest live behind the » overflow
+                         chevron (bevel-m3.4). Empty in the split taskbar until the core connects. -->
+                    <ItemsControl ItemsSource="{Binding Tray.VisibleItems}" VerticalAlignment="Center">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="2" />
@@ -253,6 +254,33 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- Overflow chevron (bevel-m3.4): shown when items spill past the cap; its flyout
+                         lists the rest as a Win2000 grid, each forwarding a click like an inline icon. -->
+                    <Button IsVisible="{Binding Tray.HasOverflow}" Focusable="False"
+                            Padding="2,0" Background="Transparent" BorderThickness="0"
+                            FontSize="10" Content="&#xBB;" ToolTip.Tip="More tray icons"
+                            VerticalAlignment="Center">
+                        <Button.Flyout>
+                            <Flyout Placement="Top">
+                                <ItemsControl ItemsSource="{Binding Tray.OverflowItems}" MaxWidth="180">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="tb:TrayItemViewModel">
+                                            <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                                   Margin="4" VerticalAlignment="Center"
+                                                   ToolTip.Tip="{Binding Tooltip}"
+                                                   PointerPressed="OnTrayIconPressed" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
 
                     <!-- Disconnected indicator: a notification-area icon shown only while the taskbar
                          has lost its link to the shell core. It reconnects automatically (backoff),
