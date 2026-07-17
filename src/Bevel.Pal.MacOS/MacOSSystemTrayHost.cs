@@ -76,6 +76,30 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
+        CancellationToken ct = default)
+    {
+        if (_disposed) return false;
+        try
+        {
+            var tray = GetTrayClient();
+            var reply = await tray.ForwardClickAsync(new ForwardClickRequest
+            {
+                ItemId = id.Value,
+                Button = button == TrayButton.Right
+                    ? ForwardClickRequest.Types.Button.Right
+                    : ForwardClickRequest.Types.Button.Left,
+                Modifiers = (uint)modifiers,
+            }, headers: AuthHeader(), cancellationToken: ct);
+            return reply.Delivered;
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            _logger.LogWarning("TrayService unavailable for ForwardClick: {Message}", ex.Message);
+            return false;
+        }
+    }
+
     // ── Changes stream (helper is the discovery authority) ──────────────
 
     /// <summary>Subscribes to the TrayService Changes stream: applies the SNAPSHOT burst, then live

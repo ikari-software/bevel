@@ -195,7 +195,8 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="tb:TrayItemViewModel">
                                 <Image Source="{Binding IconSource}" Width="16" Height="16"
-                                       VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}" />
+                                       VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
+                                       PointerPressed="OnTrayIconPressed" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

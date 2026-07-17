@@ -59,6 +59,26 @@ service TrayService {
 
   // Subscribe to tray changes: opens with a SNAPSHOT burst, then streams deltas.
   rpc Changes(TrayChangesRequest) returns (stream TrayChange);
+
+  // Forward a click to the real status item (spec §5.5): the helper synthesizes a CGEvent at the
+  // item's on-screen coordinates so the owning app reveals its menu/popover. Needs Accessibility.
+  rpc ForwardClick(ForwardClickRequest) returns (ForwardClickReply);
+}
+
+message ForwardClickRequest {
+  string item_id = 1;
+  enum Button {
+    LEFT = 0;
+    RIGHT = 2;
+  }
+  Button button = 2;
+  // Modifier bitmask mirrored into the synthesized event: shift=1, control=2, option=4, command=8.
+  uint32 modifiers = 3;
+}
+
+message ForwardClickReply {
+  // False if the item is no longer present / on-screen (couldn't locate its coordinates).
+  bool delivered = 1;
 }
 
 // A mirrored menu-bar status item.

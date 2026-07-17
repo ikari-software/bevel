@@ -25,6 +25,10 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// <summary>The mirrored status items, in host order (left-to-right menu-bar order on macOS).</summary>
     public ObservableCollection<TrayItemViewModel> Items { get; } = new();
 
+    /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5).</summary>
+    public Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
+        => _tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false);
+
     /// <summary>Subscribes to the host and pulls the initial snapshot. Idempotent.</summary>
     public async void Start()
     {

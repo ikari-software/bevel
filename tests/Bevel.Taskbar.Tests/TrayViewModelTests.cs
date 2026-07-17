@@ -55,15 +55,41 @@ public class TrayViewModelTests
         Assert.Empty(vm.Items);
     }
 
+    [AvaloniaFact]
+    public async Task Forward_passes_the_item_button_and_modifiers_to_the_host()
+    {
+        var host = new StubTray(Item("9:90", "Clock"));
+        var vm = new TrayViewModel(host);
+
+        var ok = await vm.Forward(new TrayItemId("9:90"), TrayButton.Right,
+            TrayModifiers.Option | TrayModifiers.Command);
+
+        Assert.True(ok);
+        Assert.Equal("9:90", host.LastForward?.Id.Value);
+        Assert.Equal(TrayButton.Right, host.LastForward?.Button);
+        Assert.Equal(TrayModifiers.Option | TrayModifiers.Command, host.LastForward?.Modifiers);
+    }
+
+    [AvaloniaFact]
+    public async Task Forward_with_null_host_is_a_safe_false()
+        => Assert.False(await new TrayViewModel(null).Forward(new TrayItemId("x"), TrayButton.Left, TrayModifiers.None));
+
     private sealed class StubTray : ISystemTrayHost
     {
         private readonly List<TrayItem> _items;
         public StubTray(params TrayItem[] items) => _items = items.ToList();
 
+        public (TrayItemId Id, TrayButton Button, TrayModifiers Modifiers)? LastForward { get; private set; }
+
         public Capabilities Capabilities => Capabilities.None;
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<TrayItem>>(_items.ToArray());
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        {
+            LastForward = (id, button, modifiers);
+            return Task.FromResult(true);
+        }
 
         public event EventHandler<TrayItem>? ItemAdded;
         public event EventHandler<TrayItem>? ItemRemoved;

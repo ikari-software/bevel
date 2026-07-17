@@ -31,10 +31,24 @@ public interface ISystemTrayHost
     ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default);
     Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default);
 
+    /// <summary>Forwards a click on a mirrored item to the real status item so its menu/popover opens
+    /// (spec §5.5). Returns false if the item is gone / couldn't be located. Default no-op for hosts
+    /// that don't own a real tray source.</summary>
+    Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        => Task.FromResult(false);
+
     event EventHandler<TrayItem>? ItemAdded;
     event EventHandler<TrayItem>? ItemRemoved;
     event EventHandler<TrayItem>? ItemUpdated;
 }
+
+/// <summary>Which mouse button a tray click forwards (status items differentiate by button).</summary>
+public enum TrayButton { Left, Right }
+
+/// <summary>Keyboard modifiers to mirror into a forwarded tray click (status items differentiate by
+/// modifier — spec §5.9). Bit values match the helper's wire encoding.</summary>
+[Flags]
+public enum TrayModifiers { None = 0, Shift = 1, Control = 2, Option = 4, Command = 8 }
 
 /// <summary>Wallpaper, monitors and work-area reservation.</summary>
 public interface IDesktopEnvironment

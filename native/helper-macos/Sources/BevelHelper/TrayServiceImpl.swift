@@ -118,6 +118,23 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 }
             }
         )
+
+        // ── ForwardClick ─────────────────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "ForwardClick"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_ForwardClickRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_ForwardClickReply>(),
+            handler: { [weak self] request, context in
+                guard let self else { throw RPCError(code: .internalError, message: "TrayService deallocated") }
+                try AuthInterceptor.authenticate(
+                    request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
+                let req = try await ServerRequest(stream: request)
+                var reply = Bevel_Helper_V1_ForwardClickReply()
+                reply.delivered = self.forwardClick(
+                    itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
     }
 
     private func change(_ kind: Bevel_Helper_V1_TrayChange.Kind, _ item: Bevel_Helper_V1_TrayItem)
@@ -126,6 +143,51 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         c.kind = kind
         c.item = item
         return c
+    }
+
+    // MARK: - Click forwarding (§5.5)
+
+    /// Forwards a click to the real status item by synthesizing a CGEvent at its current on-screen
+    /// coordinates, so the owning app reveals its menu/popover. Re-reads the item's live bounds (it
+    /// may have shifted since discovery). CGEvent global coords share CGWindowBounds' top-left origin,
+    /// so the window centre is the click point directly. Needs Accessibility for trusted posting.
+    func forwardClick(itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
+        let parts = itemID.split(separator: ":")
+        guard parts.count == 2, let windowNumber = Int(parts[1]) else { return false }
+        guard let windows = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
+              let w = windows.first(where: { ($0[kCGWindowNumber as String] as? Int) == windowNumber }),
+              let boundsDict = w[kCGWindowBounds as String] as? [String: Any],
+              let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else {
+            return false
+        }
+
+        let point = CGPoint(x: rect.midX, y: rect.midY)
+        let (downType, upType, cgButton): (CGEventType, CGEventType, CGMouseButton) =
+            button == .right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
+        let flags = cgFlags(modifiers)
+        guard let down = CGEvent(mouseEventSource: nil, mouseType: downType,
+                                 mouseCursorPosition: point, mouseButton: cgButton),
+              let up = CGEvent(mouseEventSource: nil, mouseType: upType,
+                               mouseCursorPosition: point, mouseButton: cgButton) else {
+            return false
+        }
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+        dbg("forwarded \(button) click to item \(itemID) at \(point)")
+        return true
+    }
+
+    /// Maps the wire modifier bitmask (shift=1, control=2, option=4, command=8) to CGEventFlags.
+    private func cgFlags(_ modifiers: UInt32) -> CGEventFlags {
+        var f = CGEventFlags()
+        if modifiers & 1 != 0 { f.insert(.maskShift) }
+        if modifiers & 2 != 0 { f.insert(.maskControl) }
+        if modifiers & 4 != 0 { f.insert(.maskAlternate) }
+        if modifiers & 8 != 0 { f.insert(.maskCommand) }
+        return f
     }
 
     // MARK: - Enumeration

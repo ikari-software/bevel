@@ -223,6 +223,27 @@ public partial class TaskbarView : UserControl
     /// <c>IsFocused</c> here so the click never diverges; the genuine pressed state then follows the
     /// binding as focus events arrive.
     /// </summary>
+    /// <summary>Clicking a mirrored tray icon forwards the click (with its button + modifiers) to the
+    /// real menu-bar status item, so the owning app reveals its menu (spec §5.5, bevel-m3.3).</summary>
+    private async void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
+        var props = e.GetCurrentPoint(c).Properties;
+        var button = props.IsRightButtonPressed ? TrayButton.Right : TrayButton.Left;
+        e.Handled = true;
+        await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
+    }
+
+    private static TrayModifiers ToTrayModifiers(KeyModifiers mods)
+    {
+        var result = TrayModifiers.None;
+        if (mods.HasFlag(KeyModifiers.Shift)) result |= TrayModifiers.Shift;
+        if (mods.HasFlag(KeyModifiers.Control)) result |= TrayModifiers.Control;
+        if (mods.HasFlag(KeyModifiers.Alt)) result |= TrayModifiers.Option;
+        if (mods.HasFlag(KeyModifiers.Meta)) result |= TrayModifiers.Command;
+        return result;
+    }
+
     private void OnTaskButtonClick(object? sender, RoutedEventArgs e)
     {
         if (sender is not ToggleButton button) return;

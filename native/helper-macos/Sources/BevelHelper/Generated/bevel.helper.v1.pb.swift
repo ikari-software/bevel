@@ -25,6 +25,70 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+public nonisolated struct Bevel_Helper_V1_ForwardClickRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var itemID: String = String()
+
+  public var button: Bevel_Helper_V1_ForwardClickRequest.Button = .left
+
+  /// Modifier bitmask mirrored into the synthesized event: shift=1, control=2, option=4, command=8.
+  public var modifiers: UInt32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Button: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case left // = 0
+    case right // = 2
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .left
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .left
+      case 2: self = .right
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .left: return 0
+      case .right: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Bevel_Helper_V1_ForwardClickRequest.Button] = [
+      .left,
+      .right,
+    ]
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_ForwardClickReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// False if the item is no longer present / on-screen (couldn't locate its coordinates).
+  public var delivered: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 /// A mirrored menu-bar status item.
 public nonisolated struct Bevel_Helper_V1_TrayItem: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
@@ -452,6 +516,80 @@ public nonisolated struct Bevel_Helper_V1_RepositionReply: Sendable {
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "bevel.helper.v1"
+
+nonisolated extension Bevel_Helper_V1_ForwardClickRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ForwardClickRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{1}button\0\u{1}modifiers\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.itemID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.button) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.modifiers) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.itemID.isEmpty {
+      try visitor.visitSingularStringField(value: self.itemID, fieldNumber: 1)
+    }
+    if self.button != .left {
+      try visitor.visitSingularEnumField(value: self.button, fieldNumber: 2)
+    }
+    if self.modifiers != 0 {
+      try visitor.visitSingularUInt32Field(value: self.modifiers, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ForwardClickRequest, rhs: Bevel_Helper_V1_ForwardClickRequest) -> Bool {
+    if lhs.itemID != rhs.itemID {return false}
+    if lhs.button != rhs.button {return false}
+    if lhs.modifiers != rhs.modifiers {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_ForwardClickRequest.Button: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0LEFT\0\u{2}\u{2}RIGHT\0")
+}
+
+nonisolated extension Bevel_Helper_V1_ForwardClickReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ForwardClickReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}delivered\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.delivered) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.delivered != false {
+      try visitor.visitSingularBoolField(value: self.delivered, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ForwardClickReply, rhs: Bevel_Helper_V1_ForwardClickReply) -> Bool {
+    if lhs.delivered != rhs.delivered {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
 
 nonisolated extension Bevel_Helper_V1_TrayItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TrayItem"

@@ -56,6 +56,15 @@ final class TrayServiceTests: XCTestCase {
         }
     }
 
+    /// forwardClick returns false (and posts no event) for a malformed or vanished item id — the
+    /// safe guard path. We deliberately do NOT test a real click, which would pop a live menu.
+    func testForwardClickRejectsUnknownItems() {
+        let svc = TrayServiceImpl(expectedKey: "test-key")
+        XCTAssertFalse(svc.forwardClick(itemID: "not-an-id", button: .left, modifiers: 0))
+        XCTAssertFalse(svc.forwardClick(itemID: "1:2147483000", button: .left, modifiers: 0),
+                       "a windowNumber that isn't on screen must not resolve to a click")
+    }
+
     func testFriendlyNameStripsMenuExtraPrefixAndSuffix() {
         let svc = TrayServiceImpl(expectedKey: "test-key")
         XCTAssertEqual(svc.friendlyNameForTest("com.apple.menuextra.eject"), "Eject")
