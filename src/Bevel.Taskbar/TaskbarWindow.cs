@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
 
@@ -260,17 +261,31 @@ public sealed class TaskbarWindow : BevelWindow
     }
 }
 
-/// <summary>Taskbar-specific theme constants.</summary>
+/// <summary>Taskbar-specific theme metrics. The button height — and the row/bar heights derived from
+/// it — vary by the user's Small/Normal/Large tier (bevel-m2.10.1); <see cref="Configure"/> is called
+/// once at startup. Normal reproduces the Win2000 classic 24/28/30 exactly.</summary>
 public static class TaskbarTheme
 {
-    /// <summary>Single-row taskbar height in logical pixels, matching Win2000 classic.</summary>
-    public const int TaskbarHeight = 30;
+    /// <summary>Window-button height in logical px for the active tier (default Normal = 24).</summary>
+    public static int ButtonHeight { get; private set; } = 24;
 
-    /// <summary>Height added per extra button row when the bar is dragged taller (bevel-0ml).</summary>
-    public const int RowHeight = 28;
+    /// <summary>Height per button row: the button plus its 4px (2+2) vertical margin.</summary>
+    public static int RowHeight => ButtonHeight + 4;
+
+    /// <summary>Single-row taskbar height in logical px: one row plus the 2px chrome inset.</summary>
+    public static int TaskbarHeight => RowHeight + 2;
 
     /// <summary>Total taskbar height (logical px) for <paramref name="rows"/> button rows.</summary>
     public static int HeightForRows(int rows) => TaskbarHeight + (Math.Max(1, rows) - 1) * RowHeight;
+
+    /// <summary>Selects the button-height tier. Call once at startup, before the taskbar window is
+    /// built. Normal (default) keeps the classic 24/28/30 metrics.</summary>
+    public static void Configure(TaskbarButtonSize size) => ButtonHeight = size switch
+    {
+        TaskbarButtonSize.Small => 18,   // → row 22, bar 24
+        TaskbarButtonSize.Large => 30,   // → row 34, bar 36
+        _ => 24,                          // Normal → row 28, bar 30 (Win2000 classic)
+    };
 }
 
 /// <summary>

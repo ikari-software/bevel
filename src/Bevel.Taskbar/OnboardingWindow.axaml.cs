@@ -54,6 +54,7 @@ public partial class OnboardingWindow : Window
         FixedWidthCheck.IsCheckedChanged += OnFixedWidthChanged;
         MinWidthSlider.ValueChanged += OnMinWidthChanged;
         GroupWindowsCheck.IsCheckedChanged += OnGroupWindowsChanged;
+        ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -76,6 +77,7 @@ public partial class OnboardingWindow : Window
         MinWidthValue.Text = $"{s.TaskbarMinButtonWidth} px";
 
         GroupWindowsCheck.IsChecked = s.TaskbarGroupWindows;
+        ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
     }
 
     private void StartPermissionPoll()
@@ -202,6 +204,14 @@ public partial class OnboardingWindow : Window
     {
         if (GroupWindowsCheck.IsChecked is not { } group) return;
         await _settings.UpdateAsync(s => s.TaskbarGroupWindows = group);
+    }
+
+    private async void OnButtonSizeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ButtonSizeCombo.SelectedIndex < 0) return;
+        var size = (TaskbarButtonSize)ButtonSizeCombo.SelectedIndex;
+        if (_settings.Current.TaskbarButtonSize == size) return;
+        await _settings.UpdateAsync(s => s.TaskbarButtonSize = size);
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)

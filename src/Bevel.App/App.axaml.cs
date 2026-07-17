@@ -131,6 +131,10 @@ public partial class App : Application
     private static void CreateTaskbarSurface(
         IServiceProvider services, SettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {
+        // Apply the button-height tier before any TaskbarWindow/HeightForRows geometry is computed
+        // (bevel-m2.10.1) — it's a startup-wide metric read by the window and the work-area band.
+        Taskbar.TaskbarTheme.Configure(settings.Current.TaskbarButtonSize);
+
         // The view can't resolve PAL services itself (ARCH-03), so hand them over here; the window
         // manager's reconciliation poll is what feeds the window-button list. The window-button strip
         // binds to the background ShellModel via TaskbarViewModel (bevel-d2z) — set as DataContext

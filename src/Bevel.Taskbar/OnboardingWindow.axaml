@@ -105,6 +105,18 @@
                     <TextBlock Text="Collapses an app's windows into one button with a pop-up list (XP-style). Off keeps one button per window."
                                FontSize="10" Foreground="Gray"
                                TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ButtonSizeCombo" FontSize="11" Width="120" VerticalAlignment="Center">
+                            <ComboBoxItem>Small</ComboBoxItem>
+                            <ComboBoxItem>Normal</ComboBoxItem>
+                            <ComboBoxItem>Large</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Text="Taller or shorter taskbar rows. Applies after restarting Bevel."
+                               FontSize="10" Foreground="Gray"
+                               TextWrapping="Wrap" Margin="20,0,0,0" />
                 </StackPanel>
             </Border>
 

@@ -203,6 +203,8 @@ public partial class TaskbarView : UserControl
     private void WireTaskButton(Control container)
     {
         if (FindTaskButton(container) is not { } button) return;
+        // Apply the active button-height tier (bevel-m2.10.1); the template's 24 is the Normal default.
+        button.Height = TaskbarTheme.ButtonHeight;
         button.PointerEntered -= OnTaskButtonPointerEntered;
         button.PointerExited -= OnTaskButtonPointerExited;
         button.PointerEntered += OnTaskButtonPointerEntered;

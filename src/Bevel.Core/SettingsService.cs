@@ -252,6 +252,7 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarGroupWindows"] = JsonSerializer.SerializeToElement(_settings.TaskbarGroupWindows, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
@@ -274,6 +275,8 @@ public sealed class SettingsService : IDisposable
                 ? twm : TaskbarButtonWidthMode.ShrinkToFit,
             TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
             TaskbarGroupWindows = GetBool("taskbarGroupWindows") ?? false,
+            TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
+                ? tbs : TaskbarButtonSize.Normal,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
         };
 
@@ -332,8 +335,24 @@ public sealed class BevelSettings
     /// (XP-style) with a flyout list. Off by default — the clean Win2000 look shows one button per window.</summary>
     public bool TaskbarGroupWindows { get; set; }
 
+    /// <summary>bevel-m2.10.1: taskbar button (and thus row/bar) height tier. Normal = Win2000 classic.</summary>
+    public TaskbarButtonSize TaskbarButtonSize { get; set; } = TaskbarButtonSize.Normal;
+
     /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
     public int TaskbarRows { get; set; } = 1;
+}
+
+/// <summary>bevel-m2.10.1: taskbar button height tier (drives button, row, and bar height).</summary>
+public enum TaskbarButtonSize
+{
+    /// <summary>Compact rows for dense strips.</summary>
+    Small,
+
+    /// <summary>Win2000 classic (default).</summary>
+    Normal,
+
+    /// <summary>Taller, touch-/readability-friendly rows.</summary>
+    Large,
 }
 
 /// <summary>bevel-m2.10: taskbar button width strategy.</summary>
