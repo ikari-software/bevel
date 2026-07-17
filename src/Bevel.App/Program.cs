@@ -111,14 +111,17 @@ internal static class Program
         var services = host.Services;
         var windows = services.GetRequiredService<Bevel.Pal.Abstractions.IWindowManager>();
         var apps = services.GetRequiredService<Bevel.Pal.Abstractions.IAppEnvironment>();
+        var tray = services.GetRequiredService<Bevel.Pal.Abstractions.ISystemTrayHost>();
 
-        // Warm the window stream BEFORE the server enumerates (same ordering as the all-in-one path):
-        // the poll subscribes to the helper and primes the first enumerate.
+        // Warm the window + tray streams BEFORE the server enumerates (same ordering as all-in-one):
+        // the polls subscribe to the helper and prime the first enumerate.
         if (windows is Pal.MacOS.MacOSWindowManager macWm)
             _ = macWm.StartPollAsync();
+        if (tray is Pal.MacOS.MacOSSystemTrayHost macTray)
+            _ = macTray.StartPollAsync();
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
-        var server = new ShellCore.ShellCoreServer(windows, apps, socketPath, nonce);
+        var server = new ShellCore.ShellCoreServer(windows, apps, tray, socketPath, nonce);
         server.StartAsync().GetAwaiter().GetResult();
 
         // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a

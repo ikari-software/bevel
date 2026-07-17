@@ -37,6 +37,8 @@ public sealed class ShellCoreIntegrationTests
         new(new ForeignWindowId(id), title, AppId: "com.example." + id, IsMinimized: false,
             IsFocused: focused, Bounds: new PalRect(0, 0, 800, 600));
 
+    private static TrayItem Tray(string id, string tooltip) => new(new TrayItemId(id), tooltip);
+
     // 1. On connect, the core replays its whole window projection to the new client as WindowOpened
     //    events, and the installed-app registry is answerable by a pull — the snapshot path.
     [Fact]
@@ -48,7 +50,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -76,7 +78,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal();
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -116,7 +118,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal();
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -139,7 +141,7 @@ public sealed class ShellCoreIntegrationTests
         var path = NewSocketPath();
         var nonce = NewNonce();
 
-        var server = new ShellCoreServer(pal, pal, path, nonce);
+        var server = new ShellCoreServer(pal, pal, pal, path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -156,7 +158,7 @@ public sealed class ShellCoreIntegrationTests
         Assert.DoesNotContain("win-42", pal.Activated);
 
         // Bring a core back on the SAME socket + nonce (as the supervisor-respawned core would be).
-        await using var server2 = new ShellCoreServer(pal, pal, path, nonce);
+        await using var server2 = new ShellCoreServer(pal, pal, pal, path, nonce);
         await server2.StartAsync(Ct);
 
         // The reconnect supervisor re-dials with backoff; on reconnect the queued action replays.
@@ -164,20 +166,61 @@ public sealed class ShellCoreIntegrationTests
             "the command queued while disconnected should replay against the PAL after reconnect");
     }
 
+    // 5. The tray mirrors over the shell-core bridge (bevel-m3.1.1): the core replays its tray
+    //    projection as a snapshot on connect, streams live add/remove deltas, and a click issued on
+    //    the UI-side host round-trips to the core's real tray host.
+    [Fact]
+    public async Task Tray_snapshot_deltas_and_click_bridge_through_the_core()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"), Tray("2:20", "Beta"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => added.Count == 2, "tray snapshot should replay both seeded items as ItemAdded");
+
+        pal.RaiseTrayItemAdded(Tray("3:30", "Gamma"));
+        await WaitFor(() => added.Contains("3:30"), "an added item should stream to the client");
+        pal.RaiseTrayItemRemoved(Tray("1:10", "Alpha"));
+        await WaitFor(() => removed.Contains("1:10"), "a removed item should stream to the client");
+
+        // Click forwarding round-trips (button + modifiers) to the real host on the core side.
+        var ok = await tray.ForwardClickAsync(new TrayItemId("2:20"), TrayButton.Right, TrayModifiers.Command);
+        Assert.True(ok);
+        await WaitFor(() => pal.TrayClicks.Contains("2:20:Right:Command"),
+            "the forwarded click should reach the core's tray host with its button + modifiers");
+    }
+
     /// <summary>
     /// An in-memory PAL that plays both roles the core owns — window manager and app environment. It
     /// seeds the initial projection, lets a test raise deltas on demand, and records the commands the
     /// core forwards, so the whole server↔client path is exercised without a real platform backend.
     /// </summary>
-    private sealed class ControllablePal : IWindowManager, IAppEnvironment
+    private sealed class ControllablePal : IWindowManager, IAppEnvironment, ISystemTrayHost
     {
         private readonly List<ForeignWindow> _windows = new();
+        private readonly List<TrayItem> _trayItems = new();
         private IReadOnlyList<InstalledApp> _installed = Array.Empty<InstalledApp>();
         public ConcurrentBag<string> Activated { get; } = new();
         public ConcurrentBag<string> Launched { get; } = new();
+        public ConcurrentBag<string> TrayClicks { get; } = new();
 
         public void SeedWindows(params ForeignWindow[] windows) => _windows.AddRange(windows);
         public void SeedInstalled(params InstalledApp[] apps) => _installed = apps;
+        public void SeedTray(params TrayItem[] items) => _trayItems.AddRange(items);
+        public void RaiseTrayItemAdded(TrayItem t) => ItemAdded?.Invoke(this, t);
+        public void RaiseTrayItemRemoved(TrayItem t) => ItemRemoved?.Invoke(this, t);
 
         public void RaiseWindowOpened(ForeignWindow w) => WindowOpened?.Invoke(this, w);
         public void RaiseWindowClosed(ForeignWindow w) => WindowClosed?.Invoke(this, w);
@@ -215,5 +258,21 @@ public sealed class ShellCoreIntegrationTests
 
         public event EventHandler<RunningApp>? AppLaunched;
         public event EventHandler<RunningApp>? AppTerminated;
+
+        // ── ISystemTrayHost ──
+        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default) =>
+            ValueTask.FromResult<IReadOnlyList<TrayItem>>(_trayItems.ToArray());
+
+        public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        {
+            TrayClicks.Add($"{id.Value}:{button}:{modifiers}");
+            return Task.FromResult(true);
+        }
+
+        public event EventHandler<TrayItem>? ItemAdded;
+        public event EventHandler<TrayItem>? ItemRemoved;
+        public event EventHandler<TrayItem>? ItemUpdated;
     }
 }

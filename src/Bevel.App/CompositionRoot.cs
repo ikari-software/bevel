@@ -88,9 +88,9 @@ public static class CompositionRoot
             services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
             // The one core connection IS the link-health source the taskbar's tray indicator tracks.
             services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
-            // The split taskbar has no helper connection, so no tray source yet — an empty stand-in
-            // until the shell-core tray bridge lands (bevel-m3.1 follow-up). All-in-one uses the real host.
-            services.AddSingleton<ISystemTrayHost, EmptySystemTrayHost>();
+            // The split taskbar mirrors the tray via the shell core (bevel-m3.1.1): the core owns the
+            // real TrayService stream and pushes items here, exactly like windows.
+            services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
         }
         else
         {

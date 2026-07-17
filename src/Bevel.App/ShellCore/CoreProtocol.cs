@@ -62,6 +62,11 @@ public enum CoreEventKind
     InstalledAppsSnapshot,
     AppLaunched,
     AppTerminated,
+    /// <summary>Full mirrored tray-item list, sent once on connect (snapshot-then-delta, bevel-m3.1.1).</summary>
+    TraySnapshot,
+    TrayItemAdded,
+    TrayItemRemoved,
+    TrayItemUpdated,
 }
 
 /// <summary>
@@ -73,7 +78,9 @@ public sealed record CoreEvent(
     ForeignWindow? Window = null,
     IReadOnlyList<ForeignWindow>? Windows = null,
     RunningApp? App = null,
-    IReadOnlyList<InstalledApp>? InstalledApps = null);
+    IReadOnlyList<InstalledApp>? InstalledApps = null,
+    TrayItem? TrayItem = null,
+    IReadOnlyList<TrayItem>? TrayItems = null);
 
 /// <summary>Which <c>IWindowManager</c>/<c>IAppEnvironment</c> action a <see cref="CoreCommand"/> requests.</summary>
 public enum CoreCommandKind
@@ -87,6 +94,7 @@ public enum CoreCommandKind
     EnumerateInstalledApps,
     GetRunningApps,
     LaunchApp,
+    ForwardTrayClick,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -95,7 +103,10 @@ public sealed record CoreCommand(
     CoreCommandKind Kind,
     string? WindowId = null,
     PalRect? Bounds = null,
-    string? AppIdOrPath = null);
+    string? AppIdOrPath = null,
+    string? TrayItemId = null,
+    TrayButton? TrayButton = null,
+    TrayModifiers? TrayModifiers = null);
 
 /// <summary>The core's reply to a <see cref="CoreCommand"/>. <see cref="Ok"/>=false carries <see cref="Error"/>;
 /// the query commands fill the matching list.</summary>
@@ -104,7 +115,8 @@ public sealed record CoreResponse(
     string? Error = null,
     IReadOnlyList<ForeignWindow>? Windows = null,
     IReadOnlyList<InstalledApp>? InstalledApps = null,
-    IReadOnlyList<RunningApp>? RunningApps = null)
+    IReadOnlyList<RunningApp>? RunningApps = null,
+    bool? Delivered = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

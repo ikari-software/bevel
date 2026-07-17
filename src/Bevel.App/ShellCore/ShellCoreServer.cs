@@ -18,6 +18,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
 {
     private readonly IWindowManager _windows;
     private readonly IAppEnvironment _apps;
+    private readonly ISystemTrayHost _tray;
     private readonly UdsMessageServer _server;
 
     // The owned projection. A snapshot must be produced SYNCHRONOUSLY on connect (so the transport
@@ -25,12 +26,15 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // re-enumerated per connect.
     private readonly object _gate = new();
     private readonly Dictionary<string, ForeignWindow> _windowById = new();
+    private readonly Dictionary<string, TrayItem> _trayById = new();
     private IReadOnlyList<InstalledApp> _installed = Array.Empty<InstalledApp>();
 
-    public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, string socketPath, byte[] nonce)
+    public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, ISystemTrayHost tray,
+        string socketPath, byte[] nonce)
     {
         _windows = windows;
         _apps = apps;
+        _tray = tray;
         _server = new UdsMessageServer(socketPath, nonce, HandleRequestAsync);
         _server.ClientConnected += PushSnapshot;
     }
@@ -47,11 +51,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
     {
         var initialWindows = await _windows.EnumerateAsync(ct).ConfigureAwait(false);
         var initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false);
+        var initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false);
         lock (_gate)
         {
             foreach (var w in initialWindows)
                 _windowById[w.Id.Value] = w;
             _installed = initialApps;
+            foreach (var t in initialTray)
+                _trayById[t.Id.Value] = t;
         }
 
         _windows.WindowOpened += OnWindowOpened;
@@ -60,6 +67,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _windows.ForegroundChanged += OnForegroundChanged;
         _apps.AppLaunched += OnAppLaunched;
         _apps.AppTerminated += OnAppTerminated;
+        _tray.ItemAdded += OnTrayItemAdded;
+        _tray.ItemRemoved += OnTrayItemRemoved;
+        _tray.ItemUpdated += OnTrayItemUpdated;
 
         _server.Start();
     }
@@ -67,17 +77,19 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // ── Snapshot on connect (synchronous — see the field comment) ────────
     private void PushSnapshot(Func<ReadOnlyMemory<byte>, ValueTask> sendToClient)
     {
-        CoreEvent windowSnapshot, appSnapshot;
+        CoreEvent windowSnapshot, appSnapshot, traySnapshot;
         lock (_gate)
         {
             windowSnapshot = new CoreEvent(CoreEventKind.WindowSnapshot, Windows: _windowById.Values.ToArray());
             appSnapshot = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: _installed);
+            traySnapshot = new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: _trayById.Values.ToArray());
         }
         // Fire-and-forget: the transport funnels these through the client's ordered write channel,
-        // so the two snapshots (and any later broadcast) stay in order; a dead client is the
+        // so the snapshots (and any later broadcast) stay in order; a dead client is the
         // transport's problem, not ours.
         _ = sendToClient(CoreProtocol.Serialize(windowSnapshot));
         _ = sendToClient(CoreProtocol.Serialize(appSnapshot));
+        _ = sendToClient(CoreProtocol.Serialize(traySnapshot));
     }
 
     // ── PAL events -> projection update + delta broadcast ────────────────
@@ -104,6 +116,23 @@ public sealed class ShellCoreServer : IAsyncDisposable
 
     private void OnAppTerminated(object? _, RunningApp a) =>
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.AppTerminated, App: a)));
+
+    private void OnTrayItemAdded(object? _, TrayItem t) => UpsertTrayAndBroadcast(t, CoreEventKind.TrayItemAdded);
+    private void OnTrayItemUpdated(object? _, TrayItem t) => UpsertTrayAndBroadcast(t, CoreEventKind.TrayItemUpdated);
+
+    private void OnTrayItemRemoved(object? _, TrayItem t)
+    {
+        lock (_gate)
+            _trayById.Remove(t.Id.Value);
+        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t)));
+    }
+
+    private void UpsertTrayAndBroadcast(TrayItem t, CoreEventKind kind)
+    {
+        lock (_gate)
+            _trayById[t.Id.Value] = t;
+        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, TrayItem: t)));
+    }
 
     // ── UI commands -> real PAL ──────────────────────────────────────────
     private async ValueTask<byte[]> HandleRequestAsync(ReadOnlyMemory<byte> payload, CancellationToken ct)
@@ -146,6 +175,11 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 await _apps.LaunchAsync(cmd.AppIdOrPath ?? throw new ArgumentException("LaunchApp needs AppIdOrPath"), ct)
                     .ConfigureAwait(false);
                 return CoreResponse.Success();
+            case CoreCommandKind.ForwardTrayClick:
+                var delivered = await _tray.ForwardClickAsync(
+                    new TrayItemId(cmd.TrayItemId ?? throw new ArgumentException("ForwardTrayClick needs TrayItemId")),
+                    cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, ct).ConfigureAwait(false);
+                return new CoreResponse(Ok: true, Delivered: delivered);
             default:
                 return CoreResponse.Fail($"unknown command {cmd.Kind}");
         }
@@ -162,6 +196,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _windows.ForegroundChanged -= OnForegroundChanged;
         _apps.AppLaunched -= OnAppLaunched;
         _apps.AppTerminated -= OnAppTerminated;
+        _tray.ItemAdded -= OnTrayItemAdded;
+        _tray.ItemRemoved -= OnTrayItemRemoved;
+        _tray.ItemUpdated -= OnTrayItemUpdated;
         await _server.DisposeAsync().ConfigureAwait(false);
     }
 }
