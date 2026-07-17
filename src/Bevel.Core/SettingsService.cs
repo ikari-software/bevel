@@ -253,6 +253,7 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarGroupWindows"] = JsonSerializer.SerializeToElement(_settings.TaskbarGroupWindows, SettingsJsonContext.Default.Boolean);
         _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
+        _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
@@ -277,6 +278,7 @@ public sealed class SettingsService : IDisposable
             TaskbarGroupWindows = GetBool("taskbarGroupWindows") ?? false,
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
+            TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
         };
 
@@ -299,6 +301,10 @@ public sealed class SettingsService : IDisposable
     private int? GetInt(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Number
             ? el.GetInt32() : null;
+
+    private string[]? GetStringArray(string key)
+        => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array
+            ? el.Deserialize(SettingsJsonContext.Default.StringArray) : null;
 
     /// <summary>Close the shared connection (additive; existing callers that never dispose are unaffected).</summary>
     public void Dispose()
@@ -337,6 +343,15 @@ public sealed class BevelSettings
 
     /// <summary>bevel-m2.10.1: taskbar button (and thus row/bar) height tier. Normal = Win2000 classic.</summary>
     public TaskbarButtonSize TaskbarButtonSize { get; set; } = TaskbarButtonSize.Normal;
+
+    /// <summary>bevel-12g: folders shown as taskbar "stacks" — a tray-adjacent button whose flyout lists
+    /// the folder's most-recent contents (the macOS Downloads-stack equivalent). Default: ~/Downloads.</summary>
+    public string[] TaskbarStacks { get; set; } = DefaultStacks;
+
+    internal static string[] DefaultStacks { get; } = new[]
+    {
+        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+    };
 
     /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
     public int TaskbarRows { get; set; } = 1;

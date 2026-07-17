@@ -184,6 +184,59 @@
                                             VerticalAlignment="Stretch"
                                             Background="{DynamicResource SystemButtonFaceBrush}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                    <!-- Folder stacks (bevel-12g): a folder button whose flyout lists recent contents
+                         (the macOS Downloads-stack equivalent), Win2000 list style. A blue dot cues
+                         new items. Click refreshes + opens the flyout; each row opens its file. -->
+                    <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tb:StackViewModel">
+                                <Button Padding="1" Background="Transparent" BorderThickness="0"
+                                        Focusable="False" ToolTip.Tip="{Binding Name}"
+                                        Click="OnStackButtonClick">
+                                    <Grid Width="16" Height="16">
+                                        <Image Source="{Binding FolderIcon}" Width="16" Height="16" />
+                                        <Ellipse Width="6" Height="6" Fill="#2E86D8" Stroke="White" StrokeThickness="1"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 IsVisible="{Binding HasNew}" />
+                                    </Grid>
+                                    <Button.Flyout>
+                                        <Flyout Placement="Top">
+                                            <StackPanel MinWidth="180">
+                                                <ItemsControl ItemsSource="{Binding Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="tb:StackFileViewModel">
+                                                            <Button Command="{Binding OpenCommand}"
+                                                                    HorizontalAlignment="Stretch"
+                                                                    HorizontalContentAlignment="Left"
+                                                                    Background="Transparent" BorderThickness="0"
+                                                                    Padding="6,3" FontSize="11">
+                                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                    <Image Source="{Binding IconSource}" Width="16" Height="16" />
+                                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Border Height="1" Margin="4,3"
+                                                        Background="{DynamicResource SystemButtonShadowBrush}" />
+                                                <Button Command="{Binding OpenFolderCommand}" Content="Open folder"
+                                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                        Background="Transparent" BorderThickness="0" Padding="6,3" FontSize="11" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
                     <!-- Mirrored menu-bar status items (bevel-m3.1): 16px icons, hover tooltip = AX
                          title. Empty in the split taskbar until the shell-core tray bridge lands. -->
                     <ItemsControl ItemsSource="{Binding Tray.Items}" VerticalAlignment="Center">

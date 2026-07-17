@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using Avalonia.Threading;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -22,7 +24,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
     /// as always connected). Drives the tray disconnected indicator.</param>
     public TaskbarViewModel(ShellModel model, StartMenuViewModel startMenu,
-        IShellConnectionStatus? connection = null, ISystemTrayHost? tray = null)
+        IShellConnectionStatus? connection = null, ISystemTrayHost? tray = null,
+        SettingsService? settings = null, IAppEnvironment? appEnv = null, IIconProvider? icons = null)
     {
         Model = model;
         StartMenu = startMenu;
@@ -30,6 +33,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _projector = new TaskbarItemsProjector(model.Windows);
         Tray = new TrayViewModel(tray);
         Tray.Start();
+        Stacks = new StacksViewModel(
+            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons);
         if (connection is not null)
         {
             _isDisconnected = !connection.IsConnected;
@@ -42,6 +47,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     /// <summary>The notification-area tray (mirrored menu-bar status items, bevel-m3.1).</summary>
     public TrayViewModel Tray { get; }
+
+    /// <summary>The taskbar folder stacks (recent-contents flyouts, bevel-12g).</summary>
+    public StacksViewModel Stacks { get; }
 
     /// <summary>The flat per-window collection (source of truth). Kept for callers/tests that want
     /// the raw windows; the strip binds <see cref="Items"/> instead.</summary>
@@ -75,5 +83,6 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             _connection.ConnectionChanged -= OnConnectionChanged;
         _projector.Dispose();
         Tray.Dispose();
+        Stacks.Dispose();
     }
 }

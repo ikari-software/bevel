@@ -234,6 +234,14 @@ public partial class TaskbarView : UserControl
         await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
     }
 
+    /// <summary>Refreshes a folder stack's recent-contents list (and clears its new-item cue) as its
+    /// button is clicked, so the flyout that opens right after shows the current folder (bevel-12g).</summary>
+    private void OnStackButtonClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control c && c.DataContext is StackViewModel stack)
+            stack.Refresh();
+    }
+
     private static TrayModifiers ToTrayModifiers(KeyModifiers mods)
     {
         var result = TrayModifiers.None;
