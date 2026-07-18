@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
@@ -33,6 +34,9 @@ public partial class TaskbarView : UserControl
     private bool _locked;
     private bool _alwaysOnTop = true;
     private bool _showDesktop;
+    private StackFileViewModel? _stackDragItem;
+    private Point _stackDragStart;
+    private System.Threading.Tasks.Task<IStorageFile?>? _stackDragFileTask;
     private int _fontSize;
     private string _bgColor = "";
     private int _opacity = 100;
@@ -235,8 +239,13 @@ public partial class TaskbarView : UserControl
     /// the custom Button rows don't auto-dismiss the way MenuItems do, so hide any open task flyout.</summary>
     private void OnGroupWindowActivated(object? sender, RoutedEventArgs e)
     {
-        foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
-            toggle.Flyout?.Hide();
+        // Defer the close: hiding the flyout synchronously tears down the popup mid-click and cancels
+        // the button's ActivateCommand. Posting lets the activation run first, THEN the flyout closes.
+        Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
+                toggle.Flyout?.Hide();
+        });
     }
 
     /// <summary>Taskbar right-click → Task Manager: opens macOS Activity Monitor (bevel-cust.ctxmenu).</summary>
@@ -254,6 +263,51 @@ public partial class TaskbarView : UserControl
     private void OnLockTaskbarClick(object? sender, RoutedEventArgs e) => _toggleLock?.Invoke();
 
     private void OnPropertiesClick(object? sender, RoutedEventArgs e) => _openSettings?.Invoke();
+
+    // ── Stack flyout: mini-explorer rows (bevel-cust) — click to open, drag out to any app ──────────
+
+    /// <summary>Single click/tap on a stack-flyout row opens the file (OpenCommand raises Opened, which
+    /// dismisses the flyout). A drag gesture suppresses Tapped, so dragging never also opens the file.</summary>
+    private void OnStackFileTapped(object? sender, TappedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is StackFileViewModel vm)
+            vm.OpenCommand.Execute(null);
+    }
+
+    /// <summary>On press we record the row and START resolving its IStorageFile, so that by the time the
+    /// pointer moves the file is ready and <see cref="DragDrop.DoDragDrop"/> can run synchronously inside
+    /// the move handler — awaiting the resolve first would drop the OS drag gesture.</summary>
+    private void OnStackFilePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(null).Properties.IsLeftButtonPressed
+            && (sender as Control)?.DataContext is StackFileViewModel vm)
+        {
+            _stackDragItem = vm;
+            _stackDragStart = e.GetPosition(null);
+            _stackDragFileTask = TopLevel.GetTopLevel(this)?.StorageProvider?.TryGetFileFromPathAsync(ToFileUri(vm.FullPath));
+        }
+    }
+
+    /// <summary>Once the pointer moves past a small threshold with the button held, start an OS file-drag
+    /// carrying the file (bevel-cust) so it can be dropped on Finder or any app. Fires only when the
+    /// pre-resolve has completed, keeping DoDragDrop synchronous; otherwise a later move picks it up.</summary>
+    private void OnStackFileMoved(object? sender, PointerEventArgs e)
+    {
+        if (_stackDragItem is null) return;
+        if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed) { _stackDragItem = null; return; }
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _stackDragStart.X) < 4 && Math.Abs(pos.Y - _stackDragStart.Y) < 4) return;
+        if (_stackDragFileTask is not { IsCompletedSuccessfully: true } resolved) return; // wait a frame for the file
+        _stackDragItem = null;
+
+        var file = resolved.Result;
+        if (file is null) return;
+        var data = new DataObject();
+        data.Set(DataFormats.Files, new[] { file });
+        _ = DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Link);
+    }
+
+    private static Uri ToFileUri(string path) => new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
 
     protected override void OnLoaded(RoutedEventArgs e)
     {

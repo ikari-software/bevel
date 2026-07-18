@@ -165,6 +165,8 @@ public sealed class StackFileViewModel : ObservableObject
     }
 
     public string Name { get; }
+    /// <summary>Absolute path — used to drag the file out of the stack flyout to other apps (bevel-cust).</summary>
+    public string FullPath => _path;
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
     public ICommand OpenCommand { get; }
 

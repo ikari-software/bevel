@@ -5,6 +5,15 @@
              x:Class="Bevel.Taskbar.TaskbarView"
              x:DataType="tb:TaskbarViewModel"
              ClipToBounds="False">
+    <UserControl.Styles>
+        <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). -->
+        <Style Selector="Border.stackrow:pointerover">
+            <Setter Property="Background" Value="#316AC5" />
+        </Style>
+        <Style Selector="Border.stackrow:pointerover TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </UserControl.Styles>
     <Panel>
     <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
           ClipToBounds="False"
@@ -236,17 +245,19 @@
                                                 <ItemsControl ItemsSource="{Binding Items}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate x:DataType="tb:StackFileViewModel">
-                                                            <Button Command="{Binding OpenCommand}"
-                                                                    HorizontalAlignment="Stretch"
-                                                                    HorizontalContentAlignment="Left"
-                                                                    Background="Transparent" BorderThickness="0"
-                                                                    Padding="6,3" FontSize="11">
+                                                            <!-- Explorer-style row (bevel-cust): hover highlight,
+                                                                 click to open, drag out to any app. -->
+                                                            <Border Classes="stackrow" Background="Transparent"
+                                                                    HorizontalAlignment="Stretch" Padding="6,3"
+                                                                    Tapped="OnStackFileTapped"
+                                                                    PointerPressed="OnStackFilePressed"
+                                                                    PointerMoved="OnStackFileMoved">
                                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                                     <Image Source="{Binding IconSource}" Width="16" Height="16" />
                                                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                                                               TextTrimming="CharacterEllipsis" />
+                                                                               FontSize="11" TextTrimming="CharacterEllipsis" />
                                                                 </StackPanel>
-                                                            </Button>
+                                                            </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
