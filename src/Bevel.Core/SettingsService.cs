@@ -264,6 +264,9 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarGrouping"] = JsonSerializer.SerializeToElement(_settings.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarButtonLabels"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarMiddleClickCloses"] = JsonSerializer.SerializeToElement(_settings.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarFontSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarFontSize, SettingsJsonContext.Default.Int32);
+        _raw["taskbarBackgroundColor"] = JsonSerializer.SerializeToElement(_settings.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
+        _raw["taskbarOpacity"] = JsonSerializer.SerializeToElement(_settings.TaskbarOpacity, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
@@ -302,6 +305,9 @@ public sealed class SettingsService : IDisposable
             TaskbarButtonLabels = Enum.TryParse<TaskbarButtonLabels>(GetString("taskbarButtonLabels"), out var tbl)
                 ? tbl : TaskbarButtonLabels.Auto,
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
+            TaskbarFontSize = GetInt("taskbarFontSize") ?? 0,
+            TaskbarBackgroundColor = GetString("taskbarBackgroundColor") ?? "",
+            TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
         };
 
         _themeOverrides.Clear();
@@ -411,6 +417,17 @@ public sealed class BevelSettings
 
     /// <summary>Middle-clicking a window button closes that window (Win7+/browser-tab convention).</summary>
     public bool TaskbarMiddleClickCloses { get; set; } = true;
+
+    // ── Appearance (bevel-cust.appearance) ──────────────────────────────────────────────────────
+
+    /// <summary>Taskbar font size in points; 0 = the theme baseline (11).</summary>
+    public int TaskbarFontSize { get; set; }
+
+    /// <summary>Taskbar background tint as a hex colour (e.g. <c>#2A3F5F</c>); empty = theme default.</summary>
+    public string TaskbarBackgroundColor { get; set; } = "";
+
+    /// <summary>Taskbar background opacity 20–100 (%); 100 = fully opaque. Tints the bar, not its text.</summary>
+    public int TaskbarOpacity { get; set; } = 100;
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

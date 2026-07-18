@@ -225,6 +225,44 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ── Appearance (bevel-cust.appearance) ───────────────────── -->
+            <TabItem Header="Appearance">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Appearance" FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <Slider x:Name="FontSizeSlider" Minimum="9" Maximum="16"
+                                        Width="150" VerticalAlignment="Center" />
+                                <TextBlock x:Name="FontSizeValue" FontSize="11" VerticalAlignment="Center" Width="42" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Opacity" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <Slider x:Name="OpacitySlider" Minimum="20" Maximum="100"
+                                        Width="150" VerticalAlignment="Center" />
+                                <TextBlock x:Name="OpacityValue" FontSize="11" VerticalAlignment="Center" Width="42" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Tint" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBox x:Name="BgColorBox" FontSize="11" Width="150"
+                                         Watermark="(theme default)" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="A hex colour like #2A3F5F for the bar background. Clear it to use the theme colour."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
         <!-- Close button -->

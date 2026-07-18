@@ -67,6 +67,9 @@ public partial class OnboardingWindow : Window
         Clock24Check.IsCheckedChanged += OnClockChanged;
         ClockSecondsCheck.IsCheckedChanged += OnClockChanged;
         ClockDateCheck.IsCheckedChanged += OnClockChanged;
+        FontSizeSlider.ValueChanged += OnAppearanceSliderChanged;
+        OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
+        BgColorBox.TextChanged += (_, _) => PersistAppearance();
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -100,6 +103,12 @@ public partial class OnboardingWindow : Window
         Clock24Check.IsChecked = s.TaskbarClock24Hour;
         ClockSecondsCheck.IsChecked = s.TaskbarClockShowSeconds;
         ClockDateCheck.IsChecked = s.TaskbarClockShowDate;
+
+        FontSizeSlider.Value = s.TaskbarFontSize > 0 ? s.TaskbarFontSize : 11;
+        FontSizeValue.Text = $"{(int)FontSizeSlider.Value} pt";
+        OpacitySlider.Value = s.TaskbarOpacity;
+        OpacityValue.Text = $"{s.TaskbarOpacity} %";
+        BgColorBox.Text = s.TaskbarBackgroundColor;
     }
 
     private void StartPermissionPoll()
@@ -282,6 +291,32 @@ public partial class OnboardingWindow : Window
             s.TaskbarClock24Hour = h24;
             s.TaskbarClockShowSeconds = seconds;
             s.TaskbarClockShowDate = date;
+        });
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    private void OnAppearanceSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        FontSizeValue.Text = $"{(int)Math.Round(FontSizeSlider.Value)} pt";
+        OpacityValue.Text = $"{(int)Math.Round(OpacitySlider.Value)} %";
+        PersistAppearance();
+    }
+
+    /// <summary>Font size / opacity / tint all persist here (sliders + textbox fire continuously —
+    /// the equality guard keeps a drag from thrashing the DB).</summary>
+    private async void PersistAppearance()
+    {
+        var font = (int)Math.Round(FontSizeSlider.Value);
+        var opacity = (int)Math.Round(OpacitySlider.Value);
+        var color = BgColorBox.Text ?? "";
+        if (_settings.Current.TaskbarFontSize == font
+            && _settings.Current.TaskbarOpacity == opacity
+            && _settings.Current.TaskbarBackgroundColor == color) return;
+        await _settings.UpdateAsync(s =>
+        {
+            s.TaskbarFontSize = font;
+            s.TaskbarOpacity = opacity;
+            s.TaskbarBackgroundColor = color;
         });
         ApplyLive?.Invoke(_settings.Current);
     }

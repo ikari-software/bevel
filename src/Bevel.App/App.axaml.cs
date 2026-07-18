@@ -173,7 +173,10 @@ public partial class App : Application
             showClock: settings.Current.TaskbarShowClock,
             clock24Hour: settings.Current.TaskbarClock24Hour,
             clockShowSeconds: settings.Current.TaskbarClockShowSeconds,
-            clockShowDate: settings.Current.TaskbarClockShowDate);
+            clockShowDate: settings.Current.TaskbarClockShowDate,
+            fontSize: settings.Current.TaskbarFontSize,
+            backgroundColor: settings.Current.TaskbarBackgroundColor,
+            opacity: settings.Current.TaskbarOpacity);
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

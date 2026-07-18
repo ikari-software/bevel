@@ -25,6 +25,7 @@ public partial class TaskbarView : UserControl
     private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
+    private Avalonia.Media.IBrush? _defaultBg;   // theme background, captured on first appearance override
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
     private bool _resizing;
@@ -62,7 +63,10 @@ public partial class TaskbarView : UserControl
         bool showClock = true,
         bool clock24Hour = true,
         bool clockShowSeconds = false,
-        bool clockShowDate = false)
+        bool clockShowDate = false,
+        int fontSize = 0,
+        string backgroundColor = "",
+        int opacity = 100)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -78,6 +82,7 @@ public partial class TaskbarView : UserControl
         _openSettings = openSettings;
         Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
         ApplyStart(showStart, startLabel);
+        ApplyAppearance(fontSize, backgroundColor, opacity);
     }
 
     /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>
@@ -86,6 +91,36 @@ public partial class TaskbarView : UserControl
         StartButton.IsVisible = show;
         StartLabelText.Text = label;
         StartLabelText.IsVisible = !string.IsNullOrEmpty(label);
+    }
+
+    /// <summary>Applies font size + background tint/opacity to the running bar (bevel-cust.appearance).
+    /// Font size falls back to the 11pt theme baseline. The background is left as the XAML DynamicResource
+    /// until the user first customizes it; the original brush is captured on first touch so resetting to
+    /// opaque/no-tint restores it exactly (the bar tints, the text/buttons stay solid on top).</summary>
+    private void ApplyAppearance(int fontSize, string bgColor, int opacity)
+    {
+        FontSize = fontSize > 0 ? fontSize : 11;
+
+        var opaque = Math.Clamp(opacity, 20, 100) >= 100;
+        var hasColor = !string.IsNullOrWhiteSpace(bgColor);
+        if (opaque && !hasColor && _defaultBg is null)
+            return;   // never customized → leave the theme's DynamicResource background intact
+
+        _defaultBg ??= (this.TryFindResource("SystemButtonFaceBrush", out var r) && r is Avalonia.Media.IBrush rb)
+            ? rb : RootGrid.Background;
+
+        if (opaque && !hasColor)
+        {
+            RootGrid.Background = _defaultBg;   // reset to the captured default
+            return;
+        }
+
+        var baseColor = hasColor && Avalonia.Media.Color.TryParse(bgColor, out var parsed)
+            ? parsed
+            : (_defaultBg as Avalonia.Media.ISolidColorBrush)?.Color ?? Avalonia.Media.Colors.Silver;
+        var a = (byte)(Math.Clamp(opacity, 20, 100) * 255 / 100);
+        RootGrid.Background = new Avalonia.Media.SolidColorBrush(
+            Avalonia.Media.Color.FromArgb(a, baseColor.R, baseColor.G, baseColor.B));
     }
 
     /// <summary>Pushes every live-applicable setting onto the running taskbar in one shot (clock, Start,
@@ -99,6 +134,7 @@ public partial class TaskbarView : UserControl
         _vm?.SetGrouping(_grouping);
         _buttonLabels = s.TaskbarButtonLabels;
         _middleClickCloses = s.TaskbarMiddleClickCloses;
+        ApplyAppearance(s.TaskbarFontSize, s.TaskbarBackgroundColor, s.TaskbarOpacity);
         LayoutButtons();
     }
 
