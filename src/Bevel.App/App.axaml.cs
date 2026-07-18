@@ -82,10 +82,14 @@ public partial class App : Application
             // thread). Apply the whitelisted theme overrides (bevel-wym) from the loaded snapshot.
             // All roles render themed UI, so this is common to every surface.
             var settings = services.GetRequiredService<SettingsService>();
+            // Theme token bundle first (PKG-03) — the baseline the user overrides layer on top of.
+            UI.ThemeService.Apply(settings.Current.ThemeId);
             UI.ThemeOptions.ApplyCrispBevels(
                 this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
             // Win2000 colour scheme (W2K-01 / bevel-9js) — also common to every surface.
             UI.ColorSchemeService.Apply(settings.Current.ColorScheme);
+            // UI font override (FNT-01) — top-level, so it wins over the theme's default face.
+            UI.FontService.Apply(settings.Current.UiFontFamily);
 
             // Create only this process's surface(s). In the default all-in-one role every block
             // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.

@@ -236,6 +236,13 @@
                             <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Theme" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <ComboBox x:Name="ThemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="The visual style engine (chrome geometry, bevels, metrics). The colour scheme and font below layer on top."
+                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Colour scheme" FontSize="11" VerticalAlignment="Center" Width="66" />
                                 <ComboBox x:Name="ColorSchemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
                             </StackPanel>
@@ -248,6 +255,14 @@
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="FontSizeValue" FontSize="11" VerticalAlignment="Center" Width="42" />
                             </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Font" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <ComboBox x:Name="FontFamilyCombo" FontSize="11" Width="200" VerticalAlignment="Center"
+                                          MaxDropDownHeight="260" />
+                            </StackPanel>
+                            <TextBlock Text="The UI font. '(Theme default)' uses the theme's bundled face."
+                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Opacity" FontSize="11" VerticalAlignment="Center" Width="66" />

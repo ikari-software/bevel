@@ -47,8 +47,13 @@ public partial class OnboardingWindow : Window
         _permissionBroker = permissionBroker;
         _shellSession = shellSession;
 
+        foreach (var (_, display) in Bevel.UI.ThemeService.Themes)
+            ThemeCombo.Items.Add(display);
         foreach (var (_, display) in Bevel.UI.ColorSchemeService.Schemes)
             ColorSchemeCombo.Items.Add(display);
+        FontFamilyCombo.Items.Add("(Theme default)");
+        foreach (var family in Bevel.UI.FontService.Families)
+            FontFamilyCombo.Items.Add(family);
         LoadSettings();
         StartPermissionPoll();
         _ = ReconcileRunAtLoginAsync();
@@ -72,7 +77,9 @@ public partial class OnboardingWindow : Window
         FontSizeSlider.ValueChanged += OnAppearanceSliderChanged;
         OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
+        ThemeCombo.SelectionChanged += OnThemeChanged;
         ColorSchemeCombo.SelectionChanged += OnColorSchemeChanged;
+        FontFamilyCombo.SelectionChanged += OnFontFamilyChanged;
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
         LockCheck.IsCheckedChanged += OnBehaviorChanged;
@@ -112,7 +119,9 @@ public partial class OnboardingWindow : Window
         ClockSecondsCheck.IsChecked = s.TaskbarClockShowSeconds;
         ClockDateCheck.IsChecked = s.TaskbarClockShowDate;
 
+        ThemeCombo.SelectedIndex = ThemeIndex(s.ThemeId);
         ColorSchemeCombo.SelectedIndex = SchemeIndex(s.ColorScheme);
+        FontFamilyCombo.SelectedIndex = FontIndex(s.UiFontFamily);
         FontSizeSlider.Value = s.TaskbarFontSize > 0 ? s.TaskbarFontSize : 11;
         FontSizeValue.Text = $"{(int)FontSizeSlider.Value} pt";
         OpacitySlider.Value = s.TaskbarOpacity;
@@ -330,6 +339,50 @@ public partial class OnboardingWindow : Window
         for (var i = 0; i < Bevel.UI.ColorSchemeService.Schemes.Count; i++)
             if (Bevel.UI.ColorSchemeService.Schemes[i].Id == target) return i;
         return 0;
+    }
+
+    private static int ThemeIndex(string id)
+    {
+        var target = string.IsNullOrEmpty(id) ? Bevel.UI.ThemeService.DefaultTheme : id;
+        for (var i = 0; i < Bevel.UI.ThemeService.Themes.Count; i++)
+            if (Bevel.UI.ThemeService.Themes[i].Id == target) return i;
+        return 0;
+    }
+
+    // Picker index 0 is the synthetic "(Theme default)" entry; installed families follow at 1…N.
+    private static int FontIndex(string family)
+    {
+        if (string.IsNullOrWhiteSpace(family)) return 0;
+        for (var i = 0; i < Bevel.UI.FontService.Families.Count; i++)
+            if (string.Equals(Bevel.UI.FontService.Families[i], family, StringComparison.OrdinalIgnoreCase))
+                return i + 1;
+        return 0;   // a family that's no longer installed falls back to the theme default
+    }
+
+    /// <summary>Theme picker (PKG-03): swaps the whole token bundle live via
+    /// <see cref="Bevel.UI.ThemeService"/>, then persists the choice (guarded).</summary>
+    private async void OnThemeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var idx = ThemeCombo.SelectedIndex;
+        if (idx < 0 || idx >= Bevel.UI.ThemeService.Themes.Count) return;
+        var id = Bevel.UI.ThemeService.Themes[idx].Id;
+        if (_settings.Current.ThemeId == id) return;
+        Bevel.UI.ThemeService.Apply(id);   // live reskin
+        try { await _settings.UpdateAsync(s => s.ThemeId = id); }
+        catch (Exception ex) { Console.Error.WriteLine($"[settings] theme persist failed: {ex.Message}"); }
+    }
+
+    /// <summary>UI font-family picker (FNT-01): reskins the shell font live via
+    /// <see cref="Bevel.UI.FontService"/>, then persists the choice (guarded).</summary>
+    private async void OnFontFamilyChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var idx = FontFamilyCombo.SelectedIndex;
+        if (idx < 0) return;
+        var family = idx == 0 ? "" : Bevel.UI.FontService.Families[idx - 1];
+        if (_settings.Current.UiFontFamily == family) return;
+        Bevel.UI.FontService.Apply(family);   // live reskin
+        try { await _settings.UpdateAsync(s => s.UiFontFamily = family); }
+        catch (Exception ex) { Console.Error.WriteLine($"[settings] font persist failed: {ex.Message}"); }
     }
 
     /// <summary>Win2000 colour-scheme picker (bevel-9js): recolours the whole shell live via
