@@ -30,6 +30,11 @@
                 ClipToBounds="True"
                 HorizontalContentAlignment="Left"
                 VerticalAlignment="Stretch">
+            <Button.ContextFlyout>
+                <MenuFlyout>
+                    <MenuItem Header="P_roperties…" Click="OnPropertiesClick" />
+                </MenuFlyout>
+            </Button.ContextFlyout>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
                 <!-- OS badge injected in code (StartLogo): Windows flag / Apple / Tux by host OS. -->
                 <ContentControl x:Name="StartLogoHost"

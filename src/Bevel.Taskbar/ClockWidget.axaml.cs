@@ -36,19 +36,21 @@ public partial class ClockWidget : UserControl
 
         UpdateTime();
 
-        // Double-click deep-links to System Settings → Date & Time.
-        Tapped += (_, _) =>
-        {
-            if (OperatingSystem.IsMacOS())
+        // Double-click (or right-click → Adjust Date & Time) deep-links to System Settings.
+        Tapped += (_, _) => OpenDateTimeSettings();
+    }
+
+    private void OnAdjustDateTime(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => OpenDateTimeSettings();
+
+    private static void OpenDateTimeSettings()
+    {
+        if (OperatingSystem.IsMacOS())
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "open",
-                    Arguments = "x-apple.systempreferences:com.apple.preference.datetime",
-                    UseShellExecute = true,
-                });
-            }
-        };
+                FileName = "open",
+                Arguments = "x-apple.systempreferences:com.apple.preference.datetime",
+                UseShellExecute = true,
+            });
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
