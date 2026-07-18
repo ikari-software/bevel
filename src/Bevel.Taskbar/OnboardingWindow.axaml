@@ -263,6 +263,39 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ── Tray (bevel-cust.tray) ───────────────────────────────── -->
+            <TabItem Header="Tray">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="System Tray" FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="The mirrored macOS menu-bar icons. Changes apply immediately."
+                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Show up to" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <Slider x:Name="TrayCapSlider" Minimum="1" Maximum="20"
+                                        Width="150" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TrayCapValue" FontSize="11" VerticalAlignment="Center" Width="56" />
+                            </StackPanel>
+                            <TextBlock Text="Icons shown inline before the rest move under the overflow chevron."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Icon size" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <Slider x:Name="TrayIconSizeSlider" Minimum="12" Maximum="32"
+                                        Width="150" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TrayIconSizeValue" FontSize="11" VerticalAlignment="Center" Width="56" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
         <!-- Close button -->

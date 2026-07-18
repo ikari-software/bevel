@@ -25,6 +25,8 @@ public partial class TaskbarView : UserControl
     private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
+    private int _trayOverflowCap = 8;
+    private int _trayIconSize = 16;
     private Avalonia.Media.IBrush? _defaultBg;   // theme background, captured on first appearance override
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
@@ -66,7 +68,9 @@ public partial class TaskbarView : UserControl
         bool clockShowDate = false,
         int fontSize = 0,
         string backgroundColor = "",
-        int opacity = 100)
+        int opacity = 100,
+        int trayOverflowCap = 8,
+        int trayIconSize = 16)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -77,6 +81,8 @@ public partial class TaskbarView : UserControl
         _grouping = grouping;
         _buttonLabels = buttonLabels;
         _middleClickCloses = middleClickCloses;
+        _trayOverflowCap = trayOverflowCap;
+        _trayIconSize = trayIconSize;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
@@ -135,6 +141,7 @@ public partial class TaskbarView : UserControl
         _buttonLabels = s.TaskbarButtonLabels;
         _middleClickCloses = s.TaskbarMiddleClickCloses;
         ApplyAppearance(s.TaskbarFontSize, s.TaskbarBackgroundColor, s.TaskbarOpacity);
+        _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         LayoutButtons();
     }
 
@@ -162,6 +169,7 @@ public partial class TaskbarView : UserControl
         // Apply the grouping mode before the first layout so Items is already in its final shape
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
         _vm?.SetGrouping(_grouping);
+        _vm?.Tray.Configure(_trayOverflowCap, _trayIconSize);
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.

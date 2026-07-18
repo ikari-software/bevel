@@ -267,6 +267,8 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarFontSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarFontSize, SettingsJsonContext.Default.Int32);
         _raw["taskbarBackgroundColor"] = JsonSerializer.SerializeToElement(_settings.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
         _raw["taskbarOpacity"] = JsonSerializer.SerializeToElement(_settings.TaskbarOpacity, SettingsJsonContext.Default.Int32);
+        _raw["taskbarTrayOverflowCap"] = JsonSerializer.SerializeToElement(_settings.TaskbarTrayOverflowCap, SettingsJsonContext.Default.Int32);
+        _raw["taskbarTrayIconSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
@@ -308,6 +310,8 @@ public sealed class SettingsService : IDisposable
             TaskbarFontSize = GetInt("taskbarFontSize") ?? 0,
             TaskbarBackgroundColor = GetString("taskbarBackgroundColor") ?? "",
             TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
+            TaskbarTrayOverflowCap = GetInt("taskbarTrayOverflowCap") ?? 8,
+            TaskbarTrayIconSize = GetInt("taskbarTrayIconSize") ?? 16,
         };
 
         _themeOverrides.Clear();
@@ -428,6 +432,14 @@ public sealed class BevelSettings
 
     /// <summary>Taskbar background opacity 20–100 (%); 100 = fully opaque. Tints the bar, not its text.</summary>
     public int TaskbarOpacity { get; set; } = 100;
+
+    // ── System tray (bevel-cust.tray) ───────────────────────────────────────────────────────────
+
+    /// <summary>How many mirrored tray icons show inline before the rest move under the overflow chevron.</summary>
+    public int TaskbarTrayOverflowCap { get; set; } = 8;
+
+    /// <summary>Displayed size (px) of each mirrored tray icon. Default 16 (classic).</summary>
+    public int TaskbarTrayIconSize { get; set; } = 16;
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

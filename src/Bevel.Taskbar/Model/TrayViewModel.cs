@@ -24,7 +24,23 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
     /// <summary>How many items show inline before the rest spill into the overflow flyout (bevel-m3.4).</summary>
-    public const int VisibleCap = 8;
+    /// <summary>Default inline tray-icon count before overflow (bevel-m3.4); user-overridable
+    /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
+    public const int DefaultVisibleCap = 8;
+
+    private int _iconSize = 16;
+
+    /// <summary>Inline tray-icon count before the overflow chevron. Set live via <see cref="Configure"/>.</summary>
+    public int VisibleCap { get; private set; } = DefaultVisibleCap;
+
+    /// <summary>Applies the user's tray tuning live (bevel-cust.tray): inline overflow cap + icon size.</summary>
+    public void Configure(int overflowCap, int iconSize)
+    {
+        _iconSize = Math.Clamp(iconSize, 12, 32);
+        foreach (var it in Items) it.IconSize = _iconSize;
+        VisibleCap = Math.Clamp(overflowCap, 1, 64);
+        Reslice();
+    }
 
     private bool _hasOverflow;
     private bool _hasAnyItems;
@@ -98,7 +114,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(item.Id));
         if (existing is not null) { existing.Update(item); return; } // in-place update — no reslice needed
-        Items.Add(new TrayItemViewModel(item));
+        Items.Add(new TrayItemViewModel(item) { IconSize = _iconSize });
         Reslice();
     }
 
@@ -160,6 +176,10 @@ public sealed class TrayItemViewModel : ObservableObject
 
     public string Tooltip { get => _tooltip; private set => SetProperty(ref _tooltip, value); }
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
+
+    private double _iconSize = 16;
+    /// <summary>Displayed icon edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
+    public double IconSize { get => _iconSize; set => SetProperty(ref _iconSize, value); }
 
     public void Update(TrayItem item)
     {

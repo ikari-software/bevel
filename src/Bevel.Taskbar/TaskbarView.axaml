@@ -266,7 +266,8 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                                        <Image Source="{Binding IconSource}"
+                                                               Width="{Binding IconSize}" Height="{Binding IconSize}"
                                                                Margin="4" VerticalAlignment="Center"
                                                                ToolTip.Tip="{Binding Tooltip}"
                                                                PointerPressed="OnTrayIconPressed" />
@@ -286,7 +287,8 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                        <Image Source="{Binding IconSource}"
+                                               Width="{Binding IconSize}" Height="{Binding IconSize}"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
                                     </DataTemplate>

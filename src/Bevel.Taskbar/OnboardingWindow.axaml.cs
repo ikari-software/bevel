@@ -70,6 +70,8 @@ public partial class OnboardingWindow : Window
         FontSizeSlider.ValueChanged += OnAppearanceSliderChanged;
         OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
+        TrayCapSlider.ValueChanged += OnTraySliderChanged;
+        TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -109,6 +111,11 @@ public partial class OnboardingWindow : Window
         OpacitySlider.Value = s.TaskbarOpacity;
         OpacityValue.Text = $"{s.TaskbarOpacity} %";
         BgColorBox.Text = s.TaskbarBackgroundColor;
+
+        TrayCapSlider.Value = s.TaskbarTrayOverflowCap;
+        TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} icons";
+        TrayIconSizeSlider.Value = s.TaskbarTrayIconSize;
+        TrayIconSizeValue.Text = $"{s.TaskbarTrayIconSize} px";
     }
 
     private void StartPermissionPoll()
@@ -318,6 +325,22 @@ public partial class OnboardingWindow : Window
             s.TaskbarOpacity = opacity;
             s.TaskbarBackgroundColor = color;
         });
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    private void OnTraySliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        TrayCapValue.Text = $"{(int)Math.Round(TrayCapSlider.Value)} icons";
+        TrayIconSizeValue.Text = $"{(int)Math.Round(TrayIconSizeSlider.Value)} px";
+        PersistTray();
+    }
+
+    private async void PersistTray()
+    {
+        var cap = (int)Math.Round(TrayCapSlider.Value);
+        var size = (int)Math.Round(TrayIconSizeSlider.Value);
+        if (_settings.Current.TaskbarTrayOverflowCap == cap && _settings.Current.TaskbarTrayIconSize == size) return;
+        await _settings.UpdateAsync(s => { s.TaskbarTrayOverflowCap = cap; s.TaskbarTrayIconSize = size; });
         ApplyLive?.Invoke(_settings.Current);
     }
 

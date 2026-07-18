@@ -83,8 +83,8 @@ public class TrayViewModelTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(10, vm.Items.Count);
-        Assert.Equal(TrayViewModel.VisibleCap, vm.VisibleItems.Count);
-        Assert.Equal(10 - TrayViewModel.VisibleCap, vm.OverflowItems.Count);
+        Assert.Equal(TrayViewModel.DefaultVisibleCap, vm.VisibleItems.Count);
+        Assert.Equal(10 - TrayViewModel.DefaultVisibleCap, vm.OverflowItems.Count);
         Assert.True(vm.HasOverflow);
     }
 
@@ -103,7 +103,23 @@ public class TrayViewModelTests
         Dispatcher.UIThread.RunJobs();
 
         Assert.Contains(vm.VisibleItems, i => i.Id.Equals(overflowId));      // promoted in
-        Assert.Equal(TrayViewModel.VisibleCap, vm.VisibleItems.Count);       // still capped
+        Assert.Equal(TrayViewModel.DefaultVisibleCap, vm.VisibleItems.Count);       // still capped
+    }
+
+    [AvaloniaFact]
+    public void Configure_changes_the_overflow_cap_and_icon_size_live()
+    {
+        var host = new StubTray(Enumerable.Range(0, 10).Select(i => Item($"{i}:{i}0", $"T{i}")).ToArray());
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        Dispatcher.UIThread.RunJobs();
+
+        vm.Configure(overflowCap: 3, iconSize: 24);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(3, vm.VisibleItems.Count);
+        Assert.Equal(7, vm.OverflowItems.Count);
+        Assert.All(vm.VisibleItems, i => Assert.Equal(24, i.IconSize));
     }
 
     private sealed class StubTray : ISystemTrayHost
