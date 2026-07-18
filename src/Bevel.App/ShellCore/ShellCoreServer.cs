@@ -167,6 +167,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 await _windows.RepositionAsync(Id(cmd),
                     cmd.Bounds ?? throw new ArgumentException("Reposition needs Bounds"), ct).ConfigureAwait(false);
                 return CoreResponse.Success();
+            case CoreCommandKind.CaptureWindow:
+                return new CoreResponse(Ok: true, Png: await _windows.CaptureWindowAsync(
+                    Id(cmd), cmd.MaxWidth ?? 0, cmd.MaxHeight ?? 0, ct).ConfigureAwait(false));
             case CoreCommandKind.EnumerateInstalledApps:
                 return new CoreResponse(Ok: true, InstalledApps: await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.GetRunningApps:

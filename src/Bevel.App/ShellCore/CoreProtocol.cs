@@ -95,6 +95,7 @@ public enum CoreCommandKind
     GetRunningApps,
     LaunchApp,
     ForwardTrayClick,
+    CaptureWindow,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -106,7 +107,9 @@ public sealed record CoreCommand(
     string? AppIdOrPath = null,
     string? TrayItemId = null,
     TrayButton? TrayButton = null,
-    TrayModifiers? TrayModifiers = null);
+    TrayModifiers? TrayModifiers = null,
+    int? MaxWidth = null,
+    int? MaxHeight = null);
 
 /// <summary>The core's reply to a <see cref="CoreCommand"/>. <see cref="Ok"/>=false carries <see cref="Error"/>;
 /// the query commands fill the matching list.</summary>
@@ -116,7 +119,8 @@ public sealed record CoreResponse(
     IReadOnlyList<ForeignWindow>? Windows = null,
     IReadOnlyList<InstalledApp>? InstalledApps = null,
     IReadOnlyList<RunningApp>? RunningApps = null,
-    bool? Delivered = null)
+    bool? Delivered = null,
+    byte[]? Png = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

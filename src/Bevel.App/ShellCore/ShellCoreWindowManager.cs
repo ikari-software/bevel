@@ -77,6 +77,24 @@ public sealed class ShellCoreWindowManager : IWindowManager
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds), ct);
 
+    /// <summary>Query (like Enumerate): proxy the capture to the core and return the PNG, or null if the
+    /// link is down / core rejects / capture unavailable. Not queued — a stale thumbnail is worthless.</summary>
+    public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
+    {
+        if (!_core.IsConnected) return null;
+        try
+        {
+            var r = await _core.SendAsync(
+                new CoreCommand(CoreCommandKind.CaptureWindow, WindowId: id.Value, MaxWidth: maxWidth, MaxHeight: maxHeight),
+                ct).ConfigureAwait(false);
+            return r.Ok ? r.Png : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private Task Command(CoreCommandKind kind, ForeignWindowId id, CancellationToken ct) =>
         Send(new CoreCommand(kind, WindowId: id.Value), ct);
 
