@@ -88,6 +88,20 @@ public sealed class TaskbarWindow : BevelWindow
         RowsChanged?.Invoke(_rows);
     }
 
+    /// <summary>Re-applies the window height/anchor + work-area band after a per-button METRIC change
+    /// that isn't a row-count change — i.e. the button-size tier changed live (bevel-cust). Mirrors
+    /// <see cref="SetRows"/>'s resize steps (height now derives from the new <see cref="TaskbarTheme.ButtonHeight"/>)
+    /// and re-raises <see cref="RowsChanged"/> so the view re-runs its row layout at the new height.</summary>
+    public void ReapplyMetrics()
+    {
+        var h = TaskbarTheme.HeightForRows(_rows);
+        MinHeight = h;
+        MaxHeight = h;
+        PositionAtPrimaryDisplayBottom();
+        RecomputeWorkAreaBand();
+        RowsChanged?.Invoke(_rows);
+    }
+
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);

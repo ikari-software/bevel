@@ -22,6 +22,7 @@ public partial class TaskbarView : UserControl
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
+    private TaskbarButtonSize _buttonSize = TaskbarButtonSize.Normal;
     private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
@@ -61,6 +62,7 @@ public partial class TaskbarView : UserControl
         Action? restart = null,
         TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
         int minButtonWidth = 80,
+        TaskbarButtonSize buttonSize = TaskbarButtonSize.Normal,
         TaskbarGroupingMode grouping = TaskbarGroupingMode.Never,
         TaskbarButtonLabels buttonLabels = TaskbarButtonLabels.Auto,
         bool middleClickCloses = true,
@@ -84,6 +86,7 @@ public partial class TaskbarView : UserControl
         _iconProvider = iconProvider;
         _maxButtonWidth = buttonWidth;
         _widthMode = widthMode;
+        _buttonSize = buttonSize;
         // Keep the text floor sane: never above the max, never below the icon-only floor.
         _minButtonWidth = Math.Clamp(minButtonWidth, IconOnlyFloor, buttonWidth);
         _grouping = grouping;
@@ -179,7 +182,33 @@ public partial class TaskbarView : UserControl
         }
         _showDesktop = s.TaskbarShowDesktopButton;
         ShowDesktopButton.IsVisible = _showDesktop;
+
+        // Button width/size — apply live, no restart (bevel-cust). Width settings are cheap (they only
+        // feed the next LayoutButtons pass). Button SIZE changes the bar height, so it's guarded to a
+        // real change: it re-Configures the process-wide metric, resizes/re-anchors the window + work-
+        // area band, and re-heights the already-realized buttons (WireTaskButton only sets new ones).
+        _maxButtonWidth = s.TaskbarButtonWidth;
+        _widthMode = s.TaskbarButtonWidthMode;
+        _minButtonWidth = Math.Clamp(s.TaskbarMinButtonWidth, IconOnlyFloor, s.TaskbarButtonWidth);
+        if (_buttonSize != s.TaskbarButtonSize)
+        {
+            _buttonSize = s.TaskbarButtonSize;
+            TaskbarTheme.Configure(_buttonSize);
+            _window?.ReapplyMetrics();     // resize + re-anchor + refresh band; raises RowsChanged → ApplyRowLayout
+            StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
+            ReapplyButtonHeights();
+        }
         LayoutButtons();
+    }
+
+    /// <summary>Re-applies the current button-height tier to every realized window button (bevel-cust).
+    /// <see cref="WireTaskButton"/> only sets Height when a container is first realized, so a live size
+    /// change needs this sweep over the existing buttons.</summary>
+    private void ReapplyButtonHeights()
+    {
+        foreach (var container in WindowButtonArea.GetRealizedContainers())
+            if (FindTaskButton(container) is { } button)
+                button.Height = TaskbarTheme.ButtonHeight;
     }
 
     /// <summary>Middle-click a window button to close that window (bevel-cust.buttons). Tunnels so it

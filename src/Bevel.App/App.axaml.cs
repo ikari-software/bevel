@@ -164,6 +164,7 @@ public partial class App : Application
             restart: RequestRestart,
             widthMode: settings.Current.TaskbarButtonWidthMode,
             minButtonWidth: settings.Current.TaskbarMinButtonWidth,
+            buttonSize: settings.Current.TaskbarButtonSize,
             grouping: settings.Current.TaskbarGrouping,
             buttonLabels: settings.Current.TaskbarButtonLabels,
             middleClickCloses: settings.Current.TaskbarMiddleClickCloses,

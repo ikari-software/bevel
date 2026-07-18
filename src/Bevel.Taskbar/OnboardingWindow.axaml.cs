@@ -234,6 +234,7 @@ public partial class OnboardingWindow : Window
         MinWidthSlider.IsEnabled = !fixedWidth;
         var mode = fixedWidth ? TaskbarButtonWidthMode.Fixed : TaskbarButtonWidthMode.ShrinkToFit;
         await _settings.UpdateAsync(s => s.TaskbarButtonWidthMode = mode);
+        ApplyLive?.Invoke(_settings.Current);
     }
 
     private async void OnMinWidthChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -243,6 +244,7 @@ public partial class OnboardingWindow : Window
         // Persist only on an actual integer-step change, so a drag doesn't thrash the settings file.
         if (_settings.Current.TaskbarMinButtonWidth == value) return;
         await _settings.UpdateAsync(s => s.TaskbarMinButtonWidth = value);
+        ApplyLive?.Invoke(_settings.Current);
     }
 
     private async void OnGroupingChanged(object? sender, SelectionChangedEventArgs e)
@@ -288,6 +290,7 @@ public partial class OnboardingWindow : Window
         var size = (TaskbarButtonSize)ButtonSizeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonSize == size) return;
         await _settings.UpdateAsync(s => s.TaskbarButtonSize = size);
+        ApplyLive?.Invoke(_settings.Current);
     }
 
     /// <summary>All four clock toggles funnel here: persist the set, then push it onto the live clock

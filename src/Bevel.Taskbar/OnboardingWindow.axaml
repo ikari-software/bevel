@@ -185,7 +185,7 @@
                                     <ComboBoxItem>Large</ComboBoxItem>
                                 </ComboBox>
                             </StackPanel>
-                            <TextBlock Text="Taller or shorter taskbar rows. Applies after restarting Bevel."
+                            <TextBlock Text="Taller or shorter taskbar rows — applies immediately."
                                        FontSize="10" Foreground="Gray"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
