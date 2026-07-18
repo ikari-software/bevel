@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Bevel.Core\Bevel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Interop\Bevel.Interop.csproj" />
   </ItemGroup>
 
 </Project>

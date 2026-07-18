@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Canonical command model (08-os-interop.md §3.1 / M4 Apple Events tier 1): the single C#
+       seam every inbound automation surface — Apple Events, bevelctl, bevel://, DBus — funnels
+       through (INT-3), so all surfaces stay behaviourally identical and testable at one point.
+       Core-domain: MUST NOT reference Avalonia (ARCH-02); lives in the core process. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
+  </ItemGroup>
+
+</Project>
