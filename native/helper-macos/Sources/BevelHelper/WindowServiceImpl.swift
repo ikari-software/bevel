@@ -1,8 +1,10 @@
 import AppKit
 import ApplicationServices
+import CoreGraphics
 import Foundation
 import GRPCCore
 import GRPCProtobuf
+import ScreenCaptureKit
 
 // MARK: - Private API declarations
 
@@ -310,6 +312,33 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         )
 
+        // ── CaptureWindow ─────────────────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "CaptureWindow"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_CaptureWindowRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_CaptureWindowReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                var reply = Bevel_Helper_V1_CaptureWindowReply()
+                if let cgID = CGWindowID(req.message.windowID) {
+                    reply.png = await self.captureWindowThumbnail(
+                        windowID: cgID,
+                        maxWidth: Int(req.message.maxWidth),
+                        maxHeight: Int(req.message.maxHeight)
+                    )
+                }
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
         // ── Changes (server-streaming) ───────────────────────────────────
         router.registerHandler(
             forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Changes"),
@@ -364,6 +393,33 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Fetch layer-0 CGWindowList entries (excluding our own process and desktop
     /// elements). `.optionAll` includes minimized/off-screen windows, which is
     /// required so minimized windows stay listed (bevel-m2.3).
+    /// Captures a PNG thumbnail of the window with the given CGWindowID via ScreenCaptureKit, scaled to
+    /// fit maxWidth x maxHeight (0 = a 240x160 default), preserving aspect. Empty Data if unavailable
+    /// (no Screen Recording permission, window gone, or capture error) — the caller shows no preview.
+    private func captureWindowThumbnail(windowID: CGWindowID, maxWidth: Int, maxHeight: Int) async -> Data {
+        guard CGPreflightScreenCaptureAccess() else { return Data() }
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
+            return Data()
+        }
+        let w = scWindow.frame.width, h = scWindow.frame.height
+        guard w > 1, h > 1 else { return Data() }
+        let maxW = maxWidth > 0 ? Double(maxWidth) : 240
+        let maxH = maxHeight > 0 ? Double(maxHeight) : 160
+        let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
+        let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
+        let config = SCStreamConfiguration()
+        config.width = max(2, Int(w * scale))
+        config.height = max(2, Int(h * scale))
+        config.showsCursor = false
+        config.ignoreShadowsSingleWindow = true
+        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+        guard let cgImage = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else {
+            return Data()
+        }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
+    }
+
     private func layer0Entries(options: CGWindowListOption) -> [[String: Any]] {
         let ownPID = getpid()
         guard let cgWindows = CGWindowListCopyWindowInfo(

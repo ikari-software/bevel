@@ -103,6 +103,28 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: ct);
     }
 
+    public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
+    {
+        if (_disposed) return null;
+        try
+        {
+            var ws = GetWindowClient();
+            var reply = await ws.CaptureWindowAsync(
+                new CaptureWindowRequest
+                {
+                    WindowId = id.Value,
+                    MaxWidth = (uint)Math.Max(0, maxWidth),
+                    MaxHeight = (uint)Math.Max(0, maxHeight),
+                },
+                headers: AuthHeader(), cancellationToken: ct);
+            return reply.Png.IsEmpty ? null : reply.Png.ToByteArray();
+        }
+        catch
+        {
+            return null;   // helper down / capture unavailable → caller shows no preview
+        }
+    }
+
     public async Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));

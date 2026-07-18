@@ -17,6 +17,12 @@ public interface IWindowManager
     Task CloseAsync(ForeignWindowId id, CancellationToken ct = default);
     Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default);
 
+    /// <summary>Capture a PNG thumbnail of a window's current pixels for hover previews (bevel-cust).
+    /// Null when unavailable (no Screen Recording permission, window gone, or unsupported PAL).
+    /// Default: unsupported — non-macOS backends and test stubs need not implement it.</summary>
+    Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
+        => Task.FromResult<byte[]?>(null);
+
     event EventHandler<ForeignWindow>? WindowOpened;
     event EventHandler<ForeignWindow>? WindowClosed;
     event EventHandler<ForeignWindow>? WindowChanged;

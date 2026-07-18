@@ -41,6 +41,10 @@ service WindowService {
   // Reposition/resize a window to an absolute target rect (device pixels, AppKit origin).
   rpc Reposition(RepositionRequest) returns (RepositionReply);
 
+  // Capture a PNG thumbnail of a window's current pixels (ScreenCaptureKit), scaled to fit
+  // max_width x max_height (0 = full size). Empty png if the window can't be captured.
+  rpc CaptureWindow(CaptureWindowRequest) returns (CaptureWindowReply);
+
   // Subscribe to window events: opens with a full Snapshot, then streams
   // Deltas as AXObserver callbacks fire (backstopped by a reconciliation poll).
   rpc Changes(ChangesRequest) returns (stream WindowChange);
@@ -198,3 +202,13 @@ message RepositionRequest {
 }
 
 message RepositionReply {}
+
+message CaptureWindowRequest {
+  string window_id = 1;
+  uint32 max_width = 2;
+  uint32 max_height = 3;
+}
+
+message CaptureWindowReply {
+  bytes png = 1;
+}

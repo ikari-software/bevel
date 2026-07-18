@@ -554,13 +554,27 @@ public partial class TaskbarView : UserControl
         HideTaskbarTooltip();
     }
 
-    private void ShowTaskbarTooltip(Control anchor, TaskItemViewModel vm)
+    private async void ShowTaskbarTooltip(Control anchor, TaskItemViewModel vm)
     {
         if (anchor is not ToggleButton button) return;
-        TaskbarLog.Debug($"TOOLTIP show for '{vm.Title}' (open={TooltipPopup.IsOpen}->true)");
         TaskbarTooltipText.Text = vm.StatusText;
+        PreviewFrame.IsVisible = false;
+        PreviewImage.Source = null;
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
+
+        // Fetch a live thumbnail off the wire (bevel-cust hover previews); show it only if this button
+        // is still the hovered one when the capture returns. Null when Screen Recording isn't granted.
+        var png = _vm?.Model is { } model ? await model.CaptureWindowAsync(vm.Id, 240, 160) : null;
+        if (png is null || png.Length == 0) return;
+        if (!ReferenceEquals(_tooltipAnchor, anchor) || !TooltipPopup.IsOpen) return;
+        try
+        {
+            using var ms = new System.IO.MemoryStream(png);
+            PreviewImage.Source = new Avalonia.Media.Imaging.Bitmap(ms);
+            PreviewFrame.IsVisible = true;
+        }
+        catch { /* undecodable png → title only */ }
     }
 
     private void HideTaskbarTooltip()
@@ -571,6 +585,8 @@ public partial class TaskbarView : UserControl
         _tooltipAnchor = null;
         TooltipPopup.IsOpen = false;
         TooltipPopup.PlacementTarget = null;
+        PreviewImage.Source = null;
+        PreviewFrame.IsVisible = false;
     }
 
     /// <summary>Start button height cap, in button rows (user: "cap start at 2x-3x row height").</summary>

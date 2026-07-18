@@ -79,6 +79,11 @@ public sealed class ShellModel : IDisposable
         }
     }
 
+    /// <summary>PNG thumbnail of a window for hover previews (bevel-cust); null if unavailable.</summary>
+    public System.Threading.Tasks.Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight)
+        => _windows?.CaptureWindowAsync(id, maxWidth, maxHeight)
+           ?? System.Threading.Tasks.Task.FromResult<byte[]?>(null);
+
     /// <summary>
     /// Subscribes to PAL window events and kicks the off-thread enumeration of installed apps.
     /// Idempotent. Call before starting the window manager's stream/poll so the initial snapshot

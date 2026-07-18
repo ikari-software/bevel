@@ -380,12 +380,20 @@
                Placement="Top"
                VerticalOffset="-2"
                WindowManagerAddShadowHint="False">
-            <Border Background="#FFFFE1"
+            <!-- Aero-Peek-style hover panel (bevel-cust): live thumbnail (when Screen Recording is
+                 granted) above the window title/status. Thumbnail is hidden until the capture arrives. -->
+            <Border Background="{DynamicResource SystemButtonFaceBrush}"
                     BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
-                    BorderThickness="1" Padding="4,2" MaxWidth="420">
-                <TextBlock x:Name="TaskbarTooltipText"
-                           Foreground="#000000"
-                           FontSize="11" TextWrapping="Wrap" />
+                    BorderThickness="1" Padding="4" MaxWidth="280">
+                <StackPanel Spacing="4">
+                    <Border x:Name="PreviewFrame" IsVisible="False"
+                            BorderBrush="{DynamicResource SystemButtonShadowBrush}" BorderThickness="1">
+                        <Image x:Name="PreviewImage" MaxWidth="248" MaxHeight="168" Stretch="Uniform" />
+                    </Border>
+                    <TextBlock x:Name="TaskbarTooltipText"
+                               Foreground="{DynamicResource SystemButtonTextBrush}"
+                               FontSize="11" TextWrapping="Wrap" />
+                </StackPanel>
             </Border>
         </Popup>
     </Panel>

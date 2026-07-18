@@ -513,6 +513,34 @@ public nonisolated struct Bevel_Helper_V1_RepositionReply: Sendable {
   public init() {}
 }
 
+public nonisolated struct Bevel_Helper_V1_CaptureWindowRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var windowID: String = String()
+
+  public var maxWidth: UInt32 = 0
+
+  public var maxHeight: UInt32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_CaptureWindowReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var png: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "bevel.helper.v1"
@@ -1209,6 +1237,76 @@ nonisolated extension Bevel_Helper_V1_RepositionReply: SwiftProtobuf.Message, Sw
   }
 
   public static func ==(lhs: Bevel_Helper_V1_RepositionReply, rhs: Bevel_Helper_V1_RepositionReply) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_CaptureWindowRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CaptureWindowRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{3}max_width\0\u{3}max_height\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.maxWidth) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.maxHeight) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.windowID.isEmpty {
+      try visitor.visitSingularStringField(value: self.windowID, fieldNumber: 1)
+    }
+    if self.maxWidth != 0 {
+      try visitor.visitSingularUInt32Field(value: self.maxWidth, fieldNumber: 2)
+    }
+    if self.maxHeight != 0 {
+      try visitor.visitSingularUInt32Field(value: self.maxHeight, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_CaptureWindowRequest, rhs: Bevel_Helper_V1_CaptureWindowRequest) -> Bool {
+    if lhs.windowID != rhs.windowID {return false}
+    if lhs.maxWidth != rhs.maxWidth {return false}
+    if lhs.maxHeight != rhs.maxHeight {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_CaptureWindowReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CaptureWindowReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}png\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self.png) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.png.isEmpty {
+      try visitor.visitSingularBytesField(value: self.png, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_CaptureWindowReply, rhs: Bevel_Helper_V1_CaptureWindowReply) -> Bool {
+    if lhs.png != rhs.png {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
