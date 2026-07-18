@@ -15,10 +15,13 @@
     <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
   </ItemGroup>
 
-  <!-- Bundled UI font: Noto Sans (SIL OFL 1.1) as the metric-substitute for Win2000's
-       Tahoma, so text is consistent and correct cross-platform (macOS ships no Tahoma). -->
+  <!-- Vector-only theme: every icon/glyph is code-drawn (Glyphs.cs / ToolbarIcons.cs) and
+       recolours via Bevel.Color.* tokens, so the ONLY runtime asset files are the bundled UI
+       fonts — Noto Sans (SIL OFL 1.1), the metric-substitute for Win2000's Tahoma (macOS ships
+       no Tahoma). The raster exports under Assets/Icons/ are a dev-preview artifact of Glyphs.cs
+       (see gallery.html / Bevel.IconPreview); they are regenerable and must NOT ship in the DLL. -->
   <ItemGroup>
-    <AvaloniaResource Include="Assets/**" />
+    <AvaloniaResource Include="Assets/*.ttf" />
   </ItemGroup>
 
 </Project>
