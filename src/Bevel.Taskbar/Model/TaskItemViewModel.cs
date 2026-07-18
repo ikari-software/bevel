@@ -36,6 +36,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             SetFocused(true);
         ActivateCommand = new AsyncRelayCommand(ToggleAsync);
         CloseCommand = new AsyncRelayCommand(() => _windows.CloseAsync(Id));
+        MinimizeCommand = new AsyncRelayCommand(() => _windows.MinimizeAsync(Id));
+        RestoreCommand = new AsyncRelayCommand(() => _windows.RestoreAsync(Id));
     }
 
     public ForeignWindowId Id { get; }
@@ -171,6 +173,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Closes this window (middle-click on its taskbar button, bevel-cust.buttons).</summary>
     public ICommand CloseCommand { get; }
+
+    /// <summary>Right-click context-menu verbs (bevel-cust.ctxmenu): the taskbar-button system menu.</summary>
+    public ICommand MinimizeCommand { get; }
+    public ICommand RestoreCommand { get; }
 
     /// <summary>Refreshes the label/focus/minimized state from a fresh window snapshot in place,
     /// keeping the same VM object so the list row and its icon survive the update.</summary>

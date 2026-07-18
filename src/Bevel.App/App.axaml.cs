@@ -132,6 +132,14 @@ public partial class App : Application
     /// wiring it to apply clock changes to THIS live taskbar instantly — the dialog and the clock live
     /// in the same process, so no cross-process settings broadcast is needed. A fresh transient window
     /// each time is fine: it's a modeless properties sheet.</summary>
+    /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
+    /// bar (bevel-cust.ctxmenu). async void matches the codebase's fire-and-forget settings handlers.</summary>
+    private static async void ToggleTaskbarLock(SettingsService settings, Taskbar.TaskbarView taskbarView)
+    {
+        await settings.UpdateAsync(s => s.TaskbarLocked = !s.TaskbarLocked);
+        taskbarView.ApplyLiveSettings(settings.Current);
+    }
+
     private static void OpenTaskbarSettings(IServiceProvider services, Taskbar.TaskbarView taskbarView)
     {
         var win = services.GetRequiredService<Taskbar.OnboardingWindow>();
@@ -171,6 +179,7 @@ public partial class App : Application
             showStart: settings.Current.TaskbarShowStart,
             startLabel: settings.Current.TaskbarStartLabel,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
+            toggleLock: () => ToggleTaskbarLock(settings, taskbarView),
             showClock: settings.Current.TaskbarShowClock,
             clock24Hour: settings.Current.TaskbarClock24Hour,
             clockShowSeconds: settings.Current.TaskbarClockShowSeconds,

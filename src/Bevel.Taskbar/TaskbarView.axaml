@@ -9,6 +9,16 @@
     <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
           ClipToBounds="False"
           Background="{DynamicResource SystemButtonFaceBrush}">
+        <!-- Right-click the empty taskbar (bevel-cust.ctxmenu). Cascade/Tile join in the superset pass. -->
+        <Grid.ContextFlyout>
+            <MenuFlyout>
+                <MenuItem Header="Show the _Desktop" Command="{Binding ShowDesktopCommand}" />
+                <MenuItem Header="_Task Manager…" Click="OnTaskManagerClick" />
+                <Separator />
+                <MenuItem Header="_Lock the Taskbar" Click="OnLockTaskbarClick" />
+                <MenuItem Header="P_roperties…" Click="OnPropertiesClick" />
+            </MenuFlyout>
+        </Grid.ContextFlyout>
 
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
@@ -81,6 +91,15 @@
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
                             </ToggleButton.Transitions>
+                            <!-- Right-click system menu (bevel-cust.ctxmenu): the taskbar-button verbs. -->
+                            <ToggleButton.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuItem Header="_Restore" Command="{Binding RestoreCommand}" />
+                                    <MenuItem Header="Mi_nimize" Command="{Binding MinimizeCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="_Close" Command="{Binding CloseCommand}" />
+                                </MenuFlyout>
+                            </ToggleButton.ContextFlyout>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" Opacity="{Binding ContentOpacity}"
@@ -120,6 +139,7 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="tb:TaskItemViewModel">
                                                 <Button Command="{Binding ActivateCommand}"
+                                                        Click="OnGroupWindowActivated"
                                                         HorizontalAlignment="Stretch"
                                                         HorizontalContentAlignment="Left"
                                                         Padding="6,3" Background="Transparent" BorderThickness="0"

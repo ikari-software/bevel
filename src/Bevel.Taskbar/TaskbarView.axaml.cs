@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -19,6 +20,7 @@ public partial class TaskbarView : UserControl
     private Action? _quit;
     private Action? _restart;
     private Action? _openSettings;
+    private Action? _toggleLock;
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
@@ -69,6 +71,7 @@ public partial class TaskbarView : UserControl
         bool showStart = true,
         string startLabel = "Start",
         Action? openSettings = null,
+        Action? toggleLock = null,
         bool showClock = true,
         bool clock24Hour = true,
         bool clockShowSeconds = false,
@@ -100,6 +103,7 @@ public partial class TaskbarView : UserControl
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
+        _toggleLock = toggleLock;
         Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
         ApplyStart(showStart, startLabel);
         // Appearance reads theme resources, which don't resolve until attached — apply it in OnLoaded.
@@ -226,6 +230,30 @@ public partial class TaskbarView : UserControl
             e.Handled = true;
         }
     }
+
+    /// <summary>After a grouped-app window is picked from its flyout, close the flyout (bevel-cust) —
+    /// the custom Button rows don't auto-dismiss the way MenuItems do, so hide any open task flyout.</summary>
+    private void OnGroupWindowActivated(object? sender, RoutedEventArgs e)
+    {
+        foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
+            toggle.Flyout?.Hide();
+    }
+
+    /// <summary>Taskbar right-click → Task Manager: opens macOS Activity Monitor (bevel-cust.ctxmenu).</summary>
+    private void OnTaskManagerClick(object? sender, RoutedEventArgs e)
+    {
+        if (OperatingSystem.IsMacOS())
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = "-a \"Activity Monitor\"",
+                UseShellExecute = true,
+            });
+    }
+
+    private void OnLockTaskbarClick(object? sender, RoutedEventArgs e) => _toggleLock?.Invoke();
+
+    private void OnPropertiesClick(object? sender, RoutedEventArgs e) => _openSettings?.Invoke();
 
     protected override void OnLoaded(RoutedEventArgs e)
     {
