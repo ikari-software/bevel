@@ -180,7 +180,8 @@ public partial class App : Application
             trayOverflowCap: settings.Current.TaskbarTrayOverflowCap,
             trayIconSize: settings.Current.TaskbarTrayIconSize,
             locked: settings.Current.TaskbarLocked,
-            alwaysOnTop: settings.Current.TaskbarAlwaysOnTop);
+            alwaysOnTop: settings.Current.TaskbarAlwaysOnTop,
+            showDesktopButton: settings.Current.TaskbarShowDesktopButton);
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

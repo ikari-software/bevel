@@ -28,6 +28,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         SettingsService? settings = null, IAppEnvironment? appEnv = null, IIconProvider? icons = null)
     {
         Model = model;
+        ShowDesktopCommand = new AsyncRelayCommand(Model.MinimizeAllAsync);
         StartMenu = startMenu;
         _connection = connection;
         _projector = new TaskbarItemsProjector(model.Windows);
@@ -43,6 +44,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     }
 
     public ShellModel Model { get; }
+
+    /// <summary>Minimizes every window — bound by the far-right "Show desktop" sliver (bevel-cust).</summary>
+    public System.Windows.Input.ICommand ShowDesktopCommand { get; }
     public StartMenuViewModel StartMenu { get; }
 
     /// <summary>The notification-area tray (mirrored menu-bar status items, bevel-m3.1).</summary>

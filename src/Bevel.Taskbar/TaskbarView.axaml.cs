@@ -29,6 +29,7 @@ public partial class TaskbarView : UserControl
     private int _trayIconSize = 16;
     private bool _locked;
     private bool _alwaysOnTop = true;
+    private bool _showDesktop;
     private Avalonia.Media.IBrush? _defaultBg;   // theme background, captured on first appearance override
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
@@ -74,7 +75,8 @@ public partial class TaskbarView : UserControl
         int trayOverflowCap = 8,
         int trayIconSize = 16,
         bool locked = false,
-        bool alwaysOnTop = true)
+        bool alwaysOnTop = true,
+        bool showDesktopButton = false)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -89,6 +91,7 @@ public partial class TaskbarView : UserControl
         _trayIconSize = trayIconSize;
         _locked = locked;
         _alwaysOnTop = alwaysOnTop;
+        _showDesktop = showDesktopButton;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
@@ -152,6 +155,8 @@ public partial class TaskbarView : UserControl
         ResizeGrip.IsVisible = !_locked;
         _alwaysOnTop = s.TaskbarAlwaysOnTop;
         _window?.SetAlwaysOnTop(_alwaysOnTop);
+        _showDesktop = s.TaskbarShowDesktopButton;
+        ShowDesktopButton.IsVisible = _showDesktop;
         LayoutButtons();
     }
 
@@ -182,6 +187,7 @@ public partial class TaskbarView : UserControl
         _vm?.Tray.Configure(_trayOverflowCap, _trayIconSize);
         _window?.SetAlwaysOnTop(_alwaysOnTop);
         ResizeGrip.IsVisible = !_locked;
+        ShowDesktopButton.IsVisible = _showDesktop;
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.

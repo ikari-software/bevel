@@ -74,6 +74,7 @@ public partial class OnboardingWindow : Window
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
         LockCheck.IsCheckedChanged += OnBehaviorChanged;
         AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
+        ShowDesktopCheck.IsCheckedChanged += OnBehaviorChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -121,6 +122,7 @@ public partial class OnboardingWindow : Window
 
         LockCheck.IsChecked = s.TaskbarLocked;
         AlwaysOnTopCheck.IsChecked = s.TaskbarAlwaysOnTop;
+        ShowDesktopCheck.IsChecked = s.TaskbarShowDesktopButton;
     }
 
     private void StartPermissionPoll()
@@ -353,8 +355,16 @@ public partial class OnboardingWindow : Window
     {
         var locked = LockCheck.IsChecked ?? false;
         var onTop = AlwaysOnTopCheck.IsChecked ?? true;
-        if (_settings.Current.TaskbarLocked == locked && _settings.Current.TaskbarAlwaysOnTop == onTop) return;
-        await _settings.UpdateAsync(s => { s.TaskbarLocked = locked; s.TaskbarAlwaysOnTop = onTop; });
+        var showDesktop = ShowDesktopCheck.IsChecked ?? false;
+        if (_settings.Current.TaskbarLocked == locked
+            && _settings.Current.TaskbarAlwaysOnTop == onTop
+            && _settings.Current.TaskbarShowDesktopButton == showDesktop) return;
+        await _settings.UpdateAsync(s =>
+        {
+            s.TaskbarLocked = locked;
+            s.TaskbarAlwaysOnTop = onTop;
+            s.TaskbarShowDesktopButton = showDesktop;
+        });
         ApplyLive?.Invoke(_settings.Current);
     }
 

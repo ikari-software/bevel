@@ -314,6 +314,14 @@
                         </Rectangle>
                     </Grid>
                     <tb:ClockWidget x:Name="Clock" VerticalAlignment="Center" />
+
+                    <!-- Show-desktop sliver (Win7 Aero Peek): minimizes every window. Off by default;
+                         toggled via Taskbar Properties → Behavior (bevel-cust). -->
+                    <Button x:Name="ShowDesktopButton" Width="10" MinWidth="10"
+                            Margin="4,1,0,1" Padding="0" Focusable="False" IsVisible="False"
+                            Command="{Binding ShowDesktopCommand}"
+                            ToolTip.Tip="Show desktop (minimize all windows)"
+                            VerticalAlignment="Stretch" />
                 </StackPanel>
             </classic:ClassicBorderDecorator>
         </StackPanel>

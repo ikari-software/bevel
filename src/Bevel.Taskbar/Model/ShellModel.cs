@@ -66,6 +66,19 @@ public sealed class ShellModel : IDisposable
     /// <summary>The shared off-thread icon loader, for view-models that render their own icons.</summary>
     public IconLoader Icons => _icons;
 
+    /// <summary>Minimizes every tracked window — the "Show desktop" action (bevel-cust). Best-effort:
+    /// per-window failures are swallowed so one stuck window doesn't abort the rest.</summary>
+    public async System.Threading.Tasks.Task MinimizeAllAsync()
+    {
+        if (_windows is null) return;
+        var snapshot = new System.Collections.Generic.List<TaskItemViewModel>(Windows);
+        foreach (var w in snapshot)
+        {
+            try { await _windows.MinimizeAsync(w.Id); }
+            catch { /* best-effort */ }
+        }
+    }
+
     /// <summary>
     /// Subscribes to PAL window events and kicks the off-thread enumeration of installed apps.
     /// Idempotent. Call before starting the window manager's stream/poll so the initial snapshot

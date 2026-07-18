@@ -271,6 +271,7 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarTrayIconSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
         _raw["taskbarLocked"] = JsonSerializer.SerializeToElement(_settings.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         _raw["taskbarAlwaysOnTop"] = JsonSerializer.SerializeToElement(_settings.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarShowDesktopButton"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
@@ -316,6 +317,7 @@ public sealed class SettingsService : IDisposable
             TaskbarTrayIconSize = GetInt("taskbarTrayIconSize") ?? 16,
             TaskbarLocked = GetBool("taskbarLocked") ?? false,
             TaskbarAlwaysOnTop = GetBool("taskbarAlwaysOnTop") ?? true,
+            TaskbarShowDesktopButton = GetBool("taskbarShowDesktopButton") ?? false,
         };
 
         _themeOverrides.Clear();
@@ -453,6 +455,9 @@ public sealed class BevelSettings
     /// <summary>Keep the taskbar above ordinary windows. Off drops it to the normal window level so
     /// windows can cover it (auto-hide-lite / macOS-menu-bar-like coexistence).</summary>
     public bool TaskbarAlwaysOnTop { get; set; } = true;
+
+    /// <summary>Show a Win7-style "Show desktop" sliver at the far right that minimizes every window.</summary>
+    public bool TaskbarShowDesktopButton { get; set; }
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

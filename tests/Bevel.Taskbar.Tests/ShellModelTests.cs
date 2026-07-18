@@ -198,6 +198,20 @@ public sealed class ShellModelTests
         bool focused = false) =>
         new(new ForeignWindowId(id), title, "App", minimized, focused, default);
 
+    [AvaloniaFact]
+    public async Task MinimizeAll_minimizes_every_tracked_window()
+    {
+        var manager = new StubWindowManager();
+        using var model = new ShellModel(manager, null, null);
+        model.Windows.Add(new TaskItemViewModel(Window("a", "A"), manager));
+        model.Windows.Add(new TaskItemViewModel(Window("b", "B"), manager));
+
+        await model.MinimizeAllAsync();
+
+        Assert.Contains("minimize:a", manager.Actions);
+        Assert.Contains("minimize:b", manager.Actions);
+    }
+
     private sealed class StubWindowManager : IWindowManager
     {
         public IReadOnlyList<ForeignWindow> Live { get; set; } = [];
