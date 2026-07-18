@@ -43,8 +43,8 @@
              wraps into rows (width-constrained); when the rows exceed the bar height the up/down
              chevrons appear to scroll them. VerticalScrollBarVisibility=Hidden keeps the native
              scrollbar out — the chevrons are the affordance — while still allowing the offset to move. -->
-        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
-        <ScrollViewer x:Name="WindowButtonScroller" Grid.Column="0"
+        <Grid Grid.Column="1">
+        <ScrollViewer x:Name="WindowButtonScroller"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Hidden"
                       VerticalAlignment="Stretch"
@@ -153,8 +153,13 @@
         </ScrollViewer>
 
         <!-- Overflow chevrons: scroll the wrapped button rows a row at a time. Hidden until the rows
-             overflow the bar height (toggled in code). RepeatButtons so press-and-hold keeps scrolling. -->
-        <StackPanel x:Name="OverflowChevrons" Grid.Column="1" Orientation="Vertical"
+             overflow the bar height (toggled in code). OVERLAID on the scroller's right edge (same
+             cell, not a width-stealing column) so showing/hiding them never changes the scroller's
+             width — that width-feedback caused a 1-row⇄2-row flip-flop (bevel-m2.10.2 regression).
+             Solid background so the arrows occlude the button underneath cleanly. -->
+        <StackPanel x:Name="OverflowChevrons" Orientation="Vertical"
+                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                    Background="{DynamicResource SystemButtonFaceBrush}"
                     Width="16" Margin="1,1,2,1" IsVisible="False">
             <RepeatButton x:Name="ScrollUpBtn" Content="▲" FontSize="7" Padding="0"
                           Height="13" Focusable="False"
