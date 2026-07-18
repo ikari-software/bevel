@@ -47,6 +47,21 @@ public static class ColorSchemeService
     private static string _appliedId = DefaultScheme;
 
     private static readonly Uri BaseUri = new("avares://Bevel.App/App.axaml");
+    private static bool _aliasesMerged;
+
+    /// <summary>Merges the Bevel semantic-brush alias layer once (bevel-9js). Tokens.axaml's
+    /// <c>Bevel.Brush.*</c> are <c>StaticResource</c>-frozen and can't follow a scheme change; this
+    /// aliases the palette ones to the Classic <c>SystemColors</c> keys via DynamicResource, at
+    /// Application level (outranks Tokens), so Bevel-owned chrome (Start menu, etc.) recolours too.</summary>
+    private static void EnsureAliases(IResourceDictionary appResources)
+    {
+        if (_aliasesMerged) return;
+        appResources.MergedDictionaries.Add(new ResourceInclude(BaseUri)
+        {
+            Source = new Uri("avares://Bevel.Themes.Win2000/SchemeAliases.axaml"),
+        });
+        _aliasesMerged = true;
+    }
 
     /// <summary>True if <paramref name="id"/> is a known scheme.</summary>
     public static bool IsKnown(string id)
@@ -65,6 +80,8 @@ public static class ColorSchemeService
         if (scheme == _appliedId && _applied is not null) return;
 
         if (Application.Current?.Resources is not { } appResources) return;
+
+        EnsureAliases(appResources);
 
         var dict = new ResourceInclude(BaseUri)
         {

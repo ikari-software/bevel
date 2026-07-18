@@ -1,0 +1,43 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia">
+    <!--
+      Colour-scheme alias layer (W2K-01 / bevel-9js).
+
+      Tokens.axaml defines the Bevel.Brush.* semantic layer as SolidColorBrush with
+      Color="{StaticResource Bevel.Color.*}" — resolved ONCE at load, so those brushes are
+      frozen and can't follow a runtime colour-scheme change. Bevel-owned chrome (Start menu,
+      etc.) binds this layer, which is why it didn't recolour.
+
+      This dictionary re-defines the SYSTEM Bevel.Brush.* keys (only the palette ones — NOT the
+      Bevel.Brush.Icon* art colours) as DynamicResource aliases of the Classic SystemColors.*ColorKey
+      resources that a scheme overrides. Merged at Application level (ColorSchemeService), it outranks
+      Tokens.axaml's frozen versions, so every Bevel semantic brush now tracks the active scheme live —
+      the proper ENG-01 alignment, not a per-control patch.
+    -->
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="{DynamicResource {x:Static common:SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonHighlight" Color="{DynamicResource {x:Static common:SystemColors.ControlLightLightColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonLight" Color="{DynamicResource {x:Static common:SystemColors.ControlLightColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonShadow" Color="{DynamicResource {x:Static common:SystemColors.ControlDarkColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonDkShadow" Color="{DynamicResource {x:Static common:SystemColors.ControlDarkDarkColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Window" Color="{DynamicResource {x:Static common:SystemColors.WindowColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.WindowText" Color="{DynamicResource {x:Static common:SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="{DynamicResource {x:Static common:SystemColors.WindowFrameColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.GrayText" Color="{DynamicResource {x:Static common:SystemColors.GrayTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.AppWorkspace" Color="{DynamicResource {x:Static common:SystemColors.AppWorkspaceColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="{DynamicResource {x:Static common:SystemColors.DesktopColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Menu" Color="{DynamicResource {x:Static common:SystemColors.MenuColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.MenuText" Color="{DynamicResource {x:Static common:SystemColors.MenuTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Scrollbar" Color="{DynamicResource {x:Static common:SystemColors.ScrollBarColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ActiveTitle" Color="{DynamicResource {x:Static common:SystemColors.ActiveCaptionColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.GradientActiveTitle" Color="{DynamicResource {x:Static common:SystemColors.GradientActiveCaptionColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InactiveTitle" Color="{DynamicResource {x:Static common:SystemColors.InactiveCaptionColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.GradientInactiveTitle" Color="{DynamicResource {x:Static common:SystemColors.GradientInactiveCaptionColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ActiveTitleText" Color="{DynamicResource {x:Static common:SystemColors.ActiveCaptionTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InactiveTitleText" Color="{DynamicResource {x:Static common:SystemColors.InactiveCaptionTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Highlight" Color="{DynamicResource {x:Static common:SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.HighlightText" Color="{DynamicResource {x:Static common:SystemColors.HighlightTextColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="{DynamicResource {x:Static common:SystemColors.HotTrackColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InfoWindow" Color="{DynamicResource {x:Static common:SystemColors.InfoColorKey}}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InfoText" Color="{DynamicResource {x:Static common:SystemColors.InfoTextColorKey}}" />
+</ResourceDictionary>
