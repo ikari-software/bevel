@@ -182,10 +182,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - Click forwarding (§5.5)
 
-    /// Forwards a click to the real status item by synthesizing a CGEvent at its current on-screen
-    /// coordinates, so the owning app reveals its menu/popover. Re-reads the item's live bounds (it
-    /// may have shifted since discovery). CGEvent global coords share CGWindowBounds' top-left origin,
-    /// so the window centre is the click point directly. Needs Accessibility for trusted posting.
+    /// Forwards a click to the real status item so it reveals its menu/popover. Re-reads the item's
+    /// live on-screen centre, then tries AX-press FIRST (Req 5.8) — it drives the element directly and,
+    /// crucially, works for the Control-Center-hosted items on macOS 26 that ignore synthetic mouse
+    /// clicks. Falls back to CGEvent synthesis for older OS / non-CC items. Needs Accessibility.
     func forwardClick(itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         let parts = itemID.split(separator: ":")
         guard parts.count == 2, let windowNumber = Int(parts[1]) else { return false }
@@ -196,22 +196,67 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
               let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else {
             return false
         }
-
         let point = CGPoint(x: rect.midX, y: rect.midY)
+
+        // 1. AX-press (preferred, and the only thing that works for CC-hosted items on macOS 26).
+        if pressViaAX(at: point, itemID: itemID, rightClick: button == .right) { return true }
+
+        // 2. Fallback: synthesize a real mouse click at the item's coordinates.
+        return clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
+    }
+
+    /// Finds the accessibility element at the item's screen point and performs its press/show-menu
+    /// action — reveals the real menu without faking the mouse (no cursor teleport). Walks up a couple
+    /// of parents if the deepest element under the point doesn't itself support the action.
+    private func pressViaAX(at point: CGPoint, itemID: String, rightClick: Bool) -> Bool {
+        let systemWide = AXUIElementCreateSystemWide()
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &element) == .success,
+              var el = element else { return false }
+
+        // Prefer the modifier-appropriate verb: a menu extra opens its menu on AXPress; some expose
+        // an explicit AXShowMenu (esp. for the right-click menu).
+        let actions: [CFString] = rightClick
+            ? ["AXShowMenu" as CFString, kAXPressAction as CFString]
+            : [kAXPressAction as CFString, "AXShowMenu" as CFString]
+
+        for _ in 0..<3 {   // el, then up to two ancestors
+            for action in actions {
+                if AXUIElementPerformAction(el, action) == .success {
+                    dbg("AX-pressed item \(itemID) via \(action) at \(point)")
+                    return true
+                }
+            }
+            var parent: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(el, kAXParentAttribute as CFString, &parent) == .success,
+                  let p = parent, CFGetTypeID(p) == AXUIElementGetTypeID() else { break }
+            el = (p as! AXUIElement)
+        }
+        return false
+    }
+
+    private func clickViaCGEvent(at point: CGPoint, itemID: String,
+                                 button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         let (downType, upType, cgButton): (CGEventType, CGEventType, CGMouseButton) =
             button == .right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
         let flags = cgFlags(modifiers)
-        guard let down = CGEvent(mouseEventSource: nil, mouseType: downType,
+        let source = CGEventSource(stateID: .combinedSessionState)
+        CGWarpMouseCursorPosition(point)
+        usleep(15_000)
+        guard let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved,
                                  mouseCursorPosition: point, mouseButton: cgButton),
-              let up = CGEvent(mouseEventSource: nil, mouseType: upType,
+              let down = CGEvent(mouseEventSource: source, mouseType: downType,
+                                 mouseCursorPosition: point, mouseButton: cgButton),
+              let up = CGEvent(mouseEventSource: source, mouseType: upType,
                                mouseCursorPosition: point, mouseButton: cgButton) else {
             return false
         }
-        down.flags = flags
-        up.flags = flags
+        move.post(tap: .cghidEventTap)
+        down.flags = flags; up.flags = flags
         down.post(tap: .cghidEventTap)
+        usleep(60_000)
         up.post(tap: .cghidEventTap)
-        dbg("forwarded \(button) click to item \(itemID) at \(point)")
+        dbg("forwarded \(button) click (CGEvent) to item \(itemID) at \(point)")
         return true
     }
 
@@ -345,17 +390,55 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return Data() }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = ctx
-        let image = NSImage(cgImage: cgImage, size: target)
-        image.draw(in: NSRect(origin: .zero, size: target), from: .zero, operation: .copy, fraction: 1.0)
+        // Trim the transparent menu-bar padding around the glyph first, then aspect-fit the glyph
+        // itself: a captured status-item window is mostly empty space around a small icon, so fitting
+        // the WHOLE window left the glyph tiny and, for wide windows, short/squashed. Cropping to the
+        // glyph's content box makes it fill the 16px icon while keeping its true proportions.
+        let glyph = trimTransparent(cgImage) ?? cgImage
+        let sw = CGFloat(glyph.width), sh = CGFloat(glyph.height)
+        let scale = sw > 0 && sh > 0 ? min(16 / sw, 16 / sh) : 1
+        let dw = sw * scale, dh = sh * scale
+        let dst = NSRect(x: (16 - dw) / 2, y: (16 - dh) / 2, width: dw, height: dh)
+        let image = NSImage(cgImage: glyph, size: NSSize(width: sw, height: sh))
+        image.draw(in: dst, from: .zero, operation: .copy, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:]) ?? Data()
+    }
+
+    /// Crops a captured image to the bounding box of its non-transparent pixels, discarding the
+    /// menu-bar padding around the glyph. Returns nil (caller keeps the original) if it's fully
+    /// transparent or the pixels can't be read.
+    private func trimTransparent(_ cg: CGImage) -> CGImage? {
+        let w = cg.width, h = cg.height
+        guard w > 0, h > 0, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let bytesPerRow = w * 4
+        var data = [UInt8](repeating: 0, count: bytesPerRow * h)
+        guard let ctx = CGContext(
+            data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            let row = y * bytesPerRow
+            for x in 0..<w where data[row + x * 4 + 3] > 12 {   // ~5% alpha = real content
+                if x < minX { minX = x }; if x > maxX { maxX = x }
+                if y < minY { minY = y }; if y > maxY { maxY = y }
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return nil }
+        return cg.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1))
     }
 
     /// Diff signature that EXCLUDES the icon bytes, so a re-capture (whose pixels can differ frame to
     /// frame, e.g. an iStat graph) doesn't churn the change stream — only identity/geometry changes
     /// count as an UPDATE.
     private func signature(_ item: Bevel_Helper_V1_TrayItem) -> String {
-        "\(item.ownerBundleID)|\(item.ownerName)|\(item.tooltip)|\(item.bounds.x),\(item.bounds.width)|\(item.isLive)"
+        // Deliberately EXCLUDES bounds: the menu bar reflows by a pixel constantly, and keying the
+        // diff on x/width fired a spurious UPDATE for every item each poll — re-decoding icons and
+        // dismissing tooltips on the client. Forwarding re-reads live bounds anyway, so the client
+        // never needs the jittering coordinates. Only real identity changes now count as an update.
+        "\(item.ownerBundleID)|\(item.ownerName)|\(item.tooltip)|\(item.isLive)"
     }
 
     // MARK: - Self-test gate (§5.10 / §10.1)

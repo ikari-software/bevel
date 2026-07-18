@@ -27,6 +27,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public const int VisibleCap = 8;
 
     private bool _hasOverflow;
+    private bool _hasAnyItems;
 
     /// <summary>The full mirrored item set, in host order (left-to-right menu-bar order on macOS).</summary>
     public ObservableCollection<TrayItemViewModel> Items { get; } = new();
@@ -39,6 +40,10 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     /// <summary>True when there are more items than fit inline — drives the overflow chevron.</summary>
     public bool HasOverflow { get => _hasOverflow; private set => SetProperty(ref _hasOverflow, value); }
+
+    /// <summary>True when the tray has any mirrored items — gates the dark mirror strip so an empty
+    /// tray shows nothing rather than a bare dark chip.</summary>
+    public bool HasAnyItems { get => _hasAnyItems; private set => SetProperty(ref _hasAnyItems, value); }
 
     /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5), and promotes
     /// it into the visible set (light LRU) so an item you use stays reachable inline.</summary>
@@ -112,6 +117,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         SyncTo(VisibleItems, Items.Take(VisibleCap));
         SyncTo(OverflowItems, Items.Skip(VisibleCap));
         HasOverflow = Items.Count > VisibleCap;
+        HasAnyItems = Items.Count > 0;
     }
 
     private static void SyncTo(ObservableCollection<TrayItemViewModel> target, IEnumerable<TrayItemViewModel> desired)

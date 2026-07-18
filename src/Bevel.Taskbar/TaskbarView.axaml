@@ -179,15 +179,10 @@
                     Orientation="Horizontal"
                     VerticalAlignment="Stretch"
                     Margin="0,1,2,1">
-            <classic:ClassicBorderDecorator BorderStyle="Sunken" BorderThickness="2"
-                                            Padding="4,0"
-                                            VerticalAlignment="Stretch"
-                                            Background="{DynamicResource SystemButtonFaceBrush}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
-                    <!-- Folder stacks (bevel-12g): a folder button whose flyout lists recent contents
-                         (the macOS Downloads-stack equivalent), Win2000 list style. A blue dot cues
-                         new items. Click refreshes + opens the flyout; each row opens its file. -->
-                    <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center">
+            <!-- Folder stacks (bevel-12g): tray-adjacent buttons LEFT of the notification well (not
+                 inside it) — a folder whose flyout lists recent contents, Win2000 list style. A blue
+                 dot cues new items. Click refreshes + opens the flyout; each row opens its file. -->
+            <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center" Margin="0,0,4,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="2" />
@@ -237,50 +232,63 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- Mirrored menu-bar status items (bevel-m3.1): 16px icons, hover tooltip = AX
-                         title. Only the first N show inline; the rest live behind the » overflow
-                         chevron (bevel-m3.4). Empty in the split taskbar until the core connects. -->
-                    <ItemsControl ItemsSource="{Binding Tray.VisibleItems}" VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="2" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                <Image Source="{Binding IconSource}" Width="16" Height="16"
-                                       VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
-                                       PointerPressed="OnTrayIconPressed" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+            <classic:ClassicBorderDecorator BorderStyle="Sunken" BorderThickness="2"
+                                            Padding="4,0"
+                                            VerticalAlignment="Stretch"
+                                            Background="{DynamicResource SystemButtonFaceBrush}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                    <!-- Mirrored menu-bar status items (bevel-m3.1) on a DARK strip: menu-bar glyphs
+                         are usually white template icons, invisible on the light tray — the dark chip
+                         gives them a menu-bar-like backing so they read. First N inline; the rest
+                         behind the » chevron (bevel-m3.4). Hidden entirely when the tray is empty. -->
+                    <Border Background="#33373D" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                            IsVisible="{Binding Tray.HasAnyItems}">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <!-- Overflow chevron on the LEFT (Windows "show hidden icons"): an up glyph
+                                 since the flyout opens above the bar; lists the hidden icons (dark backed). -->
+                            <Button IsVisible="{Binding Tray.HasOverflow}" Focusable="False"
+                                    Padding="3,0" Background="Transparent" BorderThickness="0"
+                                    FontSize="13" FontWeight="Bold" Foreground="#E8E8E8"
+                                    Content="&#x2303;" ToolTip.Tip="Show hidden icons" VerticalAlignment="Center">
+                                <Button.Flyout>
+                                    <Flyout Placement="Top">
+                                        <Border Background="#33373D" Padding="4" CornerRadius="3">
+                                            <ItemsControl ItemsSource="{Binding Tray.OverflowItems}" MaxWidth="220">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="tb:TrayItemViewModel">
+                                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                                               Margin="4" VerticalAlignment="Center"
+                                                               ToolTip.Tip="{Binding Tooltip}"
+                                                               PointerPressed="OnTrayIconPressed" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
 
-                    <!-- Overflow chevron (bevel-m3.4): shown when items spill past the cap; its flyout
-                         lists the rest as a Win2000 grid, each forwarding a click like an inline icon. -->
-                    <Button IsVisible="{Binding Tray.HasOverflow}" Focusable="False"
-                            Padding="2,0" Background="Transparent" BorderThickness="0"
-                            FontSize="10" Content="&#xBB;" ToolTip.Tip="More tray icons"
-                            VerticalAlignment="Center">
-                        <Button.Flyout>
-                            <Flyout Placement="Top">
-                                <ItemsControl ItemsSource="{Binding Tray.OverflowItems}" MaxWidth="180">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Orientation="Horizontal" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                            <Image Source="{Binding IconSource}" Width="16" Height="16"
-                                                   Margin="4" VerticalAlignment="Center"
-                                                   ToolTip.Tip="{Binding Tooltip}"
-                                                   PointerPressed="OnTrayIconPressed" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
+                            <ItemsControl ItemsSource="{Binding Tray.VisibleItems}" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="4" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="tb:TrayItemViewModel">
+                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                               VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
+                                               PointerPressed="OnTrayIconPressed" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
 
                     <!-- Disconnected indicator: a notification-area icon shown only while the taskbar
                          has lost its link to the shell core. It reconnects automatically (backoff),
