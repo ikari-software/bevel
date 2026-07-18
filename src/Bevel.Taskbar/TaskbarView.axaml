@@ -6,11 +6,17 @@
              x:DataType="tb:TaskbarViewModel"
              ClipToBounds="False">
     <UserControl.Styles>
-        <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). -->
-        <Style Selector="Border.stackrow:pointerover">
+        <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). The DEFAULT background
+             must come from a style, not a local Background="Transparent" on the Border: a local value
+             outranks a style setter, so a local default would silently veto the :pointerover setter
+             (the exact bug behind "white text but no blue"). Transparent (not null) keeps it hit-testable. -->
+        <Style Selector="Border.flyoutrow">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.flyoutrow:pointerover">
             <Setter Property="Background" Value="#316AC5" />
         </Style>
-        <Style Selector="Border.stackrow:pointerover TextBlock">
+        <Style Selector="Border.flyoutrow:pointerover TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
     </UserControl.Styles>
@@ -152,19 +158,16 @@
                                     <ItemsControl ItemsSource="{Binding Windows}" MinWidth="160">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="tb:TaskItemViewModel">
-                                                <Button Command="{Binding ActivateCommand}"
-                                                        Click="OnGroupWindowActivated"
-                                                        HorizontalAlignment="Stretch"
-                                                        HorizontalContentAlignment="Left"
-                                                        Padding="6,3" Background="Transparent" BorderThickness="0"
-                                                        FontWeight="{Binding TitleWeight}">
+                                                <Border Classes="flyoutrow" HorizontalAlignment="Stretch"
+                                                        Padding="6,3" Tapped="OnGroupWindowTapped">
                                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                                         <Image Source="{Binding IconSource}" Width="16" Height="16"
                                                                VerticalAlignment="Center" />
                                                         <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                                                   FontWeight="{Binding TitleWeight}"
                                                                    TextTrimming="CharacterEllipsis" />
                                                     </StackPanel>
-                                                </Button>
+                                                </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -247,7 +250,7 @@
                                                         <DataTemplate x:DataType="tb:StackFileViewModel">
                                                             <!-- Explorer-style row (bevel-cust): hover highlight,
                                                                  click to open, drag out to any app. -->
-                                                            <Border Classes="stackrow" Background="Transparent"
+                                                            <Border Classes="flyoutrow"
                                                                     HorizontalAlignment="Stretch" Padding="6,3"
                                                                     Tapped="OnStackFileTapped"
                                                                     PointerPressed="OnStackFilePressed"

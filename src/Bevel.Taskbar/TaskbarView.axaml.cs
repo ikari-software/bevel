@@ -237,10 +237,14 @@ public partial class TaskbarView : UserControl
 
     /// <summary>After a grouped-app window is picked from its flyout, close the flyout (bevel-cust) —
     /// the custom Button rows don't auto-dismiss the way MenuItems do, so hide any open task flyout.</summary>
-    private void OnGroupWindowActivated(object? sender, RoutedEventArgs e)
+    /// <summary>Grouped-app flyout row picked: activate the window, then close the flyout. The close is
+    /// deferred so activation is fully underway first (hiding the popup mid-gesture would cancel it).
+    /// A Border+Tapped (not a Button+Command) so the row shares the flyoutrow hover-highlight with the
+    /// stack flyout — one style-driven hover mechanism, not a per-list re-implementation (bevel-cust).</summary>
+    private void OnGroupWindowTapped(object? sender, TappedEventArgs e)
     {
-        // Defer the close: hiding the flyout synchronously tears down the popup mid-click and cancels
-        // the button's ActivateCommand. Posting lets the activation run first, THEN the flyout closes.
+        if ((sender as Control)?.DataContext is TaskItemViewModel vm)
+            vm.ActivateCommand.Execute(null);
         Dispatcher.UIThread.Post(() =>
         {
             foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
