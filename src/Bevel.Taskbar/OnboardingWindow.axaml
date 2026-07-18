@@ -296,6 +296,35 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ── Behavior (bevel-cust.behavior) ───────────────────────── -->
+            <TabItem Header="Behavior">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Behavior" FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+
+                            <CheckBox x:Name="LockCheck"
+                                      Content="Lock the taskbar (disable resizing)"
+                                      FontSize="11" Margin="0,4,0,0" />
+                            <TextBlock Text="Hides the row-resize gripper so the taskbar height can't be dragged."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <CheckBox x:Name="AlwaysOnTopCheck"
+                                      Content="Keep on top of other windows"
+                                      FontSize="11" Margin="0,4,0,0" />
+                            <TextBlock Text="Off drops the taskbar to the normal window level, so windows can cover it."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
         <!-- Close button -->

@@ -229,6 +229,17 @@ public sealed class TaskbarWindow : BevelWindow
             TaskbarNative.NSWindowCollectionBehaviorFullScreenAuxiliary);
     }
 
+    /// <summary>Toggles the taskbar's always-on-top level live (bevel-cust.behavior). On → just below
+    /// the menu bar (the default set in <see cref="ApplyTaskbarBehaviors"/>); off → the normal window
+    /// level, so ordinary windows can cover it.</summary>
+    public void SetAlwaysOnTop(bool onTop)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return;
+        var handle = TryGetNativeHandle();
+        if (handle == IntPtr.Zero) return;
+        TaskbarNative.SetWindowLevel(handle, onTop ? TaskbarNative.CGMainMenuWindowLevel - 1 : 0);
+    }
+
     /// <summary>
     /// Positions the window at the bottom of the primary display, full-width,
     /// with the themed taskbar height (30 logical px).

@@ -27,6 +27,8 @@ public partial class TaskbarView : UserControl
     private bool _middleClickCloses = true;
     private int _trayOverflowCap = 8;
     private int _trayIconSize = 16;
+    private bool _locked;
+    private bool _alwaysOnTop = true;
     private Avalonia.Media.IBrush? _defaultBg;   // theme background, captured on first appearance override
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
@@ -70,7 +72,9 @@ public partial class TaskbarView : UserControl
         string backgroundColor = "",
         int opacity = 100,
         int trayOverflowCap = 8,
-        int trayIconSize = 16)
+        int trayIconSize = 16,
+        bool locked = false,
+        bool alwaysOnTop = true)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -83,6 +87,8 @@ public partial class TaskbarView : UserControl
         _middleClickCloses = middleClickCloses;
         _trayOverflowCap = trayOverflowCap;
         _trayIconSize = trayIconSize;
+        _locked = locked;
+        _alwaysOnTop = alwaysOnTop;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
@@ -142,6 +148,10 @@ public partial class TaskbarView : UserControl
         _middleClickCloses = s.TaskbarMiddleClickCloses;
         ApplyAppearance(s.TaskbarFontSize, s.TaskbarBackgroundColor, s.TaskbarOpacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
+        _locked = s.TaskbarLocked;
+        ResizeGrip.IsVisible = !_locked;
+        _alwaysOnTop = s.TaskbarAlwaysOnTop;
+        _window?.SetAlwaysOnTop(_alwaysOnTop);
         LayoutButtons();
     }
 
@@ -170,6 +180,8 @@ public partial class TaskbarView : UserControl
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
         _vm?.SetGrouping(_grouping);
         _vm?.Tray.Configure(_trayOverflowCap, _trayIconSize);
+        _window?.SetAlwaysOnTop(_alwaysOnTop);
+        ResizeGrip.IsVisible = !_locked;
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
@@ -434,6 +446,7 @@ public partial class TaskbarView : UserControl
 
     private void OnGripPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (_locked) return;   // locked taskbar can't be resized (bevel-cust.behavior)
         HideTaskbarTooltip();
         _resizing = true;
         e.Pointer.Capture(ResizeGrip);

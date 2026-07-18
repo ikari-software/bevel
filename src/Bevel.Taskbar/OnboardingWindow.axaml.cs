@@ -72,6 +72,8 @@ public partial class OnboardingWindow : Window
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
+        LockCheck.IsCheckedChanged += OnBehaviorChanged;
+        AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -116,6 +118,9 @@ public partial class OnboardingWindow : Window
         TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} icons";
         TrayIconSizeSlider.Value = s.TaskbarTrayIconSize;
         TrayIconSizeValue.Text = $"{s.TaskbarTrayIconSize} px";
+
+        LockCheck.IsChecked = s.TaskbarLocked;
+        AlwaysOnTopCheck.IsChecked = s.TaskbarAlwaysOnTop;
     }
 
     private void StartPermissionPoll()
@@ -341,6 +346,15 @@ public partial class OnboardingWindow : Window
         var size = (int)Math.Round(TrayIconSizeSlider.Value);
         if (_settings.Current.TaskbarTrayOverflowCap == cap && _settings.Current.TaskbarTrayIconSize == size) return;
         await _settings.UpdateAsync(s => { s.TaskbarTrayOverflowCap = cap; s.TaskbarTrayIconSize = size; });
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    private async void OnBehaviorChanged(object? sender, RoutedEventArgs e)
+    {
+        var locked = LockCheck.IsChecked ?? false;
+        var onTop = AlwaysOnTopCheck.IsChecked ?? true;
+        if (_settings.Current.TaskbarLocked == locked && _settings.Current.TaskbarAlwaysOnTop == onTop) return;
+        await _settings.UpdateAsync(s => { s.TaskbarLocked = locked; s.TaskbarAlwaysOnTop = onTop; });
         ApplyLive?.Invoke(_settings.Current);
     }
 
