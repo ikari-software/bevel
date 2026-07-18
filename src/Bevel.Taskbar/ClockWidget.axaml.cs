@@ -92,12 +92,12 @@ public partial class ClockWidget : UserControl
         _timer.Start();
     }
 
-    /// <summary>The .NET format string for the current 12/24h + seconds settings.</summary>
-    private string TimeFormat()
+    /// <summary>The .NET format string for the given 12/24h + seconds settings (pure — unit-tested).</summary>
+    internal static string TimeFormat(bool h24, bool seconds)
     {
-        var t = _h24 ? "HH:mm" : "h:mm";
-        if (_seconds) t += ":ss";
-        if (!_h24) t += " tt";
+        var t = h24 ? "HH:mm" : "h:mm";
+        if (seconds) t += ":ss";
+        if (!h24) t += " tt";
         return t;
     }
 
@@ -115,7 +115,7 @@ public partial class ClockWidget : UserControl
     private void UpdateTime()
     {
         var now = DateTime.Now;
-        var time = now.ToString(TimeFormat());
+        var time = now.ToString(TimeFormat(_h24, _seconds));
         TimeDisplay.Text = _showDate ? $"{time}   {now:ddd d MMM}" : time;
         ToolTip.SetTip(TimeDisplay, now.ToLongDateString());
     }

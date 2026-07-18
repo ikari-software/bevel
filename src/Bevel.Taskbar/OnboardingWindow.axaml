@@ -110,7 +110,7 @@
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Caption" FontSize="11" VerticalAlignment="Center" Width="60" />
-                                <TextBox x:Name="StartLabelBox" FontSize="11" Width="160"
+                                <TextBox x:Name="StartLabelBox" FontSize="11" Width="160" MaxLength="24"
                                          Watermark="(logo only)" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="The button's text next to the logo. Clear it for a logo-only button (Win11-style)."

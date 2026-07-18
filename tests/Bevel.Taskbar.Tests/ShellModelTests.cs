@@ -212,6 +212,22 @@ public sealed class ShellModelTests
         Assert.Contains("minimize:b", manager.Actions);
     }
 
+    [AvaloniaFact]
+    public async Task MinimizeAll_keeps_going_when_one_window_throws()
+    {
+        var manager = new StubWindowManager { ThrowOnMinimizeId = "b" };
+        using var model = new ShellModel(manager, null, null);
+        model.Windows.Add(new TaskItemViewModel(Window("a", "A"), manager));
+        model.Windows.Add(new TaskItemViewModel(Window("b", "B"), manager));
+        model.Windows.Add(new TaskItemViewModel(Window("c", "C"), manager));
+
+        await model.MinimizeAllAsync();   // must not throw despite 'b' failing
+
+        Assert.Contains("minimize:a", manager.Actions);
+        Assert.Contains("minimize:c", manager.Actions);   // loop continued past the failure
+        Assert.DoesNotContain("minimize:b", manager.Actions);
+    }
+
     private sealed class StubWindowManager : IWindowManager
     {
         public IReadOnlyList<ForeignWindow> Live { get; set; } = [];
@@ -229,8 +245,12 @@ public sealed class ShellModelTests
             return Task.CompletedTask;
         }
 
+        public string? ThrowOnMinimizeId { get; set; }
+
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default)
         {
+            if (id.Value == ThrowOnMinimizeId)
+                throw new InvalidOperationException("stub minimize failure");
             Actions.Add($"minimize:{id.Value}");
             return Task.CompletedTask;
         }

@@ -30,7 +30,9 @@ public partial class TaskbarView : UserControl
     private bool _locked;
     private bool _alwaysOnTop = true;
     private bool _showDesktop;
-    private Avalonia.Media.IBrush? _defaultBg;   // theme background, captured on first appearance override
+    private int _fontSize;
+    private string _bgColor = "";
+    private int _opacity = 100;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
     private bool _resizing;
@@ -97,7 +99,10 @@ public partial class TaskbarView : UserControl
         _openSettings = openSettings;
         Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
         ApplyStart(showStart, startLabel);
-        ApplyAppearance(fontSize, backgroundColor, opacity);
+        // Appearance reads theme resources, which don't resolve until attached — apply it in OnLoaded.
+        _fontSize = fontSize;
+        _bgColor = backgroundColor;
+        _opacity = opacity;
     }
 
     /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>
@@ -109,33 +114,42 @@ public partial class TaskbarView : UserControl
     }
 
     /// <summary>Applies font size + background tint/opacity to the running bar (bevel-cust.appearance).
-    /// Font size falls back to the 11pt theme baseline. The background is left as the XAML DynamicResource
-    /// until the user first customizes it; the original brush is captured on first touch so resetting to
-    /// opaque/no-tint restores it exactly (the bar tints, the text/buttons stay solid on top).</summary>
+    /// Font size falls back to (and is clamped around) the 11pt theme baseline. On reset (opaque, no
+    /// tint) it CLEARS the local Background so the XAML DynamicResource re-applies — the bar keeps
+    /// following later theme switches, unlike caching a concrete brush (review: correctness/adversarial).
+    /// Reads the theme colour live rather than caching it, so it must run attached (called from OnLoaded
+    /// and ApplyLiveSettings, never pre-attach where resource lookup fails).</summary>
     private void ApplyAppearance(int fontSize, string bgColor, int opacity)
     {
-        FontSize = fontSize > 0 ? fontSize : 11;
+        FontSize = fontSize > 0 ? Math.Clamp(fontSize, 8, 32) : 11;
 
-        var opaque = Math.Clamp(opacity, 20, 100) >= 100;
-        var hasColor = !string.IsNullOrWhiteSpace(bgColor);
-        if (opaque && !hasColor && _defaultBg is null)
-            return;   // never customized → leave the theme's DynamicResource background intact
+        var themeColor = this.TryFindResource("SystemButtonFaceBrush", out var r)
+            && r is Avalonia.Media.ISolidColorBrush b ? b.Color : (Avalonia.Media.Color?)null;
+        if (ComputeTintColor(bgColor, opacity, themeColor) is { } c)
+            RootGrid.Background = new Avalonia.Media.SolidColorBrush(c);
+        else
+            RootGrid.ClearValue(Avalonia.Controls.Panel.BackgroundProperty);   // restore the theme DynamicResource
+    }
 
-        _defaultBg ??= (this.TryFindResource("SystemButtonFaceBrush", out var r) && r is Avalonia.Media.IBrush rb)
-            ? rb : RootGrid.Background;
+    /// <summary>Pure tint policy (bevel-cust.appearance) — testable without a visual tree. Returns the
+    /// ARGB fill for the bar, or null when it should fall back to the theme brush (fully opaque AND no
+    /// custom colour). A parseable custom hex wins; otherwise the theme colour is tinted by opacity.
+    /// Unparseable/empty hex is ignored (never throws). Opacity is clamped to 20–100%.</summary>
+    internal static Avalonia.Media.Color? ComputeTintColor(string bgColor, int opacity, Avalonia.Media.Color? themeColor)
+    {
+        var op = Math.Clamp(opacity, 20, 100);
+        var hasColor = !string.IsNullOrWhiteSpace(bgColor) && Avalonia.Media.Color.TryParse(bgColor, out _);
+        if (op >= 100 && !hasColor)
+            return null;   // no customization → theme brush
 
-        if (opaque && !hasColor)
-        {
-            RootGrid.Background = _defaultBg;   // reset to the captured default
-            return;
-        }
+        Avalonia.Media.Color baseColor;
+        if (hasColor)
+            Avalonia.Media.Color.TryParse(bgColor, out baseColor);
+        else
+            baseColor = themeColor ?? Avalonia.Media.Colors.Silver;
 
-        var baseColor = hasColor && Avalonia.Media.Color.TryParse(bgColor, out var parsed)
-            ? parsed
-            : (_defaultBg as Avalonia.Media.ISolidColorBrush)?.Color ?? Avalonia.Media.Colors.Silver;
-        var a = (byte)(Math.Clamp(opacity, 20, 100) * 255 / 100);
-        RootGrid.Background = new Avalonia.Media.SolidColorBrush(
-            Avalonia.Media.Color.FromArgb(a, baseColor.R, baseColor.G, baseColor.B));
+        var a = (byte)(op * 255 / 100);
+        return Avalonia.Media.Color.FromArgb(a, baseColor.R, baseColor.G, baseColor.B);
     }
 
     /// <summary>Pushes every live-applicable setting onto the running taskbar in one shot (clock, Start,
@@ -149,12 +163,20 @@ public partial class TaskbarView : UserControl
         _vm?.SetGrouping(_grouping);
         _buttonLabels = s.TaskbarButtonLabels;
         _middleClickCloses = s.TaskbarMiddleClickCloses;
-        ApplyAppearance(s.TaskbarFontSize, s.TaskbarBackgroundColor, s.TaskbarOpacity);
+        _fontSize = s.TaskbarFontSize;
+        _bgColor = s.TaskbarBackgroundColor;
+        _opacity = s.TaskbarOpacity;
+        ApplyAppearance(_fontSize, _bgColor, _opacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         _locked = s.TaskbarLocked;
         ResizeGrip.IsVisible = !_locked;
-        _alwaysOnTop = s.TaskbarAlwaysOnTop;
-        _window?.SetAlwaysOnTop(_alwaysOnTop);
+        // Only re-issue the native window-level set when it actually changed — every dialog toggle
+        // funnels through here, and re-stacking the NSWindow on unrelated changes can flicker z-order.
+        if (_alwaysOnTop != s.TaskbarAlwaysOnTop)
+        {
+            _alwaysOnTop = s.TaskbarAlwaysOnTop;
+            _window?.SetAlwaysOnTop(_alwaysOnTop);
+        }
         _showDesktop = s.TaskbarShowDesktopButton;
         ShowDesktopButton.IsVisible = _showDesktop;
         LayoutButtons();
@@ -167,7 +189,9 @@ public partial class TaskbarView : UserControl
     {
         if (!_middleClickCloses) return;
         if (!e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed) return;
-        if ((e.Source as Control)?.DataContext is TaskItemViewModel item)
+        // Guard against IsClosing so a rapid double middle-click (or middle-button auto-repeat) can't
+        // fire CloseAsync twice on the same — possibly already-recycled — window id (review: adversarial).
+        if ((e.Source as Control)?.DataContext is TaskItemViewModel item && !item.IsClosing)
         {
             item.CloseCommand.Execute(null);
             e.Handled = true;
@@ -188,6 +212,7 @@ public partial class TaskbarView : UserControl
         _window?.SetAlwaysOnTop(_alwaysOnTop);
         ResizeGrip.IsVisible = !_locked;
         ShowDesktopButton.IsVisible = _showDesktop;
+        ApplyAppearance(_fontSize, _bgColor, _opacity);   // now attached — theme resources resolve
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.

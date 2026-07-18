@@ -17,6 +17,7 @@
                 FontWeight="Bold" FontSize="11"
                 Focusable="False"
                 Padding="6,0"
+                ClipToBounds="True"
                 HorizontalContentAlignment="Left"
                 VerticalAlignment="Stretch">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">

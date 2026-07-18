@@ -28,6 +28,13 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
     public const int DefaultVisibleCap = 8;
 
+    // Tray tuning bounds (bevel-cust.tray). Keep in sync with OnboardingWindow.axaml's TrayCapSlider /
+    // TrayIconSizeSlider Minimum/Maximum — the domain clamp and the UI slider must not drift apart.
+    public const int MinOverflowCap = 1;
+    public const int MaxOverflowCap = 20;
+    public const int MinIconSize = 12;
+    public const int MaxIconSize = 32;
+
     private int _iconSize = 16;
 
     /// <summary>Inline tray-icon count before the overflow chevron. Set live via <see cref="Configure"/>.</summary>
@@ -36,9 +43,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// <summary>Applies the user's tray tuning live (bevel-cust.tray): inline overflow cap + icon size.</summary>
     public void Configure(int overflowCap, int iconSize)
     {
-        _iconSize = Math.Clamp(iconSize, 12, 32);
+        _iconSize = Math.Clamp(iconSize, MinIconSize, MaxIconSize);
         foreach (var it in Items) it.IconSize = _iconSize;
-        VisibleCap = Math.Clamp(overflowCap, 1, 64);
+        VisibleCap = Math.Clamp(overflowCap, MinOverflowCap, MaxOverflowCap);
         Reslice();
     }
 

@@ -41,6 +41,11 @@ public sealed class SettingsService : IDisposable
     // process opens the DB and keeps it open"; disposed with the service. WAL + Busy Timeout are
     // set on this connection (busy_timeout is per-connection; WAL persists in the DB header).
     private SqliteConnection? _connection;
+    // Serializes writers (bevel-cust review): live-apply sliders/text boxes call UpdateAsync on every
+    // tick/keystroke, so two SaveAsync calls could otherwise overlap on the passive-export
+    // File.WriteAllTextAsync (a sharing-violation IOException surfacing in an async-void handler). The
+    // DB writes are already sync-over-async, but the file write genuinely yields — this gate covers it.
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private int _version; // last-loaded DB version; SaveAsync bumps it, ReloadIfChangedAsync compares
 
     /// <summary>Raised after <see cref="ReloadIfChangedAsync"/> pulls in an external write.</summary>
@@ -118,13 +123,21 @@ public sealed class SettingsService : IDisposable
     /// <summary>Write current settings to the DB (blob + version bump) in a transaction.</summary>
     public async Task SaveAsync(CancellationToken ct = default)
     {
-        var conn = await OpenAsync(ct).ConfigureAwait(false);
-        var json = SerializeRaw();
-        _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var conn = await OpenAsync(ct).ConfigureAwait(false);
+            var json = SerializeRaw();
+            _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
 
-        // Passive export: keep a human-readable settings.json mirror (the DB is the source of
-        // truth; nothing reads this file at runtime — see class summary).
-        await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
+            // Passive export: keep a human-readable settings.json mirror (the DB is the source of
+            // truth; nothing reads this file at runtime — see class summary).
+            await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>Update a single setting and persist.</summary>
@@ -251,7 +264,6 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
-        _raw["taskbarGroupWindows"] = JsonSerializer.SerializeToElement(_settings.TaskbarGroupWindows, SettingsJsonContext.Default.Boolean);
         _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
@@ -292,7 +304,6 @@ public sealed class SettingsService : IDisposable
             TaskbarButtonWidthMode = Enum.TryParse<TaskbarButtonWidthMode>(GetString("taskbarButtonWidthMode"), out var twm)
                 ? twm : TaskbarButtonWidthMode.ShrinkToFit,
             TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
-            TaskbarGroupWindows = GetBool("taskbarGroupWindows") ?? false,
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
@@ -375,10 +386,6 @@ public sealed class BevelSettings
     /// this width, then drop to icon-only below it. Default 80 (was hardcoded to half the max).</summary>
     public int TaskbarMinButtonWidth { get; set; } = 80;
 
-    /// <summary>bevel-m2.10.3: collapse an app's multiple windows into a single grouped taskbar button
-    /// (XP-style) with a flyout list. Off by default — the clean Win2000 look shows one button per window.</summary>
-    public bool TaskbarGroupWindows { get; set; }
-
     /// <summary>bevel-m2.10.1: taskbar button (and thus row/bar) height tier. Normal = Win2000 classic.</summary>
     public TaskbarButtonSize TaskbarButtonSize { get; set; } = TaskbarButtonSize.Normal;
 
@@ -418,8 +425,8 @@ public sealed class BevelSettings
 
     // ── Window buttons (bevel-cust.buttons) ─────────────────────────────────────────────────────
 
-    /// <summary>How an app's multiple windows collapse onto the taskbar. Supersedes the legacy
-    /// <see cref="TaskbarGroupWindows"/> bool (which still seeds this on first read for back-compat).</summary>
+    /// <summary>How an app's multiple windows collapse onto the taskbar. On first load, if this key is
+    /// absent, it is seeded from the legacy <c>taskbarGroupWindows</c> bool for back-compat (ApplyRaw).</summary>
     public TaskbarGroupingMode TaskbarGrouping { get; set; } = TaskbarGroupingMode.Never;
 
     /// <summary>When a window button shows its label vs. just the icon.</summary>
