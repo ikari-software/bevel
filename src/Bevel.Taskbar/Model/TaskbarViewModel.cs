@@ -60,7 +60,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     public ObservableCollection<ITaskbarItem> Items => _projector.Items;
 
     /// <summary>Enables/disables XP-style window grouping (applied at startup from settings).</summary>
-    public void SetGrouping(bool grouping) => _projector.SetGrouping(grouping);
+    public void SetGrouping(TaskbarGroupingMode mode) => _projector.SetGrouping(mode);
 
     /// <summary>True while the taskbar has lost its link to the shell core (commands fail and the
     /// strip is stale until it reconnects). Bound to the tray's disconnected indicator.</summary>

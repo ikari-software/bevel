@@ -35,6 +35,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         if (w.IsFocused)
             SetFocused(true);
         ActivateCommand = new AsyncRelayCommand(ToggleAsync);
+        CloseCommand = new AsyncRelayCommand(() => _windows.CloseAsync(Id));
     }
 
     public ForeignWindowId Id { get; }
@@ -167,6 +168,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Command bound to the button (Win2000 toggle — see <see cref="ToggleAsync"/>).</summary>
     public ICommand ActivateCommand { get; }
+
+    /// <summary>Closes this window (middle-click on its taskbar button, bevel-cust.buttons).</summary>
+    public ICommand CloseCommand { get; }
 
     /// <summary>Refreshes the label/focus/minimized state from a fresh window snapshot in place,
     /// keeping the same VM object so the list row and its icon survive the update.</summary>

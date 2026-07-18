@@ -95,6 +95,33 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ── Start (bevel-cust.start) ─────────────────────────────── -->
+            <TabItem Header="Start">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Start Button" FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+
+                            <CheckBox x:Name="ShowStartCheck"
+                                      Content="Show the Start button" FontSize="11" Margin="0,4,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Caption" FontSize="11" VerticalAlignment="Center" Width="60" />
+                                <TextBox x:Name="StartLabelBox" FontSize="11" Width="160"
+                                         Watermark="(logo only)" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="The button's text next to the logo. Clear it for a logo-only button (Win11-style)."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- ── Buttons ──────────────────────────────────────────────── -->
             <TabItem Header="Buttons">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -122,12 +149,33 @@
                                        FontSize="10" Foreground="Gray"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
-                            <CheckBox x:Name="GroupWindowsCheck"
-                                      Content="Group windows of the same app"
-                                      FontSize="11" Margin="0,4,0,0" />
-                            <TextBlock Text="Collapses an app's windows into one button with a pop-up list (XP-style). Off keeps one button per window."
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Group windows" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="GroupingCombo" FontSize="11" Width="160" VerticalAlignment="Center">
+                                    <ComboBoxItem>Never</ComboBoxItem>
+                                    <ComboBoxItem>When the bar is full</ComboBoxItem>
+                                    <ComboBoxItem>Always</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Collapse an app's windows into one button with a pop-up list (XP/Win7-style)."
                                        FontSize="10" Foreground="Gray"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Labels" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="LabelModeCombo" FontSize="11" Width="160" VerticalAlignment="Center">
+                                    <ComboBoxItem>Auto (hide when crowded)</ComboBoxItem>
+                                    <ComboBoxItem>Always show</ComboBoxItem>
+                                    <ComboBoxItem>Icon only</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Whether window buttons show their title, or just the icon (Dock/KDE-style)."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <CheckBox x:Name="MiddleClickCloseCheck"
+                                      Content="Middle-click a button to close its window"
+                                      FontSize="11" Margin="0,4,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />

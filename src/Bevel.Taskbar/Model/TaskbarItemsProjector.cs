@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
+using Bevel.Core;
 
 namespace Bevel.Taskbar;
 
@@ -17,13 +18,18 @@ namespace Bevel.Taskbar;
 /// </summary>
 public sealed class TaskbarItemsProjector : IDisposable
 {
-    private readonly ObservableCollection<TaskItemViewModel> _source;
-    private bool _grouping;
+    /// <summary>WhenFull groups only once the strip carries more than this many windows. Keyed off the
+    /// RAW window count (not the projected item count), so grouping — which shrinks the item count —
+    /// can't feed back and flip the decision (the same class of feedback loop as bevel-m2.10.2).</summary>
+    private const int WhenFullThreshold = 8;
 
-    public TaskbarItemsProjector(ObservableCollection<TaskItemViewModel> source, bool grouping = false)
+    private readonly ObservableCollection<TaskItemViewModel> _source;
+    private TaskbarGroupingMode _mode;
+
+    public TaskbarItemsProjector(ObservableCollection<TaskItemViewModel> source, TaskbarGroupingMode mode = TaskbarGroupingMode.Never)
     {
         _source = source;
-        _grouping = grouping;
+        _mode = mode;
         _source.CollectionChanged += OnSourceChanged;
         RePlan();
     }
@@ -31,19 +37,27 @@ public sealed class TaskbarItemsProjector : IDisposable
     /// <summary>The display items — a mix of single-window buttons and app groups. Bound by the view.</summary>
     public ObservableCollection<ITaskbarItem> Items { get; } = new();
 
-    /// <summary>Turns grouping on/off and re-plans immediately.</summary>
-    public void SetGrouping(bool grouping)
+    /// <summary>Sets the grouping mode and re-plans immediately.</summary>
+    public void SetGrouping(TaskbarGroupingMode mode)
     {
-        if (_grouping == grouping) return;
-        _grouping = grouping;
+        if (_mode == mode) return;
+        _mode = mode;
         RePlan();
     }
+
+    /// <summary>Resolves the mode to a concrete group/don't-group decision for the current window set.</summary>
+    private bool ShouldGroup() => _mode switch
+    {
+        TaskbarGroupingMode.Always => true,
+        TaskbarGroupingMode.WhenFull => _source.Count > WhenFullThreshold,
+        _ => false,
+    };
 
     private void OnSourceChanged(object? sender, NotifyCollectionChangedEventArgs e) => RePlan();
 
     private void RePlan()
     {
-        var plan = TaskbarGrouping.Plan(_source, _grouping);
+        var plan = TaskbarGrouping.Plan(_source, ShouldGroup());
 
         // Reuse existing group view-models by key so width/animation + child subscriptions survive.
         var existingGroups = Items.OfType<TaskGroupViewModel>().ToDictionary(g => "g:" + g.AppId);

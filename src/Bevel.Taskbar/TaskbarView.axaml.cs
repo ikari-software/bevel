@@ -22,7 +22,9 @@ public partial class TaskbarView : UserControl
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
-    private bool _groupWindows;
+    private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
+    private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
+    private bool _middleClickCloses = true;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
     private bool _resizing;
@@ -51,7 +53,11 @@ public partial class TaskbarView : UserControl
         Action? restart = null,
         TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
         int minButtonWidth = 80,
-        bool groupWindows = false,
+        TaskbarGroupingMode grouping = TaskbarGroupingMode.Never,
+        TaskbarButtonLabels buttonLabels = TaskbarButtonLabels.Auto,
+        bool middleClickCloses = true,
+        bool showStart = true,
+        string startLabel = "Start",
         Action? openSettings = null,
         bool showClock = true,
         bool clock24Hour = true,
@@ -64,11 +70,50 @@ public partial class TaskbarView : UserControl
         _widthMode = widthMode;
         // Keep the text floor sane: never above the max, never below the icon-only floor.
         _minButtonWidth = Math.Clamp(minButtonWidth, IconOnlyFloor, buttonWidth);
-        _groupWindows = groupWindows;
+        _grouping = grouping;
+        _buttonLabels = buttonLabels;
+        _middleClickCloses = middleClickCloses;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
         Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
+        ApplyStart(showStart, startLabel);
+    }
+
+    /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>
+    private void ApplyStart(bool show, string label)
+    {
+        StartButton.IsVisible = show;
+        StartLabelText.Text = label;
+        StartLabelText.IsVisible = !string.IsNullOrEmpty(label);
+    }
+
+    /// <summary>Pushes every live-applicable setting onto the running taskbar in one shot (clock, Start,
+    /// grouping, label mode). Called by the Properties dialog's ApplyLive hook — same process, so the
+    /// change is visible immediately without a restart.</summary>
+    public void ApplyLiveSettings(Bevel.Core.BevelSettings s)
+    {
+        Clock.Configure(s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
+        ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
+        _grouping = s.TaskbarGrouping;
+        _vm?.SetGrouping(_grouping);
+        _buttonLabels = s.TaskbarButtonLabels;
+        _middleClickCloses = s.TaskbarMiddleClickCloses;
+        LayoutButtons();
+    }
+
+    /// <summary>Middle-click a window button to close that window (bevel-cust.buttons). Tunnels so it
+    /// fires before the button's own click handling; only single-window buttons act (groups are left
+    /// alone). No-op when the setting is off or the press isn't the middle button.</summary>
+    private void OnWindowButtonMiddleClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_middleClickCloses) return;
+        if (!e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed) return;
+        if ((e.Source as Control)?.DataContext is TaskItemViewModel item)
+        {
+            item.CloseCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
@@ -80,7 +125,7 @@ public partial class TaskbarView : UserControl
 
         // Apply the grouping mode before the first layout so Items is already in its final shape
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
-        _vm?.SetGrouping(_groupWindows);
+        _vm?.SetGrouping(_grouping);
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
@@ -101,6 +146,7 @@ public partial class TaskbarView : UserControl
             StartLogoHost.Content = StartLogo.For(16);
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
+            AddHandler(PointerPressedEvent, OnWindowButtonMiddleClick, RoutingStrategies.Tunnel);
 
             // Re-flow button widths when the strip resizes, the row count changes, or the window
             // list changes. Every trigger routes through QueueLayout so a burst (e.g. K buttons
@@ -403,7 +449,7 @@ public partial class TaskbarView : UserControl
         if (available <= 0) return; // not laid out yet — SizeChanged will re-run this
 
         var (width, showLabel) = ComputeButtonLayout(
-            _widthMode, available, live.Count, _window?.Rows ?? 1, _maxButtonWidth, _minButtonWidth);
+            _widthMode, available, live.Count, _window?.Rows ?? 1, _maxButtonWidth, _minButtonWidth, _buttonLabels);
 
         foreach (var vm in live)
         {
@@ -421,9 +467,23 @@ public partial class TaskbarView : UserControl
     /// icon-only down to <see cref="IconOnlyFloor"/>, dropping the label below
     /// <see cref="LabelHideThreshold"/>.
     /// </summary>
+    /// <summary>Icon-only buttons never grow past this — a square-ish hit target, not a wide empty button.</summary>
+    private const double IconOnlyMax = 40;
+
     internal static (double Width, bool ShowLabel) ComputeButtonLayout(
-        TaskbarButtonWidthMode mode, double available, int count, int rows, double max, int minButtonWidth)
+        TaskbarButtonWidthMode mode, double available, int count, int rows, double max, int minButtonWidth,
+        TaskbarButtonLabels labels = TaskbarButtonLabels.Auto)
     {
+        // IconOnly (macOS-Dock / KDE icons-only): always icon-sized, never labelled, in any width mode.
+        if (labels == TaskbarButtonLabels.IconOnly)
+        {
+            if (mode == TaskbarButtonWidthMode.Fixed || count <= 0)
+                return (IconOnlyMax, false);
+            var perRowIo = (int)Math.Ceiling(count / (double)Math.Max(1, rows));
+            var idealIo = (available / Math.Max(1, perRowIo)) - 2;
+            return (Math.Clamp(idealIo, IconOnlyFloor, IconOnlyMax), false);
+        }
+
         if (mode == TaskbarButtonWidthMode.Fixed || count <= 0)
             return (max, true);
 
@@ -431,6 +491,11 @@ public partial class TaskbarView : UserControl
         const double perButtonMargin = 2;   // Margin(1,·) => 2px horizontal
         var ideal = (available / Math.Max(1, perRow)) - perButtonMargin;
         var floor = Math.Clamp((double)minButtonWidth, IconOnlyFloor, max);
+
+        // Always-labels: keep the label and never fall below the text floor. If that overflows the row,
+        // the wrap/scroll chevrons handle it — we don't drop to icon-only.
+        if (labels == TaskbarButtonLabels.Always)
+            return (Math.Clamp(ideal, floor, max), true);
 
         if (ideal >= floor)
             return (Math.Min(ideal, max), true);   // roomy: labelled, up to the max

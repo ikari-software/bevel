@@ -259,6 +259,11 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarClock24Hour"] = JsonSerializer.SerializeToElement(_settings.TaskbarClock24Hour, SettingsJsonContext.Default.Boolean);
         _raw["taskbarClockShowSeconds"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowSeconds, SettingsJsonContext.Default.Boolean);
         _raw["taskbarClockShowDate"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowDate, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarShowStart"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowStart, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarStartLabel"] = JsonSerializer.SerializeToElement(_settings.TaskbarStartLabel, SettingsJsonContext.Default.String);
+        _raw["taskbarGrouping"] = JsonSerializer.SerializeToElement(_settings.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
+        _raw["taskbarButtonLabels"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
+        _raw["taskbarMiddleClickCloses"] = JsonSerializer.SerializeToElement(_settings.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
@@ -288,6 +293,15 @@ public sealed class SettingsService : IDisposable
             TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
             TaskbarClockShowSeconds = GetBool("taskbarClockShowSeconds") ?? false,
             TaskbarClockShowDate = GetBool("taskbarClockShowDate") ?? false,
+            TaskbarShowStart = GetBool("taskbarShowStart") ?? true,
+            TaskbarStartLabel = GetString("taskbarStartLabel") ?? "Start",
+            // Back-compat: if the new key is absent, seed grouping from the legacy bool.
+            TaskbarGrouping = Enum.TryParse<TaskbarGroupingMode>(GetString("taskbarGrouping"), out var tg)
+                ? tg
+                : ((GetBool("taskbarGroupWindows") ?? false) ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never),
+            TaskbarButtonLabels = Enum.TryParse<TaskbarButtonLabels>(GetString("taskbarButtonLabels"), out var tbl)
+                ? tbl : TaskbarButtonLabels.Auto,
+            TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
         };
 
         _themeOverrides.Clear();
@@ -377,6 +391,53 @@ public sealed class BevelSettings
 
     /// <summary>Show the date beside the time (Win10/11-style), not only on hover.</summary>
     public bool TaskbarClockShowDate { get; set; }
+
+    // ── Start button (bevel-cust.start) ─────────────────────────────────────────────────────────
+
+    /// <summary>Show the Start button. Off hides it (the window strip takes the full width).</summary>
+    public bool TaskbarShowStart { get; set; } = true;
+
+    /// <summary>Start button caption. Empty string = logo only (no text), Win11-style.</summary>
+    public string TaskbarStartLabel { get; set; } = "Start";
+
+    // ── Window buttons (bevel-cust.buttons) ─────────────────────────────────────────────────────
+
+    /// <summary>How an app's multiple windows collapse onto the taskbar. Supersedes the legacy
+    /// <see cref="TaskbarGroupWindows"/> bool (which still seeds this on first read for back-compat).</summary>
+    public TaskbarGroupingMode TaskbarGrouping { get; set; } = TaskbarGroupingMode.Never;
+
+    /// <summary>When a window button shows its label vs. just the icon.</summary>
+    public TaskbarButtonLabels TaskbarButtonLabels { get; set; } = TaskbarButtonLabels.Auto;
+
+    /// <summary>Middle-clicking a window button closes that window (Win7+/browser-tab convention).</summary>
+    public bool TaskbarMiddleClickCloses { get; set; } = true;
+}
+
+/// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named
+/// ...Mode to avoid clashing with the <c>Bevel.Taskbar.TaskbarGrouping</c> projection helper.)</summary>
+public enum TaskbarGroupingMode
+{
+    /// <summary>One button per window (classic Win2000 — default).</summary>
+    Never,
+
+    /// <summary>Group into one button per app only once the strip fills up (Win7/XP "combine when full").</summary>
+    WhenFull,
+
+    /// <summary>Always one button per app with a flyout list (Win7 "always combine").</summary>
+    Always,
+}
+
+/// <summary>bevel-cust.buttons: window-button label visibility.</summary>
+public enum TaskbarButtonLabels
+{
+    /// <summary>Show labels, collapsing to icon-only as the strip fills (default shrink-to-fit).</summary>
+    Auto,
+
+    /// <summary>Always keep the label (buttons never collapse to icon-only).</summary>
+    Always,
+
+    /// <summary>Never show labels — icon-only buttons, macOS-Dock/KDE-icons-only style.</summary>
+    IconOnly,
 }
 
 /// <summary>bevel-m2.10.1: taskbar button height tier (drives button, row, and bar height).</summary>

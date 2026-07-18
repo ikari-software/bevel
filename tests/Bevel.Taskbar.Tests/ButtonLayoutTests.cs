@@ -81,6 +81,26 @@ public class ButtonLayoutTests
     }
 
     [Fact]
+    public void IconOnly_mode_never_shows_labels_even_when_roomy()
+    {
+        // Roomy strip that Auto would fully label: IconOnly stays icon-sized and unlabelled.
+        var (width, showLabel) = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 1000, 2, 1, Max, Min, TaskbarButtonLabels.IconOnly);
+        Assert.False(showLabel);
+        Assert.Equal(40, width);            // clamped to the icon-only max
+    }
+
+    [Fact]
+    public void Always_mode_keeps_the_label_and_floor_even_when_crowded()
+    {
+        // Crowding that drops Auto to icon-only stays labelled at the text floor under Always.
+        var (width, showLabel) = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 150, 5, 1, Max, Min, TaskbarButtonLabels.Always);
+        Assert.True(showLabel);
+        Assert.Equal(Min, width);
+    }
+
+    [Fact]
     public void Rows_split_the_button_count_so_multi_row_buttons_stay_wider()
     {
         // 10 buttons over 2 rows = 5 per row: same width as 5 buttons on one row.

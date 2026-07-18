@@ -23,7 +23,7 @@
                 <!-- OS badge injected in code (StartLogo): Windows flag / Apple / Tux by host OS. -->
                 <ContentControl x:Name="StartLogoHost"
                                 Width="16" Height="16" VerticalAlignment="Center" />
-                <TextBlock Text="Start" VerticalAlignment="Center" />
+                <TextBlock x:Name="StartLabelText" Text="Start" VerticalAlignment="Center" />
             </StackPanel>
         </Button>
 

@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -23,7 +24,8 @@ public class GroupedTaskbarViewTests
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new GroupViewStubWm();
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(null, null, buttonWidth: 150, groupWindows: grouping);
+        view.Initialize(null, null, buttonWidth: 150,
+            grouping: grouping ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never);
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();

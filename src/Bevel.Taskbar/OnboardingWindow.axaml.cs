@@ -57,7 +57,11 @@ public partial class OnboardingWindow : Window
         RunAtLoginCheck.IsCheckedChanged += OnRunAtLoginChanged;
         FixedWidthCheck.IsCheckedChanged += OnFixedWidthChanged;
         MinWidthSlider.ValueChanged += OnMinWidthChanged;
-        GroupWindowsCheck.IsCheckedChanged += OnGroupWindowsChanged;
+        GroupingCombo.SelectionChanged += OnGroupingChanged;
+        LabelModeCombo.SelectionChanged += OnLabelModeChanged;
+        MiddleClickCloseCheck.IsCheckedChanged += OnMiddleClickChanged;
+        ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
+        StartLabelBox.TextChanged += (_, _) => PersistStart();
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
         ShowClockCheck.IsCheckedChanged += OnClockChanged;
         Clock24Check.IsCheckedChanged += OnClockChanged;
@@ -84,8 +88,13 @@ public partial class OnboardingWindow : Window
         MinWidthSlider.IsEnabled = !fixedWidth;   // min width only matters in shrink-to-fit
         MinWidthValue.Text = $"{s.TaskbarMinButtonWidth} px";
 
-        GroupWindowsCheck.IsChecked = s.TaskbarGroupWindows;
+        GroupingCombo.SelectedIndex = (int)s.TaskbarGrouping;        // Never=0, WhenFull=1, Always=2
+        LabelModeCombo.SelectedIndex = (int)s.TaskbarButtonLabels;   // Auto=0, Always=1, IconOnly=2
+        MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
+
+        ShowStartCheck.IsChecked = s.TaskbarShowStart;
+        StartLabelBox.Text = s.TaskbarStartLabel;
 
         ShowClockCheck.IsChecked = s.TaskbarShowClock;
         Clock24Check.IsChecked = s.TaskbarClock24Hour;
@@ -213,10 +222,41 @@ public partial class OnboardingWindow : Window
         await _settings.UpdateAsync(s => s.TaskbarMinButtonWidth = value);
     }
 
-    private async void OnGroupWindowsChanged(object? sender, RoutedEventArgs e)
+    private async void OnGroupingChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (GroupWindowsCheck.IsChecked is not { } group) return;
-        await _settings.UpdateAsync(s => s.TaskbarGroupWindows = group);
+        if (GroupingCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarGroupingMode)GroupingCombo.SelectedIndex;
+        if (_settings.Current.TaskbarGrouping == mode) return;
+        await _settings.UpdateAsync(s => s.TaskbarGrouping = mode);
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    private async void OnLabelModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (LabelModeCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarButtonLabels)LabelModeCombo.SelectedIndex;
+        if (_settings.Current.TaskbarButtonLabels == mode) return;
+        await _settings.UpdateAsync(s => s.TaskbarButtonLabels = mode);
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    private async void OnMiddleClickChanged(object? sender, RoutedEventArgs e)
+    {
+        if (MiddleClickCloseCheck.IsChecked is not { } v) return;
+        if (_settings.Current.TaskbarMiddleClickCloses == v) return;
+        await _settings.UpdateAsync(s => s.TaskbarMiddleClickCloses = v);
+        ApplyLive?.Invoke(_settings.Current);
+    }
+
+    /// <summary>Start show/caption both persist here (TextChanged fires per keystroke — the equality
+    /// guard keeps it from thrashing the DB on no-op edits).</summary>
+    private async void PersistStart()
+    {
+        var show = ShowStartCheck.IsChecked ?? true;
+        var label = StartLabelBox.Text ?? "";
+        if (_settings.Current.TaskbarShowStart == show && _settings.Current.TaskbarStartLabel == label) return;
+        await _settings.UpdateAsync(s => { s.TaskbarShowStart = show; s.TaskbarStartLabel = label; });
+        ApplyLive?.Invoke(_settings.Current);
     }
 
     private async void OnButtonSizeChanged(object? sender, SelectionChangedEventArgs e)

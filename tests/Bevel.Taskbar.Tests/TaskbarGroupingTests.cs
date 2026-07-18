@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -68,7 +69,7 @@ public class TaskbarGroupingTests
     public void Projector_off_mirrors_the_source_one_to_one()
     {
         var src = new ObservableCollection<TaskItemViewModel> { Win("a", "com.x"), Win("b", "com.x") };
-        using var proj = new TaskbarItemsProjector(src, grouping: false);
+        using var proj = new TaskbarItemsProjector(src, mode: TaskbarGroupingMode.Never);
 
         Assert.Equal(2, proj.Items.Count);
         Assert.Same(src[0], proj.Items[0]);
@@ -82,7 +83,7 @@ public class TaskbarGroupingTests
         {
             Win("c1", "com.chrome"), Win("c2", "com.chrome"), Win("f", "com.finder"),
         };
-        using var proj = new TaskbarItemsProjector(src, grouping: true);
+        using var proj = new TaskbarItemsProjector(src, mode: TaskbarGroupingMode.Always);
 
         // [ChromeGroup(2), Finder]
         Assert.Equal(2, proj.Items.Count);
@@ -103,10 +104,26 @@ public class TaskbarGroupingTests
     }
 
     [Fact]
+    public void Projector_whenfull_groups_only_once_the_window_count_passes_the_threshold()
+    {
+        // 8 same-app windows — at/under the WhenFull threshold → still one button each.
+        var src = new ObservableCollection<TaskItemViewModel>();
+        for (var i = 0; i < 8; i++) src.Add(Win($"c{i}", "com.chrome"));
+        using var proj = new TaskbarItemsProjector(src, mode: TaskbarGroupingMode.WhenFull);
+        Assert.Equal(8, proj.Items.Count);
+        Assert.All(proj.Items, i => Assert.IsType<TaskItemViewModel>(i));
+
+        // A 9th window tips it past the threshold → the app collapses into a single group.
+        src.Add(Win("c8", "com.chrome"));
+        var group = Assert.IsType<TaskGroupViewModel>(Assert.Single(proj.Items));
+        Assert.Equal(9, group.Count);
+    }
+
+    [Fact]
     public void Projector_reuses_the_same_group_instance_across_replans()
     {
         var src = new ObservableCollection<TaskItemViewModel> { Win("c1", "com.chrome"), Win("c2", "com.chrome") };
-        using var proj = new TaskbarItemsProjector(src, grouping: true);
+        using var proj = new TaskbarItemsProjector(src, mode: TaskbarGroupingMode.Always);
         var groupBefore = proj.Items.OfType<TaskGroupViewModel>().Single();
 
         src.Add(Win("c3", "com.chrome"));   // membership change → replan

@@ -135,8 +135,7 @@ public partial class App : Application
     private static void OpenTaskbarSettings(IServiceProvider services, Taskbar.TaskbarView taskbarView)
     {
         var win = services.GetRequiredService<Taskbar.OnboardingWindow>();
-        win.ApplyLive = s => taskbarView.ClockControl.Configure(
-            s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
+        win.ApplyLive = taskbarView.ApplyLiveSettings;
         win.Show();
         win.Activate();
     }
@@ -165,7 +164,11 @@ public partial class App : Application
             restart: RequestRestart,
             widthMode: settings.Current.TaskbarButtonWidthMode,
             minButtonWidth: settings.Current.TaskbarMinButtonWidth,
-            groupWindows: settings.Current.TaskbarGroupWindows,
+            grouping: settings.Current.TaskbarGrouping,
+            buttonLabels: settings.Current.TaskbarButtonLabels,
+            middleClickCloses: settings.Current.TaskbarMiddleClickCloses,
+            showStart: settings.Current.TaskbarShowStart,
+            startLabel: settings.Current.TaskbarStartLabel,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
             showClock: settings.Current.TaskbarShowClock,
             clock24Hour: settings.Current.TaskbarClock24Hour,
