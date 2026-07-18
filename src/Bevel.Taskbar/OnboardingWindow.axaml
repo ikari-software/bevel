@@ -236,6 +236,13 @@
                             <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Colour scheme" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <ComboBox x:Name="ColorSchemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="The Win2000 palette (Brick, Eggplant, …) — recolours the whole shell live."
+                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="66" />
                                 <Slider x:Name="FontSizeSlider" Minimum="9" Maximum="16"
                                         Width="150" VerticalAlignment="Center" />

@@ -257,6 +257,7 @@ public sealed class SettingsService : IDisposable
     private string SerializeRaw()
     {
         _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId, SettingsJsonContext.Default.String);
+        _raw["colorScheme"] = JsonSerializer.SerializeToElement(_settings.ColorScheme, SettingsJsonContext.Default.String);
         _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled, SettingsJsonContext.Default.Boolean);
         _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
         _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
@@ -295,6 +296,7 @@ public sealed class SettingsService : IDisposable
         _settings = new BevelSettings
         {
             ThemeId = GetString("themeId") ?? "win2000",
+            ColorScheme = GetString("colorScheme") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
             WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
@@ -367,6 +369,11 @@ public sealed class SettingsService : IDisposable
 public sealed class BevelSettings
 {
     public string ThemeId { get; set; } = "win2000";
+
+    /// <summary>Win2000 colour scheme id (Classic <c>Colors/&lt;id&gt;.axaml</c>, W2K-01 / bevel-9js).
+    /// Empty = "Windows Standard" (the default palette).</summary>
+    public string ColorScheme { get; set; } = "";
+
     public bool ShellEnabled { get; set; } = true;
     public bool ShowHiddenFiles { get; set; }
 

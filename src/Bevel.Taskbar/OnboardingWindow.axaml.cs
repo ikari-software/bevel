@@ -47,6 +47,8 @@ public partial class OnboardingWindow : Window
         _permissionBroker = permissionBroker;
         _shellSession = shellSession;
 
+        foreach (var (_, display) in Bevel.UI.ColorSchemeService.Schemes)
+            ColorSchemeCombo.Items.Add(display);
         LoadSettings();
         StartPermissionPoll();
         _ = ReconcileRunAtLoginAsync();
@@ -70,6 +72,7 @@ public partial class OnboardingWindow : Window
         FontSizeSlider.ValueChanged += OnAppearanceSliderChanged;
         OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
+        ColorSchemeCombo.SelectionChanged += OnColorSchemeChanged;
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
         LockCheck.IsCheckedChanged += OnBehaviorChanged;
@@ -109,6 +112,7 @@ public partial class OnboardingWindow : Window
         ClockSecondsCheck.IsChecked = s.TaskbarClockShowSeconds;
         ClockDateCheck.IsChecked = s.TaskbarClockShowDate;
 
+        ColorSchemeCombo.SelectedIndex = SchemeIndex(s.ColorScheme);
         FontSizeSlider.Value = s.TaskbarFontSize > 0 ? s.TaskbarFontSize : 11;
         FontSizeValue.Text = $"{(int)FontSizeSlider.Value} pt";
         OpacitySlider.Value = s.TaskbarOpacity;
@@ -318,6 +322,27 @@ public partial class OnboardingWindow : Window
             s.TaskbarClockShowSeconds = seconds;
             s.TaskbarClockShowDate = date;
         });
+    }
+
+    private static int SchemeIndex(string id)
+    {
+        var target = string.IsNullOrEmpty(id) ? Bevel.UI.ColorSchemeService.DefaultScheme : id;
+        for (var i = 0; i < Bevel.UI.ColorSchemeService.Schemes.Count; i++)
+            if (Bevel.UI.ColorSchemeService.Schemes[i].Id == target) return i;
+        return 0;
+    }
+
+    /// <summary>Win2000 colour-scheme picker (bevel-9js): recolours the whole shell live via
+    /// <see cref="Bevel.UI.ColorSchemeService"/>, then persists the choice (guarded).</summary>
+    private async void OnColorSchemeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var idx = ColorSchemeCombo.SelectedIndex;
+        if (idx < 0 || idx >= Bevel.UI.ColorSchemeService.Schemes.Count) return;
+        var id = Bevel.UI.ColorSchemeService.Schemes[idx].Id;
+        if (_settings.Current.ColorScheme == id) return;
+        Bevel.UI.ColorSchemeService.Apply(id);   // live recolour
+        try { await _settings.UpdateAsync(s => s.ColorScheme = id); }
+        catch (Exception ex) { Console.Error.WriteLine($"[settings] colour scheme persist failed: {ex.Message}"); }
     }
 
     private void OnAppearanceSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)

@@ -84,6 +84,8 @@ public partial class App : Application
             var settings = services.GetRequiredService<SettingsService>();
             UI.ThemeOptions.ApplyCrispBevels(
                 this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
+            // Win2000 colour scheme (W2K-01 / bevel-9js) — also common to every surface.
+            UI.ColorSchemeService.Apply(settings.Current.ColorScheme);
 
             // Create only this process's surface(s). In the default all-in-one role every block
             // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.
