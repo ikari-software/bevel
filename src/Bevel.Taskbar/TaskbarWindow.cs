@@ -42,6 +42,13 @@ public sealed class TaskbarWindow : BevelWindow
         WindowState = WindowState.Normal;
         SystemDecorations = SystemDecorations.None;
         ShowInTaskbar = false;
+
+        // Let the background-opacity setting actually show through (bevel-cust.appearance): a transparent
+        // window means RootGrid's translucent background composites over the desktop instead of an opaque
+        // window fill (the root cause of "opacity did nothing"). At 100% opacity RootGrid is fully opaque,
+        // so the default look is unchanged.
+        Background = Avalonia.Media.Brushes.Transparent;
+        TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent };
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
 
