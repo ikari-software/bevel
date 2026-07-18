@@ -25,6 +25,10 @@ public partial class OnboardingWindow : Window
     // (initial load, OS-status reconcile) we must NOT let OnRunAtLoginChanged re-register the OS.
     private bool _suppressRunAtLogin;
 
+    /// <summary>Optional hook, set by the host, to push a settings change onto the live taskbar in the
+    /// same process (e.g. reformat the running clock) so options apply instantly, not just on restart.</summary>
+    public Action<BevelSettings>? ApplyLive { get; set; }
+
     // Parameterless constructor for the Avalonia runtime XAML loader / previewer (resolves AVLN3001,
     // which otherwise fires on every publish and is exactly the reachability class that breaks under
     // AOT — bevel-gww.7). It ONLY inflates the XAML — it must not run the DI ctor's LoadSettings /
@@ -55,6 +59,10 @@ public partial class OnboardingWindow : Window
         MinWidthSlider.ValueChanged += OnMinWidthChanged;
         GroupWindowsCheck.IsCheckedChanged += OnGroupWindowsChanged;
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
+        ShowClockCheck.IsCheckedChanged += OnClockChanged;
+        Clock24Check.IsCheckedChanged += OnClockChanged;
+        ClockSecondsCheck.IsCheckedChanged += OnClockChanged;
+        ClockDateCheck.IsCheckedChanged += OnClockChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
         CloseBtn.Click += (_, _) => Close();
     }
@@ -78,6 +86,11 @@ public partial class OnboardingWindow : Window
 
         GroupWindowsCheck.IsChecked = s.TaskbarGroupWindows;
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
+
+        ShowClockCheck.IsChecked = s.TaskbarShowClock;
+        Clock24Check.IsChecked = s.TaskbarClock24Hour;
+        ClockSecondsCheck.IsChecked = s.TaskbarClockShowSeconds;
+        ClockDateCheck.IsChecked = s.TaskbarClockShowDate;
     }
 
     private void StartPermissionPoll()
@@ -212,6 +225,25 @@ public partial class OnboardingWindow : Window
         var size = (TaskbarButtonSize)ButtonSizeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonSize == size) return;
         await _settings.UpdateAsync(s => s.TaskbarButtonSize = size);
+    }
+
+    /// <summary>All four clock toggles funnel here: persist the set, then push it onto the live clock
+    /// via <see cref="ApplyLive"/> so the change is visible immediately.</summary>
+    private async void OnClockChanged(object? sender, RoutedEventArgs e)
+    {
+        var show = ShowClockCheck.IsChecked ?? true;
+        var h24 = Clock24Check.IsChecked ?? true;
+        var seconds = ClockSecondsCheck.IsChecked ?? false;
+        var date = ClockDateCheck.IsChecked ?? false;
+
+        await _settings.UpdateAsync(s =>
+        {
+            s.TaskbarShowClock = show;
+            s.TaskbarClock24Hour = h24;
+            s.TaskbarClockShowSeconds = seconds;
+            s.TaskbarClockShowDate = date;
+        });
+        ApplyLive?.Invoke(_settings.Current);
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)

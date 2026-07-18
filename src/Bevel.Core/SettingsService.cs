@@ -255,6 +255,10 @@ public sealed class SettingsService : IDisposable
         _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
         _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
+        _raw["taskbarShowClock"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowClock, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarClock24Hour"] = JsonSerializer.SerializeToElement(_settings.TaskbarClock24Hour, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarClockShowSeconds"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowSeconds, SettingsJsonContext.Default.Boolean);
+        _raw["taskbarClockShowDate"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowDate, SettingsJsonContext.Default.Boolean);
         foreach (var (id, overrides) in _themeOverrides)
             _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
@@ -280,6 +284,10 @@ public sealed class SettingsService : IDisposable
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
+            TaskbarShowClock = GetBool("taskbarShowClock") ?? true,
+            TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
+            TaskbarClockShowSeconds = GetBool("taskbarClockShowSeconds") ?? false,
+            TaskbarClockShowDate = GetBool("taskbarClockShowDate") ?? false,
         };
 
         _themeOverrides.Clear();
@@ -355,6 +363,20 @@ public sealed class BevelSettings
 
     /// <summary>bevel-0ml: number of taskbar button rows (Win2000 drag-to-resize). 1 = classic single row.</summary>
     public int TaskbarRows { get; set; } = 1;
+
+    // ── Clock (bevel-cust.clock) ────────────────────────────────────────────────────────────────
+
+    /// <summary>Show the taskbar clock at all. Off hides the clock widget entirely.</summary>
+    public bool TaskbarShowClock { get; set; } = true;
+
+    /// <summary>24-hour (HH:mm) vs 12-hour (h:mm tt). Default 24h — Bevel's classic clock format.</summary>
+    public bool TaskbarClock24Hour { get; set; } = true;
+
+    /// <summary>Append seconds (…:ss); flips the tick cadence to 1s while on.</summary>
+    public bool TaskbarClockShowSeconds { get; set; }
+
+    /// <summary>Show the date beside the time (Win10/11-style), not only on hover.</summary>
+    public bool TaskbarClockShowDate { get; set; }
 }
 
 /// <summary>bevel-m2.10.1: taskbar button height tier (drives button, row, and bar height).</summary>

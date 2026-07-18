@@ -29,6 +29,7 @@ public partial class StartMenu : UserControl
     private readonly StartMenuViewModel? _programsVm;
     private readonly Action _quit;
     private readonly Action _restart;
+    private readonly Action _openSettings;
 
     public StartMenu() : this(null, null) { }
 
@@ -40,12 +41,14 @@ public partial class StartMenu : UserControl
         IIconProvider? iconProvider = null,
         Action? quit = null,
         Action? restart = null,
-        StartMenuViewModel? programs = null)
+        StartMenuViewModel? programs = null,
+        Action? openSettings = null)
     {
         InitializeComponent();
         _programsVm = programs;
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
+        _openSettings = openSettings ?? (() => { });
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
@@ -147,7 +150,7 @@ public partial class StartMenu : UserControl
         AddLeaf(SettingsItem, "Control Panel", () => { });
         AddLeaf(SettingsItem, "Network and Dial-up Connections", () => { });
         AddLeaf(SettingsItem, "Printers", () => { });
-        AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { });
+        AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { Close(); _openSettings(); });
 
         AddLeaf(SearchItem, "For Files or Folders…", () => { });
         AddLeaf(SearchItem, "On the Internet…", () => { });

@@ -128,6 +128,19 @@ public partial class App : Application
     /// (the ShellModel, the window-manager poll, and the work-area mitigator). This is the only
     /// role that resolves <c>IWindowManager</c>/<c>IAppEnvironment</c>, so only here does the helper
     /// spin up.</summary>
+    /// <summary>Opens the Taskbar Properties dialog (Start ▸ Settings ▸ Taskbar and Start Menu…),
+    /// wiring it to apply clock changes to THIS live taskbar instantly — the dialog and the clock live
+    /// in the same process, so no cross-process settings broadcast is needed. A fresh transient window
+    /// each time is fine: it's a modeless properties sheet.</summary>
+    private static void OpenTaskbarSettings(IServiceProvider services, Taskbar.TaskbarView taskbarView)
+    {
+        var win = services.GetRequiredService<Taskbar.OnboardingWindow>();
+        win.ApplyLive = s => taskbarView.ClockControl.Configure(
+            s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
+        win.Show();
+        win.Activate();
+    }
+
     private static void CreateTaskbarSurface(
         IServiceProvider services, SettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {
@@ -152,7 +165,12 @@ public partial class App : Application
             restart: RequestRestart,
             widthMode: settings.Current.TaskbarButtonWidthMode,
             minButtonWidth: settings.Current.TaskbarMinButtonWidth,
-            groupWindows: settings.Current.TaskbarGroupWindows);
+            groupWindows: settings.Current.TaskbarGroupWindows,
+            openSettings: () => OpenTaskbarSettings(services, taskbarView),
+            showClock: settings.Current.TaskbarShowClock,
+            clock24Hour: settings.Current.TaskbarClock24Hour,
+            clockShowSeconds: settings.Current.TaskbarClockShowSeconds,
+            clockShowDate: settings.Current.TaskbarClockShowDate);
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

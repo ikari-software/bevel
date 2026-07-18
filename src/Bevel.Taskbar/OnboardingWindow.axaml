@@ -1,140 +1,183 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Bevel.Taskbar.OnboardingWindow"
-        Title="Bevel Settings"
-        Width="420" Height="440"
+        Title="Taskbar and Start Menu Properties"
+        Width="460" Height="480"
         WindowStartupLocation="CenterScreen"
         CanResize="False"
         SystemDecorations="Full">
     <Grid RowDefinitions="Auto,*,Auto" Margin="12">
         <!-- Header -->
-        <TextBlock Grid.Row="0" Text="Bevel M2 — Taskbar Settings"
-                   FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
+        <TextBlock Grid.Row="0" Text="Taskbar and Start Menu Properties"
+                   FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
 
-        <!-- Settings content (scrolls if it outgrows the fixed window) -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="12">
+        <TabControl Grid.Row="1">
 
-            <!-- Accessibility permission -->
-            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
-                    BorderThickness="1" Padding="8" CornerRadius="2">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Accessibility Permission"
-                               FontWeight="Bold" FontSize="12" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Border x:Name="PermStatusDot" Width="12" Height="12"
-                                CornerRadius="6" Margin="0,3,0,0" />
-                        <TextBlock x:Name="PermStatusText"
-                                   Text="Checking..."
-                                   FontSize="11" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <Button x:Name="GrantAccessibilityBtn"
-                            Content="Open Security &#38; Privacy Settings"
-                            FontSize="11" Padding="8,4"
-                            IsVisible="False" />
-                    <TextBlock x:Name="PermHint"
-                               Text="Grant Accessibility to enable window management."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" />
+            <!-- ── General ──────────────────────────────────────────────── -->
+            <TabItem Header="General">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+
+                    <!-- Accessibility permission -->
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Accessibility Permission"
+                                       FontWeight="Bold" FontSize="12" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border x:Name="PermStatusDot" Width="12" Height="12"
+                                        CornerRadius="6" Margin="0,3,0,0" />
+                                <TextBlock x:Name="PermStatusText"
+                                           Text="Checking..."
+                                           FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button x:Name="GrantAccessibilityBtn"
+                                    Content="Open Security &#38; Privacy Settings"
+                                    FontSize="11" Padding="8,4"
+                                    IsVisible="False" />
+                            <TextBlock x:Name="PermHint"
+                                       Text="Grant Accessibility to enable window management."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Work-area strategy -->
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Work-Area Strategy"
+                                       FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="How the taskbar handles the macOS Dock."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" />
+
+                            <RadioButton x:Name="WASNudge"
+                                         Content="Window Nudging (default)"
+                                         FontSize="11" GroupName="WorkArea">
+                                <RadioButton.IsChecked>True</RadioButton.IsChecked>
+                            </RadioButton>
+                            <TextBlock Text="Dock auto-hides; overlapping windows are nudged up."
+                                       FontSize="10" Foreground="Gray"
+                                       Margin="20,0,0,0" />
+
+                            <RadioButton x:Name="WASDockShim"
+                                         Content="Dock Shim (strict)"
+                                         FontSize="11" GroupName="WorkArea" />
+                            <TextBlock x:Name="DockShimNote"
+                                       Text="Dock stays visible; taskbar height matches Dock inset. (Measurement required)"
+                                       FontSize="10" Foreground="Gray"
+                                       Margin="20,0,0,0" />
+
+                            <RadioButton x:Name="WASNone"
+                                         Content="None"
+                                         FontSize="11" GroupName="WorkArea" />
+                            <TextBlock Text="No mitigation; windows may underlap the taskbar."
+                                       FontSize="10" Foreground="Gray"
+                                       Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Run at login -->
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <CheckBox x:Name="RunAtLoginCheck"
+                                      Content="Launch Bevel at login"
+                                      FontSize="12" />
+                            <TextBlock Text="Starts the desktop and taskbar when you log in."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
-            </Border>
+                </ScrollViewer>
+            </TabItem>
 
-            <!-- Work-area strategy -->
-            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
-                    BorderThickness="1" Padding="8" CornerRadius="2">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Work-Area Strategy"
-                               FontWeight="Bold" FontSize="12" />
-                    <TextBlock Text="How the taskbar handles the macOS Dock."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" />
+            <!-- ── Buttons ──────────────────────────────────────────────── -->
+            <TabItem Header="Buttons">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Taskbar Buttons" FontWeight="Bold" FontSize="12" />
 
-                    <RadioButton x:Name="WASNudge"
-                                 Content="Window Nudging (default)"
-                                 FontSize="11" GroupName="WorkArea">
-                        <RadioButton.IsChecked>True</RadioButton.IsChecked>
-                    </RadioButton>
-                    <TextBlock Text="Dock auto-hides; overlapping windows are nudged up."
-                               FontSize="10" Foreground="Gray"
-                               Margin="20,0,0,0" />
+                            <CheckBox x:Name="FixedWidthCheck"
+                                      Content="Fixed-width buttons"
+                                      FontSize="11" />
+                            <TextBlock Text="Buttons keep their full width and the strip scrolls when full, instead of shrinking to share the bar."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
-                    <RadioButton x:Name="WASDockShim"
-                                 Content="Dock Shim (strict)"
-                                 FontSize="11" GroupName="WorkArea" />
-                    <TextBlock x:Name="DockShimNote"
-                               Text="Dock stays visible; taskbar height matches Dock inset. (Measurement required)"
-                               FontSize="10" Foreground="Gray"
-                               Margin="20,0,0,0" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Minimum width" FontSize="11" VerticalAlignment="Center" />
+                                <Slider x:Name="MinWidthSlider" Minimum="24" Maximum="160"
+                                        Width="170" VerticalAlignment="Center" />
+                                <TextBlock x:Name="MinWidthValue" FontSize="11"
+                                           VerticalAlignment="Center" Width="46" />
+                            </StackPanel>
+                            <TextBlock Text="Shrink-to-fit keeps labels down to this width; below it, buttons collapse to icon-only."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
-                    <RadioButton x:Name="WASNone"
-                                 Content="None"
-                                 FontSize="11" GroupName="WorkArea" />
-                    <TextBlock Text="No mitigation; windows may underlap the taskbar."
-                               FontSize="10" Foreground="Gray"
-                               Margin="20,0,0,0" />
+                            <CheckBox x:Name="GroupWindowsCheck"
+                                      Content="Group windows of the same app"
+                                      FontSize="11" Margin="0,4,0,0" />
+                            <TextBlock Text="Collapses an app's windows into one button with a pop-up list (XP-style). Off keeps one button per window."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />
+                                <ComboBox x:Name="ButtonSizeCombo" FontSize="11" Width="120" VerticalAlignment="Center">
+                                    <ComboBoxItem>Small</ComboBoxItem>
+                                    <ComboBoxItem>Normal</ComboBoxItem>
+                                    <ComboBoxItem>Large</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Taller or shorter taskbar rows. Applies after restarting Bevel."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </Border>
+                </ScrollViewer>
+            </TabItem>
 
-            <!-- Taskbar buttons (bevel-m2.10) -->
-            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
-                    BorderThickness="1" Padding="8" CornerRadius="2">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Taskbar Buttons" FontWeight="Bold" FontSize="12" />
+            <!-- ── Clock (bevel-cust.clock) ─────────────────────────────── -->
+            <TabItem Header="Clock">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12" Margin="2,8,2,2">
+                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                            BorderThickness="1" Padding="8" CornerRadius="2">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Clock" FontWeight="Bold" FontSize="12" />
+                            <TextBlock Text="Changes apply to the taskbar clock immediately."
+                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
 
-                    <CheckBox x:Name="FixedWidthCheck"
-                              Content="Fixed-width buttons"
-                              FontSize="11" />
-                    <TextBlock Text="Buttons keep their full width and the strip scrolls when full, instead of shrinking to share the bar."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                            <CheckBox x:Name="ShowClockCheck"
+                                      Content="Show the clock" FontSize="11" Margin="0,4,0,0" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                        <TextBlock Text="Minimum width" FontSize="11" VerticalAlignment="Center" />
-                        <Slider x:Name="MinWidthSlider" Minimum="24" Maximum="160"
-                                Width="170" VerticalAlignment="Center" />
-                        <TextBlock x:Name="MinWidthValue" FontSize="11"
-                                   VerticalAlignment="Center" Width="46" />
-                    </StackPanel>
-                    <TextBlock Text="Shrink-to-fit keeps labels down to this width; below it, buttons collapse to icon-only."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                            <CheckBox x:Name="Clock24Check"
+                                      Content="Use 24-hour time (14:30 vs 2:30 PM)" FontSize="11" />
 
-                    <CheckBox x:Name="GroupWindowsCheck"
-                              Content="Group windows of the same app"
-                              FontSize="11" Margin="0,4,0,0" />
-                    <TextBlock Text="Collapses an app's windows into one button with a pop-up list (XP-style). Off keeps one button per window."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                            <CheckBox x:Name="ClockSecondsCheck"
+                                      Content="Show seconds" FontSize="11" />
+                            <TextBlock Text="Ticks every second while on (otherwise once a minute)."
+                                       FontSize="10" Foreground="Gray"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                        <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />
-                        <ComboBox x:Name="ButtonSizeCombo" FontSize="11" Width="120" VerticalAlignment="Center">
-                            <ComboBoxItem>Small</ComboBoxItem>
-                            <ComboBoxItem>Normal</ComboBoxItem>
-                            <ComboBoxItem>Large</ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
-                    <TextBlock Text="Taller or shorter taskbar rows. Applies after restarting Bevel."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" Margin="20,0,0,0" />
+                            <CheckBox x:Name="ClockDateCheck"
+                                      Content="Show the date beside the time" FontSize="11" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-            </Border>
+                </ScrollViewer>
+            </TabItem>
 
-            <!-- Run at login -->
-            <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
-                    BorderThickness="1" Padding="8" CornerRadius="2">
-                <StackPanel Spacing="6">
-                    <CheckBox x:Name="RunAtLoginCheck"
-                              Content="Launch Bevel at login"
-                              FontSize="12" />
-                    <TextBlock Text="Starts the desktop and taskbar when you log in."
-                               FontSize="10" Foreground="Gray"
-                               TextWrapping="Wrap" Margin="20,0,0,0" />
-                </StackPanel>
-            </Border>
-
-        </StackPanel>
-        </ScrollViewer>
+        </TabControl>
 
         <!-- Close button -->
         <Button Grid.Row="2" Content="Close" HorizontalAlignment="Right"

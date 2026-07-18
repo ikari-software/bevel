@@ -15,6 +15,13 @@ public partial class ClockWidget : UserControl
 {
     private DispatcherTimer? _timer;
 
+    // Display settings (bevel-cust.clock). Defaults mirror the original hardcoded "HH:mm" behaviour,
+    // so an un-Configure'd widget (XAML previewer, tests) renders exactly as before.
+    private bool _show = true;
+    private bool _h24 = true;
+    private bool _seconds;
+    private bool _showDate;
+
     public ClockWidget()
     {
         InitializeComponent();
@@ -56,23 +63,42 @@ public partial class ClockWidget : UserControl
         StopTimer();
     }
 
+    /// <summary>Apply clock display settings (bevel-cust.clock). Rebuilds the format and, when seconds
+    /// are shown, switches the tick cadence from minute- to second-boundary. Safe to call live — the
+    /// running taskbar's clock reformats immediately.</summary>
+    public void Configure(bool show, bool h24, bool seconds, bool showDate)
+    {
+        _show = show;
+        _h24 = h24;
+        _seconds = seconds;
+        _showDate = showDate;
+        IsVisible = show;
+        UpdateTime();
+        if (_timer is not null) StartTimer();   // re-arm at the new cadence if already running
+    }
+
     private void StartTimer()
     {
         StopTimer();
 
-        // Align to the next minute boundary so we don't drift.
-        var now = DateTime.Now;
-        var nextMinute = now.Date.AddHours(now.Hour).AddMinutes(now.Minute + 1);
-        var delay = nextMinute - now + TimeSpan.FromMilliseconds(100); // 100ms past the boundary
-
-        _timer = new DispatcherTimer(
-            TimeSpan.FromMinutes(1),
-            DispatcherPriority.Background,
-            OnTimerTick);
+        // Tick every second only when seconds are displayed; otherwise the classic ≤1 wake/min budget
+        // (R-CL-1) holds. DispatcherTimer already fires on wall-clock intervals — good enough here; we
+        // don't chase sub-second boundary alignment.
+        var interval = _seconds ? TimeSpan.FromSeconds(1) : TimeSpan.FromMinutes(1);
+        _timer = new DispatcherTimer(interval, DispatcherPriority.Background, OnTimerTick);
 
         // First tick: update now to catch the initial render.
         UpdateTime();
         _timer.Start();
+    }
+
+    /// <summary>The .NET format string for the current 12/24h + seconds settings.</summary>
+    private string TimeFormat()
+    {
+        var t = _h24 ? "HH:mm" : "h:mm";
+        if (_seconds) t += ":ss";
+        if (!_h24) t += " tt";
+        return t;
     }
 
     private void StopTimer()
@@ -89,7 +115,8 @@ public partial class ClockWidget : UserControl
     private void UpdateTime()
     {
         var now = DateTime.Now;
-        TimeDisplay.Text = now.ToString("HH:mm");
+        var time = now.ToString(TimeFormat());
+        TimeDisplay.Text = _showDate ? $"{time}   {now:ddd d MMM}" : time;
         ToolTip.SetTip(TimeDisplay, now.ToLongDateString());
     }
 }

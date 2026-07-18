@@ -18,6 +18,7 @@ public partial class TaskbarView : UserControl
     private IIconProvider? _iconProvider;
     private Action? _quit;
     private Action? _restart;
+    private Action? _openSettings;
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
@@ -50,7 +51,12 @@ public partial class TaskbarView : UserControl
         Action? restart = null,
         TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
         int minButtonWidth = 80,
-        bool groupWindows = false)
+        bool groupWindows = false,
+        Action? openSettings = null,
+        bool showClock = true,
+        bool clock24Hour = true,
+        bool clockShowSeconds = false,
+        bool clockShowDate = false)
     {
         _appEnv = appEnv;
         _iconProvider = iconProvider;
@@ -61,6 +67,8 @@ public partial class TaskbarView : UserControl
         _groupWindows = groupWindows;
         _quit = quit;
         _restart = restart;
+        _openSettings = openSettings;
+        Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
@@ -76,7 +84,7 @@ public partial class TaskbarView : UserControl
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu);
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.
