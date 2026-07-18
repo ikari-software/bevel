@@ -398,7 +398,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// (no Screen Recording permission, window gone, or capture error) — the caller shows no preview.
     private func captureWindowThumbnail(windowID: CGWindowID, maxWidth: Int, maxHeight: Int) async -> Data {
         guard CGPreflightScreenCaptureAccess() else { return Data() }
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+        // onScreenWindowsOnly:false so MINIMIZED windows are still capturable — the rest of the helper
+        // deliberately supports minimized windows (bevel-m2.3), and the taskbar hovers them too. Otherwise
+        // hovering a minimized item silently falls back to title-only (review: swift-ios).
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
               let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
             return Data()
         }

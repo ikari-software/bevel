@@ -91,6 +91,24 @@ public class ButtonLayoutTests
     }
 
     [Fact]
+    public void IconOnly_with_fixed_width_is_icon_sized_and_unlabelled()
+    {
+        var (width, showLabel) = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.Fixed, 1000, 5, 1, Max, Min, TaskbarButtonLabels.IconOnly);
+        Assert.False(showLabel);
+        Assert.Equal(40, width);   // clamped to the icon-only max, never the full Fixed max
+    }
+
+    [Fact]
+    public void IconOnly_with_zero_count_is_icon_sized_and_unlabelled()
+    {
+        var (width, showLabel) = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 1000, 0, 1, Max, Min, TaskbarButtonLabels.IconOnly);
+        Assert.False(showLabel);
+        Assert.Equal(40, width);
+    }
+
+    [Fact]
     public void Always_mode_keeps_the_label_and_floor_even_when_crowded()
     {
         // Crowding that drops Auto to icon-only stays labelled at the text floor under Always.

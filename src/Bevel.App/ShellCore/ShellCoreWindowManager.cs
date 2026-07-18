@@ -89,9 +89,9 @@ public sealed class ShellCoreWindowManager : IWindowManager
                 ct).ConfigureAwait(false);
             return r.Ok ? r.Png : null;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return null;
+            return null;   // honor cancellation (timeout); swallow transport/other failures to "no preview"
         }
     }
 

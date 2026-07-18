@@ -124,22 +124,26 @@ public partial class App : Application
         desktop.MainWindow = desktopWin;
     }
 
-    /// <summary>Taskbar surface: the bottom bar plus the machinery that drives window management
-    /// (the ShellModel, the window-manager poll, and the work-area mitigator). This is the only
-    /// role that resolves <c>IWindowManager</c>/<c>IAppEnvironment</c>, so only here does the helper
-    /// spin up.</summary>
+    /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
+    /// bar (bevel-cust.ctxmenu). async void, so the settings I/O is guarded — a SaveAsync failure must
+    /// not crash the shell from a context-menu click (review: reliability).</summary>
+    private static async void ToggleTaskbarLock(SettingsService settings, Taskbar.TaskbarView taskbarView)
+    {
+        try
+        {
+            await settings.UpdateAsync(s => s.TaskbarLocked = !s.TaskbarLocked);
+            taskbarView.ApplyLiveSettings(settings.Current);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[app] ToggleTaskbarLock failed (swallowed): {ex.Message}");
+        }
+    }
+
     /// <summary>Opens the Taskbar Properties dialog (Start ▸ Settings ▸ Taskbar and Start Menu…),
     /// wiring it to apply clock changes to THIS live taskbar instantly — the dialog and the clock live
     /// in the same process, so no cross-process settings broadcast is needed. A fresh transient window
     /// each time is fine: it's a modeless properties sheet.</summary>
-    /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
-    /// bar (bevel-cust.ctxmenu). async void matches the codebase's fire-and-forget settings handlers.</summary>
-    private static async void ToggleTaskbarLock(SettingsService settings, Taskbar.TaskbarView taskbarView)
-    {
-        await settings.UpdateAsync(s => s.TaskbarLocked = !s.TaskbarLocked);
-        taskbarView.ApplyLiveSettings(settings.Current);
-    }
-
     private static void OpenTaskbarSettings(IServiceProvider services, Taskbar.TaskbarView taskbarView)
     {
         var win = services.GetRequiredService<Taskbar.OnboardingWindow>();
@@ -148,6 +152,10 @@ public partial class App : Application
         win.Activate();
     }
 
+    /// <summary>Taskbar surface: the bottom bar plus the machinery that drives window management
+    /// (the ShellModel, the window-manager poll, and the work-area mitigator). This is the only
+    /// role that resolves <c>IWindowManager</c>/<c>IAppEnvironment</c>, so only here does the helper
+    /// spin up.</summary>
     private static void CreateTaskbarSurface(
         IServiceProvider services, SettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {

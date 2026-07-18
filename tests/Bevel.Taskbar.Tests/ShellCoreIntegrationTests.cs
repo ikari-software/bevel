@@ -207,6 +207,42 @@ public sealed class ShellCoreIntegrationTests
     /// seeds the initial projection, lets a test raise deltas on demand, and records the commands the
     /// core forwards, so the whole server↔client path is exercised without a real platform backend.
     /// </summary>
+    [Fact]
+    public async Task CaptureWindow_round_trips_png_bytes_through_the_core()
+    {
+        var pal = new ControllablePal();
+        var expected = new byte[] { 0x89, 0x50, 0x4E, 0x47, 1, 2, 3, 250, 200, 0, 255 };
+        pal.CapturePng = expected;
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await server.StartAsync(Ct);
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        await core.EnsureConnectedAsync(Ct);
+
+        var png = await wm.CaptureWindowAsync(new ForeignWindowId("win-7"), 240, 160, Ct);
+
+        Assert.Equal(expected, png);                          // byte-for-byte over the base64 JSON wire
+        Assert.Equal(("win-7", 240, 160), pal.LastCapture);   // request fields threaded through the core
+    }
+
+    [Fact]
+    public async Task CaptureWindow_returns_null_when_the_core_link_is_down()
+    {
+        var pal = new ControllablePal();
+        pal.CapturePng = new byte[] { 1, 2, 3 };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        // No server started, no EnsureConnectedAsync → the client is not connected.
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+
+        var png = await wm.CaptureWindowAsync(new ForeignWindowId("win-7"), 240, 160, Ct);
+        Assert.Null(png);   // not-connected short-circuits to null without throwing
+    }
+
     private sealed class ControllablePal : IWindowManager, IAppEnvironment, ISystemTrayHost
     {
         private readonly List<ForeignWindow> _windows = new();
@@ -241,6 +277,14 @@ public sealed class ShellCoreIntegrationTests
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+
+        public byte[]? CapturePng;                       // set by a test; returned by CaptureWindowAsync
+        public (string Id, int W, int H)? LastCapture;   // records the request fields the core forwarded
+        public Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
+        {
+            LastCapture = (id.Value, maxWidth, maxHeight);
+            return Task.FromResult(CapturePng);
+        }
 
         public event EventHandler<ForeignWindow>? WindowOpened;
         public event EventHandler<ForeignWindow>? WindowClosed;

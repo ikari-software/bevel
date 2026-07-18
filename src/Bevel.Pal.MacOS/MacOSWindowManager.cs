@@ -119,9 +119,9 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                 headers: AuthHeader(), cancellationToken: ct);
             return reply.Png.IsEmpty ? null : reply.Png.ToByteArray();
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return null;   // helper down / capture unavailable → caller shows no preview
+            return null;   // helper down / capture unavailable → caller shows no preview (but honor cancellation)
         }
     }
 

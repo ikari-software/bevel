@@ -45,6 +45,7 @@ public partial class TaskbarView : UserControl
     private bool _resizing;
     private DispatcherTimer? _tooltipTimer;
     private Control? _tooltipAnchor;
+    private int _previewGeneration;   // tags each hover-preview capture so a superseded/late one is discarded
     private bool _wired;
     private bool _layoutQueued;
 
@@ -235,8 +236,6 @@ public partial class TaskbarView : UserControl
         }
     }
 
-    /// <summary>After a grouped-app window is picked from its flyout, close the flyout (bevel-cust) —
-    /// the custom Button rows don't auto-dismiss the way MenuItems do, so hide any open task flyout.</summary>
     /// <summary>Grouped-app flyout row picked: activate the window, then close the flyout. The close is
     /// deferred so activation is fully underway first (hiding the popup mid-gesture would cancel it).
     /// A Border+Tapped (not a Button+Command) so the row shares the flyoutrow hover-highlight with the
@@ -563,14 +562,26 @@ public partial class TaskbarView : UserControl
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
 
-        // Fetch a live thumbnail off the wire (bevel-cust hover previews); show it only if this button
-        // is still the hovered one when the capture returns. Null when Screen Recording isn't granted.
-        var png = _vm?.Model is { } model ? await model.CaptureWindowAsync(vm.Id, 240, 160) : null;
-        if (png is null || png.Length == 0) return;
-        if (!ReferenceEquals(_tooltipAnchor, anchor) || !TooltipPopup.IsOpen) return;
+        // Live thumbnail (bevel-gcd). Tag the request so a superseded/late capture can't paint a stale or
+        // wrong-window image (the same ToggleButton container gets rebound to another window by the
+        // virtualizing strip); bound it with a timeout so a wedged helper can't leak an in-flight task per
+        // hover (review: reliability/adversarial). 0/0 = let the helper apply its default size.
+        var gen = ++_previewGeneration;
+        byte[]? png = null;
+        if (_vm?.Model is { } model)
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try { png = await model.CaptureWindowAsync(vm.Id, 0, 0, cts.Token); }
+            catch { png = null; }   // timeout / transport / capture failure → no preview, never crash
+        }
+        // Bail unless this is still the current request AND the same button still shows the same window.
+        if (gen != _previewGeneration || png is null || png.Length == 0) return;
+        if (!ReferenceEquals(_tooltipAnchor, anchor) || !TooltipPopup.IsOpen
+            || !ReferenceEquals(button.DataContext, vm)) return;
         try
         {
             using var ms = new System.IO.MemoryStream(png);
+            (PreviewImage.Source as IDisposable)?.Dispose();   // release the previous bitmap (no per-hover leak)
             PreviewImage.Source = new Avalonia.Media.Imaging.Bitmap(ms);
             PreviewFrame.IsVisible = true;
         }
@@ -585,6 +596,8 @@ public partial class TaskbarView : UserControl
         _tooltipAnchor = null;
         TooltipPopup.IsOpen = false;
         TooltipPopup.PlacementTarget = null;
+        _previewGeneration++;   // discard any in-flight capture for the button we're leaving
+        (PreviewImage.Source as IDisposable)?.Dispose();
         PreviewImage.Source = null;
         PreviewFrame.IsVisible = false;
     }

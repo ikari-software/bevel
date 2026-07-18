@@ -31,7 +31,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// is NOT mirrored (bevel-m3.4). Defaults cover iStat Menus (live graphs — belong in the native
     /// bar), Control Center's own menu chrome (BentoBox), Ice's control separators, and modules Bevel
     /// already provides (its clock / Siri). Extend at launch via BEVEL_TRAY_DENY (comma-separated).
-    private lazy var denyList: [String] = {
+    private let denyList: [String] = {   // eager (not lazy) — read concurrently from ListTrayItems + the Changes poll (review: swift-ios)
         var list = ["istatmenus", "bentobox", "ice.controlitem", "clock", "siri"]
         if let extra = ProcessInfo.processInfo.environment["BEVEL_TRAY_DENY"] {
             list += extra.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -188,12 +188,21 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// clicks. Falls back to CGEvent synthesis for older OS / non-CC items. Needs Accessibility.
     func forwardClick(itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         let parts = itemID.split(separator: ":")
-        guard parts.count == 2, let windowNumber = Int(parts[1]) else { return false }
+        guard parts.count == 2, let expectedPID = Int(parts[0]), let windowNumber = Int(parts[1]) else { return false }
+        // Validate the resolved window is STILL the intended status item before synthesizing input: match
+        // the windowNumber AND the owning pid AND the status-item layer + menu-bar band. macOS reuses
+        // CGWindowNumbers after a window is destroyed, so a stale/reused id must not drive a click into an
+        // unrelated on-screen window (review: security least-privilege + adversarial id-reuse).
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
-              let w = windows.first(where: { ($0[kCGWindowNumber as String] as? Int) == windowNumber }),
+              let w = windows.first(where: {
+                  ($0[kCGWindowNumber as String] as? Int) == windowNumber
+                      && ($0[kCGWindowOwnerPID as String] as? Int) == expectedPID
+                      && ($0[kCGWindowLayer as String] as? Int) == statusWindowLayer
+              }),
               let boundsDict = w[kCGWindowBounds as String] as? [String: Any],
-              let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else {
+              let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
+              rect.origin.y <= 40, rect.height >= 8, rect.height <= 40, rect.width >= 8, rect.width <= 400 else {
             return false
         }
         let point = CGPoint(x: rect.midX, y: rect.midY)
@@ -210,6 +219,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// of parents if the deepest element under the point doesn't itself support the action.
     private func pressViaAX(at point: CGPoint, itemID: String, rightClick: Bool) -> Bool {
         let systemWide = AXUIElementCreateSystemWide()
+        // Cap AX messaging at 1s (the convention WindowServiceImpl uses) so an unresponsive target app
+        // can't hang this synchronous call on the shared concurrency pool (review: swift-ios).
+        _ = _AXUIElementSetMessagingTimeout(systemWide, 1.0)
         var element: AXUIElement?
         guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &element) == .success,
               var el = element else { return false }
@@ -350,7 +362,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let parts = items[i].itemID.split(separator: ":")
             guard parts.count == 2, let num = UInt32(parts[1]),
                   let scWin = byWindowID[CGWindowID(num)] else { continue }
-            if let png = await captureWindow(scWin) {
+            if let png = await captureWindow(scWin), !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
             }

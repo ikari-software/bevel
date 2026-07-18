@@ -228,13 +228,28 @@ public partial class OnboardingWindow : Window
         }
     }
 
+    /// <summary>Persist a settings mutation and push it live, guarding the disk/SQLite I/O so a write
+    /// failure logs instead of crashing the process out of one of these async-void handlers (review:
+    /// reliability). Single seam for every dialog handler's persist-then-apply (was duplicated ~9x).</summary>
+    private async System.Threading.Tasks.Task PersistAndApply(Action<BevelSettings> mutate)
+    {
+        try
+        {
+            await _settings.UpdateAsync(mutate);
+            ApplyLive?.Invoke(_settings.Current);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[settings] persist failed (swallowed): {ex.Message}");
+        }
+    }
+
     private async void OnFixedWidthChanged(object? sender, RoutedEventArgs e)
     {
         if (FixedWidthCheck.IsChecked is not { } fixedWidth) return;
         MinWidthSlider.IsEnabled = !fixedWidth;
         var mode = fixedWidth ? TaskbarButtonWidthMode.Fixed : TaskbarButtonWidthMode.ShrinkToFit;
-        await _settings.UpdateAsync(s => s.TaskbarButtonWidthMode = mode);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarButtonWidthMode = mode);
     }
 
     private async void OnMinWidthChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -243,8 +258,7 @@ public partial class OnboardingWindow : Window
         MinWidthValue.Text = $"{value} px";
         // Persist only on an actual integer-step change, so a drag doesn't thrash the settings file.
         if (_settings.Current.TaskbarMinButtonWidth == value) return;
-        await _settings.UpdateAsync(s => s.TaskbarMinButtonWidth = value);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarMinButtonWidth = value);
     }
 
     private async void OnGroupingChanged(object? sender, SelectionChangedEventArgs e)
@@ -252,8 +266,7 @@ public partial class OnboardingWindow : Window
         if (GroupingCombo.SelectedIndex < 0) return;
         var mode = (TaskbarGroupingMode)GroupingCombo.SelectedIndex;
         if (_settings.Current.TaskbarGrouping == mode) return;
-        await _settings.UpdateAsync(s => s.TaskbarGrouping = mode);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarGrouping = mode);
     }
 
     private async void OnLabelModeChanged(object? sender, SelectionChangedEventArgs e)
@@ -261,16 +274,14 @@ public partial class OnboardingWindow : Window
         if (LabelModeCombo.SelectedIndex < 0) return;
         var mode = (TaskbarButtonLabels)LabelModeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonLabels == mode) return;
-        await _settings.UpdateAsync(s => s.TaskbarButtonLabels = mode);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarButtonLabels = mode);
     }
 
     private async void OnMiddleClickChanged(object? sender, RoutedEventArgs e)
     {
         if (MiddleClickCloseCheck.IsChecked is not { } v) return;
         if (_settings.Current.TaskbarMiddleClickCloses == v) return;
-        await _settings.UpdateAsync(s => s.TaskbarMiddleClickCloses = v);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarMiddleClickCloses = v);
     }
 
     /// <summary>Start show/caption both persist here (TextChanged fires per keystroke — the equality
@@ -280,8 +291,7 @@ public partial class OnboardingWindow : Window
         var show = ShowStartCheck.IsChecked ?? true;
         var label = StartLabelBox.Text ?? "";
         if (_settings.Current.TaskbarShowStart == show && _settings.Current.TaskbarStartLabel == label) return;
-        await _settings.UpdateAsync(s => { s.TaskbarShowStart = show; s.TaskbarStartLabel = label; });
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => { s.TaskbarShowStart = show; s.TaskbarStartLabel = label; });
     }
 
     private async void OnButtonSizeChanged(object? sender, SelectionChangedEventArgs e)
@@ -289,8 +299,7 @@ public partial class OnboardingWindow : Window
         if (ButtonSizeCombo.SelectedIndex < 0) return;
         var size = (TaskbarButtonSize)ButtonSizeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonSize == size) return;
-        await _settings.UpdateAsync(s => s.TaskbarButtonSize = size);
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => s.TaskbarButtonSize = size);
     }
 
     /// <summary>All four clock toggles funnel here: persist the set, then push it onto the live clock
@@ -302,14 +311,13 @@ public partial class OnboardingWindow : Window
         var seconds = ClockSecondsCheck.IsChecked ?? false;
         var date = ClockDateCheck.IsChecked ?? false;
 
-        await _settings.UpdateAsync(s =>
+        await PersistAndApply(s =>
         {
             s.TaskbarShowClock = show;
             s.TaskbarClock24Hour = h24;
             s.TaskbarClockShowSeconds = seconds;
             s.TaskbarClockShowDate = date;
         });
-        ApplyLive?.Invoke(_settings.Current);
     }
 
     private void OnAppearanceSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -329,13 +337,12 @@ public partial class OnboardingWindow : Window
         if (_settings.Current.TaskbarFontSize == font
             && _settings.Current.TaskbarOpacity == opacity
             && _settings.Current.TaskbarBackgroundColor == color) return;
-        await _settings.UpdateAsync(s =>
+        await PersistAndApply(s =>
         {
             s.TaskbarFontSize = font;
             s.TaskbarOpacity = opacity;
             s.TaskbarBackgroundColor = color;
         });
-        ApplyLive?.Invoke(_settings.Current);
     }
 
     private void OnTraySliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -350,8 +357,7 @@ public partial class OnboardingWindow : Window
         var cap = (int)Math.Round(TrayCapSlider.Value);
         var size = (int)Math.Round(TrayIconSizeSlider.Value);
         if (_settings.Current.TaskbarTrayOverflowCap == cap && _settings.Current.TaskbarTrayIconSize == size) return;
-        await _settings.UpdateAsync(s => { s.TaskbarTrayOverflowCap = cap; s.TaskbarTrayIconSize = size; });
-        ApplyLive?.Invoke(_settings.Current);
+        await PersistAndApply(s => { s.TaskbarTrayOverflowCap = cap; s.TaskbarTrayIconSize = size; });
     }
 
     private async void OnBehaviorChanged(object? sender, RoutedEventArgs e)
@@ -362,13 +368,12 @@ public partial class OnboardingWindow : Window
         if (_settings.Current.TaskbarLocked == locked
             && _settings.Current.TaskbarAlwaysOnTop == onTop
             && _settings.Current.TaskbarShowDesktopButton == showDesktop) return;
-        await _settings.UpdateAsync(s =>
+        await PersistAndApply(s =>
         {
             s.TaskbarLocked = locked;
             s.TaskbarAlwaysOnTop = onTop;
             s.TaskbarShowDesktopButton = showDesktop;
         });
-        ApplyLive?.Invoke(_settings.Current);
     }
 
     private void OnGrantAccessibility(object? sender, RoutedEventArgs e)

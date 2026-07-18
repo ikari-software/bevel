@@ -23,7 +23,6 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
-    /// <summary>How many items show inline before the rest spill into the overflow flyout (bevel-m3.4).</summary>
     /// <summary>Default inline tray-icon count before overflow (bevel-m3.4); user-overridable
     /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
     public const int DefaultVisibleCap = 8;

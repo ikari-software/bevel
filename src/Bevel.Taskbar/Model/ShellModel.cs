@@ -79,9 +79,11 @@ public sealed class ShellModel : IDisposable
         }
     }
 
-    /// <summary>PNG thumbnail of a window for hover previews (bevel-cust); null if unavailable.</summary>
-    public System.Threading.Tasks.Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight)
-        => _windows?.CaptureWindowAsync(id, maxWidth, maxHeight)
+    /// <summary>PNG thumbnail of a window for hover previews (bevel-cust); null if unavailable. The
+    /// token lets the caller bound a hung capture with a timeout (review: reliability).</summary>
+    public System.Threading.Tasks.Task<byte[]?> CaptureWindowAsync(
+        ForeignWindowId id, int maxWidth, int maxHeight, System.Threading.CancellationToken ct = default)
+        => _windows?.CaptureWindowAsync(id, maxWidth, maxHeight, ct)
            ?? System.Threading.Tasks.Task.FromResult<byte[]?>(null);
 
     /// <summary>
