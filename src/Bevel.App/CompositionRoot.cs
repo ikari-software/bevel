@@ -139,6 +139,10 @@ public static class CompositionRoot
         services.AddSingleton<Bevel.Interop.IKnownFolders>(Bevel.Interop.SystemKnownFolders.Instance);
         services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
+        // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
+        // run it through this router → the one IShellAutomation seam. The transports that feed it (the
+        // bevelctl socket, the macOS bevel:// URL-event handler) resolve this singleton.
+        services.AddSingleton<Bevel.Interop.Cli.AutomationCommandRouter>();
 
         return services;
     }
