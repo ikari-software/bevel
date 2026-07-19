@@ -46,3 +46,6 @@ refs/
 # Raster icon exports are dev-preview artifacts of the vector source (Glyphs.cs, regenerable
 # via Bevel.IconPreview → gallery.html). The shell is vector-always: never commit/ship raster.
 src/Bevel.Themes.Win2000/Assets/Icons/**/*.png
+
+# Packaged app-bundle output (packaging/macos/build-app.sh assembles it fresh).
+dist/

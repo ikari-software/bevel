@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Bevel.app bundle Info.plist (M5 packaging). Identifiers are the M0-frozen values (01-architecture
+  ARCH-01, 09-engineering-plan §M0): bundle id pl.ikari.bevel, URL scheme bevel://. __VERSION__ and
+  __BUILD__ are substituted by build-app.sh. This plist also lands the M4 Apple-Events tier-1 binding
+  (NSAppleScriptEnabled + OSAScriptingDefinition + CFBundleURLTypes) that the native handler needs.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>pl.ikari.bevel</string>
+	<key>CFBundleName</key>
+	<string>Bevel</string>
+	<key>CFBundleDisplayName</key>
+	<string>Bevel</string>
+	<key>CFBundleExecutable</key>
+	<string>Bevel</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>CFBundleIconFile</key>
+	<string>Bevel.icns</string>
+
+	<!-- Apple Events tier 1 (08-os-interop §2.1.2): scriptable via the bundled Finder-mirrored sdef. -->
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>OSAScriptingDefinition</key>
+	<string>Bevel.sdef</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Bevel uses Apple Events to reveal and manage files for scripts and other apps.</string>
+
+	<!-- bevel:// URL scheme (08-os-interop §3.3), M0-frozen. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>pl.ikari.bevel.url</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bevel</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Folder/volume viewer registration (08-os-interop INT-6): folder-open events reach Bevel. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+				<string>public.volume</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
