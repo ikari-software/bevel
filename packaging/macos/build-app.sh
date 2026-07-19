@@ -17,15 +17,19 @@ OUT="${OUT:-$ROOT/dist}"
 APP="$OUT/Bevel.app"
 PKG="$ROOT/packaging/macos"
 
-echo "==> Publishing Bevel.App ($CONFIG / $RID)"
-dotnet publish "$ROOT/src/Bevel.App/Bevel.App.csproj" \
-	-c "$CONFIG" -r "$RID" --self-contained true \
-	-o "$OUT/publish-app" -v quiet
+# Single-file publish so Contents/MacOS holds ONLY Mach-O (the apphost + a few native libs) — no
+# loose managed .dll / .json, which codesign otherwise flags as unsigned "code" in an .app's MacOS
+# dir. DebugType=none drops PDBs (not shippable, and also flagged). Native libs self-extract at run
+# time; the hardened-runtime disable-library-validation entitlement permits that.
+PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true
+	-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+	-p:DebugType=none -p:DebugSymbols=false -v quiet)
+
+echo "==> Publishing Bevel.App ($CONFIG / $RID, single-file)"
+dotnet publish "$ROOT/src/Bevel.App/Bevel.App.csproj" "${PUBLISH_ARGS[@]}" -o "$OUT/publish-app"
 
 echo "==> Publishing bevelctl"
-dotnet publish "$ROOT/src/bevelctl/bevelctl.csproj" \
-	-c "$CONFIG" -r "$RID" --self-contained true \
-	-o "$OUT/publish-cli" -v quiet
+dotnet publish "$ROOT/src/bevelctl/bevelctl.csproj" "${PUBLISH_ARGS[@]}" -o "$OUT/publish-cli"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
