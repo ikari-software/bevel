@@ -116,6 +116,11 @@ public partial class App : Application
                 CreateTaskbarSurface(services, settings, desktop);
             if (role is ShellRole.All or ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
+
+            // bevel:// URL handler (M4-D.2 / bevel-6dc): only in the FM-hosting roles, where the
+            // router's window verbs resolve to a live surface.
+            if (role is ShellRole.All or ShellRole.Explorer)
+                UrlActivation.Wire(this, services);
         }
 
         base.OnFrameworkInitializationCompleted();
