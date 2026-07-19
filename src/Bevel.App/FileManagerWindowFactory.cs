@@ -24,12 +24,15 @@ public sealed class FileManagerWindowFactory
     private readonly VfsRoot _vfsRoot;
     private readonly SettingsService _settings;
     private readonly IConflictHandler _conflictHandler;
+    private readonly FileManagerWindowRegistry _registry;
 
-    public FileManagerWindowFactory(VfsRoot vfsRoot, SettingsService settings, IConflictHandler conflictHandler)
+    public FileManagerWindowFactory(VfsRoot vfsRoot, SettingsService settings, IConflictHandler conflictHandler,
+        FileManagerWindowRegistry registry)
     {
         _vfsRoot = vfsRoot;
         _settings = settings;
         _conflictHandler = conflictHandler;
+        _registry = registry;
     }
 
     /// <summary>
@@ -57,6 +60,8 @@ public sealed class FileManagerWindowFactory
                                                 // observable startup behavior for the main window.
 
         window.Show();
+        // Track it so the automation surface (IShellSurface / M4-B) can address and enumerate it.
+        _registry.Register(window);
         return window;
     }
 }

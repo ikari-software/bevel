@@ -48,6 +48,7 @@
     <ProjectReference Include="..\Bevel.Desktop\Bevel.Desktop.csproj" />
     <ProjectReference Include="..\Bevel.Taskbar\Bevel.Taskbar.csproj" />
     <ProjectReference Include="..\Bevel.FileManager\Bevel.FileManager.csproj" />
+    <ProjectReference Include="..\Bevel.Interop\Bevel.Interop.csproj" />
   </ItemGroup>
 
 </Project>

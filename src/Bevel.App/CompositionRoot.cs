@@ -130,7 +130,15 @@ public static class CompositionRoot
         // instances sharing the VfsRoot/SettingsService singletons registered above by
         // FileManagerModule. Singleton so App and any window's NewWindow hook resolve the
         // same factory.
+        services.AddSingleton<FileManagerWindowRegistry>();
         services.AddSingleton<FileManagerWindowFactory>();
+
+        // Automation command model (08-os-interop.md §3.1 / M4): the single seam every inbound
+        // surface (Apple Events, bevelctl, bevel://) funnels through. The window-coupled verbs reach
+        // the live file manager via FileManagerShellSurface; the filesystem verbs run on the VFS.
+        services.AddSingleton<Bevel.Interop.IKnownFolders>(Bevel.Interop.SystemKnownFolders.Instance);
+        services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
+        services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
 
         return services;
     }

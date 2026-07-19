@@ -62,6 +62,11 @@ public partial class FileManagerWindow : BevelWindow
 
     private VfsPath CurrentPath => _controller?.CurrentDirectory ?? VfsPath.Root("file");
 
+    /// <summary>The active tab's controller — the automation seam's handle on this window's current
+    /// directory and selection (M4-B / <see cref="Bevel.Interop.IShellSurface"/>). Null before
+    /// <see cref="SetController"/> has run.</summary>
+    public FileManagerController? ActiveController => _controller;
+
     /// <summary>Raised for File &gt; New Window (Ctrl+N), carrying this window's current directory.
     /// App/CompositionRoot wires this to FileManagerWindowFactory (the window can't reference
     /// Bevel.App directly). New Tab (Ctrl+T) opens within THIS window instead — see
