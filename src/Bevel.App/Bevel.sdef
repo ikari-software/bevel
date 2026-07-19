@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<!--
+  Bevel scripting terminology (08-os-interop.md §2.1.2, Apple Events tier 1).
+
+  This dictionary MIRRORS Finder's terminology for the supported subset so scripts port by changing
+  one word: `tell application "Finder"` → `tell application "Bevel"`. It is terminology / AE-code
+  metadata for Script Editor and dictionary tooling only — the object-specifier resolution and verb
+  execution are the hand-written managed pipeline (AppleEventObjectResolver → IShellAutomation), NOT
+  Cocoa Scripting (which can't resolve into an Avalonia/C# object graph).
+
+  Bundled in Bevel.app at M5 packaging; Info.plist gains `NSAppleScriptEnabled = YES` and
+  `OSAScriptingDefinition = Bevel.sdef`. Four-char codes follow the Cocoa Standard suite and Finder's
+  public suite; they are reconciled byte-for-byte against Finder.sdef during the native AE-handler
+  integration (M4-C) — the terminology names above are what scripts actually bind to.
+-->
+<dictionary title="Bevel Terminology">
+
+  <suite name="Standard Suite" code="core" description="Common classes and commands.">
+
+    <command name="open" code="aevtodoc" description="Open a folder in a window, or a file in its default app.">
+      <direct-parameter type="specifier" description="The folder(s) or file(s) to open."/>
+    </command>
+
+    <command name="make" code="corecrel" description="Make a new item (v1: new folder).">
+      <parameter name="new" code="kocl" type="type" description="The class of the new item."/>
+      <parameter name="at" code="insh" type="location specifier" optional="yes" description="The container for the new item."/>
+      <parameter name="with properties" code="prdt" type="record" optional="yes" description="Initial properties (e.g. name)."/>
+      <result type="specifier" description="The new item."/>
+    </command>
+
+    <command name="delete" code="coredelo" description="Move an item to the Trash.">
+      <direct-parameter type="specifier" description="The item(s) to delete."/>
+      <result type="specifier" description="The item(s) in the Trash."/>
+    </command>
+
+    <command name="duplicate" code="coreclon" description="Duplicate item(s), with Finder naming.">
+      <direct-parameter type="specifier" description="The item(s) to duplicate."/>
+      <parameter name="to" code="insh" type="location specifier" optional="yes" description="The destination container."/>
+      <result type="specifier" description="The duplicated item(s)."/>
+    </command>
+
+    <command name="move" code="coremove" description="Move item(s) to a container.">
+      <direct-parameter type="specifier" description="The item(s) to move."/>
+      <parameter name="to" code="insh" type="location specifier" description="The destination container."/>
+      <result type="specifier" description="The moved item(s)."/>
+    </command>
+
+    <class name="application" code="capp" description="The Bevel application.">
+      <property name="name" code="pnam" type="text" access="r"/>
+      <property name="version" code="vers" type="text" access="r"/>
+      <property name="frontmost" code="pisf" type="boolean" access="r" description="Is Bevel the frontmost app?"/>
+      <property name="home" code="home" type="folder" access="r" description="The home folder."/>
+      <property name="desktop" code="desk" type="folder" access="r" description="The desktop folder."/>
+      <property name="trash" code="trsh" type="folder" access="r" description="The Trash."/>
+      <property name="startup disk" code="sdsk" type="disk" access="r" description="The startup disk."/>
+      <property name="selection" code="sele" type="specifier" access="rw" description="The active view's selection."/>
+      <element type="window"/>
+    </class>
+
+  </suite>
+
+  <suite name="Bevel Suite" code="fndr" description="Finder-mirrored classes and commands.">
+
+    <command name="reveal" code="miscmvis" description="Select and show item(s) in a window.">
+      <direct-parameter type="specifier" description="The item(s) to reveal."/>
+      <result type="specifier" description="The revealed item(s)."/>
+    </command>
+
+    <command name="select" code="miscslct" description="Set the selection in a window or on the desktop.">
+      <direct-parameter type="specifier" description="The item(s) to select."/>
+    </command>
+
+    <class name="item" code="cobj" description="An item in the file system.">
+      <property name="name" code="pnam" type="text" description="The item's name."/>
+      <property name="displayed name" code="dnam" type="text" access="r" description="The name as shown."/>
+      <property name="name extension" code="extn" type="text" access="r" description="The filename extension."/>
+      <property name="kind" code="kind" type="text" access="r" description="The item's kind."/>
+      <property name="container" code="ctnr" type="specifier" access="r" description="The enclosing container."/>
+      <property name="URL" code="pURL" type="text" access="r" description="The item's URL."/>
+      <property name="size" code="ptsz" type="integer" access="r" description="Size in bytes."/>
+      <property name="creation date" code="ascd" type="date" access="r"/>
+      <property name="modification date" code="asmo" type="date" access="r"/>
+    </class>
+
+    <class name="file" code="file" inherits="item" description="A file."/>
+    <class name="folder" code="cfol" inherits="item" description="A folder.">
+      <element type="item"/>
+      <element type="file"/>
+      <element type="folder"/>
+    </class>
+    <class name="disk" code="cdis" inherits="folder" description="A disk."/>
+
+    <class name="window" code="cwin" description="A file-manager window.">
+      <property name="name" code="pnam" type="text" access="r"/>
+      <property name="index" code="pidx" type="integer" description="Front-to-back position."/>
+      <property name="target" code="fvtg" type="specifier" description="The folder the window shows."/>
+      <property name="bounds" code="pbnd" type="rectangle" description="The window's bounds."/>
+      <property name="current view" code="pvew" type="text" description="icon / list / column (→ details)."/>
+    </class>
+
+  </suite>
+
+</dictionary>
