@@ -1,0 +1,86 @@
+# macOS release lane (M5 / bevel-nsk): the same four packaging scripts run by hand, automated.
+# The only thing CI adds is credential provisioning — the Developer ID cert is imported from a
+# secret into an EPHEMERAL keychain per run, and notarization uses an App Store Connect API key
+# (non-interactive, revocable). Identifiers are the M0-frozen values baked into the scripts/plist.
+#
+# Required secrets (Environment "release"):
+#   SIGNING_CERT_P12       base64 of the Developer ID Application .p12
+#   SIGNING_CERT_PASSWORD  password for that .p12
+#   KEYCHAIN_PASSWORD      any string — password for the throwaway keychain
+#   NOTARY_KEY_P8          base64 of the App Store Connect API key (.p8)
+#   NOTARY_KEY_ID          the key's Key ID
+#   NOTARY_ISSUER          the API issuer UUID
+name: release-macos
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 0.1.0'
+        required: true
+        default: '0.1.0'
+
+jobs:
+  build:
+    runs-on: macos-14
+    environment: release   # secrets live behind a gated environment
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: ver
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#v}"   # strip the leading v from a vX.Y.Z tag
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Import Developer ID cert into an ephemeral keychain
+        env:
+          CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          CERT_PW: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          KC_PW: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/bevel-signing.keychain-db"
+          security create-keychain -p "$KC_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PW" "$KEYCHAIN"
+          # Make the ephemeral keychain the default search list so codesign finds the identity.
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Provision notarization API key
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+
+      - name: Build → sign → notarize → DMG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TIMESTAMP: '1'
+          NOTARY_KEY: ${{ runner.temp }}/notary.p8
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          bash packaging/macos/build-app.sh
+          bash packaging/macos/sign-app.sh
+          bash packaging/macos/notarize-app.sh
+          bash packaging/macos/make-dmg.sh
+
+      - name: Clean up secrets
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/bevel-signing.keychain-db"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bevel-macos-${{ steps.ver.outputs.version }}
+          path: dist/Bevel-*.dmg
+          if-no-files-found: error
