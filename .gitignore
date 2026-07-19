@@ -49,3 +49,6 @@ src/Bevel.Themes.Win2000/Assets/Icons/**/*.png
 
 # Packaged app-bundle output (packaging/macos/build-app.sh assembles it fresh).
 dist/
+
+# AE probe build output (native/ae-probe/run.sh assembles it fresh).
+native/ae-probe/out/
