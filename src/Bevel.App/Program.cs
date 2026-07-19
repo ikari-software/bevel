@@ -35,7 +35,7 @@ internal static class Program
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services
             .AddBevelPlatform(pal, role)
-            .AddBevelModules();
+            .AddBevelModules(role);
 
         using var host = builder.Build();
         App.Services = host.Services;

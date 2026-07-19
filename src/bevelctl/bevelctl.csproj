@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The bevelctl CLI (08-os-interop.md §3.2): a thin client that ships argv to the running core
+       over the local socket and relays its exit code + output. Bad args are validated locally so
+       usage errors don't require a running shell. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>bevelctl</AssemblyName>
+    <RootNamespace>Bevel.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Interop\Bevel.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

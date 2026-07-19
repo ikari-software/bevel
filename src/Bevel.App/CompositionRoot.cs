@@ -112,7 +112,7 @@ public static class CompositionRoot
     }
 
     /// <summary>Lets each feature module self-register its services (DI-01).</summary>
-    public static IServiceCollection AddBevelModules(this IServiceCollection services)
+    public static IServiceCollection AddBevelModules(this IServiceCollection services, ShellRole role = ShellRole.All)
     {
         IModule[] modules =
         {
@@ -143,6 +143,11 @@ public static class CompositionRoot
         // run it through this router → the one IShellAutomation seam. The transports that feed it (the
         // bevelctl socket, the macOS bevel:// URL-event handler) resolve this singleton.
         services.AddSingleton<Bevel.Interop.Cli.AutomationCommandRouter>();
+
+        // Serve the bevelctl socket only from the process that owns the live file manager (All /
+        // Explorer) — the one where IShellAutomation's window verbs actually work.
+        if (role is ShellRole.All or ShellRole.Explorer)
+            services.AddHostedService<AutomationSocketHost>();
 
         return services;
     }
