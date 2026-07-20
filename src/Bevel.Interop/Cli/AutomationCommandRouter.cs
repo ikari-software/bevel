@@ -29,6 +29,7 @@ public sealed class AutomationCommandRouter
                 BevelVerb.Mkdir => await MkdirAsync(cmd, ct),
                 BevelVerb.Delete => await DeleteAsync(cmd, ct),
                 BevelVerb.Duplicate => await DuplicateAsync(cmd, ct),
+                BevelVerb.Move => await MoveAsync(cmd, ct),
                 BevelVerb.Query => await QueryAsync(cmd, ct),
                 _ => new CommandResult(ExitCodes.BadArgs, $"unhandled verb {cmd.Verb}"),
             };
@@ -84,6 +85,16 @@ public sealed class AutomationCommandRouter
         return cmd.Json
             ? Ok($"{{\"created\":{JsonArray(dups.Select(Display))}}}")
             : Ok(string.Join('\n', dups.Select(Display)));
+    }
+
+    private async Task<CommandResult> MoveAsync(ParsedCommand cmd, CancellationToken ct)
+    {
+        if (cmd.Target is not { } destination)
+            return new CommandResult(ExitCodes.BadArgs, "move needs a destination (--to)");
+        var moved = await _automation.MoveAsync(cmd.Paths, destination, ct);
+        return cmd.Json
+            ? Ok($"{{\"moved\":{JsonArray(moved.Select(Display))}}}")
+            : Ok(string.Join('\n', moved.Select(Display)));
     }
 
     private async Task<CommandResult> QueryAsync(ParsedCommand cmd, CancellationToken ct)

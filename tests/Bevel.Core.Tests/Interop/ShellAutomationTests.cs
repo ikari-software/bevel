@@ -108,6 +108,18 @@ public sealed class ShellAutomationTests : IDisposable
     }
 
     [Fact]
+    public async Task Move_relocates_into_a_container()
+    {
+        Directory.CreateDirectory(Path.Combine(_work, "dest"));
+        File.WriteAllText(Path.Combine(_work, "m.txt"), "hello");
+        var moved = await _auto.MoveAsync(new[] { Path_("m.txt") }, new VfsPath("file", Path.Combine(_work, "dest")), Ct);
+
+        Assert.False(File.Exists(Path.Combine(_work, "m.txt")));            // gone from source
+        Assert.Equal("hello", File.ReadAllText(Path.Combine(_work, "dest", "m.txt")));   // landed in dest
+        Assert.Equal("m.txt", Assert.Single(moved).FileName);
+    }
+
+    [Fact]
     public async Task Query_application_reports_version_and_known_folders()
     {
         var snap = await _auto.QueryAsync(AutomationQuery.Application, Ct);

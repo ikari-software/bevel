@@ -69,6 +69,21 @@ public class AutomationCommandRouterTests
     }
 
     [Fact]
+    public async Task Move_uses_destination()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Move, Paths = new[] { P("/x") }, Target = new VfsPath("file", "/dst") });
+        Assert.Equal(ExitCodes.Ok, res.ExitCode);
+        Assert.Contains("move:1:/dst", _auto.Calls);
+    }
+
+    [Fact]
+    public async Task Move_without_destination_is_bad_args()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Move, Paths = new[] { P("/x") } });
+        Assert.Equal(ExitCodes.BadArgs, res.ExitCode);
+    }
+
+    [Fact]
     public async Task Query_version()
     {
         var res = await Run(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Version });
@@ -149,6 +164,13 @@ public class AutomationCommandRouterTests
         {
             Calls.Add($"dup:{items.Count}:{target?.Value ?? "null"}");
             return Task.FromResult<IReadOnlyList<VfsPath>>(items.Select(i => new VfsPath("file", i.Value + " copy")).ToArray());
+        }
+
+        public Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct)
+        {
+            Calls.Add($"move:{items.Count}:{destination.Value}");
+            return Task.FromResult<IReadOnlyList<VfsPath>>(
+                items.Select(i => new VfsPath("file", $"{destination.Value}/{i.FileName}")).ToArray());
         }
 
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)

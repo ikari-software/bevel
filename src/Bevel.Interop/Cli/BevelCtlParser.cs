@@ -20,6 +20,7 @@ public static class BevelCtlParser
         "  mkdir <path>\n" +
         "  delete <path>... [--permanent]\n" +
         "  duplicate <path>... [--to <dir>]\n" +
+        "  move <path>... --to <dir>\n" +
         "  query <windows|selection|version> [--json]";
 
     private static readonly string Home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
@@ -86,6 +87,11 @@ public static class BevelCtlParser
             case "duplicate":
                 if (operands.Count == 0) return Err("duplicate needs at least one path");
                 return Ok(new ParsedCommand { Verb = BevelVerb.Duplicate, Paths = Paths(operands), Target = to is null ? null : PathArg(to), Json = json });
+
+            case "move":
+                if (operands.Count == 0) return Err("move needs at least one path");
+                if (to is null) return Err("move needs a destination (--to <dir>)");
+                return Ok(new ParsedCommand { Verb = BevelVerb.Move, Paths = Paths(operands), Target = PathArg(to), Json = json });
 
             case "query":
                 if (operands.Count != 1) return Err("query needs one of: windows|selection|version");

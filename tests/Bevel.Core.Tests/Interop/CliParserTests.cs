@@ -45,6 +45,12 @@ public class BevelCtlParserTests
     public void Duplicate_to_target() => Assert.Equal("/dst", Ok("duplicate", "/x", "--to", "/dst").Target!.Value.Value);
 
     [Fact]
+    public void Move_parses_with_to() => Assert.Equal("/dst", Ok("move", "/x", "--to", "/dst").Target!.Value.Value);
+
+    [Fact]
+    public void Move_requires_to() => Assert.Contains("--to", Err("move", "/x"));
+
+    [Fact]
     public void Query_windows() => Assert.Equal(QueryKind.Windows, Ok("query", "windows").Query);
 
     [Fact]

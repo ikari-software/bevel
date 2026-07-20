@@ -293,6 +293,14 @@ file sealed class LocalFsMutator : IVfsMutator
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask<VfsPath> MoveAsync(VfsPath path, VfsPath destinationParent, CancellationToken ct)
+    {
+        var sourceFull = Path.Combine(_directoryPath, path.FileName);
+        var destFull = Path.Combine(destinationParent.Value, path.FileName);   // file-scheme value IS the real path
+        LocalTrash.MoveToTrash(sourceFull, destFull);   // general relocate: file/dir + cross-volume fallback
+        return ValueTask.FromResult(VfsPath.Combine(destinationParent, path.FileName));
+    }
+
     public ValueTask<VfsPath?> DeleteAsync(VfsPath path, bool toTrash, CancellationToken ct)
     {
         var fullPath = Path.Combine(_directoryPath, path.FileName);

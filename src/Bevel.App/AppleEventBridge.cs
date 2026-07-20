@@ -65,6 +65,15 @@ public static class AppleEventBridge
                 case AppleEventInbound.Verb.Duplicate:
                     await automation.DuplicateAsync(items, target: null, default);
                     break;
+                case AppleEventInbound.Verb.Move:
+                    if (request.Container is null)
+                    {
+                        Console.Error.WriteLine("[apple-event] move needs a destination.");
+                        break;
+                    }
+                    var destination = (await resolver.ResolveAsync(ConvertSpec(request.Container))).FirstOrDefault();
+                    await automation.MoveAsync(items, destination, default);
+                    break;
             }
         }
         catch (Exception ex)

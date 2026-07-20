@@ -19,7 +19,7 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 public static unsafe partial class AppleEventInbound
 {
-    public enum Verb { Reveal, Delete, Duplicate, Make }
+    public enum Verb { Reveal, Delete, Duplicate, Make, Move }
 
     /// <summary>A parsed inbound request. For reveal/delete/duplicate: <see cref="Paths"/> (literal
     /// files) + <see cref="Specifiers"/> (descriptive references) are the targets. For make:
@@ -87,6 +87,7 @@ public static unsafe partial class AppleEventInbound
         Register("core", "delo");   // delete
         Register("core", "clon");   // duplicate
         Register("core", "crel");   // make
+        Register("core", "move");   // move
 
         _installed = true;
     }
@@ -99,7 +100,12 @@ public static unsafe partial class AppleEventInbound
             var verb = VerbFor(SendU32(evt, Sel("eventClass")), SendU32(evt, Sel("eventID")));
             if (verb is null) return;
 
-            var request = verb == Verb.Make ? BuildMake(evt) : BuildTargets(verb.Value, evt);
+            var request = verb switch
+            {
+                Verb.Make => BuildMake(evt),
+                Verb.Move => BuildMove(evt),
+                _ => BuildTargets(verb.Value, evt),
+            };
             Trace($"AE {verb}: paths={request.Paths.Count} specs={request.Specifiers.Count} name={request.Name}");
             Handler?.Invoke(request);
         }
@@ -112,10 +118,11 @@ public static unsafe partial class AppleEventInbound
         _ when cls == FourCC("core") && id == FourCC("delo") => Verb.Delete,
         _ when cls == FourCC("core") && id == FourCC("clon") => Verb.Duplicate,
         _ when cls == FourCC("core") && id == FourCC("crel") => Verb.Make,
+        _ when cls == FourCC("core") && id == FourCC("move") => Verb.Move,
         _ => null,
     };
 
-    static AeRequest BuildTargets(Verb verb, IntPtr evt)
+    static (List<string> Paths, List<AeSpecifier> Specifiers) ParseTargets(IntPtr evt)
     {
         var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
         var paths = new List<string>();
@@ -141,17 +148,35 @@ public static unsafe partial class AppleEventInbound
                 Handle(direct);
             }
         }
+        return (paths, specs);
+    }
+
+    static AeRequest BuildTargets(Verb verb, IntPtr evt)
+    {
+        var (paths, specs) = ParseTargets(evt);
         return new AeRequest(verb, paths, specs, null, null);
     }
 
-    static AeRequest BuildMake(IntPtr evt)
+    /// <summary>The <c>at</c>/<c>to</c> container: keyAEInsertHere ('insh'), possibly wrapped in an
+    /// insertion location ('insl') whose 'kobj' is the container object.</summary>
+    static AeSpecifier? ParseInsertionContainer(IntPtr evt)
     {
-        // `at <container>`: keyAEInsertHere ('insh'), possibly wrapped in an insertion location ('insl').
         var insh = Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("insh"));
         var containerDesc = insh;
         if (insh != IntPtr.Zero && SendU32(insh, Sel("descriptorType")) == FourCC("insl"))
             containerDesc = DescFor(insh, "kobj");
-        var container = ParseSpecifier(containerDesc);
+        return ParseSpecifier(containerDesc);
+    }
+
+    static AeRequest BuildMove(IntPtr evt)
+    {
+        var (paths, specs) = ParseTargets(evt);
+        return new AeRequest(Verb.Move, paths, specs, ParseInsertionContainer(evt), null);
+    }
+
+    static AeRequest BuildMake(IntPtr evt)
+    {
+        var container = ParseInsertionContainer(evt);
 
         // `with properties {name:…}`: keyAEPropData ('prdt') record → pName ('pnam').
         var prdt = Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("prdt"));

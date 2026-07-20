@@ -83,6 +83,12 @@ public sealed class AutomationSocketTests
             IReadOnlyList<VfsPath> r = items.Select(i => new VfsPath("file", i.Value + " copy")).ToArray();
             return Task.FromResult(r);
         }
+
+        public Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct)
+        {
+            IReadOnlyList<VfsPath> r = items.Select(i => new VfsPath("file", $"{destination.Value}/{i.FileName}")).ToArray();
+            return Task.FromResult(r);
+        }
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
             => Task.FromResult(new BevelStateSnapshot { Version = "9.9" });
         public Task SetAsync(AutomationTarget t, AutomationProperty p, string v, CancellationToken ct) => Task.CompletedTask;

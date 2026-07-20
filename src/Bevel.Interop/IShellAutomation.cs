@@ -22,6 +22,7 @@ public interface IShellAutomation
     Task<VfsPath> MakeAsync(VfsPath parent, NewItemKind kind, string? name, CancellationToken ct);
     Task DeleteAsync(IReadOnlyList<VfsPath> items, DeleteMode mode, CancellationToken ct);
     Task<IReadOnlyList<VfsPath>> DuplicateAsync(IReadOnlyList<VfsPath> items, VfsPath? target, CancellationToken ct);
+    Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct);
     Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct);
     Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct);
 }

@@ -84,6 +84,17 @@ public sealed class ShellAutomation : IShellAutomation
         return results;
     }
 
+    public async Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct)
+    {
+        var results = new List<VfsPath>(items.Count);
+        foreach (var item in items)
+        {
+            var mutator = await MutatorForAsync(item.Parent, ct);
+            results.Add(await mutator.MoveAsync(item, destination, ct));
+        }
+        return results;
+    }
+
     public async Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
     {
         var snapshot = new BevelStateSnapshot();
