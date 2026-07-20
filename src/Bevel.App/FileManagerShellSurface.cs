@@ -56,6 +56,7 @@ public sealed class FileManagerShellSurface : IShellSurface
             }
 
             window.ActiveController?.SetSelection(items);
+            window.SelectAfterLoad(items);   // highlight in the view once the folder loads (bevel-nwo)
             window.Activate();
             return RefFor(window);
         }).GetTask();
@@ -66,6 +67,7 @@ public sealed class FileManagerShellSurface : IShellSurface
             if (!_registry.TryGet(window.Id, out var w))
                 throw new AutomationException($"window id {window.Id} is not open.");
             w.ActiveController?.SetSelection(items);
+            w.SelectAfterLoad(items);
         }).GetTask();
 
     public Task<IReadOnlyList<WindowRef>> QueryWindowsAsync(CancellationToken ct) =>

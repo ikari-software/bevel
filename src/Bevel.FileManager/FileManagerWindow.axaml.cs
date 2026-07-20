@@ -564,6 +564,27 @@ public partial class FileManagerWindow : BevelWindow
     /// <summary>Select a list item by path (used by tests and the render harness).</summary>
     public void SelectInList(VfsPath path) => ItemView.SelectPath(path);
 
+    private IReadOnlyList<VfsPath>? _pendingSelection;
+
+    /// <summary>Select these items once the folder they live in has loaded — the model→view half of
+    /// reveal/select (bevel-nwo). If that folder is already shown, applies immediately; otherwise
+    /// <see cref="LoadDirectory"/> applies it when the listing finishes.</summary>
+    public void SelectAfterLoad(IReadOnlyList<VfsPath> paths)
+    {
+        _pendingSelection = paths.Count > 0 ? paths : null;
+        if (_loadedPath is { } loaded && ItemView.HasItems)
+            ApplyPendingSelection(loaded);
+    }
+
+    private void ApplyPendingSelection(VfsPath loadedPath)
+    {
+        if (_pendingSelection is { Count: > 0 } sel && sel[0].Parent == loadedPath)
+        {
+            ItemView.SelectPaths(sel);
+            _pendingSelection = null;
+        }
+    }
+
     /// <summary>The controller reached a new directory — render it, retitle, update the address.</summary>
     private async void OnCurrentDirectoryChanged(VfsPath path)
     {
@@ -641,6 +662,7 @@ public partial class FileManagerWindow : BevelWindow
             StatusBar.UpdateTotalSize(totalSize);
             _infoTotalSize = totalSize;
             UpdateInfoPane(path, count);
+            ApplyPendingSelection(path);   // model→view reveal highlight, now that items exist (bevel-nwo)
         }
         catch (OperationCanceledException) { }
     }

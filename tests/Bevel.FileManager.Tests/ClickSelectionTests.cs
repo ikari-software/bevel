@@ -40,6 +40,38 @@ public sealed class ClickSelectionTests
         Assert.Equal("b.txt", view.SelectedItems.Single().DisplayName);
     }
 
+    // ── Agent/reveal-driven multi-selection (bevel-nwo) ─────────────────────
+
+    [AvaloniaFact]
+    public void SelectPaths_highlights_multiple_items()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        var w = new Window { Content = view, Width = 500, Height = 400 };
+        w.Show();
+        view.Items = new[] { Node("a.txt"), Node("b.txt"), Node("c.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        view.SelectPaths(new[] { new VfsPath("test", "a.txt"), new VfsPath("test", "c.txt") });
+
+        Assert.Equal(new[] { "a.txt", "c.txt" }, view.SelectedItems.Select(i => i.DisplayName).OrderBy(n => n));
+        Assert.All(view.SelectedItems, i => Assert.True(i.IsSelected));
+    }
+
+    [AvaloniaFact]
+    public void SelectPaths_clears_previous_and_skips_missing()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        var w = new Window { Content = view, Width = 500, Height = 400 };
+        w.Show();
+        view.Items = new[] { Node("a.txt"), Node("b.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        view.SelectPaths(new[] { new VfsPath("test", "a.txt") });
+        view.SelectPaths(new[] { new VfsPath("test", "b.txt"), new VfsPath("test", "nope.txt") });
+
+        Assert.Equal("b.txt", view.SelectedItems.Single().DisplayName);   // reselected b, cleared a, skipped nope
+    }
+
     [AvaloniaFact]
     public void Click_selects_after_switching_view_mode()
     {

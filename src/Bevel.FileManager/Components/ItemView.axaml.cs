@@ -57,6 +57,22 @@ public partial class ItemView : UserControl
         if (vm is not null) SelectOne(vm);
     }
 
+    /// <summary>Select every listed path (controller/agent-driven, e.g. reveal). Paths not present
+    /// are skipped; the last one present becomes the focus/anchor.</summary>
+    public void SelectPaths(IEnumerable<VfsPath> paths)
+    {
+        ClearSel();
+        ItemViewModel? last = null;
+        foreach (var path in paths)
+        {
+            var vm = _viewModels.FirstOrDefault(v => v.Path == path);
+            if (vm is not null) { AddSel(vm); last = vm; }
+        }
+        SelectedItem = last;
+        _anchor = last;
+        RaiseSelection();
+    }
+
     /// <summary>Edit → Select All (also Ctrl+A). Clears first so the order list can't gather dupes.</summary>
     public void SelectAll()
     {
