@@ -30,6 +30,29 @@ app-emitted AEs and ≥ 50% of the general corpus.
 - `entire contents` (unbounded recursion)
 - Finder-window chrome manipulation beyond `target` / `current view`
 
+## Running it
+
+`run-corpus.sh` mechanically retargets each snippet (`application "Finder"` → the Bevel target) and
+runs it via `osascript`, classifying pass / fail / out-of-scope, and prints the `≥30/40` verdict.
+
+```
+bash run-corpus.sh                 # against the ae-probe2 harness (default)
+BEVEL_TARGET=Bevel bash run-corpus.sh   # against the running real app
+```
+
+**Target matters.** Against the *minimal* ae-probe2 harness only the tier-1 mutation/reveal verbs
+(reveal/make/delete/duplicate/move + object specifiers) are handled, and each passes when run in
+isolation (verified). Two things break a *batch* run against the harness, and both are real findings:
+
+1. `activate` / `open` (`odoc`) reach NSApp's defaults, which terminate the window-less harness —
+   the same lifecycle quirk the AE spike hit. The full app has windows and is unaffected.
+2. The **query verbs** `get selection`, `count windows`, `get home`, and `set selection` are not
+   implemented inbound yet — they need `core`/`getd`/`setd`/`cnte` handlers that write a *result* into
+   the reply descriptor (filed follow-up). Until then they return `errAEEventNotHandled`.
+
+So the meaningful `≥30/40` gate runs against the **real app** (which handles the lifecycle + query
+verbs); the harness is a smoke test for the mutation verbs.
+
 ## Status
 
 This directory is the **corpus + the contract**. The runner is a stub until the native
