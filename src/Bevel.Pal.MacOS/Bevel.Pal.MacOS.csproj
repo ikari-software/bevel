@@ -6,6 +6,8 @@
     <IsPackable>false</IsPackable>
     <!-- Interface-contract events not yet raised by the M0 stubs. -->
     <NoWarn>$(NoWarn);CS0067</NoWarn>
+    <!-- Inbound Apple Event handler IMP is a delegate* unmanaged function pointer (bevel-376). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

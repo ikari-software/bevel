@@ -117,10 +117,13 @@ public partial class App : Application
             if (role is ShellRole.All or ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
 
-            // bevel:// URL handler (M4-D.2 / bevel-6dc): only in the FM-hosting roles, where the
-            // router's window verbs resolve to a live surface.
+            // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376):
+            // only in the FM-hosting roles, where the router's window verbs resolve to a live surface.
             if (role is ShellRole.All or ShellRole.Explorer)
+            {
                 UrlActivation.Wire(this, services);
+                AppleEventBridge.Wire(services);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();
