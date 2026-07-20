@@ -28,6 +28,20 @@ internal sealed class TestApp : Application
         AppleEventInbound.Handler = req => Program.Trace(
             $"HANDLER FIRED: {req.Verb} paths=[{string.Join(", ", req.Paths)}] " +
             $"specs=[{string.Join(" | ", req.Specifiers)}] container={req.Container} name={req.Name}");
+        // Fake query answers to exercise the native reply-descriptor plumbing (bevel-3i4).
+        AppleEventInbound.QueryHandler = q =>
+        {
+            Program.Trace($"QUERY: {q.Kind} isCount={q.IsCount} spec={q.Specifier}");
+            return q.Kind switch
+            {
+                AeQueryKind.Version => new AeText("9.9-probe"),
+                AeQueryKind.Home => new AePath("/Users/ikari"),
+                AeQueryKind.Desktop => new AePath("/Users/ikari/Desktop"),
+                AeQueryKind.WindowCount => new AeCount(3),
+                AeQueryKind.Selection => new AePaths(new[] { "/tmp/a.txt", "/tmp/b.txt" }),
+                _ => null,
+            };
+        };
         AppleEventInbound.Install();
         Program.Trace("installed AE handlers; entering Avalonia [NSApp run] loop");
 

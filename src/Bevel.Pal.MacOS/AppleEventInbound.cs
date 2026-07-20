@@ -88,6 +88,8 @@ public static unsafe partial class AppleEventInbound
         Register("core", "clon");   // duplicate
         Register("core", "crel");   // make
         Register("core", "move");   // move
+        Register("core", "getd");   // get   (object-model plumbing, bevel-3i4)
+        Register("core", "cnte");   // count
 
         _installed = true;
     }
@@ -97,7 +99,14 @@ public static unsafe partial class AppleEventInbound
     {
         try
         {
-            var verb = VerbFor(SendU32(evt, Sel("eventClass")), SendU32(evt, Sel("eventID")));
+            var cls = SendU32(evt, Sel("eventClass"));
+            var id = SendU32(evt, Sel("eventID"));
+
+            // Query verbs reply synchronously in-place (bevel-3i4).
+            if (cls == FourCC("core") && id == FourCC("getd")) { HandleQuery(isCount: false, evt, reply); return; }
+            if (cls == FourCC("core") && id == FourCC("cnte")) { HandleQuery(isCount: true, evt, reply); return; }
+
+            var verb = VerbFor(cls, id);
             if (verb is null) return;
 
             var request = verb switch

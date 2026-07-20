@@ -29,9 +29,39 @@ public static class AppleEventBridge
 
         var known = services.GetService<IKnownFolders>() ?? SystemKnownFolders.Instance;
         var resolver = new AppleEventObjectResolver(vfs, known);
+        var registry = services.GetService<FileManagerWindowRegistry>();
 
         AppleEventInbound.Handler = request => _ = DispatchAsync(automation, resolver, known, request);
+        AppleEventInbound.QueryHandler = query => Answer(query, known, registry, resolver);
         AppleEventInbound.Install();
+    }
+
+    /// <summary>Synchronously answers a get/count (bevel-3i4). Reads only synchronously-available
+    /// state — known folders, the window registry, the active controller's selection — plus a blocking
+    /// resolve for filesystem specifiers (VFS I/O, no UI-thread round-trip, so no deadlock).</summary>
+    private static AeResult? Answer(AeQuery query, IKnownFolders known, FileManagerWindowRegistry? registry, AppleEventObjectResolver resolver)
+    {
+        switch (query.Kind)
+        {
+            case AeQueryKind.Version:
+                return new AeText(System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.1.0");
+            case AeQueryKind.Home: return new AePath(known.Home.Value);
+            case AeQueryKind.Desktop: return new AePath(known.Desktop.Value);
+            case AeQueryKind.Trash: return new AePath(known.Trash.Value);
+            case AeQueryKind.StartupDisk: return new AePath(known.StartupDisk.Value);
+            case AeQueryKind.WindowCount:
+                return new AeCount(registry?.Ids().Count ?? 0);
+            case AeQueryKind.Selection:
+                var selection = registry?.First()?.ActiveController?.Selection ?? Array.Empty<VfsPath>();
+                return new AePaths(selection.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
+            case AeQueryKind.ResolvePaths when query.Specifier is not null:
+                var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult();
+                return query.IsCount
+                    ? new AeCount(paths.Count)
+                    : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
+            default:
+                return null;
+        }
     }
 
     private static async Task DispatchAsync(
