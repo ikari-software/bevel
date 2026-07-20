@@ -7,22 +7,32 @@ namespace Bevel.Pal.MacOS;
 
 /// <summary>
 /// Inbound Apple Events tier 1 (08-os-interop.md §2.1.2 / bevel-376): receive the custom scripting
-/// verbs (<c>tell application "Bevel" to reveal/delete/duplicate …</c>) into this process. A handler
-/// class is created at runtime and its method IMP is a managed <see cref="UnmanagedCallersOnly"/>
-/// callback, registered with <c>NSAppleEventManager</c>. Delivery is proven in <c>native/ae-probe</c>;
-/// here we do NOT run our own loop — Avalonia's <c>[NSApp run]</c> services the AE Mach port (its
-/// OpenUri activation already proves it), so registration alone suffices.
+/// verbs (<c>tell application "Bevel" to reveal/delete/duplicate/make …</c>) into this process. A
+/// handler class is created at runtime and its method IMP is a managed <see cref="UnmanagedCallersOnly"/>
+/// callback registered with <c>NSAppleEventManager</c>. Delivery is proven in <c>native/ae-probe</c>
+/// and validated under Avalonia's loop in <c>native/ae-probe2</c>; no custom run loop here.
 ///
-/// <para>Only the CUSTOM verbs are claimed. <c>open</c>/<c>odoc</c> stays with Avalonia's File
-/// activation; the standard app events (<c>oapp</c>, <c>quit</c>) stay with NSApp.</para>
+/// <para>The direct object is parsed into literal file paths AND object specifiers
+/// (<see cref="AeSpecifier"/>, e.g. <c>folder "x" of home</c>, <c>every file … whose …</c>); the app
+/// converts the specifiers to the command model's ObjectSpecifier and resolves them. Only the CUSTOM
+/// verbs are claimed — <c>open</c>/<c>odoc</c> stays with Avalonia's File activation.</para>
 /// </summary>
-public static unsafe class AppleEventInbound
+public static unsafe partial class AppleEventInbound
 {
-    public enum Verb { Reveal, Delete, Duplicate }
+    public enum Verb { Reveal, Delete, Duplicate, Make }
 
-    /// <summary>Wired by the app: given a verb and the direct object's POSIX file paths, act. Invoked
-    /// on the AE dispatch thread (the UI thread under Avalonia's loop).</summary>
-    public static Action<Verb, IReadOnlyList<string>>? Handler;
+    /// <summary>A parsed inbound request. For reveal/delete/duplicate: <see cref="Paths"/> (literal
+    /// files) + <see cref="Specifiers"/> (descriptive references) are the targets. For make:
+    /// <see cref="Container"/> + <see cref="Name"/>.</summary>
+    public sealed record AeRequest(
+        Verb Verb,
+        IReadOnlyList<string> Paths,
+        IReadOnlyList<AeSpecifier> Specifiers,
+        AeSpecifier? Container,
+        string? Name);
+
+    /// <summary>Wired by the app. Invoked on the AE dispatch thread (the UI thread under Avalonia).</summary>
+    public static Action<AeRequest>? Handler;
 
     private const string Obj = "/usr/lib/libobjc.dylib";
     [DllImport(Obj)] static extern IntPtr objc_allocateClassPair(IntPtr superclass, string name, nint extraBytes);
@@ -42,7 +52,19 @@ public static unsafe class AppleEventInbound
 
     static readonly uint keyDirectObject = FourCC("----");
     static readonly uint typeFileURL = FourCC("furl");
+    static readonly uint typeAEList = FourCC("list");
     private static bool _installed;
+
+    private static readonly string? TracePath =
+        Environment.GetEnvironmentVariable("BEVEL_AE_TRACE") == "1"
+            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "bevel-ae.log")
+            : null;
+
+    static void Trace(string s)
+    {
+        if (TracePath is not null)
+            try { System.IO.File.AppendAllText(TracePath, $"{DateTime.Now:HH:mm:ss.fff} {s}\n"); } catch { }
+    }
 
     /// <summary>Registers the inbound handlers. Idempotent; no-op off macOS.</summary>
     public static void Install()
@@ -51,7 +73,7 @@ public static unsafe class AppleEventInbound
         AppKitInterop.EnsureAppKitLoaded();
 
         var handlerCls = objc_allocateClassPair(Cls("NSObject"), "BevelAppleEventHandler", 0);
-        if (handlerCls == IntPtr.Zero) return;   // already registered (e.g. a prior Install)
+        if (handlerCls == IntPtr.Zero) return;
         var handleSel = Sel("handleAppleEvent:withReplyEvent:");
         var imp = (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, void>)&HandleEvent;
         if (!class_addMethod(handlerCls, handleSel, imp, "v@:@@")) return;
@@ -64,21 +86,9 @@ public static unsafe class AppleEventInbound
         Register("misc", "mvis");   // reveal
         Register("core", "delo");   // delete
         Register("core", "clon");   // duplicate
+        Register("core", "crel");   // make
 
         _installed = true;
-    }
-
-    // Opt-in diagnostic trace of received Apple Events (BEVEL_AE_TRACE=1 → ~/bevel-ae.log). Low
-    // frequency (user-initiated scripts); off by default.
-    private static readonly string? TracePath =
-        Environment.GetEnvironmentVariable("BEVEL_AE_TRACE") == "1"
-            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "bevel-ae.log")
-            : null;
-
-    static void Trace(string s)
-    {
-        if (TracePath is not null)
-            try { System.IO.File.AppendAllText(TracePath, $"{DateTime.Now:HH:mm:ss.fff} {s}\n"); } catch { }
     }
 
     [UnmanagedCallersOnly]
@@ -87,13 +97,13 @@ public static unsafe class AppleEventInbound
         try
         {
             var verb = VerbFor(SendU32(evt, Sel("eventClass")), SendU32(evt, Sel("eventID")));
-            Trace($"AE received: verb={verb?.ToString() ?? "(unhandled)"}");
             if (verb is null) return;
-            var paths = ExtractPaths(evt);
-            Trace($"  paths=[{string.Join(", ", paths)}]");
-            if (paths.Count > 0) Handler?.Invoke(verb.Value, paths);
+
+            var request = verb == Verb.Make ? BuildMake(evt) : BuildTargets(verb.Value, evt);
+            Trace($"AE {verb}: paths={request.Paths.Count} specs={request.Specifiers.Count} name={request.Name}");
+            Handler?.Invoke(request);
         }
-        catch (Exception ex) { Trace($"  EXCEPTION: {ex.Message}"); }
+        catch (Exception ex) { Trace($"EXCEPTION: {ex.Message}"); }
     }
 
     static Verb? VerbFor(uint cls, uint id) => (cls, id) switch
@@ -101,25 +111,60 @@ public static unsafe class AppleEventInbound
         _ when cls == FourCC("misc") && id == FourCC("mvis") => Verb.Reveal,
         _ when cls == FourCC("core") && id == FourCC("delo") => Verb.Delete,
         _ when cls == FourCC("core") && id == FourCC("clon") => Verb.Duplicate,
+        _ when cls == FourCC("core") && id == FourCC("crel") => Verb.Make,
         _ => null,
     };
 
-    static IReadOnlyList<string> ExtractPaths(IntPtr evt)
+    static AeRequest BuildTargets(Verb verb, IntPtr evt)
     {
         var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
-        if (direct == IntPtr.Zero) return Array.Empty<string>();
-
         var paths = new List<string>();
-        var count = SendNInt(direct, Sel("numberOfItems"));
-        if (count > 0)
-            for (nint i = 1; i <= count; i++)
-                Add(paths, Send_nint(direct, Sel("descriptorAtIndex:"), i));
-        else
-            Add(paths, direct);
-        return paths;
+        var specs = new List<AeSpecifier>();
+
+        void Handle(IntPtr d)
+        {
+            if (ParseSpecifier(d) is { } spec) specs.Add(spec);
+            else AddPath(paths, d);
+        }
+
+        if (direct != IntPtr.Zero)
+        {
+            // Only a real AE list is iterated; an object specifier is itself a record whose
+            // numberOfItems counts its internal fields — parse it whole.
+            if (SendU32(direct, Sel("descriptorType")) == typeAEList)
+            {
+                var count = SendNInt(direct, Sel("numberOfItems"));
+                for (nint i = 1; i <= count; i++) Handle(Send_nint(direct, Sel("descriptorAtIndex:"), i));
+            }
+            else
+            {
+                Handle(direct);
+            }
+        }
+        return new AeRequest(verb, paths, specs, null, null);
     }
 
-    static void Add(List<string> into, IntPtr desc)
+    static AeRequest BuildMake(IntPtr evt)
+    {
+        // `at <container>`: keyAEInsertHere ('insh'), possibly wrapped in an insertion location ('insl').
+        var insh = Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("insh"));
+        var containerDesc = insh;
+        if (insh != IntPtr.Zero && SendU32(insh, Sel("descriptorType")) == FourCC("insl"))
+            containerDesc = DescFor(insh, "kobj");
+        var container = ParseSpecifier(containerDesc);
+
+        // `with properties {name:…}`: keyAEPropData ('prdt') record → pName ('pnam').
+        var prdt = Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("prdt"));
+        string? name = null;
+        if (prdt != IntPtr.Zero)
+        {
+            var pnam = DescFor(prdt, "pnam");
+            if (pnam != IntPtr.Zero) name = NSStr(Send(pnam, Sel("stringValue")));
+        }
+        return new AeRequest(Verb.Make, Array.Empty<string>(), Array.Empty<AeSpecifier>(), container, name);
+    }
+
+    static void AddPath(List<string> into, IntPtr desc)
     {
         if (desc == IntPtr.Zero) return;
         var url = Send_u32(desc, Sel("coerceToDescriptorType:"), typeFileURL);
@@ -131,5 +176,12 @@ public static unsafe class AppleEventInbound
         if (bytes == IntPtr.Zero || len <= 0) return;
         var s = Marshal.PtrToStringUTF8(bytes, len);
         if (Uri.TryCreate(s, UriKind.Absolute, out var u) && u.IsFile) into.Add(u.LocalPath);
+    }
+
+    static string? NSStr(IntPtr nsString)
+    {
+        if (nsString == IntPtr.Zero) return null;
+        var utf8 = Send(nsString, Sel("UTF8String"));
+        return utf8 == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(utf8);
     }
 }

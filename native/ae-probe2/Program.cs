@@ -15,6 +15,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        Environment.SetEnvironmentVariable("BEVEL_AE_TRACE", "1");   // harness: enable AppleEventInbound trace
         Trace($"=== main (pid {Environment.ProcessId}) ===");
         AppBuilder.Configure<TestApp>().UsePlatformDetect().StartWithClassicDesktopLifetime(args);
     }
@@ -24,8 +25,9 @@ internal sealed class TestApp : Application
 {
     public override void OnFrameworkInitializationCompleted()
     {
-        AppleEventInbound.Handler = (verb, paths) =>
-            Program.Trace($"HANDLER FIRED: {verb} [{string.Join(", ", paths)}]");
+        AppleEventInbound.Handler = req => Program.Trace(
+            $"HANDLER FIRED: {req.Verb} paths=[{string.Join(", ", req.Paths)}] " +
+            $"specs=[{string.Join(" | ", req.Specifiers)}] container={req.Container} name={req.Name}");
         AppleEventInbound.Install();
         Program.Trace("installed AE handlers; entering Avalonia [NSApp run] loop");
 

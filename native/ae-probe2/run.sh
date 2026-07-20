@@ -11,6 +11,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp -R "$OUT/publish/." "$APP/Contents/MacOS/"
 mv "$APP/Contents/MacOS/aetest" "$APP/Contents/MacOS/BevelAETest"
+# Ship the Bevel sdef so osascript can compile object specifiers (folder "x" of home, whose …).
+mkdir -p "$APP/Contents/Resources"
+cp "$ROOT/../../src/Bevel.App/Bevel.sdef" "$APP/Contents/Resources/Bevel.sdef"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -21,6 +24,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>BevelAETest</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSAppleScriptEnabled</key><true/>
+  <key>OSAScriptingDefinition</key><string>Bevel.sdef</string>
   <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST
