@@ -68,17 +68,32 @@ public static unsafe class AppleEventInbound
         _installed = true;
     }
 
+    // Opt-in diagnostic trace of received Apple Events (BEVEL_AE_TRACE=1 → ~/bevel-ae.log). Low
+    // frequency (user-initiated scripts); off by default.
+    private static readonly string? TracePath =
+        Environment.GetEnvironmentVariable("BEVEL_AE_TRACE") == "1"
+            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "bevel-ae.log")
+            : null;
+
+    static void Trace(string s)
+    {
+        if (TracePath is not null)
+            try { System.IO.File.AppendAllText(TracePath, $"{DateTime.Now:HH:mm:ss.fff} {s}\n"); } catch { }
+    }
+
     [UnmanagedCallersOnly]
     static void HandleEvent(IntPtr self, IntPtr cmd, IntPtr evt, IntPtr reply)
     {
         try
         {
             var verb = VerbFor(SendU32(evt, Sel("eventClass")), SendU32(evt, Sel("eventID")));
+            Trace($"AE received: verb={verb?.ToString() ?? "(unhandled)"}");
             if (verb is null) return;
             var paths = ExtractPaths(evt);
+            Trace($"  paths=[{string.Join(", ", paths)}]");
             if (paths.Count > 0) Handler?.Invoke(verb.Value, paths);
         }
-        catch { /* a fault must return errAEEventNotHandled, never crash the app */ }
+        catch (Exception ex) { Trace($"  EXCEPTION: {ex.Message}"); }
     }
 
     static Verb? VerbFor(uint cls, uint id) => (cls, id) switch

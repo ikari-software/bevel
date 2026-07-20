@@ -52,3 +52,5 @@ dist/
 
 # AE probe build output (native/ae-probe/run.sh assembles it fresh).
 native/ae-probe/out/
+
+native/ae-probe2/out/
