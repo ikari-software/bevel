@@ -19,7 +19,7 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 public static unsafe partial class AppleEventInbound
 {
-    public enum Verb { Reveal, Delete, Duplicate, Make, Move }
+    public enum Verb { Reveal, Delete, Duplicate, Make, Move, SetSelection }
 
     /// <summary>A parsed inbound request. For reveal/delete/duplicate: <see cref="Paths"/> (literal
     /// files) + <see cref="Specifiers"/> (descriptive references) are the targets. For make:
@@ -88,8 +88,10 @@ public static unsafe partial class AppleEventInbound
         Register("core", "clon");   // duplicate
         Register("core", "crel");   // make
         Register("core", "move");   // move
-        Register("core", "getd");   // get   (object-model plumbing, bevel-3i4)
+        Register("core", "getd");   // get    (object-model plumbing, bevel-3i4)
         Register("core", "cnte");   // count
+        Register("core", "doex");   // exists
+        Register("core", "setd");   // set    (set selection to …)
 
         _installed = true;
     }
@@ -103,8 +105,10 @@ public static unsafe partial class AppleEventInbound
             var id = SendU32(evt, Sel("eventID"));
 
             // Query verbs reply synchronously in-place (bevel-3i4).
-            if (cls == FourCC("core") && id == FourCC("getd")) { HandleQuery(isCount: false, evt, reply); return; }
-            if (cls == FourCC("core") && id == FourCC("cnte")) { HandleQuery(isCount: true, evt, reply); return; }
+            if (cls == FourCC("core") && id == FourCC("getd")) { HandleQuery(QueryOp.Get, evt, reply); return; }
+            if (cls == FourCC("core") && id == FourCC("cnte")) { HandleQuery(QueryOp.Count, evt, reply); return; }
+            if (cls == FourCC("core") && id == FourCC("doex")) { HandleQuery(QueryOp.Exists, evt, reply); return; }
+            if (cls == FourCC("core") && id == FourCC("setd")) { Handler?.Invoke(BuildSetSelection(evt)); return; }
 
             var verb = VerbFor(cls, id);
             if (verb is null) return;
@@ -131,9 +135,11 @@ public static unsafe partial class AppleEventInbound
         _ => null,
     };
 
-    static (List<string> Paths, List<AeSpecifier> Specifiers) ParseTargets(IntPtr evt)
+    static (List<string> Paths, List<AeSpecifier> Specifiers) ParseTargets(IntPtr evt) =>
+        ParseTargetsFrom(Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject));
+
+    static (List<string> Paths, List<AeSpecifier> Specifiers) ParseTargetsFrom(IntPtr direct)
     {
-        var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
         var paths = new List<string>();
         var specs = new List<AeSpecifier>();
 
@@ -181,6 +187,13 @@ public static unsafe partial class AppleEventInbound
     {
         var (paths, specs) = ParseTargets(evt);
         return new AeRequest(Verb.Move, paths, specs, ParseInsertionContainer(evt), null);
+    }
+
+    // `set selection to <value>`: the new value is in keyAEData ('data').
+    static AeRequest BuildSetSelection(IntPtr evt)
+    {
+        var (paths, specs) = ParseTargetsFrom(Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("data")));
+        return new AeRequest(Verb.SetSelection, paths, specs, null, null);
     }
 
     static AeRequest BuildMake(IntPtr evt)

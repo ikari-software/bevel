@@ -10,15 +10,19 @@ namespace Bevel.Pal.MacOS;
 // the active controller) — no async surface round-trip.
 
 /// <summary>What a get/count/exists is asking for. Application-property queries are the common case;
-/// filesystem-specifier get/count is carried as <see cref="Specifier"/>.</summary>
+/// filesystem-specifier get/count/exists is carried as <see cref="Specifier"/>.</summary>
 public enum AeQueryKind { Version, Home, Desktop, Trash, StartupDisk, Selection, WindowCount, ResolvePaths }
 
-public sealed record AeQuery(AeQueryKind Kind, AeSpecifier? Specifier, bool IsCount);
+/// <summary>Which query verb.</summary>
+public enum QueryOp { Get, Count, Exists }
+
+public sealed record AeQuery(AeQueryKind Kind, AeSpecifier? Specifier, QueryOp Op);
 
 /// <summary>The value to write back into the AE reply.</summary>
 public abstract record AeResult;
 public sealed record AeText(string Value) : AeResult;
 public sealed record AeCount(int Value) : AeResult;
+public sealed record AeBool(bool Value) : AeResult;
 public sealed record AePath(string Value) : AeResult;                    // a single file/folder reference
 public sealed record AePaths(IReadOnlyList<string> Values) : AeResult;   // a list of file references
 
@@ -30,6 +34,7 @@ public static partial class AppleEventInbound
 
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptr(IntPtr r, IntPtr s, IntPtr a);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_i32(IntPtr r, IntPtr s, int a);
+    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_bool(IntPtr r, IntPtr s, [MarshalAs(UnmanagedType.I1)] bool a);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32ptr(IntPtr r, IntPtr s, uint a, IntPtr b);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptru32(IntPtr r, IntPtr s, IntPtr a, uint b);
@@ -38,22 +43,22 @@ public static partial class AppleEventInbound
     static IntPtr AeDescClass => Cls("NSAppleEventDescriptor");
 
     /// <summary>Handles a get/count/exists event: parse the query, ask the app, write the reply.</summary>
-    static void HandleQuery(bool isCount, IntPtr evt, IntPtr reply)
+    static void HandleQuery(QueryOp op, IntPtr evt, IntPtr reply)
     {
-        var query = ParseQuery(evt, isCount);
+        var query = ParseQuery(evt, op);
         if (query is null) return;
         var result = QueryHandler?.Invoke(query);
         if (result is not null) WriteReply(reply, result);
     }
 
-    static AeQuery? ParseQuery(IntPtr evt, bool isCount)
+    static AeQuery? ParseQuery(IntPtr evt, QueryOp op)
     {
         // `count <class>` carries the class in keyAEObjectClass ('kocl'), not the direct object.
-        if (isCount)
+        if (op == QueryOp.Count)
         {
             var kocl = Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("kocl"));
             if (kocl != IntPtr.Zero && SendU32(kocl, Sel("typeCodeValue")) == FourCC("cwin"))
-                return new AeQuery(AeQueryKind.WindowCount, null, true);
+                return new AeQuery(AeQueryKind.WindowCount, null, op);
         }
 
         var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
@@ -76,13 +81,13 @@ public static partial class AppleEventInbound
                 _ when prop == FourCC("sele") => AeQueryKind.Selection,
                 _ => null,
             };
-            if (kind is { } k) return new AeQuery(k, null, isCount);
+            if (kind is { } k) return new AeQuery(k, null, op);
         }
 
-        if (want == FourCC("cwin")) return new AeQuery(AeQueryKind.WindowCount, null, isCount);
+        if (want == FourCC("cwin")) return new AeQuery(AeQueryKind.WindowCount, null, op);
 
-        // A filesystem specifier: get returns the items, count returns how many.
-        return ParseSpecifier(direct) is { } spec ? new AeQuery(AeQueryKind.ResolvePaths, spec, isCount) : null;
+        // A filesystem specifier: get returns the items, count how many, exists whether any.
+        return ParseSpecifier(direct) is { } spec ? new AeQuery(AeQueryKind.ResolvePaths, spec, op) : null;
     }
 
     // ── Reply descriptor construction ──────────────────────────────────────────
@@ -93,6 +98,7 @@ public static partial class AppleEventInbound
         {
             AeText t => TextDesc(t.Value),
             AeCount c => Send_i32(AeDescClass, Sel("descriptorWithInt32:"), c.Value),
+            AeBool b => Send_bool(AeDescClass, Sel("descriptorWithBoolean:"), b.Value),
             AePath p => FileUrlDesc(p.Value),
             AePaths p => PathListDesc(p.Values),
             _ => IntPtr.Zero,

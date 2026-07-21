@@ -41,6 +41,10 @@ public static class AppleEventBridge
     /// resolve for filesystem specifiers (VFS I/O, no UI-thread round-trip, so no deadlock).</summary>
     private static AeResult? Answer(AeQuery query, IKnownFolders known, FileManagerWindowRegistry? registry, AppleEventObjectResolver resolver)
     {
+        // `exists <application property>` (home/desktop/…) is always true.
+        if (query.Op == QueryOp.Exists && query.Kind != AeQueryKind.ResolvePaths)
+            return new AeBool(true);
+
         switch (query.Kind)
         {
             case AeQueryKind.Version:
@@ -55,8 +59,13 @@ public static class AppleEventBridge
                 var selection = registry?.First()?.ActiveController?.Selection ?? Array.Empty<VfsPath>();
                 return new AePaths(selection.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
             case AeQueryKind.ResolvePaths when query.Specifier is not null:
+                if (query.Op == QueryOp.Exists)
+                {
+                    try { return new AeBool(resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult().Count > 0); }
+                    catch (AutomationException) { return new AeBool(false); }   // not-found resolves to false
+                }
                 var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult();
-                return query.IsCount
+                return query.Op == QueryOp.Count
                     ? new AeCount(paths.Count)
                     : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
             default:
@@ -103,6 +112,12 @@ public static class AppleEventBridge
                     }
                     var destination = (await resolver.ResolveAsync(ConvertSpec(request.Container))).FirstOrDefault();
                     await automation.MoveAsync(items, destination, default);
+                    break;
+                case AppleEventInbound.Verb.SetSelection:
+                    // `set selection to <items>`: select them in the frontmost window.
+                    var windows = await automation.QueryAsync(AutomationQuery.Windows, default);
+                    if (windows.Windows.Count > 0)
+                        await automation.SelectAsync(windows.Windows[0], items, default);
                     break;
             }
         }

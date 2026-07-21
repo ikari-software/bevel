@@ -31,7 +31,8 @@ internal sealed class TestApp : Application
         // Fake query answers to exercise the native reply-descriptor plumbing (bevel-3i4).
         AppleEventInbound.QueryHandler = q =>
         {
-            Program.Trace($"QUERY: {q.Kind} isCount={q.IsCount} spec={q.Specifier}");
+            Program.Trace($"QUERY: {q.Kind} op={q.Op} spec={q.Specifier}");
+            if (q.Op == QueryOp.Exists) return new AeBool(q.Specifier is not null);   // fake: exists iff a specifier
             return q.Kind switch
             {
                 AeQueryKind.Version => new AeText("9.9-probe"),
