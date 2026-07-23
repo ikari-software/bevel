@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
@@ -30,6 +31,31 @@ public sealed class TaskbarTooltipTests
         Assert.Null(ToolTip.GetTip(button));
         Assert.NotNull(view.FindControl<Popup>("TooltipPopup"));
         Assert.NotNull(view.FindControl<TextBlock>("TaskbarTooltipText"));
+    }
+
+    [AvaloniaFact]
+    public void Preview_frame_has_a_background_behind_the_thumbnail()
+    {
+        var model = new ShellModel(null, null, null);
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        // The frame binds its backing to Bevel.Brush.InfoWindow (the info-tooltip face); inject it so the
+        // DynamicResource resolves in the headless test, then assert the binding actually points at it.
+        view.Resources["Bevel.Brush.InfoWindow"] = Brushes.Magenta;
+        var window = new TaskbarWindow(null) { Content = view, Width = 800, Height = 40 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var popup = view.FindControl<Popup>("TooltipPopup");
+        popup!.IsOpen = true;   // realize the popup content so its bindings resolve
+        Dispatcher.UIThread.RunJobs();
+
+        // A captured macOS window thumbnail has transparent rounded corners (and can letterbox inside a
+        // stretched frame); without a fill those regions show through the popup. The frame must fill behind
+        // the thumbnail, bound to the same panel face brush.
+        var frame = view.FindControl<Border>("PreviewFrame");
+        Assert.NotNull(frame);
+        Assert.Same(Brushes.Magenta, frame!.Background);
     }
 
     [AvaloniaFact]

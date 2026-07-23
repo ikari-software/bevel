@@ -420,16 +420,24 @@
                WindowManagerAddShadowHint="False">
             <!-- Aero-Peek-style hover panel (bevel-cust): live thumbnail (when Screen Recording is
                  granted) above the window title/status. Thumbnail is hidden until the capture arrives. -->
-            <Border Background="{DynamicResource SystemButtonFaceBrush}"
-                    BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
+            <!-- This is the taskbar button tooltip, so it uses the info-tooltip colours (pale yellow face,
+                 black text) — the authentic look in BOTH Win2000 and Luna (styleguide). Via Bevel.Brush.*
+                 tokens that actually resolve; the classic System*Brush keys are undefined in this app, so
+                 they resolved to null and left the whole card transparent (content floated over desktop). -->
+            <Border Background="{DynamicResource Bevel.Brush.InfoWindow}"
+                    BorderBrush="{DynamicResource Bevel.Brush.InfoText}"
                     BorderThickness="1" Padding="4" MaxWidth="280">
                 <StackPanel Spacing="4">
+                    <!-- Backing behind the thumbnail: a captured macOS window has transparent rounded
+                         corners (and the image can letterbox inside a stretched frame), so without a fill
+                         those regions show through the popup. Match the tooltip face so they blend. -->
                     <Border x:Name="PreviewFrame" IsVisible="False"
-                            BorderBrush="{DynamicResource SystemButtonShadowBrush}" BorderThickness="1">
+                            Background="{DynamicResource Bevel.Brush.InfoWindow}"
+                            BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}" BorderThickness="1">
                         <Image x:Name="PreviewImage" MaxWidth="248" MaxHeight="168" Stretch="Uniform" />
                     </Border>
                     <TextBlock x:Name="TaskbarTooltipText"
-                               Foreground="{DynamicResource SystemButtonTextBrush}"
+                               Foreground="{DynamicResource Bevel.Brush.InfoText}"
                                FontSize="11" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
