@@ -389,30 +389,49 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
-    /// Downscales a captured CGImage into a 16×16 PNG (same budget as the app-icon path).
+    /// Downscales a captured CGImage to a PNG normalized to a fixed HEIGHT with WIDTH proportional to the
+    /// glyph. A menu-bar status item can be much wider than tall (text like "exo", segmented widgets);
+    /// rendering into a fixed 16×16 square capped those at 16px wide — narrower than the real bar. Trimming
+    /// the transparent padding then fitting to height keeps the item's TRUE width. Height is 2× the 16px
+    /// display for a crisp downscale; width is clamped so a runaway capture can't emit a huge strip.
     private func pngFromCGImage(_ cgImage: CGImage) -> Data {
-        let target = NSSize(width: 16, height: 16)
+        let fullH = CGFloat(cgImage.height)                        // the item WINDOW height (≈ menu-bar height)
+        // A nil trim means the capture is fully transparent (or unreadable): emit nothing so the caller
+        // keeps the limited-mode icon instead of overwriting it with a blank frame (review: adversarial).
+        guard let glyph = trimTransparent(cgImage) else { return Data() }
+        let gw = CGFloat(glyph.width), gh = CGFloat(glyph.height)
+        guard gw > 0, gh > 0, fullH > 0 else { return Data() }
+
+        let boxH: CGFloat = 32                                     // 2× the 16px tray box
+        // Size the glyph to the fraction of the tray box that it occupies of its menu-bar window, boosted
+        // so a standard icon (≈75% of the bar height) fills the box — small text glyphs (like "exo") then
+        // land at their true, smaller size instead of being blown up to fill (bevel). Width stays
+        // proportional; the glyph is centred vertically in the box.
+        let frac = min(1.0, (gh / fullH) * 1.35)
+        let glyphH = boxH * frac
+        let glyphW = glyphH * (gw / gh)
+        let canvasW = max(1, min(Int(glyphW.rounded()), 512))
+        let canvasH = Int(boxH)
+        // Keep aspect ratio against the (possibly clamped) canvas width, so an extreme-aspect glyph shrinks
+        // vertically instead of squashing to full height when the 512px width clamp bites (review: swift-ios).
+        let drawnW = CGFloat(canvasW)
+        let drawnH = min(glyphH, drawnW * (gh / gw))
+
         guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16,
+            bitmapDataPlanes: nil, pixelsWide: canvasW, pixelsHigh: canvasH,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
             return Data()
         }
-        rep.size = target
+        rep.size = NSSize(width: canvasW, height: canvasH)
         guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return Data() }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = ctx
-        // Trim the transparent menu-bar padding around the glyph first, then aspect-fit the glyph
-        // itself: a captured status-item window is mostly empty space around a small icon, so fitting
-        // the WHOLE window left the glyph tiny and, for wide windows, short/squashed. Cropping to the
-        // glyph's content box makes it fill the 16px icon while keeping its true proportions.
-        let glyph = trimTransparent(cgImage) ?? cgImage
-        let sw = CGFloat(glyph.width), sh = CGFloat(glyph.height)
-        let scale = sw > 0 && sh > 0 ? min(16 / sw, 16 / sh) : 1
-        let dw = sw * scale, dh = sh * scale
-        let dst = NSRect(x: (16 - dw) / 2, y: (16 - dh) / 2, width: dw, height: dh)
-        let image = NSImage(cgImage: glyph, size: NSSize(width: sw, height: sh))
-        image.draw(in: dst, from: .zero, operation: .copy, fraction: 1.0)
+        ctx.imageInterpolation = .high
+        let image = NSImage(cgImage: glyph, size: NSSize(width: gw, height: gh))
+        let dstY = (CGFloat(canvasH) - drawnH) / 2
+        image.draw(in: NSRect(x: 0, y: dstY, width: drawnW, height: drawnH),
+                   from: .zero, operation: .copy, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:]) ?? Data()
     }

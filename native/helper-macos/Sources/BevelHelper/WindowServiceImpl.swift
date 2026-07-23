@@ -521,6 +521,19 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             win.isMinimized = false
         }
 
+        // Closed-window removal (bevel-m2.3): a window that has just been closed can leave a brief
+        // CGWindowList tombstone — its name and bounds survive for a moment after the NSWindow is torn
+        // down, so kCGWindowName still yields a title and the frame is non-zero. Such an entry has NO live
+        // AX element, so we cannot confirm it as MINIMIZED (which must stay listed) and it is off-screen
+        // (`.optionAll` surfaced it; it is absent from the on-screen list). That makes it a closed/ghost
+        // window, not a real taskbar window — otherwise its title-bearing tombstone sails past every drop
+        // gate below and the button lingers for seconds. On-screen windows (real, even when AX is
+        // unavailable) and AX-correlated minimized windows both keep a live signal and are unaffected.
+        if axMap[cgID] == nil, (entry[kCGWindowIsOnscreen as String] as? Bool) != true {
+            dbg("drop cg=\(cgID) '\(win.appName)' reason=offscreen-no-ax (closed/ghost)")
+            return nil
+        }
+
         // AX/CG can expose an empty title for one reconciliation tick while an existing
         // window is being renamed. Identity is the stable CGWindowID, not its mutable title:
         // retain the last accepted title while that same PID/window remains AX-correlated.
