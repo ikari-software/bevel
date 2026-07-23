@@ -38,6 +38,9 @@
     <Color x:Key="{x:Static common:SystemColors.InactiveCaptionColorKey}">#7BA0C8</Color>
     <Color x:Key="{x:Static common:SystemColors.GradientInactiveCaptionColorKey}">#C6D6EF</Color>
     <Color x:Key="{x:Static common:SystemColors.InactiveCaptionTextColorKey}">#E8EEF7</Color>
+    <!-- Taller Luna caption (25px vs the Classic 18px). This key IS a DynamicResource on the internal
+         AutoAttachTitleBar, so overriding it here retitles the caption height without a re-template. -->
+    <x:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">25</x:Double>
 
     <!-- Brushes over the overridden colours (same key names as the base). -->
     <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="{StaticResource Bevel.Color.ButtonFace}" />

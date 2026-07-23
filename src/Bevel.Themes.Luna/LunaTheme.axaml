@@ -118,7 +118,10 @@
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Luna.Brush.StartBorder" Color="#1E6B17" />
 
-            <!-- Caption gradient (matte Luna, for the window title bar in the next increment). -->
+            <!-- Caption gradient (matte Luna). NOTE: still not wired to the bar itself — the bar background
+                 is a StaticResource inside the vendored, internal AutoAttachTitleBar (horizontal ramp), so
+                 the matte VERTICAL base (#003EC9) needs the Classic fork. The caption COLOURS + BUTTONS
+                 below are the parts we can reach today. -->
             <LinearGradientBrush x:Key="Luna.Brush.Caption" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#3F88EC" />
                 <GradientStop Offset="0.06" Color="#1E6EE7" />
@@ -126,6 +129,91 @@
                 <GradientStop Offset="0.62" Color="#0A51DF" />
                 <GradientStop Offset="1" Color="#003EC9" />
             </LinearGradientBrush>
+
+            <!-- ── Caption buttons: 21x21 glossy "shiny bead" squares; close is red (LUN chrome). Overriding
+                 {x:Type CaptionButtons} restyles the internal CaptionButtonsEx (it resolves to this theme),
+                 so framed windows get the Luna caption buttons + red close. -->
+            <LinearGradientBrush x:Key="Luna.Brush.CaptionButton" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"    Color="#7CB6FF" />
+                <GradientStop Offset="0.45" Color="#2E7CEF" />
+                <GradientStop Offset="0.55" Color="#0E58E4" />
+                <GradientStop Offset="1"    Color="#3A87F2" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.CaptionClose" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"    Color="#F79876" />
+                <GradientStop Offset="0.45" Color="#E45636" />
+                <GradientStop Offset="0.55" Color="#C33217" />
+                <GradientStop Offset="1"    Color="#EE6A48" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Luna.Brush.CaptionButtonBorder" Color="#0A3EA8" />
+            <LinearGradientBrush x:Key="Luna.Brush.CaptionButtonGloss" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#A0FFFFFF" />
+                <GradientStop Offset="1" Color="#10FFFFFF" />
+            </LinearGradientBrush>
+
+            <ControlTheme x:Key="Luna.Theme.CaptionButton" TargetType="Button">
+                <Setter Property="Width" Value="21" />
+                <Setter Property="Height" Value="21" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="bead" CornerRadius="3"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource Luna.Brush.CaptionButtonBorder}" BorderThickness="1">
+                            <Panel>
+                                <Border CornerRadius="2,2,4,4" VerticalAlignment="Top" Height="8" Margin="2,1,2,0"
+                                        Background="{DynamicResource Luna.Brush.CaptionButtonGloss}" />
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Content="{TemplateBinding Content}" />
+                            </Panel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:pointerover /template/ Border#bead">
+                    <Setter Property="BorderBrush" Value="White" />
+                </Style>
+                <Style Selector="^:pressed /template/ Border#bead">
+                    <Setter Property="Opacity" Value="0.82" />
+                </Style>
+            </ControlTheme>
+
+            <ControlTheme x:Key="{x:Type CaptionButtons}" TargetType="CaptionButtons">
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="CaptionButtons">
+                        <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="2" Margin="0,0,2,0">
+                            <Button x:Name="PART_FullScreenButton" IsVisible="False" Focusable="False"
+                                    Theme="{StaticResource Luna.Theme.CaptionButton}" Background="{DynamicResource Luna.Brush.CaptionButton}">
+                                <Viewbox Width="10"><Path Name="FullScreenButtonPath"
+                                    Data="M2048 2048v-819h-205v469l-1493 -1493h469v-205h-819v819h205v-469l1493 1493h-469v205h819z"
+                                    Fill="White" Stretch="UniformToFill" /></Viewbox>
+                            </Button>
+                            <Button x:Name="PART_MinimizeButton" Focusable="False" AutomationProperties.Name="Minimize"
+                                    Theme="{StaticResource Luna.Theme.CaptionButton}" Background="{DynamicResource Luna.Brush.CaptionButton}">
+                                <Path Name="MinimizeButtonPath" Data="M 0 8 L 8 8 L 8 10 L 0 10 z" Fill="White" />
+                            </Button>
+                            <Button x:Name="PART_RestoreButton" Focusable="False" AutomationProperties.Name="Maximize"
+                                    Theme="{StaticResource Luna.Theme.CaptionButton}" Background="{DynamicResource Luna.Brush.CaptionButton}">
+                                <Path Name="RestoreButtonPath" Data="M 0 0 L 9 0 L 9 2 L 1 2 L 1 8 L 8 8 L 8 2 L 9 2 L 9 9 L 0 9 L 0 0 z" Fill="White" />
+                            </Button>
+                            <Button x:Name="PART_CloseButton" Focusable="False" AutomationProperties.Name="Close"
+                                    Theme="{StaticResource Luna.Theme.CaptionButton}" Background="{DynamicResource Luna.Brush.CaptionClose}">
+                                <Path Data="M 0 0 L 2 0 L 2 1 L 3 1 L 3 2 L 5 2 L 5 1 L 6 1 L 6 0 L 8 0 L 8 1 L 7 1 L 7 2 L 6 2 L 6 3 L 5 3 L 5 4 L 6 4 L 6 5 L 7 5 L 7 6 L 8 6 L 8 7 L 6 7 L 6 6 L 5 6 L 5 5 L 3 5 L 3 6 L 2 6 L 2 7 L 0 7 L 0 6 L 1 6 L 1 5 L 2 5 L 2 4 L 3 4 L 3 3 L 2 3 L 2 2 L 1 2 L 1 1 L 0 1 z" Fill="White" />
+                            </Button>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:maximized /template/ Path#RestoreButtonPath">
+                    <Setter Property="Data" Value="M 2 0 L 8 0 L 8 2 L 3 2 L 3 3 L 6 3 L 6 5 L 7 5 L 7 2 L 8 2 L 8 6 L 6 6 L 6 9 L 0 9 L 0 5 L 1 5 L 1 8 L 5 8 L 5 5 L 0 5 L 0 3 L 2 3 L 2 0 z" />
+                </Style>
+                <Style Selector="^:fullscreen /template/ Path#FullScreenButtonPath">
+                    <Setter Property="IsVisible" Value="True" />
+                </Style>
+                <Style Selector="^:fullscreen /template/ Button#PART_RestoreButton"><Setter Property="IsVisible" Value="False" /></Style>
+                <Style Selector="^:fullscreen /template/ Button#PART_MinimizeButton"><Setter Property="IsVisible" Value="False" /></Style>
+                <Style Selector="^:dialog /template/ Button#PART_MinimizeButton"><Setter Property="IsEnabled" Value="False" /></Style>
+                <Style Selector="^:dialog:cantresize /template/ Button#PART_MinimizeButton"><Setter Property="IsVisible" Value="False" /></Style>
+                <Style Selector="^:dialog:cantresize /template/ Button#PART_RestoreButton"><Setter Property="IsVisible" Value="False" /></Style>
+            </ControlTheme>
 
             <!-- Input field (text box / check / radio wells): subtle white-ish inset. -->
             <LinearGradientBrush x:Key="Luna.Brush.Field" StartPoint="0%,0%" EndPoint="0%,100%">
