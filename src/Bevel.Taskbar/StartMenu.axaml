@@ -80,8 +80,12 @@
             </classic:ClassicBorderDecorator>
 
             <!-- ══════════════════ XP Luna layout ══════════════════ -->
+            <!-- Fixed tall panel like the real XP Start menu (styleguide is 440x560): without a height
+                 the menu just sizes to content, so the capped frequent column + short places column make
+                 it look squat. MinHeight keeps it tall — pinned items sit at the top, the columns fill
+                 down (white / pale-blue), and All Programs stays anchored at the bottom. -->
             <Border x:Name="LunaLayout" IsVisible="False"
-                    Width="360" CornerRadius="8,8,5,5"
+                    Width="360" MinHeight="460" CornerRadius="8,8,5,5"
                     BorderBrush="{DynamicResource Luna.Brush.StartMenuBorder}" BorderThickness="1.5"
                     ClipToBounds="True" Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
                 <Border.Styles>
@@ -229,9 +233,11 @@
                             </ScrollViewer>
                         </DockPanel>
 
-                        <!-- Right column: places + system -->
-                        <StackPanel Grid.Column="1" Spacing="1"
-                                    Background="{DynamicResource Luna.Brush.StartMenuPlacesColumn}">
+                        <!-- Right column: places + system. The Border carries the pale-blue and fills the
+                             full (taller) column; a vertical StackPanel only sizes to content, so it sits at
+                             the top and the space below stays pale-blue instead of showing the white face. -->
+                        <Border Grid.Column="1" Background="{DynamicResource Luna.Brush.StartMenuPlacesColumn}">
+                        <StackPanel Spacing="1" VerticalAlignment="Top">
                             <Button Classes="lunarow" Click="OnLunaPlaceClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}" />
@@ -279,6 +285,7 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
+                        </Border>
                     </Grid>
                 </DockPanel>
             </Border>
