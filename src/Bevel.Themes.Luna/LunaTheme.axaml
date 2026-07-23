@@ -173,6 +173,7 @@
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRule"      Color="#F4A020" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRuleLight" Color="#FFD27F" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuComputerIcon"    Color="#3F6FC5" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconGeneric" Color="#E6ECF7" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconBorder"  Color="#8AA3C9" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHelpIcon"        Color="#3F8EE6" />
@@ -342,8 +343,17 @@
                                 CornerRadius="2" Padding="2">
                             <LayoutTransformControl x:Name="PART_LayoutTransformControl">
                                 <DockPanel x:Name="PART_Track" LastChildFill="False" ClipToBounds="True">
-                                    <Border x:Name="PART_Indicator" CornerRadius="1"
-                                            Background="{DynamicResource Luna.Brush.Progress}">
+                                    <Border x:Name="PART_Indicator" CornerRadius="1" ClipToBounds="True">
+                                        <!-- Discrete Luna segments (design shows blocks, not a continuous bar):
+                                             a 7px green block + 2px gap, tiled horizontally. -->
+                                        <Border.Background>
+                                            <DrawingBrush TileMode="Tile" Stretch="None" DestinationRect="0,0,9,20">
+                                                <DrawingBrush.Drawing>
+                                                    <GeometryDrawing Brush="{DynamicResource Luna.Brush.Progress}"
+                                                                     Geometry="M0,0 L7,0 L7,20 L0,20 Z" />
+                                                </DrawingBrush.Drawing>
+                                            </DrawingBrush>
+                                        </Border.Background>
                                         <Rectangle x:Name="PART_IndicatorFill" IsVisible="False" />
                                     </Border>
                                 </DockPanel>
@@ -364,6 +374,78 @@
                         <RotateTransform Angle="90" />
                     </Setter>
                 </Style>
+            </ControlTheme>
+
+            <!-- ── Slider: blue-filled decrease track + square Luna thumb (design). Horizontal. ── -->
+            <ControlTheme x:Key="Bevel.Theme.Slider" TargetType="Slider">
+                <Setter Property="MinHeight" Value="22" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="Slider">
+                        <Border Background="Transparent">
+                            <Track Name="PART_Track" Orientation="Horizontal"
+                                   Minimum="{Binding Minimum, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Maximum="{Binding Maximum, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Value="{Binding Value, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <Track.DecreaseButton>
+                                    <RepeatButton Name="PART_DecreaseButton" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border VerticalAlignment="Center" Height="4" CornerRadius="2"
+                                                        Background="{DynamicResource Bevel.Brush.Highlight}" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseButton>
+                                <Track.IncreaseButton>
+                                    <RepeatButton Name="PART_IncreaseButton" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border VerticalAlignment="Center" Height="4" CornerRadius="2"
+                                                        Background="{DynamicResource Luna.Brush.ScrollTrack}"
+                                                        BorderBrush="{DynamicResource Luna.Brush.TrackBorder}" BorderThickness="1" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseButton>
+                                <Thumb Name="PART_Thumb" Width="11" Height="20">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border Background="{DynamicResource Luna.Brush.Button}"
+                                                    BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                                    BorderThickness="1" CornerRadius="2" />
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
+            <!-- ── GroupBox: thin Luna frame with the header label breaking the top line ── -->
+            <ControlTheme x:Key="Bevel.Theme.HeaderedContentControl" TargetType="HeaderedContentControl">
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="10,12,10,10" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="HeaderedContentControl">
+                        <Grid Margin="0,7,0,0">
+                            <Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3" Background="{TemplateBinding Background}">
+                                <ContentPresenter Name="PART_ContentPresenter" Margin="{TemplateBinding Padding}"
+                                                  Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                            </Border>
+                            <!-- Header patch: opaque window-face background masks the frame line to make the gap. -->
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="9,-7,0,0"
+                                    Background="{DynamicResource Bevel.Brush.ButtonFace}" Padding="4,0"
+                                    TextElement.Foreground="{DynamicResource Bevel.Brush.WindowText}">
+                                <ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter>
             </ControlTheme>
 
             <!-- ── TabItem: raised Luna tab; the selected tab whitens and lifts ─ -->
@@ -499,22 +581,24 @@
             </ControlTheme>
 
             <!-- Combo drop button (own theme so its hover/pressed states use a single /template/ hop) -->
+            <!-- ComboBox drop button: a BLUE glossy Luna button with a white arrow (design), not the beige
+                 push-button face. Reuses the taskbar-button blue gradients so it tracks the Luna palette. -->
             <ControlTheme x:Key="Luna.Theme.ComboDropButton" TargetType="ToggleButton">
                 <Setter Property="Template">
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border Name="ButtonFace" Background="{DynamicResource Luna.Brush.Button}"
-                                BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                        <Border Name="ButtonFace" Background="{DynamicResource Luna.Brush.TaskButton}"
+                                BorderBrush="{DynamicResource Luna.Brush.TaskButtonBorder}"
                                 BorderThickness="1" CornerRadius="0,2,2,0">
                             <Path HorizontalAlignment="Center" VerticalAlignment="Center"
-                                  Fill="{DynamicResource Luna.Brush.Arrow}" Data="M 0 0 L 3.5 4 L 7 0 Z" />
+                                  Fill="White" Data="M 0 0 L 3.5 4 L 7 0 Z" />
                         </Border>
                     </ControlTemplate>
                 </Setter>
                 <Style Selector="^:pointerover /template/ Border#ButtonFace">
-                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonHover}" />
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButtonHover}" />
                 </Style>
                 <Style Selector="^:pressed /template/ Border#ButtonFace">
-                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonPressed}" />
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButtonChecked}" />
                 </Style>
             </ControlTheme>
 

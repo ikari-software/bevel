@@ -31,6 +31,12 @@
         <Style Selector="ProgressBar">
             <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.ProgressBar}" />
         </Style>
+        <Style Selector="Slider">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.Slider}" />
+        </Style>
+        <Style Selector="HeaderedContentControl">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.HeaderedContentControl}" />
+        </Style>
         <Style Selector="TabItem">
             <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.TabItem}" />
         </Style>

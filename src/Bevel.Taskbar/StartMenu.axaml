@@ -256,6 +256,12 @@
                                     <TextBlock Text="My Music" Classes="place" />
                                 </StackPanel>
                             </Button>
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuComputerIcon}" />
+                                    <TextBlock Text="My Computer" Classes="place" />
+                                </StackPanel>
+                            </Button>
                             <Border Height="1.2" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
                             <Button Classes="lunarow" Click="OnLunaSettingsClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">

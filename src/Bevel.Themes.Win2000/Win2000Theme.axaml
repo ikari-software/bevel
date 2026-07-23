@@ -40,6 +40,8 @@
             <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}" />
             <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}" />
             <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}" />
+            <ControlTheme x:Key="Bevel.Theme.Slider" TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}" />
+            <ControlTheme x:Key="Bevel.Theme.HeaderedContentControl" TargetType="HeaderedContentControl" BasedOn="{StaticResource {x:Type HeaderedContentControl}}" />
             <ControlTheme x:Key="Bevel.Theme.TabItem" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}" />
             <ControlTheme x:Key="Bevel.Theme.ComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}" />
             <ControlTheme x:Key="Bevel.Theme.ScrollBar" TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}" />
