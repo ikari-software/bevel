@@ -57,13 +57,14 @@
                 <GradientStop Offset="0.98" Color="#3A84EA" />
                 <GradientStop Offset="1" Color="#4E95F2" />
             </LinearGradientBrush>
-            <!-- Tray/notification area: a recessed darker-blue well on the bar (opaque so it covers the
-                 Classic decorator's grey face), flat (no 3D bevel — TrayWellBorder=0), with hairline
-                 translucent dividers instead of the grey 3D ones. -->
+            <!-- Tray/notification area: a brighter CYAN-blue inset well (design) — LIGHTER than the bar,
+                 not a dark navy — with the same concave "sunken middle" as the bar. Opaque so it covers
+                 the Classic decorator's grey face; flat (TrayWellBorder=0); the colour contrast against
+                 the deeper-blue bar delineates it, so no 3D divider is needed. -->
             <LinearGradientBrush x:Key="Bevel.Brush.TrayWell" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#1B4CB0" />
-                <GradientStop Offset="0.5" Color="#1E54C2" />
-                <GradientStop Offset="1" Color="#1A47A6" />
+                <GradientStop Offset="0"   Color="#1E9AE8" />
+                <GradientStop Offset="0.5" Color="#1585DF" />
+                <GradientStop Offset="1"   Color="#1F97E6" />
             </LinearGradientBrush>
             <!-- XP Luna has no raised divider after Start or before the tray (that's a Win2000 trait);
                  transparent hides both dividers here while Win2000 keeps its grey/white ones. -->

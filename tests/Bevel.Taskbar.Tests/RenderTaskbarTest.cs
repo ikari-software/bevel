@@ -50,6 +50,35 @@ public class RenderTaskbarTest
     }
 
     [AvaloniaFact]
+    public void Render_luna_taskbar_to_png()
+    {
+        try
+        {
+            Bevel.UI.ThemeService.Apply("luna");
+            var model = new ShellModel(null, null, null);
+            var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+            var wm = new StubWindowManager();
+            var view = new TaskbarView { DataContext = vm };
+            var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            for (var i = 0; i < 2; i++)
+            {
+                var fw = new ForeignWindow(new ForeignWindowId($"w{i}"), $"Window {i + 1}", "App", false, i == 0, default);
+                model.Windows.Add(new TaskItemViewModel(fw, wm) { Width = 150, Opacity = 1 });
+            }
+            Dispatcher.UIThread.RunJobs();
+
+            var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_TASKBAR_OUT")
+                          ?? Path.Combine(Path.GetTempPath(), "bevel-luna-taskbar.png");
+            frame!.Save(outPath);
+        }
+        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+    }
+
+    [AvaloniaFact]
     public void Overflow_chevrons_are_flat_vector_arrows_not_classic_buttons()
     {
         // The row-overflow scroll buttons used to be default Classic RepeatButtons with a "▲"/"▼" font
