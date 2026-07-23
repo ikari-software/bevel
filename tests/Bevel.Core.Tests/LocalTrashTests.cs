@@ -90,4 +90,62 @@ public class LocalTrashTests : IDisposable
         Assert.False(File.Exists(file));
         Assert.Equal("solo", File.ReadAllText(dest));
     }
+
+    [Fact]
+    public void MoveToTrash_onto_an_existing_directory_throws_and_preserves_the_source()
+    {
+        // The collision that MoveAsync's reuse exposed: a same-volume Directory.Move onto an existing
+        // folder throws IOException, which the EXDEV fallback would misread as cross-volume and
+        // "recover" by copy-merge + delete of the source. Guard it: collision must error, source intact.
+        var source = Path.Combine(_testDir, "src");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "keep.txt"), "keep");
+        var dest = Path.Combine(_testDir, "dst");
+        Directory.CreateDirectory(dest);
+
+        Assert.Throws<IOException>(() => LocalTrash.MoveToTrash(source, dest));
+
+        // Source is untouched — no merge-then-delete data loss.
+        Assert.True(Directory.Exists(source));
+        Assert.Equal("keep", File.ReadAllText(Path.Combine(source, "keep.txt")));
+    }
+
+    [Fact]
+    public void MoveToTrash_onto_an_existing_file_throws_and_preserves_the_source()
+    {
+        var source = Path.Combine(_testDir, "src.txt");
+        File.WriteAllText(source, "src");
+        var dest = Path.Combine(_testDir, "dst.txt");
+        File.WriteAllText(dest, "dst");
+
+        Assert.Throws<IOException>(() => LocalTrash.MoveToTrash(source, dest));
+
+        Assert.Equal("src", File.ReadAllText(source));   // source intact
+        Assert.Equal("dst", File.ReadAllText(dest));     // destination not clobbered
+    }
+
+    [Fact]
+    public async Task MoveAsync_onto_a_colliding_name_throws_without_losing_the_source()
+    {
+        // End-to-end through the mutator: moving a folder into a parent that already holds a folder of
+        // the same name must fail cleanly, not silently merge and delete the moved folder (REL-4).
+        var srcParent = Path.Combine(_testDir, "from");
+        var destParent = Path.Combine(_testDir, "to");
+        Directory.CreateDirectory(destParent);
+        Directory.CreateDirectory(Path.Combine(srcParent, "dup"));
+        File.WriteAllText(Path.Combine(srcParent, "dup", "a.txt"), "a");
+        Directory.CreateDirectory(Path.Combine(destParent, "dup"));   // pre-existing collision at destination
+
+        var provider = new LocalFsProvider(_trashDir);
+        var from = new VfsPath("file", srcParent);
+        var mutator = await provider.GetMutatorAsync(from, CancellationToken.None);
+        Assert.NotNull(mutator);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            mutator!.MoveAsync(VfsPath.Combine(from, "dup"), new VfsPath("file", destParent), CancellationToken.None).AsTask());
+
+        // The moved folder survives at its origin.
+        Assert.True(Directory.Exists(Path.Combine(srcParent, "dup")));
+        Assert.Equal("a", File.ReadAllText(Path.Combine(srcParent, "dup", "a.txt")));
+    }
 }

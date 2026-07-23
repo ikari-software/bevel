@@ -19,11 +19,32 @@
         <Style Selector="Border.flyoutrow:pointerover TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
+
+        <!-- Row-overflow scroll chevrons (multi-row bar): flat vector arrows, no raised Classic button
+             chrome, so they read cleanly on the themed bar. The arrow colour is the theme's tray text
+             (dark on the Win2000 grey, light on the Luna blue); a subtle wash appears on hover. -->
+        <Style Selector="RepeatButton.chevron">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="chev" Background="{TemplateBinding Background}" CornerRadius="2">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RepeatButton.chevron:pointerover /template/ Border#chev">
+            <Setter Property="Background" Value="#40FFFFFF" />
+        </Style>
+        <Style Selector="RepeatButton.chevron:pressed /template/ Border#chev">
+            <Setter Property="Background" Value="#22000000" />
+        </Style>
     </UserControl.Styles>
     <Panel>
     <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
           ClipToBounds="False"
-          Background="{DynamicResource SystemButtonFaceBrush}">
+          Background="{DynamicResource Bevel.Brush.TaskbarBackground}">
         <!-- Right-click the empty taskbar (bevel-cust.ctxmenu). Cascade/Tile join in the superset pass. -->
         <Grid.ContextFlyout>
             <MenuFlyout>
@@ -38,11 +59,12 @@
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
         <Button x:Name="StartButton" Grid.Column="0"
-                Width="74" Margin="1,1,0,1"
-                FontWeight="Bold" FontSize="11"
+                Width="74" Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
+                Theme="{DynamicResource Bevel.Theme.StartButton}"
                 Focusable="False"
                 Padding="6,0"
                 ClipToBounds="True"
+                HorizontalAlignment="Left"
                 HorizontalContentAlignment="Left"
                 VerticalAlignment="Stretch">
             <Button.ContextFlyout>
@@ -61,8 +83,8 @@
         <!-- Divider after Start (full height) -->
         <Border Grid.Column="0" Width="2" Margin="76,1,0,1"
                 VerticalAlignment="Stretch"
-                Background="{DynamicResource SystemButtonHighlightBrush}"
-                BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                Background="{DynamicResource Bevel.Brush.TaskbarDividerLight}"
+                BorderBrush="{DynamicResource Bevel.Brush.TaskbarDividerDark}"
                 BorderThickness="0,0,1,0" />
 
         <!-- Window button area: data-bound to the background model's Windows collection (bevel-d2z).
@@ -101,7 +123,7 @@
                                       Opacity="{Binding Opacity}"
                                       FontWeight="{Binding TitleWeight}"
                                       MinWidth="0"
-                                      Height="24" Margin="1,2" Padding="4,0" FontSize="11"
+                                      Height="24" Margin="1,2,0,2" Padding="4,0" FontSize="11"
                                       HorizontalContentAlignment="Stretch"
                                       VerticalContentAlignment="Center"
                                       ClipToBounds="True">
@@ -143,7 +165,7 @@
                                       Width="{Binding Width}"
                                       Opacity="{Binding Opacity}"
                                       MinWidth="0"
-                                      Height="24" Margin="1,2" Padding="4,0" FontSize="11"
+                                      Height="24" Margin="1,2,0,2" Padding="4,0" FontSize="11"
                                       HorizontalContentAlignment="Stretch"
                                       VerticalContentAlignment="Center"
                                       ClipToBounds="True">
@@ -153,6 +175,18 @@
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
                             </ToggleButton.Transitions>
+                            <!-- Right-click menu for a grouped app: the app name identifies it, the verbs
+                                 act on every window of that app (bevel-cust.ctxmenu). -->
+                            <ToggleButton.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuItem Header="{Binding DisplayName}" IsEnabled="False" />
+                                    <Separator />
+                                    <MenuItem Header="Mi_nimize All" Command="{Binding MinimizeAllCommand}" />
+                                    <MenuItem Header="_Restore All" Command="{Binding RestoreAllCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="_Close All" Command="{Binding CloseAllCommand}" />
+                                </MenuFlyout>
+                            </ToggleButton.ContextFlyout>
                             <ToggleButton.Flyout>
                                 <Flyout Placement="Top">
                                     <ItemsControl ItemsSource="{Binding Windows}" MinWidth="160">
@@ -197,22 +231,22 @@
              Solid background so the arrows occlude the button underneath cleanly. -->
         <StackPanel x:Name="OverflowChevrons" Orientation="Vertical"
                     HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                    Background="{DynamicResource SystemButtonFaceBrush}"
+                    Background="{DynamicResource Bevel.Brush.TrayWell}"
                     Width="16" Margin="1,1,2,1" IsVisible="False">
-            <RepeatButton x:Name="ScrollUpBtn" Content="▲" FontSize="7" Padding="0"
-                          Height="13" Focusable="False"
-                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
-            <RepeatButton x:Name="ScrollDownBtn" Content="▼" FontSize="7" Padding="0"
-                          Height="13" Focusable="False" Margin="0,1,0,0"
-                          HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+            <RepeatButton x:Name="ScrollUpBtn" Classes="chevron" Height="14" Focusable="False">
+                <Path Data="M0,4 L4,0 L8,4 Z" Fill="{DynamicResource Bevel.Brush.TrayText}" />
+            </RepeatButton>
+            <RepeatButton x:Name="ScrollDownBtn" Classes="chevron" Height="14" Focusable="False" Margin="0,1,0,0">
+                <Path Data="M0,0 L4,4 L8,0 Z" Fill="{DynamicResource Bevel.Brush.TrayText}" />
+            </RepeatButton>
         </StackPanel>
         </Grid>
 
         <!-- Divider before system tray area (full height) -->
         <Border Grid.Column="2" Width="2" Margin="2,1,0,1"
                 VerticalAlignment="Stretch"
-                Background="{DynamicResource SystemButtonHighlightBrush}"
-                BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                Background="{DynamicResource Bevel.Brush.TaskbarDividerLight}"
+                BorderBrush="{DynamicResource Bevel.Brush.TaskbarDividerDark}"
                 BorderThickness="0,0,1,0" />
 
         <!-- System tray + clock area: full bar height (no dead space above it). Win2000 recesses
@@ -277,10 +311,13 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-            <classic:ClassicBorderDecorator BorderStyle="Sunken" BorderThickness="2"
-                                            Padding="4,0"
+            <classic:ClassicBorderDecorator BorderStyle="Sunken"
+                                            BorderThickness="{DynamicResource Bevel.Metric.TrayWellBorder}"
                                             VerticalAlignment="Stretch"
-                                            Background="{DynamicResource SystemButtonFaceBrush}">
+                                            Background="{DynamicResource Bevel.Brush.TrayWell}">
+              <!-- Inner fill paints OVER the Classic decorator's grey face: grey-on-grey in Win2000
+                   (seamless, keeps the sunken bevel), blue-on-grey in Luna (covers it; bevel off). -->
+              <Border Background="{DynamicResource Bevel.Brush.TrayWell}" Padding="4,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
                     <!-- Mirrored menu-bar status items (bevel-m3.1) on a DARK strip: menu-bar glyphs
                          are usually white template icons, invisible on the light tray — the dark chip
@@ -307,7 +344,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                                         <Image Source="{Binding IconSource}"
-                                                               Width="{Binding IconSize}" Height="{Binding IconSize}"
+                                                               Height="{Binding IconSize}" Stretch="Uniform"
                                                                Margin="4" VerticalAlignment="Center"
                                                                ToolTip.Tip="{Binding Tooltip}"
                                                                PointerPressed="OnTrayIconPressed" />
@@ -328,7 +365,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                         <Image Source="{Binding IconSource}"
-                                               Width="{Binding IconSize}" Height="{Binding IconSize}"
+                                               Height="{Binding IconSize}" Stretch="Uniform"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
                                     </DataTemplate>
@@ -363,6 +400,7 @@
                             ToolTip.Tip="Show desktop (minimize all windows)"
                             VerticalAlignment="Stretch" />
                 </StackPanel>
+              </Border>
             </classic:ClassicBorderDecorator>
         </StackPanel>
 

@@ -67,6 +67,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _windows.ForegroundChanged += OnForegroundChanged;
         _apps.AppLaunched += OnAppLaunched;
         _apps.AppTerminated += OnAppTerminated;
+        _apps.InstalledAppsChanged += OnInstalledAppsChanged;
         _tray.ItemAdded += OnTrayItemAdded;
         _tray.ItemRemoved += OnTrayItemRemoved;
         _tray.ItemUpdated += OnTrayItemUpdated;
@@ -109,6 +110,13 @@ public sealed class ShellCoreServer : IAsyncDisposable
         lock (_gate)
             _windowById[w.Id.Value] = w;
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, Window: w)));
+    }
+
+    private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps)
+    {
+        lock (_gate)
+            _installed = apps;   // keep the connect-time snapshot fresh for future clients too
+        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: apps)));
     }
 
     private void OnAppLaunched(object? _, RunningApp a) =>
@@ -199,6 +207,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _windows.ForegroundChanged -= OnForegroundChanged;
         _apps.AppLaunched -= OnAppLaunched;
         _apps.AppTerminated -= OnAppTerminated;
+        _apps.InstalledAppsChanged -= OnInstalledAppsChanged;
         _tray.ItemAdded -= OnTrayItemAdded;
         _tray.ItemRemoved -= OnTrayItemRemoved;
         _tray.ItemUpdated -= OnTrayItemUpdated;

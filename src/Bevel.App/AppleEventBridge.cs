@@ -59,15 +59,27 @@ public static class AppleEventBridge
                 var selection = registry?.First()?.ActiveController?.Selection ?? Array.Empty<VfsPath>();
                 return new AePaths(selection.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
             case AeQueryKind.ResolvePaths when query.Specifier is not null:
-                if (query.Op == QueryOp.Exists)
+                try
                 {
-                    try { return new AeBool(resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult().Count > 0); }
-                    catch (AutomationException) { return new AeBool(false); }   // not-found resolves to false
+                    if (query.Op == QueryOp.Exists)
+                        return new AeBool(resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult().Count > 0);
+                    var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult();
+                    return query.Op == QueryOp.Count
+                        ? new AeCount(paths.Count)
+                        : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
                 }
-                var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult();
-                return query.Op == QueryOp.Count
-                    ? new AeCount(paths.Count)
-                    : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
+                catch (AutomationException)
+                {
+                    // A specifier that doesn't resolve (missing folder/file) gets a DEFINED answer —
+                    // exists=false / count=0 / get=empty — instead of an exception that escapes to
+                    // HandleEvent and drops the reply as an empty success (REL-2 review).
+                    return query.Op switch
+                    {
+                        QueryOp.Exists => new AeBool(false),
+                        QueryOp.Count => new AeCount(0),
+                        _ => new AePaths(Array.Empty<string>()),
+                    };
+                }
             default:
                 return null;
         }

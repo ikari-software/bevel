@@ -14,7 +14,7 @@ namespace Bevel.Taskbar;
 /// work-area strategy picker, and run-at-login toggle.
 /// Persists settings via <see cref="SettingsService"/>.
 /// </summary>
-public partial class OnboardingWindow : Window
+public partial class OnboardingWindow : Bevel.UI.BevelWindow
 {
     private readonly SettingsService _settings;
     private readonly IPermissionBroker? _permissionBroker;
@@ -69,6 +69,7 @@ public partial class OnboardingWindow : Window
         MiddleClickCloseCheck.IsCheckedChanged += OnMiddleClickChanged;
         ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
         StartLabelBox.TextChanged += (_, _) => PersistStart();
+        FrequentCountSlider.ValueChanged += OnFrequentCountChanged;
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
         ShowClockCheck.IsCheckedChanged += OnClockChanged;
         Clock24Check.IsCheckedChanged += OnClockChanged;
@@ -113,6 +114,8 @@ public partial class OnboardingWindow : Window
 
         ShowStartCheck.IsChecked = s.TaskbarShowStart;
         StartLabelBox.Text = s.TaskbarStartLabel;
+        FrequentCountSlider.Value = s.TaskbarStartMenuFrequentCount;
+        FrequentCountValue.Text = $"{s.TaskbarStartMenuFrequentCount} programs";
 
         ShowClockCheck.IsChecked = s.TaskbarShowClock;
         Clock24Check.IsChecked = s.TaskbarClock24Hour;
@@ -305,6 +308,21 @@ public partial class OnboardingWindow : Window
         var label = StartLabelBox.Text ?? "";
         if (_settings.Current.TaskbarShowStart == show && _settings.Current.TaskbarStartLabel == label) return;
         await PersistAndApply(s => { s.TaskbarShowStart = show; s.TaskbarStartLabel = label; });
+    }
+
+    private void OnFrequentCountChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        FrequentCountValue.Text = $"{(int)Math.Round(FrequentCountSlider.Value)} programs";
+        PersistStartMenu();
+    }
+
+    private async void PersistStartMenu()
+    {
+        var count = (int)Math.Round(FrequentCountSlider.Value);
+        if (_settings.Current.TaskbarStartMenuFrequentCount == count) return;
+        // PersistAndApply raises settings.Changed, which App wires to ShellModel.FrequentCap — so the
+        // Start menu's left column re-caps live, no restart.
+        await PersistAndApply(s => s.TaskbarStartMenuFrequentCount = count);
     }
 
     private async void OnButtonSizeChanged(object? sender, SelectionChangedEventArgs e)

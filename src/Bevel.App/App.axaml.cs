@@ -91,6 +91,36 @@ public partial class App : Application
             // UI font override (FNT-01) — top-level, so it wins over the theme's default face.
             UI.FontService.Apply(settings.Current.UiFontFamily);
 
+            // Cross-process live re-theming (bevel-dob): the Settings window persists ThemeId and bumps
+            // the settings-DB version in ITS process; every OTHER role polls the shared DB for that
+            // external write and re-applies theme/scheme/font live — so a theme switch reskins every
+            // shell surface (taskbar, desktop, …), not just the process that owns Settings.
+            settings.Changed += () =>
+            {
+                var s = settings.Current;
+                UI.ThemeService.Apply(s.ThemeId);
+                UI.ColorSchemeService.Apply(s.ColorScheme);
+                UI.FontService.Apply(s.UiFontFamily);
+                UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
+            };
+            var reloadTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
+            var reloadInFlight = false;
+            reloadTimer.Tick += async (_, _) =>
+            {
+                // A DB read that overruns the 750ms interval must not overlap the next tick — two
+                // ReloadIfChangedAsync calls would race on the service's _version/_raw. Tick runs on the
+                // UI thread, so this plain-bool gate is single-threaded and race-free.
+                if (reloadInFlight) return;
+                reloadInFlight = true;
+                try { await settings.ReloadIfChangedAsync(); }   // raises Changed on an external write
+                catch { /* transient DB contention; the next tick retries */ }
+                finally { reloadInFlight = false; }
+            };
+            reloadTimer.Start();
+            // Stop the poll before the container tears the SettingsService (+ its SQLite connection)
+            // down — same shutdown discipline as shellModel/mitigator below (bevel-fu5).
+            desktop.Exit += (_, _) => reloadTimer.Stop();
+
             // Create only this process's surface(s). In the default all-in-one role every block
             // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.
             // Creation order for All matches the pre-split app: desktop behind, then taskbar, then
@@ -218,6 +248,8 @@ public partial class App : Application
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.
         var shellModel = services.GetRequiredService<Taskbar.ShellModel>();
+        shellModel.FrequentCap = settings.Current.TaskbarStartMenuFrequentCount;
+        settings.Changed += () => shellModel.FrequentCap = settings.Current.TaskbarStartMenuFrequentCount;
         shellModel.Start();
         // Stop the reconcile loop + PAL event subscriptions at exit, before the DI container is
         // torn down — otherwise they keep posting to the dispatcher into the shutdown window

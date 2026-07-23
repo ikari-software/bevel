@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
+using Classic.Avalonia.Theme;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
@@ -222,6 +223,16 @@ public sealed class TaskbarWindow : BevelWindow
             {
                 c.IsVisible = false;
                 c.Height = 0;
+            }
+            else if (c is ClassicBorderDecorator { Name: "Bd" } frame)
+            {
+                // The Classic Window template's outer frame border ("Bd") — an AltRaised 3D bevel drawn
+                // from SystemColors (grey face + white highlight). For an edge-to-edge control bar it
+                // shows as a Win2000 raised edge along the taskbar's top even under Luna, so flatten it:
+                // the themed RootGrid then meets the desktop cleanly. The tray well is a separate,
+                // unnamed Sunken decorator inside the content and is left alone.
+                frame.BorderStyle = ClassicBorderStyle.None;
+                frame.BorderThickness = new Thickness(0);
             }
             else if (c.Name == "RootLayout")
             {

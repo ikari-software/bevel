@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
@@ -134,10 +135,24 @@ public static class StartLogo
 
     private static Control Apple(double size)
     {
-        // Body + leaf as one path (two subpaths); solid near-black reads on the classic gray button.
+        // Body + leaf as one path (two subpaths). A top-lit radial silver gradient gives the mark a
+        // brushed-metal sheen that reads on both the classic gray and the Luna green Start buttons.
         var path = new Path
         {
-            Fill = new SolidColorBrush(Color.Parse("#111111")),
+            Fill = new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.5, 0.4, RelativeUnit.Relative),
+                GradientOrigin = new RelativePoint(0.42, 0.18, RelativeUnit.Relative),
+                RadiusX = new RelativeScalar(0.85, RelativeUnit.Relative),
+                RadiusY = new RelativeScalar(0.85, RelativeUnit.Relative),
+                GradientStops =
+                {
+                    new GradientStop(Color.Parse("#FCFCFE"), 0),
+                    new GradientStop(Color.Parse("#DBDDE1"), 0.45),
+                    new GradientStop(Color.Parse("#A9ACB2"), 0.78),
+                    new GradientStop(Color.Parse("#7C7F86"), 1),
+                },
+            },
             Data = Geometry.Parse(
                 "M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 " +
                 "3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 " +

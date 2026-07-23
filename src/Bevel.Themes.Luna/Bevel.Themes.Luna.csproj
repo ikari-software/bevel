@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows XP "Luna Blue" theme (05-theming.md §9, targets v1.1). A per-theme control-template
+       set (bevel-dob): its ControlThemes override the vendored Classic ones by resource precedence
+       when ThemeService adds this Styles set to Application.Styles. Chrome is vector-redrawn (glossy
+       gradients bound to Luna tokens), per the DPI-04 vector-first path and the vector-asset rule —
+       the authored reference is docs/design/luna/styleguide.html. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <!-- Vendored Classic templates are the base layer Luna inherits/overrides (PKG-03, one level deep). -->
+    <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />
+    <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
+  </ItemGroup>
+
+</Project>

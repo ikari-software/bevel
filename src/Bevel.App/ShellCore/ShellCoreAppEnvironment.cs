@@ -29,8 +29,11 @@ public sealed class ShellCoreAppEnvironment : IAppEnvironment
             case CoreEventKind.AppTerminated when e.App is { } a:
                 AppTerminated?.Invoke(this, a);
                 break;
-            // InstalledAppsSnapshot carries no IAppEnvironment event (consumers pull via
-            // EnumerateInstalledAppsAsync); a round-trip answers that pull — simple and correct.
+            case CoreEventKind.InstalledAppsSnapshot when e.InstalledApps is { } apps:
+                // Sent on connect AND whenever the core's /Applications watchers fire — re-raise it as the
+                // installed-apps-changed event so the Start menu reconciles live (initial list + updates).
+                InstalledAppsChanged?.Invoke(this, apps);
+                break;
         }
     }
 
@@ -52,4 +55,5 @@ public sealed class ShellCoreAppEnvironment : IAppEnvironment
 
     public event EventHandler<RunningApp>? AppLaunched;
     public event EventHandler<RunningApp>? AppTerminated;
+    public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
 }

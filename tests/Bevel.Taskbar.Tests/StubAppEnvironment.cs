@@ -21,5 +21,9 @@ internal sealed class StubAppEnvironment : IAppEnvironment
 #pragma warning disable CS0067 // required by the interface; this stub never raises them
     public event EventHandler<RunningApp>? AppLaunched;
     public event EventHandler<RunningApp>? AppTerminated;
+    public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
+
+    /// <summary>Test hook: simulate an app being installed/removed by publishing a fresh list.</summary>
+    public void RaiseInstalledAppsChanged(IReadOnlyList<InstalledApp> apps) => InstalledAppsChanged?.Invoke(this, apps);
 #pragma warning restore CS0067
 }

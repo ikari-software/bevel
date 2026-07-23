@@ -43,6 +43,20 @@ public sealed class ShellModel : IDisposable
     /// <summary>Installed applications for the Start menu's Programs cascade. UI-thread-owned.</summary>
     public ObservableCollection<ProgramItemViewModel> Programs { get; } = new();
 
+    /// <summary>The curated Start-menu left column: newly-added apps on top, then the most-frequently-used,
+    /// capped to <see cref="FrequentCap"/>. Recomputed in place when Programs or usage changes.</summary>
+    public ObservableCollection<ProgramItemViewModel> FrequentPrograms { get; } = new();
+
+    private readonly ProgramUsageStore _usage;
+    private int _frequentCap = 6;
+
+    /// <summary>Max entries shown in <see cref="FrequentPrograms"/> (configurable via settings; default 6).</summary>
+    public int FrequentCap
+    {
+        get => _frequentCap;
+        set { var v = Math.Max(1, value); if (v == _frequentCap) return; _frequentCap = v; RecomputeFrequent(); }
+    }
+
     /// <summary>
     /// False until the first installed-apps enumeration finishes (success, failure, or no app
     /// environment), then latched true. Lets the Start menu tell "still loading" (empty + not yet
@@ -55,12 +69,14 @@ public sealed class ShellModel : IDisposable
     public event Action? ProgramsLoadedChanged;
 
     public ShellModel(IWindowManager? windows, IAppEnvironment? appEnv, IIconProvider? icons,
-        IShellConnectionStatus? connection = null)
+        IShellConnectionStatus? connection = null, ProgramUsageStore? usage = null)
     {
         _windows = windows;
         _appEnv = appEnv;
         _icons = new IconLoader(icons);
         _connection = connection;
+        _usage = usage ?? new ProgramUsageStore();
+        Programs.CollectionChanged += (_, _) => RecomputeFrequent();
     }
 
     /// <summary>The shared off-thread icon loader, for view-models that render their own icons.</summary>
@@ -112,8 +128,28 @@ public sealed class ShellModel : IDisposable
                 _connection.ConnectionChanged += OnConnectionChanged;
         }
 
+        // Live installed-apps: the app environment re-publishes the full set when an app is added or
+        // removed (macOS folder watchers, or the core re-broadcasting its snapshot). Reconcile Programs
+        // on each so the Start menu isn't a one-shot startup list. The connect-time snapshot also arrives
+        // here, so this is a second path that populates the initial list once the core link is up.
+        if (_appEnv is not null)
+            _appEnv.InstalledAppsChanged += OnInstalledAppsChanged;
+
         _ = LoadProgramsAsync();
     }
+
+    private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps) => Post(() =>
+    {
+        if (_disposed) return;
+        // Batch so CreateProgram's per-app MarkSeen writes collapse to one file write, not one per app.
+        using (_usage.BeginBatch())
+            ObservableReconciler.Reconcile(
+                Programs, apps,
+                keyOf: vm => vm.AppId,
+                sourceKeyOf: a => a.AppId,
+                create: CreateProgram);
+        MarkProgramsLoaded();
+    });
 
     // ── Windows ─────────────────────────────────────────────────────────
 
@@ -404,37 +440,93 @@ public sealed class ShellModel : IDisposable
 
     // ── Programs ────────────────────────────────────────────────────────
 
+    private ProgramItemViewModel CreateProgram(InstalledApp a)
+    {
+        _usage.MarkSeen(a.AppId, DateTime.UtcNow);   // records first-seen the first time this app appears
+        var vm = new ProgramItemViewModel(a, _appEnv, _icons);
+        vm.Launched += () => { _usage.RecordLaunch(a.AppId); RecomputeFrequent(); };
+        return vm;
+    }
+
+    /// <summary>How recent (wall-clock) an install must be to still pin to the top as "newly added".
+    /// After this it rejoins the frequency ranking, so months-old installs don't accumulate at the top and
+    /// starve the frequently-used apps.</summary>
+    private static readonly TimeSpan NewlyAddedWindow = TimeSpan.FromDays(14);
+
+    /// <summary>Rebuilds the curated left column: genuinely-new installs go on top (newest first), then the
+    /// rest ordered by launch frequency; capped to <see cref="FrequentCap"/>. UI-thread-owned (Programs is).
+    /// Cheap — the source list is small and this is only called on change.</summary>
+    private void RecomputeFrequent()
+    {
+        var now = DateTime.UtcNow;
+        // "Newly added" needs BOTH: (a) first-seen well after the initial first-run baseline — so the whole
+        // first-run set of apps ranks by frequency, not recency (they all get stamped at ~the same first-run
+        // time); and (b) within the recent wall-clock window — so an install from months ago ages out of the
+        // top and rejoins the frequency ranking instead of pinning there forever (bevel review).
+        var baseline = Programs.Count == 0 ? now : Programs.Min(p => _usage.FirstSeen(p.AppId));
+        var afterBaseline = baseline.AddDays(1);
+        var recentCutoff = now - NewlyAddedWindow;
+        bool IsNewly(ProgramItemViewModel p)
+        {
+            var seen = _usage.FirstSeen(p.AppId);
+            return seen > afterBaseline && seen > recentCutoff;
+        }
+
+        var newly = Programs.Where(IsNewly)
+            .OrderByDescending(p => _usage.FirstSeen(p.AppId))
+            .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase);
+        var frequent = Programs.Where(p => !IsNewly(p))
+            .OrderByDescending(p => _usage.LaunchCount(p.AppId))
+            .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase);
+
+        var ranked = newly.Concat(frequent).Take(Math.Max(1, _frequentCap)).ToList();
+
+        FrequentPrograms.Clear();
+        foreach (var p in ranked)
+            FrequentPrograms.Add(p);
+    }
+
     private async Task LoadProgramsAsync()
     {
         // No app environment (e.g. tests/headless): nothing to enumerate, but still latch loaded so
         // the menu resolves "(Loading…)" to "(No programs found)". Runs on the caller's UI thread.
         if (_appEnv is null) { MarkProgramsLoaded(); return; }
-        try
+        // Retry until apps arrive (bevel: split-taskbar fix). On a split taskbar EnumerateInstalledApps
+        // is an IPC round-trip to the shell core, which may not be connected yet at startup — the first
+        // call then throws or returns empty. Unlike the window reconcile loop (which retries every 2s and
+        // recovers), this used to be one-shot, so a cold start left the Start menu's Programs empty for
+        // the whole session. Retry with a short backoff until we get a non-empty set, then stop.
+        for (var attempt = 0; attempt < 40 && !_disposed; attempt++)
         {
-            // EnumerateInstalledAppsAsync walks /Applications synchronously — push it to the
-            // thread pool so the UI thread never waits on filesystem I/O.
-            var apps = await Task.Run(() => _appEnv.EnumerateInstalledAppsAsync().AsTask()).ConfigureAwait(false);
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            try
             {
-                if (_disposed) return;
-                // Diff in place, keyed by bundle id: a re-enumeration (app installed/removed) keeps
-                // every surviving item's view-model — and therefore its menu container, its loaded
-                // icon and the menu's scroll position — instead of a Clear() that rebuilds them all.
-                ObservableReconciler.Reconcile(
-                    Programs, apps,
-                    keyOf: vm => vm.AppId,
-                    sourceKeyOf: a => a.AppId,
-                    create: a => new ProgramItemViewModel(a, _appEnv, _icons));
-            });
+                // EnumerateInstalledAppsAsync walks /Applications (or RPCs the core) — off the UI thread.
+                var apps = await Task.Run(() => _appEnv.EnumerateInstalledAppsAsync().AsTask()).ConfigureAwait(false);
+                if (apps.Count > 0)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (_disposed) return;
+                        // Diff in place, keyed by bundle id: a re-enumeration (app installed/removed) keeps
+                        // every surviving item's view-model — and therefore its menu container, its loaded
+                        // icon and the menu's scroll position — instead of a Clear() that rebuilds them all.
+                        // Batch the per-app MarkSeen writes into one file write for the whole populate.
+                        using (_usage.BeginBatch())
+                            ObservableReconciler.Reconcile(
+                                Programs, apps,
+                                keyOf: vm => vm.AppId,
+                                sourceKeyOf: a => a.AppId,
+                                create: CreateProgram);
+                    });
+                    break;
+                }
+            }
+            catch (Exception ex) { TaskbarLog.Swallowed("LoadPrograms", ex); } // link not up yet — retry
+            await Task.Delay(TimeSpan.FromMilliseconds(750)).ConfigureAwait(false);
         }
-        catch (Exception ex) { TaskbarLog.Swallowed("LoadPrograms", ex); } // enumeration failed — Programs stays empty
-        finally
-        {
-            // Latch loaded whether enumeration populated, found nothing, or threw — the menu must
-            // stop showing "(Loading…)" once the one-shot startup enumeration has run its course.
-            await Dispatcher.UIThread.InvokeAsync(MarkProgramsLoaded);
-        }
+        // Latch loaded whether enumeration populated or gave up empty — the menu must stop showing
+        // "(Loading…)" once the startup enumeration has run its course.
+        await Dispatcher.UIThread.InvokeAsync(MarkProgramsLoaded);
     }
 
     private void MarkProgramsLoaded()
@@ -467,6 +559,9 @@ public sealed class ShellModel : IDisposable
             _windows.ForegroundChanged -= OnForegroundChanged;
             _windows.WindowClosed -= OnWindowClosed;
         }
+
+        if (_appEnv is not null)
+            _appEnv.InstalledAppsChanged -= OnInstalledAppsChanged;
 
         if (_connection is not null)
             _connection.ConnectionChanged -= OnConnectionChanged;

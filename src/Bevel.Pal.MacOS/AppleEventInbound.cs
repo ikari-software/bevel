@@ -37,7 +37,10 @@ public static unsafe partial class AppleEventInbound
     private const string Obj = "/usr/lib/libobjc.dylib";
     [DllImport(Obj)] static extern IntPtr objc_allocateClassPair(IntPtr superclass, string name, nint extraBytes);
     [DllImport(Obj)] static extern void objc_registerClassPair(IntPtr cls);
-    [DllImport(Obj)] static extern bool class_addMethod(IntPtr cls, IntPtr sel, IntPtr imp, string types);
+    [DllImport(Obj)] static extern void objc_disposeClassPair(IntPtr cls);
+    // ObjC BOOL is a single signed byte; without I1 the default 4-byte marshalling reads three bytes
+    // of stack garbage above AL and can misread success as failure (bevel-376 review).
+    [DllImport(Obj)] [return: MarshalAs(UnmanagedType.I1)] static extern bool class_addMethod(IntPtr cls, IntPtr sel, IntPtr imp, string types);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr r, IntPtr s);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern uint SendU32(IntPtr r, IntPtr s);
     [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern nint SendNInt(IntPtr r, IntPtr s);
@@ -76,7 +79,10 @@ public static unsafe partial class AppleEventInbound
         if (handlerCls == IntPtr.Zero) return;
         var handleSel = Sel("handleAppleEvent:withReplyEvent:");
         var imp = (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, void>)&HandleEvent;
-        if (!class_addMethod(handlerCls, handleSel, imp, "v@:@@")) return;
+        // Dispose the not-yet-registered pair on failure so a retry can re-allocate the same name;
+        // leaving it allocated makes objc_allocateClassPair return null forever after, permanently and
+        // silently disabling AE handling (bevel-376 review).
+        if (!class_addMethod(handlerCls, handleSel, imp, "v@:@@")) { objc_disposeClassPair(handlerCls); return; }
         objc_registerClassPair(handlerCls);
         var handler = Send(Send(handlerCls, Sel("alloc")), Sel("init"));
 
@@ -84,6 +90,7 @@ public static unsafe partial class AppleEventInbound
         var setSel = Sel("setEventHandler:andSelector:forEventClass:andEventID:");
         void Register(string cls, string id) => SendSetHandler(mgr, setSel, handler, handleSel, FourCC(cls), FourCC(id));
         Register("misc", "mvis");   // reveal
+        Register("misc", "slct");   // select {items}  (Finder-style; sdef `select` command)
         Register("core", "delo");   // delete
         Register("core", "clon");   // duplicate
         Register("core", "crel");   // make
@@ -109,6 +116,8 @@ public static unsafe partial class AppleEventInbound
             if (cls == FourCC("core") && id == FourCC("cnte")) { HandleQuery(QueryOp.Count, evt, reply); return; }
             if (cls == FourCC("core") && id == FourCC("doex")) { HandleQuery(QueryOp.Exists, evt, reply); return; }
             if (cls == FourCC("core") && id == FourCC("setd")) { Handler?.Invoke(BuildSetSelection(evt)); return; }
+            // `select {items}` carries its targets in the direct object (not keyAEData like `set selection to`).
+            if (cls == FourCC("misc") && id == FourCC("slct")) { Handler?.Invoke(BuildTargets(Verb.SetSelection, evt)); return; }
 
             var verb = VerbFor(cls, id);
             if (verb is null) return;

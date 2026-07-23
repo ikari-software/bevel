@@ -112,7 +112,13 @@ public sealed class AutomationSocketServer : IAsyncDisposable
     public void Start()
     {
         var dir = Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+            // 0700 the dir: even in the brief window before the socket itself is chmod 0600, a
+            // non-traversable parent keeps other local users off it regardless of umask (INT-10 review).
+            TrySetDirOwnerOnly(dir);
+        }
         if (File.Exists(_path)) File.Delete(_path);   // clear a stale socket from a crashed run
 
         _listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
@@ -162,6 +168,16 @@ public sealed class AutomationSocketServer : IAsyncDisposable
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         catch { /* best effort; the socket dir is already user-scoped */ }
+    }
+
+    private static void TrySetDirOwnerOnly(string dir)
+    {
+        try
+        {
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        catch { /* best effort */ }
     }
 
     public async ValueTask DisposeAsync()

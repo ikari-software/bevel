@@ -114,6 +114,11 @@ public interface IAppEnvironment
 
     event EventHandler<RunningApp>? AppLaunched;
     event EventHandler<RunningApp>? AppTerminated;
+
+    /// <summary>Raised when the set of INSTALLED apps changes (an app added to or removed from the
+    /// application folders), carrying the fresh full list. UI processes reconcile the Start menu's
+    /// Programs from it, so the list stays live instead of a one-shot startup snapshot.</summary>
+    event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
 }
 
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>

@@ -24,17 +24,24 @@ public static partial class AppleEventInbound
 
     static IntPtr DescFor(IntPtr desc, string keyword) => Send_u32(desc, Sel("descriptorForKeyword:"), FourCC(keyword));
 
+    // A hostile script can nest a specifier ('folder of folder of …') tens of thousands deep; the
+    // recursive parse would overflow the stack with an UNCATCHABLE StackOverflowException that kills
+    // the whole shell. Cap the container chain well above any real script (bevel-376 review).
+    private const int MaxSpecifierDepth = 64;
+
     /// <summary>Parses an AEDesc into an <see cref="AeSpecifier"/>, or null when it isn't an object
     /// specifier (e.g. a literal file — handled by the file-URL path instead).</summary>
-    static AeSpecifier? ParseSpecifier(IntPtr desc)
+    static AeSpecifier? ParseSpecifier(IntPtr desc) => ParseSpecifier(desc, 0);
+
+    static AeSpecifier? ParseSpecifier(IntPtr desc, int depth)
     {
-        if (desc == IntPtr.Zero || SendU32(desc, Sel("descriptorType")) != typeObjectSpecifier)
+        if (desc == IntPtr.Zero || depth > MaxSpecifierDepth || SendU32(desc, Sel("descriptorType")) != typeObjectSpecifier)
             return null;
 
         var want = SendU32(DescFor(desc, "want"), Sel("typeCodeValue"));
         var form = SendU32(DescFor(desc, "form"), Sel("enumCodeValue"));
         var seld = DescFor(desc, "seld");
-        var container = ParseSpecifier(DescFor(desc, "from"));   // null 'from' → null container (default home)
+        var container = ParseSpecifier(DescFor(desc, "from"), depth + 1);   // null 'from' → null container (default home)
         var cls = ClassName(want);
 
         if (form == FourCC("prop"))

@@ -111,6 +111,18 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
     }
 
     /// <summary>Stops the monitor loop and kills every process (reverse order). Idempotent.</summary>
+    /// <summary>Latches the supervisor into the stopping state and halts child respawns IMMEDIATELY —
+    /// safe to call synchronously from a signal handler, before the async <see cref="StopAsync"/>
+    /// teardown runs. Without this, a `kill -TERM` delivered to the launcher AND its children races the
+    /// monitor loop: a child that exits cleanly on its own SIGTERM looks "died" to the 1s monitor tick,
+    /// which respawns it (new PID) because _stopped isn't set yet — the shell appears to "not die" and
+    /// needs SIGKILL. Setting the latch on signal receipt closes that window (bevel-ply).</summary>
+    public void RequestStop()
+    {
+        _stopped = true;
+        _monitorCts?.Cancel();
+    }
+
     public async Task StopAsync(CancellationToken ct = default)
     {
         _stopped = true;

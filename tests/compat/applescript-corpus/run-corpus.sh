@@ -22,7 +22,8 @@ for f in "$DIR"/*.applescript; do
 	esac
 	inscope=$((inscope + 1))
 	script=$(sed "s|application \"Finder\"|$REPL|g" "$f")   # the mechanical retarget
-	if timeout 8 osascript -e "$script" >/dev/null 2>&1; then
+	# `timeout` is GNU coreutils (absent on stock macOS); a perl SIGALRM survives exec and caps osascript portably.
+	if perl -e 'alarm shift; exec @ARGV' 8 osascript -e "$script" >/dev/null 2>&1; then
 		pass=$((pass + 1)); printf "  ok %-34s\n" "$base"
 	else
 		fail=$((fail + 1)); printf "  XX %-34s\n" "$base"

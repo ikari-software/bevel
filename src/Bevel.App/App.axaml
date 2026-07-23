@@ -11,5 +11,46 @@
     <Application.Styles>
         <!-- Default theme = Bevel.Themes.Win2000 (M0: re-exports Classic.Avalonia). -->
         <StyleInclude Source="avares://Bevel.Themes.Win2000/Win2000Theme.axaml" />
+
+        <!-- Live-themable control contract (bevel-dob): bind each control's Theme to the shared
+             Bevel.Theme.* swap key. Swapping the active theme changes those resources, and because Theme
+             here is a DynamicResource, every bound control re-templates IN PLACE — geometry + layout, no
+             rebuild/restart. Each theme provides its own Bevel.Theme.* ControlTheme. -->
+        <Style Selector="Button">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.Button}" />
+        </Style>
+        <Style Selector="ToggleButton">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.ToggleButton}" />
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.CheckBox}" />
+        </Style>
+        <Style Selector="RadioButton">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.RadioButton}" />
+        </Style>
+        <Style Selector="ProgressBar">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.ProgressBar}" />
+        </Style>
+        <Style Selector="TabItem">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.TabItem}" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.ComboBox}" />
+        </Style>
+        <Style Selector="ScrollBar">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.ScrollBar}" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.TextBox}" />
+        </Style>
+        <Style Selector="Menu">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.Menu}" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.MenuItem}" />
+        </Style>
+        <Style Selector="TabControl">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.TabControl}" />
+        </Style>
     </Application.Styles>
 </Application>

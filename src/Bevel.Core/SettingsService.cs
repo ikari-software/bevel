@@ -264,6 +264,7 @@ public sealed class SettingsService : IDisposable
         _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
         _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin, SettingsJsonContext.Default.Boolean);
         _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
+        _raw["taskbarStartMenuFrequentCount"] = JsonSerializer.SerializeToElement(_settings.TaskbarStartMenuFrequentCount, SettingsJsonContext.Default.Int32);
         _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
         _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
         _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
@@ -305,6 +306,7 @@ public sealed class SettingsService : IDisposable
                 ? was : WorkAreaStrategy.Nudge,
             RunAtLogin = GetBool("runAtLogin") ?? false,
             TaskbarButtonWidth = GetInt("taskbarButtonWidth") ?? 160,
+            TaskbarStartMenuFrequentCount = GetInt("taskbarStartMenuFrequentCount") ?? 6,
             TaskbarButtonWidthMode = Enum.TryParse<TaskbarButtonWidthMode>(GetString("taskbarButtonWidthMode"), out var twm)
                 ? twm : TaskbarButtonWidthMode.ShrinkToFit,
             TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
@@ -391,6 +393,9 @@ public sealed class BevelSettings
 
     /// <summary>M2: maximum width (logical px) of a taskbar window button.</summary>
     public int TaskbarButtonWidth { get; set; } = 160;
+
+    /// <summary>How many entries the Start menu's curated left column shows (newest + most-used). Default 6.</summary>
+    public int TaskbarStartMenuFrequentCount { get; set; } = 6;
 
     /// <summary>bevel-m2.10: how button width is chosen — shrink-to-fit (default) or fixed at the max.</summary>
     public TaskbarButtonWidthMode TaskbarButtonWidthMode { get; set; } = TaskbarButtonWidthMode.ShrinkToFit;

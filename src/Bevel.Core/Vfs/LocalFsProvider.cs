@@ -397,6 +397,14 @@ internal static class LocalTrash
 {
     public static void MoveToTrash(string source, string destination)
     {
+        // A same-volume Directory.Move onto an existing directory throws IOException, which the
+        // cross-volume fallback below would misread as EXDEV and "recover" by copy-merge + delete of
+        // the source — silently destroying it. Trash always passes a unique destination, so this only
+        // guards the general-relocate reuse (MoveAsync); make a collision an explicit error either way
+        // (bevel-376 review).
+        if (System.IO.Directory.Exists(destination) || System.IO.File.Exists(destination))
+            throw new IOException($"Cannot move to '{destination}': an item with that name already exists.");
+
         if (System.IO.Directory.Exists(source))
             MoveDirectory(source, destination);
         else

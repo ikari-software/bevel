@@ -8,6 +8,33 @@ namespace Bevel.Taskbar.Tests;
 public sealed class ShellModelTests
 {
     [AvaloniaFact]
+    public async Task Programs_reconcile_live_when_installed_apps_change()
+    {
+        // The Start menu's Programs must NOT be a one-shot startup list: installing or removing an app
+        // updates it live via IAppEnvironment.InstalledAppsChanged (bevel).
+        var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
+        using var model = new ShellModel(null, appEnv, null);
+        model.Start();
+        for (var i = 0; i < 50 && model.Programs.Count < 1; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+        Assert.Equal("Alpha", Assert.Single(model.Programs).DisplayName);
+
+        // App installed → the list grows live, in place.
+        appEnv.RaiseInstalledAppsChanged(new[]
+        {
+            new InstalledApp("com.a", "Alpha", null),
+            new InstalledApp("com.b", "Beta", null),
+        });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, model.Programs.Count);
+        Assert.Equal("Beta", model.Programs[1].DisplayName);
+
+        // App removed → it drops live.
+        appEnv.RaiseInstalledAppsChanged(new[] { new InstalledApp("com.b", "Beta", null) });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Beta", Assert.Single(model.Programs).DisplayName);
+    }
+
+    [AvaloniaFact]
     public async Task Reappearing_window_is_revived_in_place()
     {
         var manager = new StubWindowManager();

@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -140,7 +141,13 @@ public partial class TaskbarView : UserControl
         if (ComputeTintColor(bgColor, opacity, themeColor) is { } c)
             RootGrid.Background = new Avalonia.Media.SolidColorBrush(c);
         else
-            RootGrid.ClearValue(Avalonia.Controls.Panel.BackgroundProperty);   // restore the theme DynamicResource
+            // Re-establish the theme-token binding — NOT ClearValue. The bar's background is set in XAML
+            // as {DynamicResource Bevel.Brush.TaskbarBackground}; that binding IS the local value, so
+            // ClearValue drops the DynamicResource subscription and freezes the bar on whatever value was
+            // current (the grey Win2000 token at startup), blind to later theme swaps. Re-applying the
+            // DynamicResource keeps RootGrid live-tracking the token across theme changes (bevel-dob).
+            RootGrid[!Avalonia.Controls.Panel.BackgroundProperty] =
+                new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("Bevel.Brush.TaskbarBackground");
     }
 
     /// <summary>Pure tint policy (bevel-cust.appearance) — testable without a visual tree. Returns the
@@ -364,6 +371,18 @@ public partial class TaskbarView : UserControl
             // content hit-testable; per-button direct handlers remain for redundancy.
             WindowButtonArea.AddHandler(InputElement.PointerEnteredEvent, OnTaskButtonPointerEntered, RoutingStrategies.Bubble);
             WindowButtonArea.AddHandler(InputElement.PointerExitedEvent, OnTaskButtonPointerExited, RoutingStrategies.Bubble);
+            // Dismiss a hover preview once the cursor strays >30px from its anchor button — PointerExited
+            // only fires at the button edge, so this closes the preview when the pointer drifts across the
+            // strip's gaps without landing on another button (user request).
+            WindowButtonArea.AddHandler(InputElement.PointerMovedEvent, OnTaskbarPointerMoved, RoutingStrategies.Bubble);
+
+            // Close the transient hover surfaces — the window preview and the Start menu (with its
+            // submenus) — when the whole app loses focus. The taskbar window is deliberately
+            // non-activating (SetCanBecomeKeyWindow=false), so Window.Deactivated never fires reliably;
+            // IActivatableLifetime raises Background on the app-level resign-active, which is the signal
+            // we actually want and which does NOT fire when our own in-app popup opens (user request).
+            if (Application.Current?.TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime life)
+                life.Deactivated += OnAppDeactivated;
 
             // Drag-to-resize the bar in whole button-row steps (bevel-0ml).
             if (_window is not null)
@@ -600,6 +619,32 @@ public partial class TaskbarView : UserControl
         (PreviewImage.Source as IDisposable)?.Dispose();
         PreviewImage.Source = null;
         PreviewFrame.IsVisible = false;
+    }
+
+    /// <summary>How far (logical px) the cursor may drift from the preview's anchor button before the
+    /// preview is dismissed.</summary>
+    private const double PreviewDismissDistance = 30;
+
+    /// <summary>Closes the hover preview (or cancels a pending one) once the cursor is more than
+    /// <see cref="PreviewDismissDistance"/> px outside the anchor button's bounds.</summary>
+    private void OnTaskbarPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_tooltipAnchor is null) return;   // nothing shown or pending
+        var p = e.GetPosition(_tooltipAnchor);
+        // Distance from the pointer to the anchor's local rect (0,0 .. W,H); 0 while inside it.
+        var dx = Math.Max(0, Math.Max(-p.X, p.X - _tooltipAnchor.Bounds.Width));
+        var dy = Math.Max(0, Math.Max(-p.Y, p.Y - _tooltipAnchor.Bounds.Height));
+        if (dx * dx + dy * dy > PreviewDismissDistance * PreviewDismissDistance)
+            HideTaskbarTooltip();
+    }
+
+    /// <summary>The app moved to the background (user clicked another application). Dismiss the
+    /// transient surfaces so they don't linger over whatever now has focus.</summary>
+    private void OnAppDeactivated(object? sender, ActivatedEventArgs e)
+    {
+        if (e.Kind != ActivationKind.Background) return;
+        HideTaskbarTooltip();
+        _startMenu?.Close();
     }
 
     /// <summary>Start button height cap, in button rows (user: "cap start at 2x-3x row height").</summary>

@@ -25,8 +25,15 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
 
     private bool _disposed;
 
+    // Debounce + single-flight for filesystem-driven refreshes (see OnAppRootChanged).
+    private readonly Lock _refreshLock = new();
+    private System.Threading.Timer? _debounce;
+    private bool _refreshRunning;
+    private bool _refreshQueued;
+
     public event EventHandler<RunningApp>? AppLaunched;
     public event EventHandler<RunningApp>? AppTerminated;
+    public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
 
     /// <summary>
     /// Creates the environment with the default macOS application roots.
@@ -167,6 +174,14 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
 
         _disposed = true;
 
+        System.Threading.Timer? debounce;
+        lock (_refreshLock)
+        {
+            debounce = _debounce;
+            _debounce = null;
+        }
+        debounce?.Dispose();
+
         foreach (var watcher in _watchers)
         {
             watcher.EnableRaisingEvents = false;
@@ -213,21 +228,56 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
 
     private void OnAppRootChanged(object sender, FileSystemEventArgs e)
     {
-        // Debounce: re-enumerate and fire events for net-new or removed apps.
-        // For simplicity, we re-enumerate and compare against the cache.
-        // A production implementation would use a timer to coalesce rapid changes.
-        _ = RefreshAndRaiseEventsAsync();
+        if (_disposed)
+            return;
+
+        // Coalesce a burst of filesystem events (installing an app writes many files across its bundle) into
+        // a single trailing-edge refresh: (re)arm a 250ms timer that fires once the writes go quiet, instead
+        // of spawning one delayed full re-enumeration per event (review: adversarial — watcher storm).
+        lock (_refreshLock)
+        {
+            _debounce ??= new System.Threading.Timer(_ => TriggerRefresh(), null, Timeout.Infinite, Timeout.Infinite);
+            _debounce.Change(250, Timeout.Infinite);
+        }
     }
 
-    private async Task RefreshAndRaiseEventsAsync()
+    // Run the refresh, but never two at once: overlapping refreshes would both read the same _cachedRunning,
+    // diff it, and write it back — emitting duplicate or torn launch/terminate events. If one is already
+    // running, remember to run exactly one more pass afterwards for changes that landed mid-refresh.
+    private void TriggerRefresh()
+    {
+        lock (_refreshLock)
+        {
+            if (_refreshRunning) { _refreshQueued = true; return; }
+            _refreshRunning = true;
+        }
+        _ = Task.Run(RunRefreshLoop);
+    }
+
+    private void RunRefreshLoop()
+    {
+        while (true)
+        {
+            RefreshAndRaiseEvents();
+            lock (_refreshLock)
+            {
+                if (!_refreshQueued || _disposed) { _refreshRunning = false; return; }
+                _refreshQueued = false;
+            }
+        }
+    }
+
+    private void RefreshAndRaiseEvents()
     {
         if (_disposed)
             return;
 
         try
         {
-            // Small delay to batch rapid filesystem changes.
-            await Task.Delay(250);
+            // The watcher is on the application folders, so a change means the INSTALLED set may have
+            // changed: re-enumerate and publish the fresh list (bevel). Consumers diff it in place, so a
+            // no-op change is harmless.
+            InstalledAppsChanged?.Invoke(this, EnumerateInstalledApps());
 
             IReadOnlyList<RunningApp> previousRunning;
             lock (_lock)

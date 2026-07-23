@@ -34,20 +34,38 @@ public static class ThemeService
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
         ("win2000", "Bevel Classic"),
+        ("luna", "Bevel Luna (XP)"),
         ("flat", "Bevel Flat (preview)"),
     };
 
     /// <summary>The default theme id (the base Win2000 tokens). Empty/unknown resolves here.</summary>
     public const string DefaultTheme = "win2000";
 
+    /// <summary>The currently-applied theme id. Surfaces that swap whole layouts by theme (the Start
+    /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.</summary>
+    public static string Current => _appliedId;
+
     private static readonly Uri BaseUri = new("avares://Bevel.App/App.axaml");
     private static ResourceInclude? _applied;
+    private static StyleInclude? _appliedStyles;
     private static string _appliedId = DefaultTheme;
 
-    /// <summary>The token-override dictionary a theme merges, or null for the base theme (merges nothing).</summary>
+    /// <summary>The token-override dictionary a theme merges, or null when it ships none (base theme, or
+    /// a Styles-set theme that carries its tokens inside its own <see cref="StylesFor"/> bundle).</summary>
     private static string? SourceFor(string id) => id switch
     {
         "flat" => "avares://Bevel.Themes.Win2000/ThemeFlat.axaml",
+        _ => null,
+    };
+
+    /// <summary>A theme's control-template <c>Styles</c> set (its own <c>ControlTheme</c>s + tokens),
+    /// added to <see cref="Application.Styles"/> so it overrides the Classic templates by precedence,
+    /// or null for a token-only theme that reuses the shared Classic templates (bevel-dob). This is
+    /// what lets a real alternate visual style (Luna's gradient chrome) replace geometry, not just
+    /// colours.</summary>
+    private static string? StylesFor(string id) => id switch
+    {
+        "luna" => "avares://Bevel.Themes.Luna/LunaTheme.axaml",
         _ => null,
     };
 
@@ -66,13 +84,19 @@ public static class ThemeService
     {
         var theme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultTheme : id!;
         if (theme == _appliedId) return;
-        if (Application.Current?.Resources is not { } res) return;
+        if (Application.Current is not { } app || app.Resources is not { } res) return;
 
-        // Drop the previously-applied theme dict (if any) so themes don't stack in the merge list.
+        // Drop the previously-applied theme contributions (if any) so themes don't stack — both the
+        // token dict at Application level and the control-template Styles set.
         if (_applied is not null)
         {
             res.MergedDictionaries.Remove(_applied);
             _applied = null;
+        }
+        if (_appliedStyles is not null)
+        {
+            app.Styles.Remove(_appliedStyles);
+            _appliedStyles = null;
         }
 
         if (SourceFor(theme) is { } src)
@@ -81,6 +105,33 @@ public static class ThemeService
             res.MergedDictionaries.Add(dict);
             _applied = dict;
         }
-        _appliedId = theme;
+        // Append the theme's Styles LAST so its ControlThemes + tokens win over the base Win2000 set.
+        // Adding them re-resolves every Bevel.Theme.* DynamicResource, re-templating live controls in
+        // place. Guard it: a faulty re-template inside a (third-party) control template must degrade to a
+        // partial swap, never crash the whole shell on a theme change — a control-theme handler throwing
+        // during the resource-changed notification would otherwise propagate straight out of here.
+        var applied = true;
+        if (StylesFor(theme) is { } stylesSrc)
+        {
+            var styles = new StyleInclude(BaseUri) { Source = new Uri(stylesSrc) };
+            _appliedStyles = styles;   // tracked for removal even if a re-template side-effect throws
+            try { app.Styles.Add(styles); }
+            catch (Exception ex)
+            {
+                applied = false;
+                Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex.Message}");
+            }
+        }
+        // Commit the applied id only if nothing threw. On a faulty swap we leave _appliedId at the previous
+        // theme so a retry of the SAME theme isn't swallowed as a no-op — otherwise a half-applied theme
+        // would latch and Apply(theme) could never re-run to recover.
+        if (applied) _appliedId = theme;
+
+        // Live re-templating (bevel-dob): controls bind Theme="{DynamicResource Bevel.Theme.*}", so adding
+        // the theme's Styles above re-resolves those keys and re-templates every bound control IN PLACE —
+        // geometry + layout, no window rebuild. (This supersedes the old detach/reattach approach, which
+        // visibly rebuilt windows and crashed.) Surface brushes (Bevel.Brush.*) update as plain
+        // DynamicResource tokens. Controls NOT on the contract keep their creation-time template until the
+        // surface is next built.
     }
 }

@@ -3,9 +3,13 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Markup.Xaml.MarkupExtensions;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Bevel.Pal.Abstractions;
@@ -65,9 +69,122 @@ public partial class StartMenu : UserControl
     /// </summary>
     public Task OpenAsync(Control placementTarget)
     {
+        ApplyThemeLayout();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
         return Task.CompletedTask;
+    }
+
+    private bool _lunaWired;
+
+    /// <summary>Picks the layout for the active theme (bevel-dob). The menu is never on screen during a
+    /// theme swap, so toggling the whole visual tree here is safe. The Luna two-column panel is wired
+    /// once, on first show: its pinned column binds the same reconciled Programs collection the classic
+    /// cascade uses, so it stays off-thread and current.</summary>
+    private void ApplyThemeLayout()
+    {
+        var luna = Bevel.UI.ThemeService.Current == "luna";
+        LunaLayout.IsVisible = luna;
+        ClassicLayout.IsVisible = !luna;
+        if (luna && !_lunaWired)
+        {
+            LunaUserName.Text = CurrentUserDisplayName();
+            if (_programsVm is not null)
+            {
+                LunaPinned.ItemsSource = _programsVm.FrequentPrograms;   // curated: newest + most-used, capped
+                WireAllProgramsFlyout();                                 // full list lives in the flyout
+            }
+            _lunaWired = true;
+        }
+    }
+
+    private Flyout? _allProgramsFlyout;
+    private StackPanel? _allProgramsList;
+
+    /// <summary>Attaches a plain Flyout to the Luna "All Programs" row, with content built entirely in
+    /// code. A MenuFlyout's items and an inline-XAML flyout both came up 0×0 in this popup (its items
+    /// don't pick up LunaLayout's row styles or the app MenuItem theme, and popups don't inherit the
+    /// menu's DataContext) — so every row here carries its own explicit size, brushes and hover, with
+    /// no reliance on outside styles.</summary>
+    private void WireAllProgramsFlyout()
+    {
+        if (_programsVm is null) return;
+        _allProgramsList = new StackPanel();
+        var scroll = new ScrollViewer
+        {
+            Content = _allProgramsList,
+            MaxHeight = 460,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        var frame = new Border
+        {
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(2),
+            MinWidth = 200,
+            Child = scroll,
+        };
+        // Chrome from the Luna theme tokens (resolved live), not literals — see LunaTheme.axaml.
+        frame[!Border.BackgroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPinnedColumn");
+        frame[!Border.BorderBrushProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceIconBorder");
+        _allProgramsFlyout = new Flyout { Content = frame, Placement = PlacementMode.RightEdgeAlignedBottom };
+        LunaAllProgramsButton.Flyout = _allProgramsFlyout;
+
+        RebuildAllProgramsList();
+        _programsVm.Programs.CollectionChanged += (_, _) => RebuildAllProgramsList();
+    }
+
+    private void RebuildAllProgramsList()
+    {
+        if (_programsVm is null || _allProgramsList is null) return;
+        _allProgramsList.Children.Clear();
+        foreach (var p in _programsVm.Programs)
+            _allProgramsList.Children.Add(BuildAllProgramsRow(p));
+    }
+
+    private Control BuildAllProgramsRow(ProgramItemViewModel p)
+    {
+        var icon = new Image { Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center };
+        icon.Bind(Image.SourceProperty, new Binding(nameof(ProgramItemViewModel.IconSource)) { Source = p });
+        var label = new TextBlock
+        {
+            Text = p.DisplayName,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 13,
+        };
+        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText");
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(icon);
+        content.Children.Add(label);
+        var row = new Border
+        {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(8, 5),
+            CornerRadius = new CornerRadius(3),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = content,
+        };
+        // Full-row Luna selection on hover; colours come from the theme tokens (resolved live), matching
+        // the XAML Button.lunarow hover. Re-apply the themed foreground binding on exit.
+        row.PointerEntered += (_, _) => { row.Background = ThemedBrush("Bevel.Brush.Highlight", Brushes.RoyalBlue); label.Foreground = Brushes.White; };
+        row.PointerExited += (_, _) => { row.Background = Brushes.Transparent; label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText"); };
+        row.PointerPressed += (_, _) =>
+        {
+            if (p.LaunchCommand?.CanExecute(null) == true) p.LaunchCommand.Execute(null);
+            Close();
+        };
+        return row;
+    }
+
+    /// <summary>Resolves a themed brush from the active theme's resources — the flyout is Luna-only and is
+    /// attached by the time a row can be hovered — falling back only if the key is somehow absent.</summary>
+    private IBrush ThemedBrush(string key, IBrush fallback)
+        => this.TryFindResource(key, out var v) && v is IBrush b ? b : fallback;
+
+    private static string CurrentUserDisplayName()
+    {
+        var u = Environment.UserName;
+        return string.IsNullOrWhiteSpace(u) ? "User" : char.ToUpperInvariant(u[0]) + u.Substring(1);
     }
 
     /// <summary>Closes the menu; the Menu's own cascade popups close with it.</summary>
@@ -233,6 +350,18 @@ public partial class StartMenu : UserControl
     private void OnRunClick(object? sender, RoutedEventArgs e) => Close();
     private void OnLogOffClick(object? sender, RoutedEventArgs e) => Close();
     private void OnShutDownClick(object? sender, RoutedEventArgs e) => Close();
+
+    // ── Luna two-column handlers ───────────────────────────────────────
+    // All Programs opens a flyout bound to the full Programs collection (see StartMenu.axaml). Launching
+    // a program closes the whole menu. Places/Search/Help/Run are visual stubs, matching the classic leaves.
+    private void OnLunaProgramClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaPlaceClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }
+    private void OnLunaHelpClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaSearchClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaRunClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaLogOffClick(object? sender, RoutedEventArgs e) { Close(); _restart(); }
+    private void OnLunaTurnOffClick(object? sender, RoutedEventArgs e) { Close(); _quit(); }
     private void OnRestartClick(object? sender, RoutedEventArgs e)
     {
         Close();

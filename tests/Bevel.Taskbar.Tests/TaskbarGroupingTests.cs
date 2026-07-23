@@ -133,6 +133,56 @@ public class TaskbarGroupingTests
         Assert.Equal(3, groupAfter.Count);
     }
 
+    // ── Grouped-button context-menu verbs (app-scoped Close/Minimize/Restore all) ──
+    private static TaskItemViewModel FinderWin(string id, IWindowManager wm)
+        => new(new ForeignWindow(new ForeignWindowId(id), id, "com.apple.finder", false, false, default), wm);
+
+    [Fact]
+    public void CloseAllCommand_closes_every_window_of_the_grouped_app()
+    {
+        var rec = new RecordingWm();
+        var group = new TaskGroupViewModel("com.apple.finder");
+        group.SyncChildren(new[] { FinderWin("f1", rec), FinderWin("f2", rec), FinderWin("f3", rec) });
+
+        group.CloseAllCommand.Execute(null);
+
+        Assert.Equal(new[] { "f1", "f2", "f3" }, rec.Closed);
+    }
+
+    [Fact]
+    public void MinimizeAll_and_RestoreAll_act_on_all_windows()
+    {
+        var rec = new RecordingWm();
+        var group = new TaskGroupViewModel("com.apple.finder");
+        group.SyncChildren(new[] { FinderWin("f1", rec), FinderWin("f2", rec) });
+
+        group.MinimizeAllCommand.Execute(null);
+        group.RestoreAllCommand.Execute(null);
+
+        Assert.Equal(new[] { "f1", "f2" }, rec.Minimized);
+        Assert.Equal(new[] { "f1", "f2" }, rec.Restored);
+    }
+
+    private sealed class RecordingWm : IWindowManager
+    {
+        public System.Collections.Generic.List<string> Closed { get; } = new();
+        public System.Collections.Generic.List<string> Minimized { get; } = new();
+        public System.Collections.Generic.List<string> Restored { get; } = new();
+        public Capabilities Capabilities { get; } =
+            new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
+        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) { Restored.Add(id.Value); return Task.CompletedTask; }
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) { Closed.Add(id.Value); return Task.CompletedTask; }
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
+        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
+        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
+        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+    }
+
     private sealed class GroupStubWm : IWindowManager
     {
         public Capabilities Capabilities { get; } =

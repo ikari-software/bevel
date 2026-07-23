@@ -1,5 +1,6 @@
 # --- Tooling / session state ---
 .omc/
+.mimocode/
 .claude/settings.local.json
 
 # --- macOS ---

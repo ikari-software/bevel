@@ -1,24 +1,24 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:classic="clr-namespace:Classic.Avalonia.Theme;assembly=Classic.Avalonia.Theme"
+             xmlns:tb="clr-namespace:Bevel.Taskbar"
              x:Class="Bevel.Taskbar.StartMenu">
     <!-- UserControl requires a single child; the Popup carries the menu. -->
     <Panel>
         <!--
-            Win2000 Start menu (bevel-m2.11). The item column is a vertical Menu whose
-            items are rendered with the DEFAULT MenuItem ControlTheme (ItemContainerTheme
-            below) rather than the menu-BAR theme a Menu normally applies — so every row
-            gets the classic full-row COLOR_HIGHLIGHT (#0A246A) selection with white text,
-            a reserved 19px icon column, the black cascade arrow, and etched separators,
-            all straight from the theme (docs/reference/win2000/taskbar-start-menu.md).
-            The whole thing sits in a raised 3D ClassicBorderDecorator, with the navy
-            sidebar banner to its left — the one piece of custom chrome a menu can't supply.
+            The Start menu ships two layouts (bevel-dob) toggled by the active theme in code-behind
+            (it is never on screen during a theme change, so a rebuild is safe): the Win2000 single
+            column with a navy sidebar banner, and the XP Luna two-column panel (header + pinned /
+            places columns + coloured footer) from docs/design/luna/styleguide.html.
         -->
         <Popup x:Name="MenuPopup"
                IsLightDismissEnabled="True"
                Placement="Top"
                WindowManagerAddShadowHint="False">
-            <classic:ClassicBorderDecorator BorderStyle="AltRaised"
+            <Panel>
+            <!-- ══════════════════ Win2000 layout ══════════════════ -->
+            <classic:ClassicBorderDecorator x:Name="ClassicLayout"
+                                            BorderStyle="AltRaised"
                                             BorderThickness="2"
                                             Background="{DynamicResource Bevel.Brush.Menu}">
                 <Grid ColumnDefinitions="26,*">
@@ -43,12 +43,13 @@
                         </LayoutTransformControl>
                     </Border>
 
-                    <!-- Item column: a vertical Menu using the default MenuItem theme. -->
+                    <!-- Item column: a vertical Menu using the themed dropdown MenuItem, so the
+                         selection highlight + icon column track the active theme. -->
                     <Menu Grid.Column="1"
                           x:Name="ItemsMenu"
                           MinWidth="180"
                           Background="{DynamicResource Bevel.Brush.Menu}"
-                          ItemContainerTheme="{StaticResource {x:Type MenuItem}}">
+                          ItemContainerTheme="{DynamicResource Bevel.Theme.MenuItem}">
                         <Menu.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Vertical" />
@@ -77,6 +78,211 @@
                     </Menu>
                 </Grid>
             </classic:ClassicBorderDecorator>
+
+            <!-- ══════════════════ XP Luna layout ══════════════════ -->
+            <Border x:Name="LunaLayout" IsVisible="False"
+                    Width="360" CornerRadius="8,8,5,5"
+                    BorderBrush="{DynamicResource Luna.Brush.StartMenuBorder}" BorderThickness="1.5"
+                    ClipToBounds="True" Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
+                <Border.Styles>
+                    <!-- Left-column pinned item + right-column place: flat until hover, then the blue
+                         full-row Luna selection with white text. -->
+                    <Style Selector="Button.lunarow">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="Padding" Value="10,5" />
+                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Template">
+                            <ControlTemplate TargetType="Button">
+                                <Border Name="row" Background="{TemplateBinding Background}"
+                                        Padding="{TemplateBinding Padding}" CornerRadius="3">
+                                    <ContentPresenter Content="{TemplateBinding Content}"
+                                                      HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                </Border>
+                            </ControlTemplate>
+                        </Setter>
+                    </Style>
+                    <Style Selector="Button.lunarow:pointerover /template/ Border#row">
+                        <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                    </Style>
+                    <Style Selector="Button.lunarow:pointerover TextBlock">
+                        <Setter Property="Foreground" Value="White" />
+                    </Style>
+                    <Style Selector="TextBlock.pintitle">
+                        <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPinTitle}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                        <Setter Property="FontSize" Value="13" />
+                    </Style>
+                    <Style Selector="TextBlock.pinsub">
+                        <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPinSub}" />
+                        <Setter Property="FontSize" Value="11" />
+                    </Style>
+                    <Style Selector="TextBlock.place">
+                        <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPlaceText}" />
+                        <Setter Property="FontSize" Value="13" />
+                        <Setter Property="VerticalAlignment" Value="Center" />
+                    </Style>
+                    <Style Selector="Button.footer">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="Foreground" Value="White" />
+                        <Setter Property="Padding" Value="8,4" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                        <Setter Property="Template">
+                            <ControlTemplate TargetType="Button">
+                                <Border Name="fr" Background="{TemplateBinding Background}"
+                                        Padding="{TemplateBinding Padding}" CornerRadius="3">
+                                    <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center" />
+                                </Border>
+                            </ControlTemplate>
+                        </Setter>
+                    </Style>
+                    <Style Selector="Button.footer:pointerover /template/ Border#fr">
+                        <Setter Property="Background" Value="{DynamicResource Luna.Brush.StartMenuFooterHover}" />
+                    </Style>
+                </Border.Styles>
+
+                <DockPanel>
+                    <!-- Header: blue gradient with avatar + user name -->
+                    <Border DockPanel.Dock="Top" Height="56" Padding="14,0"
+                            Background="{DynamicResource Luna.Brush.StartMenuHeader}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="11">
+                            <Border Width="40" Height="40" CornerRadius="6"
+                                    BorderBrush="White" BorderThickness="2"
+                                    Background="{DynamicResource Luna.Brush.StartMenuAvatar}">
+                                <Canvas Width="40" Height="40">
+                                    <Ellipse Canvas.Left="13" Canvas.Top="8" Width="14" Height="14" Fill="#FFFFFF" Opacity="0.92" />
+                                    <Path Data="M8 34 Q20 18 32 34 Z" Fill="#FFFFFF" Opacity="0.92" />
+                                </Canvas>
+                            </Border>
+                            <TextBlock x:Name="LunaUserName" Text="User"
+                                       Foreground="White" FontWeight="Bold" FontSize="17"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                    <!-- Orange banded separator under the header -->
+                    <Border DockPanel.Dock="Top" Height="3" Background="{DynamicResource Luna.Brush.StartMenuHeaderRule}" />
+                    <Border DockPanel.Dock="Top" Height="1.5" Background="{DynamicResource Luna.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
+
+                    <!-- Footer: coloured band with Log Off / Turn Off -->
+                    <Border DockPanel.Dock="Bottom" Height="44" Padding="10,0"
+                            Background="{DynamicResource Luna.Brush.StartMenuFooter}">
+                        <Grid ColumnDefinitions="*,*" VerticalAlignment="Center">
+                            <Button Grid.Column="0" Classes="footer" Click="OnLunaLogOffClick">
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                    <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">
+                                        <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
+                                              Stroke="White" StrokeThickness="2" Margin="0"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="Log Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="1" Classes="footer" Click="OnLunaTurnOffClick">
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                    <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
+                                        <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
+                                              Stroke="White" StrokeThickness="2"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="Turn Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Body: pinned (left, white) + places (right, pale-blue) -->
+                    <Grid ColumnDefinitions="*,158">
+                        <!-- Left column -->
+                        <DockPanel Grid.Column="0" Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
+                            <!-- All Programs, bottom-anchored -->
+                            <Border DockPanel.Dock="Bottom" Height="1.4" Background="{DynamicResource Luna.Brush.StartMenuDivider}" Margin="12,0" />
+            <Button x:Name="LunaAllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="12,7">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <TextBlock Text="All Programs" Classes="pintitle" VerticalAlignment="Center" />
+                                    <Border Width="20" Height="20" CornerRadius="10"
+                                            Background="{DynamicResource Luna.Brush.StartMenuAllProgramsGlyph}">
+                                        <Path Data="M0,0 L6,4.5 L0,9 Z" Fill="White"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                            </Button>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="LunaPinned">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="tb:ProgramItemViewModel">
+                                            <Button Classes="lunarow" Command="{Binding LaunchCommand}"
+                                                    Click="OnLunaProgramClick">
+                                                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                                    <Image Source="{Binding IconSource}" Width="28" Height="28"
+                                                           VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding DisplayName}" Classes="pintitle"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+
+                        <!-- Right column: places + system -->
+                        <StackPanel Grid.Column="1" Spacing="1"
+                                    Background="{DynamicResource Luna.Brush.StartMenuPlacesColumn}">
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}" />
+                                    <TextBlock Text="My Documents" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}" />
+                                    <TextBlock Text="My Pictures" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}" />
+                                    <TextBlock Text="My Music" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Border Height="1.2" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
+                            <Button Classes="lunarow" Click="OnLunaSettingsClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1" />
+                                    <TextBlock Text="Control Panel" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnLunaHelpClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuHelpIcon}">
+                                        <TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="Help and Support" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnLunaSearchClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1" />
+                                    <TextBlock Text="Search" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnLunaRunClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1" />
+                                    <TextBlock Text="Run…" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </DockPanel>
+            </Border>
+            </Panel>
         </Popup>
     </Panel>
 </UserControl>

@@ -209,8 +209,10 @@ internal static class Program
 
         // Cancel the default signal action so the ordered teardown below actually runs — without this,
         // .NET terminates the launcher before it can reap its children, orphaning the whole shell.
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
+        // RequestStop() latches the supervisor closed SYNCHRONOUSLY here so it can't respawn a child that
+        // exited on its own SIGTERM before the async teardown runs (bevel-ply).
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
         stop.Wait();
 
         // Ordered teardown off the thread pool (no lingering sync context — bevel-fu5): kill every child

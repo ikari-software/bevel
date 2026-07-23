@@ -27,6 +27,37 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://Bevel.Themes.Win2000/Tokens.axaml" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- Win2000 control themes under the shared Bevel.Theme.* swap keys (bevel-dob): controls bind
+                 Theme="{DynamicResource Bevel.Theme.X}", so a theme switch re-templates them live. Each
+                 aliases the vendored Classic implicit theme so the default look is unchanged. -->
+            <ControlTheme x:Key="Bevel.Theme.Button" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}" />
+            <ControlTheme x:Key="Bevel.Theme.ToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}" />
+            <!-- Start button uses the ordinary grey push-button in Win2000; Luna swaps in the green pill. -->
+            <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="FontSize" Value="11" />
+            </ControlTheme>
+            <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}" />
+            <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}" />
+            <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}" />
+            <ControlTheme x:Key="Bevel.Theme.TabItem" TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}" />
+            <ControlTheme x:Key="Bevel.Theme.ComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}" />
+            <ControlTheme x:Key="Bevel.Theme.ScrollBar" TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}" />
+            <ControlTheme x:Key="Bevel.Theme.TextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}" />
+            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu" BasedOn="{StaticResource {x:Type Menu}}" />
+            <ControlTheme x:Key="Bevel.Theme.MenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" />
+            <ControlTheme x:Key="Bevel.Theme.TabControl" TargetType="TabControl" BasedOn="{StaticResource {x:Type TabControl}}" />
+
+            <!-- Shell-surface brushes (bevel-dob): the taskbar/desktop bind these so a theme swap recolours
+                 them live (DynamicResource). Win2000 = the flat grey control face + the classic sunken tray
+                 well with a raised light/dark divider. -->
+            <SolidColorBrush x:Key="Bevel.Brush.TaskbarBackground" Color="#D4D0C8" />
+            <SolidColorBrush x:Key="Bevel.Brush.TrayWell" Color="#D4D0C8" />
+            <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#000000" />
+            <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerLight" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerDark" Color="#808080" />
+            <Thickness x:Key="Bevel.Metric.TrayWellBorder">2</Thickness>
+            <Thickness x:Key="Bevel.Metric.StartButtonMargin">1,1,0,1</Thickness>
         </ResourceDictionary>
     </Styles.Resources>
 </Styles>

@@ -302,6 +302,8 @@ public sealed class ShellCoreIntegrationTests
 
         public event EventHandler<RunningApp>? AppLaunched;
         public event EventHandler<RunningApp>? AppTerminated;
+        public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
+        public void RaiseInstalledAppsChanged(IReadOnlyList<InstalledApp> apps) => InstalledAppsChanged?.Invoke(this, apps);
 
         // ── ISystemTrayHost ──
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default) =>

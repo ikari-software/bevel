@@ -140,6 +140,7 @@ public sealed class FakeAppEnvironment : IAppEnvironment
 
     public event EventHandler<RunningApp>? AppLaunched;
     public event EventHandler<RunningApp>? AppTerminated;
+    public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
 }
 
 public sealed class FakePermissionBroker : IPermissionBroker

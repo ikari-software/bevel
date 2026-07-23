@@ -20,11 +20,9 @@
             <TabItem Header="General">
                 <StackPanel Spacing="12" Margin="8">
                     <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="12" />
-                    <ComboBox x:Name="ThemeCombo" SelectedIndex="0">
-                        <ComboBoxItem>Windows 2000 Classic</ComboBoxItem>
-                        <ComboBoxItem IsEnabled="False">Windows XP (Luna) — v1.1</ComboBoxItem>
-                        <ComboBoxItem IsEnabled="False">Windows 11 — v1.2</ComboBoxItem>
-                    </ComboBox>
+                    <!-- Items are populated in code from ThemeService.Themes so the picker always
+                         matches the real, switchable set and applies live. -->
+                    <ComboBox x:Name="ThemeCombo" />
                     <Separator Margin="0,8" />
                     <CheckBox x:Name="ShellEnabledCheck"
                               Content="Enable Bevel as the desktop shell"

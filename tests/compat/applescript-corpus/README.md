@@ -40,18 +40,17 @@ bash run-corpus.sh                 # against the ae-probe2 harness (default)
 BEVEL_TARGET=Bevel bash run-corpus.sh   # against the running real app
 ```
 
-**Target matters.** Against the *minimal* ae-probe2 harness only the tier-1 mutation/reveal verbs
-(reveal/make/delete/duplicate/move + object specifiers) are handled, and each passes when run in
-isolation (verified). Two things break a *batch* run against the harness, and both are real findings:
+**Target matters.** Against the *minimal* ae-probe2 harness the tier-1 mutation/reveal verbs
+(reveal/select/make/delete/duplicate/move + object specifiers) **and** the query verbs
+(`get`/`count`/`exists` via `core`/`getd`/`cnte`/`doex`, plus `set selection` via `setd`) are all
+handled — the reply-descriptor plumbing writes a real result back (bevel-3i4). Each passes when run in
+isolation (verified). One thing still breaks a *batch* run against the harness, and it's a real finding:
 
 1. `activate` / `open` (`odoc`) reach NSApp's defaults, which terminate the window-less harness —
    the same lifecycle quirk the AE spike hit. The full app has windows and is unaffected.
-2. The **query verbs** `get selection`, `count windows`, `get home`, and `set selection` are not
-   implemented inbound yet — they need `core`/`getd`/`setd`/`cnte` handlers that write a *result* into
-   the reply descriptor (filed follow-up). Until then they return `errAEEventNotHandled`.
 
-So the meaningful `≥30/40` gate runs against the **real app** (which handles the lifecycle + query
-verbs); the harness is a smoke test for the mutation verbs.
+So the meaningful `≥30/40` gate runs against the **real app** (which handles the lifecycle); the
+harness is a smoke test for the mutation + query verbs.
 
 ## Status
 

@@ -8,6 +8,7 @@
     </UserControl.ContextFlyout>
     <TextBlock x:Name="TimeDisplay"
                FontSize="11"
+               Foreground="{DynamicResource Bevel.Brush.TrayText}"
                VerticalAlignment="Center"
                HorizontalAlignment="Right"
                Margin="4,0,6,0" />

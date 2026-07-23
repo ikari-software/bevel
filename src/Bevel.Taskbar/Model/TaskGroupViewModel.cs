@@ -1,7 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Input;
 using Avalonia;
 using Avalonia.Layout;
 using Avalonia.Media.Imaging;
@@ -26,10 +29,33 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     {
         AppId = appId;
         DisplayName = TaskbarGrouping.DisplayName(appId);
+
+        // App-scoped right-click verbs — they act on every window of this one app (the group is keyed
+        // by AppId), which is what makes the grouped button's context menu app-specific. Each delegates
+        // to the child window's own command so the IWindowManager wiring lives in one place.
+        MinimizeAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.MinimizeCommand); return Task.CompletedTask; });
+        RestoreAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.RestoreCommand); return Task.CompletedTask; });
+        CloseAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.CloseCommand); return Task.CompletedTask; });
     }
 
     public string AppId { get; }
     public string DisplayName { get; }
+
+    /// <summary>Minimize / restore / close every window of this app at once (grouped-button context menu).</summary>
+    public ICommand MinimizeAllCommand { get; }
+    public ICommand RestoreAllCommand { get; }
+    public ICommand CloseAllCommand { get; }
+
+    /// <summary>Runs one per-window command across the whole group. Snapshots the collection first —
+    /// closing/minimizing mutates <see cref="Windows"/> as the shell reacts to each window op.</summary>
+    private void RunOnAll(Func<TaskItemViewModel, ICommand> pick)
+    {
+        foreach (var w in Windows.ToArray())
+        {
+            var cmd = pick(w);
+            if (cmd.CanExecute(null)) cmd.Execute(null);
+        }
+    }
 
     public ObservableCollection<TaskItemViewModel> Windows { get; } = new();
 

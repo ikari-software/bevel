@@ -1,0 +1,924 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:Avalonia.Controls.Converters">
+    <!--
+      XP Luna Blue control-template set (bevel-dob). ThemeService adds this Styles set to
+      Application.Styles ON TOP of the Win2000 base, so the ControlThemes below override the
+      vendored Classic ones by resource precedence, and the merged LunaTokens override the base
+      palette/metrics. Chrome is vector-drawn from the gradients tuned in
+      docs/design/luna/styleguide.html — no bitmaps.
+    -->
+    <Styles.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Bevel.Themes.Luna/LunaTokens.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- ── Luna gradient brushes (vector chrome) ─────────────────────── -->
+            <!-- Matte concave beige (authentic Luna push-button), not a glossy bead: light top edge →
+                 dimmest matte middle → subtle lighter bottom. -->
+            <LinearGradientBrush x:Key="Luna.Brush.Button" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#FBF9F2" />
+                <GradientStop Offset="0.5" Color="#E7E3D2" />
+                <GradientStop Offset="1" Color="#EFEBDC" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.ButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#FFFDF6" />
+                <GradientStop Offset="0.5" Color="#FDEECB" />
+                <GradientStop Offset="1" Color="#FCD58A" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.ButtonPressed" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#DED9C6" />
+                <GradientStop Offset="0.5" Color="#E6E1D0" />
+                <GradientStop Offset="1" Color="#EFEBDC" />
+            </LinearGradientBrush>
+            <!-- Faint top sheen only — the strong wet gloss was the aftermarket look; authentic Luna is matte. -->
+            <LinearGradientBrush x:Key="Luna.Brush.Gloss" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#30FFFFFF" />
+                <GradientStop Offset="0.5" Color="#0AFFFFFF" />
+                <GradientStop Offset="1" Color="#00FFFFFF" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Luna.Brush.ButtonBorder" Color="#7B9EBD" />
+            <SolidColorBrush x:Key="Luna.Brush.ButtonBorderDefault" Color="#2C628B" />
+            <SolidColorBrush x:Key="Luna.Brush.ButtonBorderHover" Color="#E59700" />
+
+            <!-- Shell-surface brushes (bevel-dob): the taskbar binds Bevel.Brush.TaskbarBackground via
+                 DynamicResource, so this Luna blue gradient replaces the Win2000 grey live on a theme swap.
+                 The thin bright top band is the XP taskbar's specular highlight. -->
+            <!-- "Sunken in the middle" (authentic Luna): THIN bright bands hugging the top and bottom
+                 edges, a WIDE subtle-darker band through the middle — a shallow concave dip, not a
+                 top-to-bottom ramp. -->
+            <LinearGradientBrush x:Key="Bevel.Brush.TaskbarBackground" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#4E95F2" />
+                <GradientStop Offset="0.02" Color="#3A84EA" />
+                <GradientStop Offset="0.10" Color="#2358C6" />
+                <GradientStop Offset="0.5" Color="#2054BE" />
+                <GradientStop Offset="0.90" Color="#2358C6" />
+                <GradientStop Offset="0.98" Color="#3A84EA" />
+                <GradientStop Offset="1" Color="#4E95F2" />
+            </LinearGradientBrush>
+            <!-- Tray/notification area: a recessed darker-blue well on the bar (opaque so it covers the
+                 Classic decorator's grey face), flat (no 3D bevel — TrayWellBorder=0), with hairline
+                 translucent dividers instead of the grey 3D ones. -->
+            <LinearGradientBrush x:Key="Bevel.Brush.TrayWell" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#1B4CB0" />
+                <GradientStop Offset="0.5" Color="#1E54C2" />
+                <GradientStop Offset="1" Color="#1A47A6" />
+            </LinearGradientBrush>
+            <!-- XP Luna has no raised divider after Start or before the tray (that's a Win2000 trait);
+                 transparent hides both dividers here while Win2000 keeps its grey/white ones. -->
+            <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerLight" Color="Transparent" />
+            <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerDark" Color="Transparent" />
+            <Thickness x:Key="Bevel.Metric.TrayWellBorder">0</Thickness>
+            <!-- Clock/tray text sits on the dark-blue Luna well, so it must be light, not black. -->
+            <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#EAF2FF" />
+            <!-- XP Start is flush to the screen's left/top/bottom edges (square-left pill). -->
+            <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
+
+            <!-- Taskbar task-button (ToggleButton) chrome: a glossy blue that reads as a button on the
+                 blue bar; :checked = the active window, rendered SUNKEN (darker top) like XP's pressed-in
+                 active task. Bound via the Bevel.Theme.ToggleButton contract so it swaps live. -->
+            <!-- Matte concave (authentic Luna), NOT the aftermarket gloss: light top edge → dimmest
+                 matte middle → subtle lighter bottom edge. No hard 50% split-stop "shiny bead". -->
+            <LinearGradientBrush x:Key="Luna.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#5A93E8" />
+                <GradientStop Offset="0.5" Color="#2C6CD6" />
+                <GradientStop Offset="1" Color="#3D7FE0" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#79ABF2" />
+                <GradientStop Offset="0.5" Color="#4384E4" />
+                <GradientStop Offset="1" Color="#5695EC" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#1B4EA8" />
+                <GradientStop Offset="0.5" Color="#2559BC" />
+                <GradientStop Offset="1" Color="#2E63C8" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Luna.Brush.TaskButtonBorder" Color="#1C4D9C" />
+            <SolidColorBrush x:Key="Luna.Brush.TaskButtonCheckedBorder" Color="#12358A" />
+
+            <!-- The iconic green Start pill (rounded right edge, glossy). Bound via Bevel.Theme.StartButton
+                 set locally on the Start button, so it swaps live independently of the grey dialog button. -->
+            <LinearGradientBrush x:Key="Luna.Brush.Start" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#5CB44A" />
+                <GradientStop Offset="0.5" Color="#2C831F" />
+                <GradientStop Offset="1" Color="#46A035" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartHover" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#7ED16C" />
+                <GradientStop Offset="0.5" Color="#48AE38" />
+                <GradientStop Offset="1" Color="#379B29" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartPressed" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#2A8420" />
+                <GradientStop Offset="0.5" Color="#2F8E24" />
+                <GradientStop Offset="1" Color="#39992B" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Luna.Brush.StartBorder" Color="#1E6B17" />
+
+            <!-- Caption gradient (matte Luna, for the window title bar in the next increment). -->
+            <LinearGradientBrush x:Key="Luna.Brush.Caption" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#3F88EC" />
+                <GradientStop Offset="0.06" Color="#1E6EE7" />
+                <GradientStop Offset="0.28" Color="#0D5CE3" />
+                <GradientStop Offset="0.62" Color="#0A51DF" />
+                <GradientStop Offset="1" Color="#003EC9" />
+            </LinearGradientBrush>
+
+            <!-- Input field (text box / check / radio wells): subtle white-ish inset. -->
+            <LinearGradientBrush x:Key="Luna.Brush.Field" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#E6E3D4" />
+                <GradientStop Offset="0.1" Color="#F7F6EF" />
+                <GradientStop Offset="1" Color="#FFFFFF" />
+            </LinearGradientBrush>
+            <!-- Progress fill: the glossy green sheen. -->
+            <LinearGradientBrush x:Key="Luna.Brush.Progress" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#B6F0A8" />
+                <GradientStop Offset="0.5" Color="#5CC24A" />
+                <GradientStop Offset="0.5" Color="#3BA32F" />
+                <GradientStop Offset="1" Color="#63C94E" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Luna.Brush.Check" Color="#1A7D1A" />
+
+            <!-- Field/scroll/tab/menu chrome for the remaining controls -->
+            <SolidColorBrush x:Key="Luna.Brush.Arrow"       Color="#1B3A6B" />
+            <SolidColorBrush x:Key="Luna.Brush.ScrollTrack" Color="#F4F2E9" />
+            <SolidColorBrush x:Key="Luna.Brush.TrackBorder" Color="#C9C5B4" />
+            <SolidColorBrush x:Key="Luna.Brush.Grip"        Color="#8A887A" />
+            <SolidColorBrush x:Key="Luna.Brush.MenuBorder"  Color="#ACA899" />
+            <LinearGradientBrush x:Key="Luna.Brush.ScrollThumb" StartPoint="0%,0%" EndPoint="100%,0%">
+                <GradientStop Offset="0"   Color="#FBFBF7" />
+                <GradientStop Offset="0.5" Color="#ECE9D8" />
+                <GradientStop Offset="1"   Color="#DCD7C3" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.TabPanel" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#FFFFFF" />
+                <GradientStop Offset="1" Color="#F6F4EC" />
+            </LinearGradientBrush>
+
+            <!-- ── Start menu (Luna two-column panel, docs/design/luna/styleguide.html) ──
+                 The Start-menu panel lives in Bevel.Taskbar/StartMenu.axaml (both layouts always in the
+                 tree; the Luna one binds these via {DynamicResource} and is only visible under Luna).
+                 Keeping its palette here — not as literals in the panel — is the ENG-01 token contract,
+                 so a future Luna variant (Olive/Silver) restyles the menu by swapping this dict. -->
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuBorder"          Color="#1857C9" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPinnedColumn"    Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPinTitle"        Color="#0A1A3A" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPinSub"          Color="#7A869C" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceText"       Color="#0A1F52" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuDivider"         Color="#C9D2E4" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlacesDivider"   Color="#AEBFDB" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuFooterHover"     Color="#4E93EC" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRule"      Color="#F4A020" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRuleLight" Color="#FFD27F" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconGeneric" Color="#E6ECF7" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconBorder"  Color="#8AA3C9" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuHelpIcon"        Color="#3F8EE6" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuLogOffIcon"      Color="#E8A23C" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuTurnOffIcon"     Color="#D94A2E" />
+            <LinearGradientBrush x:Key="Luna.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"   Color="#4F97EE" />
+                <GradientStop Offset="0.5" Color="#2F7EE6" />
+                <GradientStop Offset="1"   Color="#1E63D6" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"   Color="#3F8CE8" />
+                <GradientStop Offset="0.5" Color="#245EDC" />
+                <GradientStop Offset="1"   Color="#1A4FBE" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#FFD27F" />
+                <GradientStop Offset="1" Color="#E88A3C" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartMenuAllProgramsGlyph" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"   Color="#7EC97F" />
+                <GradientStop Offset="0.5" Color="#3F9A41" />
+                <GradientStop Offset="1"   Color="#2F7A33" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Luna.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
+                <GradientStop Offset="0" Color="#DCE8FA" />
+                <GradientStop Offset="1" Color="#C6D8F0" />
+            </LinearGradientBrush>
+
+            <!-- Converter for the MenuItem shortcut column (Classic's is internal). -->
+            <conv:PlatformKeyGestureConverter x:Key="KeyGestureConverter" />
+
+            <!-- ── Push button: 75x23 glossy Luna face, 3px rounded, top sheen ──
+                 Keyed by the shared Bevel.Theme.* contract (not {x:Type Button}) so controls bind it
+                 via Theme="{DynamicResource Bevel.Theme.Button}" and re-template LIVE when the theme swaps. -->
+            <ControlTheme x:Key="Bevel.Theme.Button" TargetType="Button">
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.Button}" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="{DynamicResource Bevel.Metric.ButtonPadding}" />
+                <Setter Property="MinHeight" Value="23" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3">
+                            <Panel>
+                                <Border Name="Gloss" Margin="1,1,1,0" VerticalAlignment="Top" Height="8"
+                                        CornerRadius="2,2,0,0"
+                                        Background="{DynamicResource Luna.Brush.Gloss}"
+                                        IsHitTestVisible="False" />
+                                <ContentPresenter Name="PART_ContentPresenter"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"
+                                                  RecognizesAccessKey="True" />
+                            </Panel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+
+                <Style Selector="^[IsDefault=True]">
+                    <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorderDefault}" />
+                </Style>
+                <Style Selector="^:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonHover}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorderHover}" />
+                </Style>
+                <Style Selector="^:pressed">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonPressed}" />
+                </Style>
+                <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="RenderTransform" Value="translate(1px, 1px)" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.ButtonFace}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── CheckBox: 13px well, green tick ──────────────────────────── -->
+            <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+                            <Border Name="Box" Width="13" Height="13" CornerRadius="2"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource Luna.Brush.Field}"
+                                    BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                    BorderThickness="1">
+                                <Path Name="Check" Margin="2,3,2,2"
+                                      Stroke="{DynamicResource Luna.Brush.Check}" StrokeThickness="2"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Data="M 0 3 L 2.4 5.6 L 7 0" Opacity="0" />
+                            </Border>
+                            <ContentPresenter Name="PART_ContentPresenter" VerticalAlignment="Center"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:checked /template/ Path#Check">
+                    <Setter Property="Opacity" Value="1" />
+                </Style>
+                <Style Selector="^:indeterminate /template/ Path#Check">
+                    <Setter Property="Opacity" Value="0.5" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── RadioButton: 13px well, blue dot ─────────────────────────── -->
+            <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+                            <Grid Width="13" Height="13" VerticalAlignment="Center">
+                                <Ellipse Fill="{DynamicResource Luna.Brush.Field}"
+                                         Stroke="{DynamicResource Luna.Brush.ButtonBorder}" StrokeThickness="1" />
+                                <Ellipse Name="Dot" Width="5" Height="5"
+                                         Fill="{DynamicResource Bevel.Brush.Highlight}" Opacity="0" />
+                            </Grid>
+                            <ContentPresenter Name="PART_ContentPresenter" VerticalAlignment="Center"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              RecognizesAccessKey="True" />
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:checked /template/ Ellipse#Dot">
+                    <Setter Property="Opacity" Value="1" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── ProgressBar: green Luna sheen in a light well ────────────── -->
+            <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar">
+                <Setter Property="Background" Value="#F4F2E9" />
+                <Setter Property="BorderBrush" Value="#8A887A" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="MinHeight" Value="16" />
+                <Setter Property="MinWidth" Value="20" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2" Padding="2">
+                            <LayoutTransformControl x:Name="PART_LayoutTransformControl">
+                                <DockPanel x:Name="PART_Track" LastChildFill="False" ClipToBounds="True">
+                                    <Border x:Name="PART_Indicator" CornerRadius="1"
+                                            Background="{DynamicResource Luna.Brush.Progress}">
+                                        <Rectangle x:Name="PART_IndicatorFill" IsVisible="False" />
+                                    </Border>
+                                </DockPanel>
+                            </LayoutTransformControl>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:horizontal">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="VerticalAlignment" Value="Top" />
+                </Style>
+                <Style Selector="^:vertical">
+                    <Setter Property="HorizontalAlignment" Value="Left" />
+                    <Setter Property="VerticalAlignment" Value="Stretch" />
+                </Style>
+                <Style Selector="^:vertical /template/ LayoutTransformControl#PART_LayoutTransformControl">
+                    <Setter Property="LayoutTransform">
+                        <RotateTransform Angle="90" />
+                    </Setter>
+                </Style>
+            </ControlTheme>
+
+            <!-- ── TabItem: raised Luna tab; the selected tab whitens and lifts ─ -->
+            <ControlTheme x:Key="Bevel.Theme.TabItem" TargetType="TabItem">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="Padding" Value="10,3" />
+                <Setter Property="Margin" Value="0,3,0,0" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Name="Tab" CornerRadius="4,4,0,0"
+                                Background="#E2DDC9"
+                                BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                BorderThickness="1,1,1,0">
+                            <ContentPresenter Name="PART_ContentPresenter"
+                                              Margin="{TemplateBinding Padding}"
+                                              Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:selected">
+                    <Setter Property="ZIndex" Value="1" />
+                    <Setter Property="Margin" Value="0,0,0,-1" />
+                </Style>
+                <Style Selector="^:selected /template/ Border#Tab">
+                    <Setter Property="Background" Value="#FFFFFF" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ══════════ Remaining Luna controls ══════════ -->
+
+            <!-- ScrollBar inner themes (before ScrollBar; StaticResource-referenced) -->
+            <ControlTheme x:Key="Luna.Theme.ScrollLineButton" TargetType="RepeatButton">
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.Button}" />
+                <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.Arrow}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Name="Face" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Fill="{TemplateBinding Foreground}"
+                                  Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:pressed /template/ Border#Face">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonPressed}" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <ControlTheme x:Key="Luna.Theme.ScrollPageButton" TargetType="RepeatButton">
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Rectangle Fill="Transparent" />
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
+            <ControlTheme x:Key="Luna.Theme.ScrollThumb" TargetType="Thumb">
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="{DynamicResource Luna.Brush.ScrollThumb}"
+                                BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                BorderThickness="1" CornerRadius="3">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="3">
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                            </StackPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
+            <!-- Top-level menu-bar item (before Menu) -->
+            <ControlTheme x:Key="Luna.Theme.TopLevelMenuItem" TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}" />
+                <Setter Property="Padding" Value="6,2" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Name="root" Background="{TemplateBinding Background}" CornerRadius="2">
+                            <Panel>
+                                <ContentPresenter Name="PART_HeaderPresenter" Margin="{TemplateBinding Padding}"
+                                                  Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  VerticalContentAlignment="Center" />
+                                <Popup Name="PART_Popup" IsLightDismissEnabled="True"
+                                       IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
+                                       Placement="BottomEdgeAlignedLeft" WindowManagerAddShadowHint="True"
+                                       OverlayInputPassThroughElement="{Binding $parent[Menu]}">
+                                    <Border Background="{DynamicResource Bevel.Brush.Menu}"
+                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1">
+                                        <ScrollViewer>
+                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="1"
+                                                            Grid.IsSharedSizeScope="True"
+                                                            ItemsPanel="{TemplateBinding ItemsPanel}" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Panel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:selected /template/ Border#root">
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                </Style>
+                <Style Selector="^:selected /template/ ContentPresenter#PART_HeaderPresenter">
+                    <Setter Property="TextElement.Foreground" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+                </Style>
+                <Style Selector="^[IsSubMenuOpen=True] /template/ Border#root">
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- Combo drop button (own theme so its hover/pressed states use a single /template/ hop) -->
+            <ControlTheme x:Key="Luna.Theme.ComboDropButton" TargetType="ToggleButton">
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Name="ButtonFace" Background="{DynamicResource Luna.Brush.Button}"
+                                BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                BorderThickness="1" CornerRadius="0,2,2,0">
+                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Fill="{DynamicResource Luna.Brush.Arrow}" Data="M 0 0 L 3.5 4 L 7 0 Z" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:pointerover /template/ Border#ButtonFace">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonHover}" />
+                </Style>
+                <Style Selector="^:pressed /template/ Border#ButtonFace">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.ButtonPressed}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- Taskbar task button (bevel-dob): a bare ToggleButton in the taskbar strip. Bound via
+                 App.axaml Selector="ToggleButton" → this glossy Luna theme replaces the Classic grey one
+                 live. :checked is the focused window = the sunken active-task look. White text for the
+                 blue ground. Combo/ScrollBar toggle-buttons set their Theme locally, so they aren't hit. -->
+            <ControlTheme x:Key="Bevel.Theme.ToggleButton" TargetType="ToggleButton">
+                <Setter Property="Foreground" Value="#F2F7FF" />
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButton}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.TaskButtonBorder}" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Name="Face" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:pointerover /template/ Border#Face">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButtonHover}" />
+                </Style>
+                <Style Selector="^:checked /template/ Border#Face">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButtonChecked}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.TaskButtonCheckedBorder}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- Green Start pill (bevel-dob): set locally on the taskbar Start button. Rounded right edge,
+                 glossy green, white bold label. Win2000 provides the flat-grey alias under the same key. -->
+            <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button">
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="Bold" />
+                <Setter Property="FontStyle" Value="Italic" />
+                <Setter Property="FontSize" Value="15" />
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.Start}" />
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="Button">
+                        <Border Name="Face" Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource Luna.Brush.StartBorder}" BorderThickness="1"
+                                CornerRadius="0,11,11,0" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:pointerover /template/ Border#Face">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.StartHover}" />
+                </Style>
+                <Style Selector="^:pressed /template/ Border#Face">
+                    <Setter Property="Background" Value="{DynamicResource Luna.Brush.StartPressed}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── ComboBox: Luna field + flat drop button (= scrollbar arrow width) ── -->
+            <ControlTheme x:Key="Bevel.Theme.ComboBox" TargetType="ComboBox">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.Field}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="4,2" />
+                <Setter Property="MinHeight" Value="22" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Grid>
+                            <Border Name="FieldBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                                <Popup Name="PART_Popup" WindowManagerAddShadowHint="True"
+                                       IsLightDismissEnabled="True" Placement="Bottom"
+                                       MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                       MinWidth="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}"
+                                       IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}" Focusable="False">
+                                    <Border Name="DropDownBorder" Background="{DynamicResource Luna.Brush.Field}"
+                                            BorderThickness="1" BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}">
+                                        <ScrollViewer Name="DropDownScrollViewer">
+                                            <ItemsPresenter Name="PART_ItemsPresenter"
+                                                            ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                            KeyboardNavigation.TabNavigation="Contained" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Border>
+                            <DockPanel Margin="{TemplateBinding BorderThickness}">
+                                <Control DockPanel.Dock="Right" Width="{DynamicResource Bevel.Metric.ScrollBarSize}" />
+                                <Border Name="SelectedItemBorder" Margin="{TemplateBinding Padding}">
+                                    <Panel>
+                                        <TextBlock Name="PlaceholderTextBlock"
+                                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                   Foreground="{TemplateBinding PlaceholderForeground}"
+                                                   IsVisible="{TemplateBinding SelectionBoxItem, Converter={x:Static ObjectConverters.IsNull}}"
+                                                   Text="{TemplateBinding PlaceholderText}" />
+                                        <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                          ContentTemplate="{TemplateBinding ItemTemplate}"
+                                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                    </Panel>
+                                </Border>
+                            </DockPanel>
+                            <ToggleButton Name="toggle" HorizontalAlignment="Right"
+                                          Margin="{TemplateBinding BorderThickness}"
+                                          Width="{DynamicResource Bevel.Metric.ScrollBarSize}"
+                                          MinWidth="0" MinHeight="0" Focusable="False" ClickMode="Press"
+                                          Theme="{StaticResource Luna.Theme.ComboDropButton}"
+                                          IsChecked="{TemplateBinding IsDropDownOpen, Mode=TwoWay}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.ButtonFace}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── ScrollBar: 17px, Luna arrow-buttons + gradient thumb ── -->
+            <ControlTheme x:Key="Bevel.Theme.ScrollBar" TargetType="ScrollBar">
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.ScrollTrack}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Style Selector="^:vertical">
+                    <Setter Property="Width" Value="{DynamicResource Bevel.Metric.ScrollBarSize}" />
+                    <Setter Property="MinWidth" Value="{DynamicResource Bevel.Metric.ScrollBarSize}" />
+                    <Setter Property="Template">
+                        <ControlTemplate>
+                            <Grid Background="{TemplateBinding Background}" RowDefinitions="Auto,*,Auto">
+                                <RepeatButton Name="PART_LineUpButton" Grid.Row="0"
+                                              Theme="{StaticResource Luna.Theme.ScrollLineButton}"
+                                              Height="{DynamicResource Bevel.Metric.ScrollBarSize}"
+                                              Content="M 0 4 L 7 4 L 3.5 0 Z" />
+                                <Track Name="PART_Track" Grid.Row="1" Minimum="{TemplateBinding Minimum}"
+                                       Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value, Mode=TwoWay}"
+                                       ViewportSize="{TemplateBinding ViewportSize}" Orientation="{TemplateBinding Orientation}"
+                                       DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                                       IsDirectionReversed="True">
+                                    <Track.DecreaseButton>
+                                        <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Luna.Theme.ScrollPageButton}" />
+                                    </Track.DecreaseButton>
+                                    <Track.IncreaseButton>
+                                        <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Luna.Theme.ScrollPageButton}" />
+                                    </Track.IncreaseButton>
+                                    <Track.Thumb>
+                                        <Thumb Theme="{StaticResource Luna.Theme.ScrollThumb}" />
+                                    </Track.Thumb>
+                                </Track>
+                                <RepeatButton Name="PART_LineDownButton" Grid.Row="2"
+                                              Theme="{StaticResource Luna.Theme.ScrollLineButton}"
+                                              Height="{DynamicResource Bevel.Metric.ScrollBarSize}"
+                                              Content="M 0 0 L 3.5 4 L 7 0 Z" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter>
+                </Style>
+                <Style Selector="^:horizontal">
+                    <Setter Property="Height" Value="{DynamicResource Bevel.Metric.ScrollBarSize}" />
+                    <Setter Property="MinHeight" Value="{DynamicResource Bevel.Metric.ScrollBarSize}" />
+                    <Setter Property="Template">
+                        <ControlTemplate>
+                            <Grid Background="{TemplateBinding Background}" ColumnDefinitions="Auto,*,Auto">
+                                <RepeatButton Name="PART_LineUpButton" Grid.Column="0"
+                                              Theme="{StaticResource Luna.Theme.ScrollLineButton}"
+                                              Width="{DynamicResource Bevel.Metric.ScrollBarSize}"
+                                              Content="M 0 4 L 4 8 L 4 0 Z" />
+                                <Track Name="PART_Track" Grid.Column="1" Minimum="{TemplateBinding Minimum}"
+                                       Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value, Mode=TwoWay}"
+                                       ViewportSize="{TemplateBinding ViewportSize}" Orientation="{TemplateBinding Orientation}"
+                                       DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}">
+                                    <Track.DecreaseButton>
+                                        <RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Luna.Theme.ScrollPageButton}" />
+                                    </Track.DecreaseButton>
+                                    <Track.IncreaseButton>
+                                        <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Luna.Theme.ScrollPageButton}" />
+                                    </Track.IncreaseButton>
+                                    <Track.Thumb>
+                                        <Thumb Theme="{StaticResource Luna.Theme.ScrollThumb}" />
+                                    </Track.Thumb>
+                                </Track>
+                                <RepeatButton Name="PART_LineDownButton" Grid.Column="2"
+                                              Theme="{StaticResource Luna.Theme.ScrollLineButton}"
+                                              Width="{DynamicResource Bevel.Metric.ScrollBarSize}"
+                                              Content="M 0 0 L 0 8 L 4 4 Z" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter>
+                </Style>
+            </ControlTheme>
+
+            <!-- ── TextBox: white Luna field, thin blue border ── -->
+            <ControlTheme x:Key="Bevel.Theme.TextBox" TargetType="TextBox">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.Field}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="2,1" />
+                <Setter Property="MinHeight" Value="20" />
+                <Setter Property="KeyboardNavigation.TabNavigation" Value="None" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="FocusAdorner" Value="{x:Null}" />
+                <Setter Property="CaretBrush" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="SelectionBrush" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <DockPanel HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                                   VerticalAlignment="{TemplateBinding VerticalAlignment}">
+                            <TextBlock Name="floatingWatermark" DockPanel.Dock="Top"
+                                       FontSize="{DynamicResource FontSizeSmall}"
+                                       Foreground="{DynamicResource Bevel.Brush.Highlight}"
+                                       Text="{TemplateBinding Watermark}">
+                                <TextBlock.IsVisible>
+                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                        <Binding Path="UseFloatingWatermark" RelativeSource="{RelativeSource TemplatedParent}" />
+                                        <Binding Converter="{x:Static StringConverters.IsNotNullOrEmpty}" Path="Text" RelativeSource="{RelativeSource TemplatedParent}" />
+                                    </MultiBinding>
+                                </TextBlock.IsVisible>
+                            </TextBlock>
+                            <DataValidationErrors>
+                                <Border Name="Bd" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <ContentPresenter Grid.Column="0" Content="{TemplateBinding InnerLeftContent}" />
+                                        <ScrollViewer Name="PART_ScrollViewer" Grid.Column="1"
+                                                      AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+                                                      BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}"
+                                                      HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                                                      IsScrollChainingEnabled="{TemplateBinding (ScrollViewer.IsScrollChainingEnabled)}"
+                                                      VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}">
+                                            <Panel Margin="{TemplateBinding Padding}">
+                                                <TextBlock Name="watermark"
+                                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                           Opacity="0.5" Text="{TemplateBinding Watermark}"
+                                                           TextAlignment="{TemplateBinding TextAlignment}"
+                                                           TextWrapping="{TemplateBinding TextWrapping}">
+                                                    <TextBlock.IsVisible>
+                                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                            <Binding ElementName="PART_TextPresenter" Path="PreeditText" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                                            <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Text" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                                        </MultiBinding>
+                                                    </TextBlock.IsVisible>
+                                                </TextBlock>
+                                                <TextPresenter Name="PART_TextPresenter"
+                                                               CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+                                                               CaretBrush="{TemplateBinding CaretBrush}"
+                                                               CaretIndex="{TemplateBinding CaretIndex}"
+                                                               LineHeight="{TemplateBinding LineHeight}"
+                                                               LetterSpacing="{TemplateBinding LetterSpacing}"
+                                                               PasswordChar="{TemplateBinding PasswordChar}"
+                                                               RevealPassword="{TemplateBinding RevealPassword}"
+                                                               SelectionBrush="{TemplateBinding SelectionBrush}"
+                                                               SelectionEnd="{TemplateBinding SelectionEnd}"
+                                                               SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+                                                               SelectionStart="{TemplateBinding SelectionStart}"
+                                                               Text="{TemplateBinding Text, Mode=TwoWay}"
+                                                               TextAlignment="{TemplateBinding TextAlignment}"
+                                                               TextWrapping="{TemplateBinding TextWrapping}" />
+                                            </Panel>
+                                        </ScrollViewer>
+                                        <ContentPresenter Grid.Column="2" Content="{TemplateBinding InnerRightContent}" />
+                                    </Grid>
+                                </Border>
+                            </DataValidationErrors>
+                        </DockPanel>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^[AcceptsReturn=false] /template/ TextPresenter#PART_TextPresenter">
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
+                <Style Selector="^:disabled /template/ Border#Bd">
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.ButtonFace}" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── Menu bar ── -->
+            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu">
+                <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Menu}" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}" />
+                <Setter Property="ItemContainerTheme" Value="{StaticResource Luna.Theme.TopLevelMenuItem}" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
+                                            KeyboardNavigation.TabNavigation="Continue" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Setter Property="ItemsPanel">
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </Setter>
+            </ControlTheme>
+
+            <!-- ── Dropdown MenuItem ── -->
+            <ControlTheme x:Key="Bevel.Theme.MenuItem" TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}" />
+                <Setter Property="Padding" Value="6,0" />
+                <Setter Property="Height" Value="{DynamicResource Bevel.Metric.MenuItemHeight}" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Name="root" Background="{TemplateBinding Background}" CornerRadius="2">
+                            <Grid ColumnDefinitions="24,*,Auto,16">
+                                <ContentControl Name="PART_IconPresenter" Grid.Column="0" Width="16" Height="16"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Content="{TemplateBinding Icon}" />
+                                <ContentPresenter Name="PART_HeaderPresenter" Grid.Column="1" Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center" Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  RecognizesAccessKey="True" />
+                                <TextBlock Name="PART_InputGestureText" Grid.Column="2" Margin="12,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Text="{TemplateBinding InputGesture, Converter={StaticResource KeyGestureConverter}}" />
+                                <Path Name="rightArrow" Grid.Column="3" Margin="8,0,0,0" VerticalAlignment="Center"
+                                      Data="M0,0 L4,3.5 0,7 Z" Fill="{DynamicResource Bevel.Brush.MenuText}" />
+                                <Popup Name="PART_Popup" IsLightDismissEnabled="False"
+                                       IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
+                                       Placement="RightEdgeAlignedTop" HorizontalOffset="-3" VerticalOffset="-3">
+                                    <Border Background="{DynamicResource Bevel.Brush.Menu}"
+                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1">
+                                        <ScrollViewer>
+                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="1"
+                                                            Grid.IsSharedSizeScope="True"
+                                                            ItemsPanel="{TemplateBinding ItemsPanel}" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^:separator">
+                    <Setter Property="Height" Value="10" />
+                    <Setter Property="Template">
+                        <ControlTemplate><Separator /></ControlTemplate>
+                    </Setter>
+                </Style>
+                <Style Selector="^:selected /template/ Border#root">
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                </Style>
+                <Style Selector="^:selected /template/ ContentPresenter#PART_HeaderPresenter">
+                    <Setter Property="TextElement.Foreground" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+                </Style>
+                <Style Selector="^:selected /template/ TextBlock#PART_InputGestureText">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+                </Style>
+                <Style Selector="^:selected /template/ Path#rightArrow">
+                    <Setter Property="Fill" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+                </Style>
+                <Style Selector="^:empty /template/ Path#rightArrow">
+                    <Setter Property="IsVisible" Value="False" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+
+            <!-- ── TabControl: Luna content panel below the tabs (Top placement) ── -->
+            <ControlTheme x:Key="Bevel.Theme.TabControl" TargetType="TabControl">
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+                <Setter Property="Background" Value="{DynamicResource Luna.Brush.TabPanel}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="6" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Grid x:Name="RootGrid" KeyboardNavigation.TabNavigation="Local" ClipToBounds="True"
+                              RowDefinitions="Auto,*">
+                            <ItemsPresenter Name="PART_ItemsPresenter" Grid.Row="0" ZIndex="1"
+                                            KeyboardNavigation.TabIndex="1" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                            <Grid x:Name="ContentPanel" Grid.Row="1" KeyboardNavigation.TabNavigation="Local"
+                                  KeyboardNavigation.TabIndex="2">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0,3,3,3">
+                                    <ContentPresenter Name="PART_SelectedContentHost" Margin="{TemplateBinding Padding}"
+                                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                      Content="{TemplateBinding SelectedContent}"
+                                                      ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter>
+                <Style Selector="^ /template/ ItemsPresenter#PART_ItemsPresenter">
+                    <Setter Property="Margin" Value="2,2,2,0" />
+                </Style>
+                <Style Selector="^:disabled">
+                    <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
+                </Style>
+            </ControlTheme>
+        </ResourceDictionary>
+    </Styles.Resources>
+</Styles>

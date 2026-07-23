@@ -49,6 +49,29 @@ public class RenderTaskbarTest
         frame!.Save(outPath);
     }
 
+    [AvaloniaFact]
+    public void Overflow_chevrons_are_flat_vector_arrows_not_classic_buttons()
+    {
+        // The row-overflow scroll buttons used to be default Classic RepeatButtons with a "▲"/"▼" font
+        // glyph — grey and ugly on the themed bar. They must now be flat "chevron"-styled buttons whose
+        // content is a vector Path arrow (themed fill via Bevel.Brush.TrayText), so they read cleanly on
+        // both the Win2000 grey and the Luna blue.
+        var model = new ShellModel(null, null, null);
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null, rows: 2) { Content = view };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        foreach (var name in new[] { "ScrollUpBtn", "ScrollDownBtn" })
+        {
+            var btn = view.FindControl<RepeatButton>(name);
+            Assert.NotNull(btn);
+            Assert.Contains("chevron", btn!.Classes);                          // flat styled, not a Classic button
+            Assert.IsType<Avalonia.Controls.Shapes.Path>(btn.Content);         // vector arrow, not a font glyph
+        }
+    }
+
     /// <summary>
     /// Regression: the sunken/pressed state is bound OneWay to <see cref="TaskItemViewModel.IsFocused"/>,
     /// but a ToggleButton flips IsChecked locally on click. If the clicked window doesn't take focus,

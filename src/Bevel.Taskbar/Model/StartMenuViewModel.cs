@@ -21,6 +21,10 @@ public sealed class StartMenuViewModel : ObservableObject
 
     public ObservableCollection<ProgramItemViewModel> Programs => Model.Programs;
 
+    /// <summary>The curated left-column list (newest-added + most-frequently-used, capped). The full list
+    /// stays on <see cref="Programs"/>, which the "All Programs" flyout uses.</summary>
+    public ObservableCollection<ProgramItemViewModel> FrequentPrograms => Model.FrequentPrograms;
+
     /// <summary>True once the startup enumeration has finished (see <see cref="ShellModel.ProgramsLoaded"/>).</summary>
     public bool ProgramsLoaded => Model.ProgramsLoaded;
 }

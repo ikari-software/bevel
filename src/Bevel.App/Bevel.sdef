@@ -27,24 +27,20 @@
       <parameter name="new" code="kocl" type="type" description="The class of the new item."/>
       <parameter name="at" code="insh" type="location specifier" optional="yes" description="The container for the new item."/>
       <parameter name="with properties" code="prdt" type="record" optional="yes" description="Initial properties (e.g. name)."/>
-      <result type="specifier" description="The new item."/>
     </command>
 
     <command name="delete" code="coredelo" description="Move an item to the Trash.">
       <direct-parameter type="specifier" description="The item(s) to delete."/>
-      <result type="specifier" description="The item(s) in the Trash."/>
     </command>
 
     <command name="duplicate" code="coreclon" description="Duplicate item(s), with Finder naming.">
       <direct-parameter type="specifier" description="The item(s) to duplicate."/>
       <parameter name="to" code="insh" type="location specifier" optional="yes" description="The destination container."/>
-      <result type="specifier" description="The duplicated item(s)."/>
     </command>
 
     <command name="move" code="coremove" description="Move item(s) to a container.">
       <direct-parameter type="specifier" description="The item(s) to move."/>
       <parameter name="to" code="insh" type="location specifier" description="The destination container."/>
-      <result type="specifier" description="The moved item(s)."/>
     </command>
 
     <class name="application" code="capp" description="The Bevel application.">
@@ -65,7 +61,6 @@
 
     <command name="reveal" code="miscmvis" description="Select and show item(s) in a window.">
       <direct-parameter type="specifier" description="The item(s) to reveal."/>
-      <result type="specifier" description="The revealed item(s)."/>
     </command>
 
     <command name="select" code="miscslct" description="Set the selection in a window or on the desktop.">

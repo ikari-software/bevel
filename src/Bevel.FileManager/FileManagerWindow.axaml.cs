@@ -576,11 +576,20 @@ public partial class FileManagerWindow : BevelWindow
             ApplyPendingSelection(loaded);
     }
 
-    private void ApplyPendingSelection(VfsPath loadedPath)
+    private void ApplyPendingSelection(VfsPath loadedPath, bool discardIfStale = false)
     {
-        if (_pendingSelection is { Count: > 0 } sel && sel[0].Parent == loadedPath)
+        if (_pendingSelection is not { Count: > 0 } sel) return;
+        if (sel[0].Parent == loadedPath)
         {
             ItemView.SelectPaths(sel);
+            _pendingSelection = null;
+        }
+        else if (discardIfStale)
+        {
+            // A fresh listing finished for a folder that isn't the reveal target — the navigation the
+            // pending selection was waiting for isn't coming. Drop it so it can't re-apply on a later,
+            // unrelated navigation back to its parent (REL-6 review). The speculative call from
+            // SelectAfterLoad passes false: there, a mismatch just means "not there yet — keep waiting."
             _pendingSelection = null;
         }
     }
@@ -662,7 +671,7 @@ public partial class FileManagerWindow : BevelWindow
             StatusBar.UpdateTotalSize(totalSize);
             _infoTotalSize = totalSize;
             UpdateInfoPane(path, count);
-            ApplyPendingSelection(path);   // model→view reveal highlight, now that items exist (bevel-nwo)
+            ApplyPendingSelection(path, discardIfStale: true);   // model→view reveal highlight, now that items exist (bevel-nwo)
         }
         catch (OperationCanceledException) { }
     }

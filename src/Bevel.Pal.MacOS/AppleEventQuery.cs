@@ -124,10 +124,13 @@ public static partial class AppleEventInbound
 
     static IntPtr FileUrlDesc(string posixPath)
     {
-        if (!Uri.TryCreate(posixPath, UriKind.Absolute, out var uri) &&
-            !Uri.TryCreate("file://" + posixPath, UriKind.Absolute, out uri))
+        if (string.IsNullOrEmpty(posixPath) || posixPath[0] != '/')
             return IntPtr.Zero;
-        var bytes = System.Text.Encoding.UTF8.GetBytes(uri.AbsoluteUri);
+        // Percent-encode each segment so '#', '?', '%', spaces and non-ASCII survive as path data
+        // rather than being parsed as URL fragment/query/escape and truncating the name (bevel-3i4 review).
+        var segments = posixPath.Split('/');
+        for (var i = 0; i < segments.Length; i++) segments[i] = Uri.EscapeDataString(segments[i]);
+        var bytes = System.Text.Encoding.UTF8.GetBytes("file://" + string.Join("/", segments));
         var data = NSData(bytes);
         return data == IntPtr.Zero
             ? IntPtr.Zero

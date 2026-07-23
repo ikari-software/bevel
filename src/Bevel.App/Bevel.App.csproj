@@ -45,6 +45,7 @@
     <ProjectReference Include="..\Bevel.Pal.MacOS\Bevel.Pal.MacOS.csproj" />
     <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj" />
+    <ProjectReference Include="..\Bevel.Themes.Luna\Bevel.Themes.Luna.csproj" />
     <ProjectReference Include="..\Bevel.Desktop\Bevel.Desktop.csproj" />
     <ProjectReference Include="..\Bevel.Taskbar\Bevel.Taskbar.csproj" />
     <ProjectReference Include="..\Bevel.FileManager\Bevel.FileManager.csproj" />

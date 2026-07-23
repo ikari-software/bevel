@@ -34,14 +34,18 @@ internal class GridExtensions
         RowDefinitionsExProperty.Changed.AddClassHandler<Grid>((grid, e) =>
         {
             grid.RowDefinitions.Clear();
-            grid.RowDefinitions.AddRange(e.GetNewValue<RowDefinitions>());
+            // Null when the property is cleared as a control re-templates (e.g. a live theme swap):
+            // AddRange(null) throws ArgumentNullException, which crashed the whole shell on theme change.
+            if (e.GetNewValue<RowDefinitions?>() is { } rows)
+                grid.RowDefinitions.AddRange(rows);
             grid.InvalidateMeasure();
             grid.InvalidateArrange();
         });
         ColumnDefinitionsExProperty.Changed.AddClassHandler<Grid>((grid, e) =>
         {
             grid.ColumnDefinitions.Clear();
-            grid.ColumnDefinitions.AddRange(e.GetNewValue<ColumnDefinitions>());
+            if (e.GetNewValue<ColumnDefinitions?>() is { } cols)
+                grid.ColumnDefinitions.AddRange(cols);
             grid.InvalidateMeasure();
             grid.InvalidateArrange();
         });
