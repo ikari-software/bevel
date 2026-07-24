@@ -86,8 +86,10 @@ public partial class App : Application
             UI.ThemeService.Apply(settings.Current.ThemeId);
             UI.ThemeOptions.ApplyCrispBevels(
                 this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
-            // Win2000 colour scheme (W2K-01 / bevel-9js) — also common to every surface.
-            UI.ColorSchemeService.Apply(settings.Current.ColorScheme);
+            // The active theme's appearance variant (W2K-01 colour scheme / Luna colour+gloss). The
+            // theme owns its options via ThemeVariants, which routes to the right engine and clears the
+            // others so shared chrome keys don't bleed across themes.
+            UI.ThemeVariants.Apply(settings.Current);
             // UI font override (FNT-01) — top-level, so it wins over the theme's default face.
             UI.FontService.Apply(settings.Current.UiFontFamily);
 
@@ -99,7 +101,7 @@ public partial class App : Application
             {
                 var s = settings.Current;
                 UI.ThemeService.Apply(s.ThemeId);
-                UI.ColorSchemeService.Apply(s.ColorScheme);
+                UI.ThemeVariants.Apply(s);
                 UI.FontService.Apply(s.UiFontFamily);
                 UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
             };

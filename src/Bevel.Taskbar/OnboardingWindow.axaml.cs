@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Bevel.Core;
@@ -50,8 +51,6 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         foreach (var (_, display) in Bevel.UI.ThemeService.Themes)
             ThemeCombo.Items.Add(display);
-        foreach (var (_, display) in Bevel.UI.ColorSchemeService.Schemes)
-            ColorSchemeCombo.Items.Add(display);
         FontFamilyCombo.Items.Add("(Theme default)");
         foreach (var family in Bevel.UI.FontService.Families)
             FontFamilyCombo.Items.Add(family);
@@ -80,7 +79,6 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
         ThemeCombo.SelectionChanged += OnThemeChanged;
-        ColorSchemeCombo.SelectionChanged += OnColorSchemeChanged;
         FontFamilyCombo.SelectionChanged += OnFontFamilyChanged;
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
@@ -117,9 +115,10 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
             catch (Exception ex) { Console.Error.WriteLine($"[settings] cancel revert failed: {ex.Message}"); }
             // Re-apply the live visual services from the snapshot (they aren't driven by ApplyLive).
             Bevel.UI.ThemeService.Apply(b.ThemeId);
-            Bevel.UI.ColorSchemeService.Apply(b.ColorScheme);
+            Bevel.UI.ThemeVariants.Apply(b);
             Bevel.UI.FontService.Apply(b.UiFontFamily);
             ApplyLive?.Invoke(_settings.Current);
+            BuildThemeOptions();   // resync the subpanel to the reverted theme + options
         }
         Close();
     }
@@ -157,7 +156,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         ClockDateCheck.IsChecked = s.TaskbarClockShowDate;
 
         ThemeCombo.SelectedIndex = ThemeIndex(s.ThemeId);
-        ColorSchemeCombo.SelectedIndex = SchemeIndex(s.ColorScheme);
+        BuildThemeOptions();
         FontFamilyCombo.SelectedIndex = FontIndex(s.UiFontFamily);
         FontSizeSlider.Value = s.TaskbarFontSize > 0 ? s.TaskbarFontSize : 11;
         FontSizeValue.Text = $"{(int)FontSizeSlider.Value} pt";
@@ -388,14 +387,6 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         });
     }
 
-    private static int SchemeIndex(string id)
-    {
-        var target = string.IsNullOrEmpty(id) ? Bevel.UI.ColorSchemeService.DefaultScheme : id;
-        for (var i = 0; i < Bevel.UI.ColorSchemeService.Schemes.Count; i++)
-            if (Bevel.UI.ColorSchemeService.Schemes[i].Id == target) return i;
-        return 0;
-    }
-
     private static int ThemeIndex(string id)
     {
         var target = string.IsNullOrEmpty(id) ? Bevel.UI.ThemeService.DefaultTheme : id;
@@ -425,6 +416,43 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         Bevel.UI.ThemeService.Apply(id);   // live reskin
         try { await _settings.UpdateAsync(s => s.ThemeId = id); }
         catch (Exception ex) { Console.Error.WriteLine($"[settings] theme persist failed: {ex.Message}"); }
+        // Apply the new theme's own appearance variant (colour scheme / colour+gloss) and clear the
+        // others, then rebuild the options subpanel so it shows what THIS theme contributes.
+        Bevel.UI.ThemeVariants.Apply(_settings.Current);
+        BuildThemeOptions();
+    }
+
+    /// <summary>Builds the theme-specific appearance subpanel from <see cref="Bevel.UI.ThemeVariants"/>:
+    /// one labelled combo per option the active theme contributes. Rebuilt on load, theme change, and
+    /// Cancel-revert, so the panel always reflects the active theme's capabilities (Win2000 = colour
+    /// scheme; Luna = colour + gloss; a theme that offers none shows an empty panel).</summary>
+    private void BuildThemeOptions()
+    {
+        ThemeOptionsPanel.Children.Clear();
+        foreach (var option in Bevel.UI.ThemeVariants.OptionsFor(_settings.Current.ThemeId))
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+            row.Children.Add(new TextBlock { Text = option.Label, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Width = 84 });
+            var combo = new ComboBox { FontSize = 11, Width = 160, VerticalAlignment = VerticalAlignment.Center };
+            foreach (var (_, display) in option.Choices) combo.Items.Add(display);
+            combo.SelectedIndex = option.CurrentIndex(_settings.Current);
+            combo.SelectionChanged += (_, _) => OnThemeOptionChanged(option, combo);
+            row.Children.Add(combo);
+            ThemeOptionsPanel.Children.Add(row);
+        }
+    }
+
+    /// <summary>A theme-variant option changed: persist the choice on its settings field, then apply the
+    /// active theme's variant live in this process (other roles pick it up via settings.Changed).</summary>
+    private async void OnThemeOptionChanged(Bevel.UI.ThemeOption option, ComboBox combo)
+    {
+        var idx = combo.SelectedIndex;
+        if (idx < 0 || idx >= option.Choices.Count) return;
+        var id = option.Choices[idx].Id;
+        if (option.Get(_settings.Current) == id) return;
+        try { await _settings.UpdateAsync(s => option.Set(s, id)); }
+        catch (Exception ex) { Console.Error.WriteLine($"[settings] theme option persist failed: {ex.Message}"); return; }
+        Bevel.UI.ThemeVariants.Apply(_settings.Current);   // live recolour in this process
     }
 
     /// <summary>UI font-family picker (FNT-01): reskins the shell font live via
@@ -438,19 +466,6 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         Bevel.UI.FontService.Apply(family);   // live reskin
         try { await _settings.UpdateAsync(s => s.UiFontFamily = family); }
         catch (Exception ex) { Console.Error.WriteLine($"[settings] font persist failed: {ex.Message}"); }
-    }
-
-    /// <summary>Win2000 colour-scheme picker (bevel-9js): recolours the whole shell live via
-    /// <see cref="Bevel.UI.ColorSchemeService"/>, then persists the choice (guarded).</summary>
-    private async void OnColorSchemeChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        var idx = ColorSchemeCombo.SelectedIndex;
-        if (idx < 0 || idx >= Bevel.UI.ColorSchemeService.Schemes.Count) return;
-        var id = Bevel.UI.ColorSchemeService.Schemes[idx].Id;
-        if (_settings.Current.ColorScheme == id) return;
-        Bevel.UI.ColorSchemeService.Apply(id);   // live recolour
-        try { await _settings.UpdateAsync(s => s.ColorScheme = id); }
-        catch (Exception ex) { Console.Error.WriteLine($"[settings] colour scheme persist failed: {ex.Message}"); }
     }
 
     private void OnAppearanceSliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)

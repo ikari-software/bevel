@@ -246,12 +246,11 @@
                             <TextBlock Text="The visual style engine (chrome geometry, bevels, metrics). The colour scheme and font below layer on top."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
 
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Colour scheme" FontSize="11" VerticalAlignment="Center" Width="66" />
-                                <ComboBox x:Name="ColorSchemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="The Win2000 palette (Brick, Eggplant, …) — recolours the whole shell live."
-                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
+                            <!-- Theme-specific appearance options: each theme contributes its own via
+                                 ThemeVariants (Win2000 = colour scheme; Luna = colour + gloss). Rebuilt in
+                                 code-behind whenever the theme changes, so this panel always reflects the
+                                 active theme's capabilities. -->
+                            <StackPanel x:Name="ThemeOptionsPanel" Spacing="6" Margin="0,4,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="66" />

@@ -174,6 +174,19 @@ public static class LunaVariantService
         _appliedGloss = gloss;
     }
 
+    /// <summary>Removes the factory's injected brushes so the shared chrome keys (CaptionActive,
+    /// WindowFrame, Highlight, …) fall back to the non-Luna defaults. Call when switching away from the
+    /// Luna theme, otherwise a Luna variant's chrome would bleed into Win2000. UI thread only.</summary>
+    public static void Clear()
+    {
+        if (_injected.Count == 0) return;
+        if (Application.Current?.Resources is not { } res) return;
+        foreach (var key in _injected) res.Remove(key);
+        _injected.Clear();
+        _appliedColor = DefaultColor;
+        _appliedGloss = DefaultGloss;
+    }
+
     private static IBrush BuildBrush(Surface s, ColorXform xform, LunaGloss gloss)
     {
         // Re-hue first (chrome only), then let the gloss profile reshape the arrangement.

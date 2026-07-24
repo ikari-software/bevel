@@ -258,6 +258,8 @@ public sealed class SettingsService : IDisposable
     {
         _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId, SettingsJsonContext.Default.String);
         _raw["colorScheme"] = JsonSerializer.SerializeToElement(_settings.ColorScheme, SettingsJsonContext.Default.String);
+        _raw["lunaColor"] = JsonSerializer.SerializeToElement(_settings.LunaColor, SettingsJsonContext.Default.String);
+        _raw["lunaGloss"] = JsonSerializer.SerializeToElement(_settings.LunaGloss, SettingsJsonContext.Default.String);
         _raw["uiFontFamily"] = JsonSerializer.SerializeToElement(_settings.UiFontFamily, SettingsJsonContext.Default.String);
         _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled, SettingsJsonContext.Default.Boolean);
         _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
@@ -299,6 +301,8 @@ public sealed class SettingsService : IDisposable
         {
             ThemeId = GetString("themeId") ?? "win2000",
             ColorScheme = GetString("colorScheme") ?? "",
+            LunaColor = GetString("lunaColor") ?? "",
+            LunaGloss = GetString("lunaGloss") ?? "",
             UiFontFamily = GetString("uiFontFamily") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
@@ -375,8 +379,16 @@ public sealed class BevelSettings
     public string ThemeId { get; set; } = "win2000";
 
     /// <summary>Win2000 colour scheme id (Classic <c>Colors/&lt;id&gt;.axaml</c>, W2K-01 / bevel-9js).
-    /// Empty = "Windows Standard" (the default palette).</summary>
+    /// Empty = "Windows Standard" (the default palette). This is the Win2000 theme's variant option;
+    /// each theme contributes its own appearance options via <c>ThemeVariants</c>.</summary>
     public string ColorScheme { get; set; } = "";
+
+    /// <summary>Luna colour variant (Blue/Silver/Black/Purple) — the Luna theme's colour axis. Empty =
+    /// Blue (the reference). Combined at runtime with <see cref="LunaGloss"/> by the variant engine.</summary>
+    public string LunaColor { get; set; } = "";
+
+    /// <summary>Luna gloss variant (Hybrid/Gloss/Matte) — the Luna theme's gloss axis. Empty = Hybrid.</summary>
+    public string LunaGloss { get; set; } = "";
 
     /// <summary>UI font family override (FNT-01 / bevel-9js). Empty = the theme's bundled face
     /// (Noto Sans). Any installed family name shadows <c>Bevel.Font.UI</c> shell-wide.</summary>
