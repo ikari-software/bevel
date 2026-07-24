@@ -18,10 +18,12 @@
             <!-- ── Luna gradient brushes (vector chrome) ─────────────────────── -->
             <!-- Matte concave beige (authentic Luna push-button), not a glossy bead: light top edge →
                  dimmest matte middle → subtle lighter bottom. -->
+            <!-- Glossy Luna push-button (design): bright white top sheen, hard 50% split to the beige body. -->
             <LinearGradientBrush x:Key="Luna.Brush.Button" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#FBF9F2" />
-                <GradientStop Offset="0.5" Color="#E7E3D2" />
-                <GradientStop Offset="1" Color="#EFEBDC" />
+                <GradientStop Offset="0" Color="#FFFFFF" />
+                <GradientStop Offset="0.48" Color="#F4F2E9" />
+                <GradientStop Offset="0.52" Color="#ECE9D8" />
+                <GradientStop Offset="1" Color="#E2DDC9" />
             </LinearGradientBrush>
             <LinearGradientBrush x:Key="Luna.Brush.ButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#FFFDF6" />
@@ -33,10 +35,10 @@
                 <GradientStop Offset="0.5" Color="#E6E1D0" />
                 <GradientStop Offset="1" Color="#EFEBDC" />
             </LinearGradientBrush>
-            <!-- Faint top sheen only — the strong wet gloss was the aftermarket look; authentic Luna is matte. -->
+            <!-- Top-half gloss sheen for the glossy Luna controls (buttons). -->
             <LinearGradientBrush x:Key="Luna.Brush.Gloss" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#30FFFFFF" />
-                <GradientStop Offset="0.5" Color="#0AFFFFFF" />
+                <GradientStop Offset="0" Color="#60FFFFFF" />
+                <GradientStop Offset="0.5" Color="#14FFFFFF" />
                 <GradientStop Offset="1" Color="#00FFFFFF" />
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Luna.Brush.ButtonBorder" Color="#7B9EBD" />
@@ -82,10 +84,12 @@
                  active task. Bound via the Bevel.Theme.ToggleButton contract so it swaps live. -->
             <!-- Matte concave (authentic Luna), NOT the aftermarket gloss: light top edge → dimmest
                  matte middle → subtle lighter bottom edge. No hard 50% split-stop "shiny bead". -->
+            <!-- Glossy blue task button (design shiny bead): light top, hard 50% split, lighter bottom. -->
             <LinearGradientBrush x:Key="Luna.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#5A93E8" />
-                <GradientStop Offset="0.5" Color="#2C6CD6" />
-                <GradientStop Offset="1" Color="#3D7FE0" />
+                <GradientStop Offset="0" Color="#5A97F0" />
+                <GradientStop Offset="0.5" Color="#2F6FE0" />
+                <GradientStop Offset="0.5" Color="#215FD8" />
+                <GradientStop Offset="1" Color="#4483EC" />
             </LinearGradientBrush>
             <LinearGradientBrush x:Key="Luna.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#79ABF2" />
@@ -135,16 +139,16 @@
                  {x:Type CaptionButtons} restyles the internal CaptionButtonsEx (it resolves to this theme),
                  so framed windows get the Luna caption buttons + red close. -->
             <LinearGradientBrush x:Key="Luna.Brush.CaptionButton" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0"    Color="#7CB6FF" />
-                <GradientStop Offset="0.45" Color="#2E7CEF" />
-                <GradientStop Offset="0.55" Color="#0E58E4" />
-                <GradientStop Offset="1"    Color="#3A87F2" />
+                <GradientStop Offset="0"   Color="#5AA6FF" />
+                <GradientStop Offset="0.5" Color="#1E70EF" />
+                <GradientStop Offset="0.5" Color="#0D57E6" />
+                <GradientStop Offset="1"   Color="#3F8BF3" />
             </LinearGradientBrush>
             <LinearGradientBrush x:Key="Luna.Brush.CaptionClose" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0"    Color="#F79876" />
-                <GradientStop Offset="0.45" Color="#E45636" />
-                <GradientStop Offset="0.55" Color="#C33217" />
-                <GradientStop Offset="1"    Color="#EE6A48" />
+                <GradientStop Offset="0"   Color="#F6A98F" />
+                <GradientStop Offset="0.5" Color="#E2492C" />
+                <GradientStop Offset="0.5" Color="#CF3417" />
+                <GradientStop Offset="1"   Color="#F07D63" />
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Luna.Brush.CaptionButtonBorder" Color="#0A3EA8" />
             <LinearGradientBrush x:Key="Luna.Brush.CaptionButtonGloss" StartPoint="0%,0%" EndPoint="0%,100%">
@@ -229,7 +233,7 @@
                 <GradientStop Offset="0.5" Color="#3BA32F" />
                 <GradientStop Offset="1" Color="#63C94E" />
             </LinearGradientBrush>
-            <SolidColorBrush x:Key="Luna.Brush.Check" Color="#1A7D1A" />
+            <SolidColorBrush x:Key="Luna.Brush.Check" Color="#3FA23F" />
 
             <!-- Field/scroll/tab/menu chrome for the remaining controls -->
             <SolidColorBrush x:Key="Luna.Brush.Arrow"       Color="#1B3A6B" />
@@ -309,6 +313,10 @@
                 <Setter Property="VerticalContentAlignment" Value="Center" />
                 <Setter Property="Template">
                     <ControlTemplate>
+                        <!-- Outer default-ring: transparent by default, blue on IsDefault (XP's double-frame
+                             glow around the default button); Padding="1" leaves the ~1px gap to the face. -->
+                        <Border Name="DefaultRing" BorderThickness="1" CornerRadius="4"
+                                BorderBrush="Transparent" Padding="1">
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
@@ -328,10 +336,11 @@
                                                   RecognizesAccessKey="True" />
                             </Panel>
                         </Border>
+                        </Border>
                     </ControlTemplate>
                 </Setter>
 
-                <Style Selector="^[IsDefault=True]">
+                <Style Selector="^[IsDefault=True] /template/ Border#DefaultRing">
                     <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorderDefault}" />
                 </Style>
                 <Style Selector="^:pointerover">
@@ -436,10 +445,10 @@
                                         <!-- Discrete Luna segments (design shows blocks, not a continuous bar):
                                              a 7px green block + 2px gap, tiled horizontally. -->
                                         <Border.Background>
-                                            <DrawingBrush TileMode="Tile" Stretch="None" DestinationRect="0,0,9,20">
+                                            <DrawingBrush TileMode="Tile" Stretch="None" DestinationRect="0,0,16,20">
                                                 <DrawingBrush.Drawing>
                                                     <GeometryDrawing Brush="{DynamicResource Luna.Brush.Progress}"
-                                                                     Geometry="M0,0 L7,0 L7,20 L0,20 Z" />
+                                                                     Geometry="M0,0 L13,0 L13,20 L0,20 Z" />
                                                 </DrawingBrush.Drawing>
                                             </DrawingBrush>
                                         </Border.Background>
@@ -496,7 +505,7 @@
                                         </RepeatButton.Template>
                                     </RepeatButton>
                                 </Track.IncreaseButton>
-                                <Thumb Name="PART_Thumb" Width="11" Height="20">
+                                <Thumb Name="PART_Thumb" Width="16" Height="20">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
                                             <Border Background="{DynamicResource Luna.Brush.Button}"
@@ -513,9 +522,10 @@
 
             <!-- ── GroupBox: thin Luna frame with the header label breaking the top line ── -->
             <ControlTheme x:Key="Bevel.Theme.HeaderedContentControl" TargetType="HeaderedContentControl">
-                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.ButtonBorder}" />
+                <!-- Soft etched grey frame (XP group box), not the bluer button border. -->
+                <Setter Property="BorderBrush" Value="#D0CDBF" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="Padding" Value="10,12,10,10" />
+                <Setter Property="Padding" Value="10,11,10,9" />
                 <Setter Property="Template">
                     <ControlTemplate TargetType="HeaderedContentControl">
                         <Grid Margin="0,7,0,0">
@@ -545,7 +555,7 @@
                 <Setter Property="Template">
                     <ControlTemplate>
                         <Border Name="Tab" CornerRadius="4,4,0,0"
-                                Background="#E2DDC9"
+                                Background="#D7D1BC"
                                 BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
                                 BorderThickness="1,1,1,0">
                             <ContentPresenter Name="PART_ContentPresenter"
