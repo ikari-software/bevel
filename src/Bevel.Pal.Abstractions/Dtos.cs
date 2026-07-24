@@ -119,11 +119,13 @@ public sealed record RunningApp(
     string DisplayName,
     int ProcessId);
 
-/// <summary>An installed application (start-menu enumeration).</summary>
+/// <summary>An installed application (start-menu enumeration). <paramref name="Subtitle"/> is an optional
+/// short category label (e.g. "Developer Tools") shown as a second line under featured Start-menu entries.</summary>
 public sealed record InstalledApp(
     string AppId,
     string DisplayName,
-    string? IconPath);
+    string? IconPath,
+    string? Subtitle = null);
 
 /// <summary>A decoded BGRA image handed across the PAL (icons, tray pixels).</summary>
 public sealed record PalImage(

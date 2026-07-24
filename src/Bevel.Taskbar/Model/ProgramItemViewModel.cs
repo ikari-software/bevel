@@ -24,6 +24,7 @@ public sealed class ProgramItemViewModel : ObservableObject
     public ProgramItemViewModel(InstalledApp app, IAppEnvironment? appEnv, IconLoader icons)
     {
         DisplayName = app.DisplayName;
+        SubLabel = app.Subtitle;
         _appId = app.AppId;
         _iconPath = app.IconPath;
         _appEnv = appEnv;
@@ -36,6 +37,14 @@ public sealed class ProgramItemViewModel : ObservableObject
     public string AppId => _appId;
 
     public string DisplayName { get; }
+
+    /// <summary>Optional short category label (e.g. "Developer Tools") shown as a grey second line under
+    /// the name in the Luna Start menu's featured column. Null/empty for apps that declare no category.</summary>
+    public string? SubLabel { get; }
+
+    /// <summary>True when this item has a <see cref="SubLabel"/> — drives the two-line Start-menu row.</summary>
+    public bool HasSubLabel => !string.IsNullOrEmpty(SubLabel);
+
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
 
     /// <summary>Command bound to the item; launches the app and closes the menu (host-wired).</summary>

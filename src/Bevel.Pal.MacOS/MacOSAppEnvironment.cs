@@ -405,7 +405,8 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
                 result.Add(new InstalledApp(
                     AppId: entry,
                     DisplayName: name,
-                    IconPath: entry));
+                    IconPath: entry,
+                    Subtitle: ReadAppCategory(entry)));
             }
             else if (Directory.Exists(entry))
             {
@@ -420,6 +421,59 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
                 }
             }
         }
+    }
+
+    /// <summary>Reads the app's LSApplicationCategoryType from its Info.plist and maps it to a short,
+    /// user-friendly label ("Developer Tools"), or null if it declares none. The value is a literal
+    /// "public.app-category.X" string in the plist (XML or binary alike), so a byte-scan reads it without a
+    /// plist parser or native interop; Info.plists are small, so the per-app read is cheap.</summary>
+    private static string? ReadAppCategory(string appPath)
+    {
+        try
+        {
+            var plist = Path.Combine(appPath, "Contents", "Info.plist");
+            if (!File.Exists(plist)) return null;
+            // ASCII suffices — the category token is ASCII; any other bytes decode to harmless chars.
+            var text = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(plist));
+            var m = System.Text.RegularExpressions.Regex.Match(text, @"public\.app-category\.([a-z-]+)");
+            return m.Success ? FriendlyCategory(m.Groups[1].Value) : null;
+        }
+        catch
+        {
+            return null; // unreadable plist → no subtitle, never break enumeration
+        }
+    }
+
+    private static string FriendlyCategory(string token) => token switch
+    {
+        "developer-tools" => "Developer Tools",
+        "utilities" => "Utilities",
+        "productivity" => "Productivity",
+        "graphics-design" => "Graphics & Design",
+        "photography" => "Photography",
+        "video" => "Video",
+        "music" => "Music",
+        "entertainment" => "Entertainment",
+        "games" => "Games",
+        "social-networking" => "Social Networking",
+        "business" => "Business",
+        "finance" => "Finance",
+        "education" => "Education",
+        "news" => "News",
+        "reference" => "Reference",
+        "lifestyle" => "Lifestyle",
+        "travel" => "Travel",
+        "weather" => "Weather",
+        "healthcare-fitness" => "Health & Fitness",
+        _ => CapitalizeWords(token.Replace('-', ' ')),
+    };
+
+    private static string CapitalizeWords(string s)
+    {
+        var parts = s.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < parts.Length; i++)
+            parts[i] = char.ToUpperInvariant(parts[i][0]) + parts[i].Substring(1);
+        return string.Join(' ', parts);
     }
 
     /// <summary>

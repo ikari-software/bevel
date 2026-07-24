@@ -223,8 +223,13 @@
                                                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                                                     <Image Source="{Binding IconSource}" Width="28" Height="28"
                                                            VerticalAlignment="Center" />
-                                                    <TextBlock Text="{Binding DisplayName}" Classes="pintitle"
-                                                               VerticalAlignment="Center" />
+                                                    <!-- Two-line featured entry: bold name + grey category sub-label
+                                                         (design). Apps with no category collapse to a single line. -->
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding DisplayName}" Classes="pintitle" />
+                                                        <TextBlock Text="{Binding SubLabel}" Classes="pinsub"
+                                                                   IsVisible="{Binding HasSubLabel}" />
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </Button>
                                         </DataTemplate>

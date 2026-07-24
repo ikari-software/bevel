@@ -27,8 +27,8 @@ public class RenderLunaStartMenuTest
             Bevel.UI.ThemeService.Apply("luna");
 
             var appEnv = new StubAppEnvironment(
-                new InstalledApp("com.files", "Bevel Files", null),
-                new InstalledApp("com.term", "Terminal", null),
+                new InstalledApp("com.files", "Bevel Files", null, "File manager"),
+                new InstalledApp("com.term", "Terminal", null, "Developer Tools"),
                 new InstalledApp("com.paint", "Paint", null),
                 new InstalledApp("com.web", "Web", null));
             using var model = new ShellModel(null, appEnv, null);
