@@ -3,14 +3,14 @@
                     xmlns:utils="clr-namespace:Classic.Avalonia.Theme.Utils"
                     xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia">
 
-  <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%" x:Key="ActiveTitleBarBrush">
+  <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%" x:Key="Bevel.Brush.CaptionActive">
     <GradientStops>
       <GradientStop Offset="0" Color="{DynamicResource {x:Static common:SystemColors.ActiveCaptionColorKey}}" />
       <GradientStop Offset="1" Color="{DynamicResource {x:Static common:SystemColors.GradientActiveCaptionColorKey}}" />
     </GradientStops>
   </LinearGradientBrush>
 
-  <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%" x:Key="InactiveTitleBarBrush">
+  <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%" x:Key="Bevel.Brush.CaptionInactive">
     <GradientStops>
       <GradientStop Offset="0" Color="{DynamicResource {x:Static common:SystemColors.InactiveCaptionColorKey}}" />
       <GradientStop Offset="1" Color="{DynamicResource {x:Static common:SystemColors.GradientInactiveCaptionColorKey}}" />
@@ -22,7 +22,7 @@
     <Setter Property="Template">
       <ControlTemplate>
         <Panel>
-          <Border x:Name="PART_GradientBar" IsHitTestVisible="False" />
+          <Border x:Name="PART_GradientBar" CornerRadius="{DynamicResource Bevel.Metric.CornerRadius}" IsHitTestVisible="False" />
 
           <DockPanel Margin="2,0,2,0">
             <utils:CaptionButtonsEx Name="PART_CaptionButtons" DockPanel.Dock="Right" />
@@ -49,11 +49,11 @@
     </Setter>
 
     <Style Selector="^ /template/ Border#PART_GradientBar">
-      <Setter Property="Background" Value="{StaticResource InactiveTitleBarBrush}" />
+      <Setter Property="Background" Value="{DynamicResource Bevel.Brush.CaptionInactive}" />
     </Style>
 
     <Style Selector="^:active /template/ Border#PART_GradientBar">
-      <Setter Property="Background" Value="{StaticResource ActiveTitleBarBrush}" />
+      <Setter Property="Background" Value="{DynamicResource Bevel.Brush.CaptionActive}" />
     </Style>
   </ControlTheme>
 

@@ -123,16 +123,20 @@
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Luna.Brush.StartBorder" Color="#1E6B17" />
 
-            <!-- Caption gradient (matte Luna). NOTE: still not wired to the bar itself — the bar background
-                 is a StaticResource inside the vendored, internal AutoAttachTitleBar (horizontal ramp), so
-                 the matte VERTICAL base (#003EC9) needs the Classic fork. The caption COLOURS + BUTTONS
-                 below are the parts we can reach today. -->
-            <LinearGradientBrush x:Key="Luna.Brush.Caption" StartPoint="0%,0%" EndPoint="0%,100%">
+            <!-- Caption band: authentic matte VERTICAL Luna gradient (soft top highlight → deep #003EC9 base),
+                 now WIRED — the vendored AutoAttachTitleBar reads Bevel.Brush.CaptionActive/Inactive (was a
+                 StaticResource horizontal ramp). Win2000 keeps its horizontal ramp via the base token. -->
+            <LinearGradientBrush x:Key="Bevel.Brush.CaptionActive" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#3F88EC" />
                 <GradientStop Offset="0.06" Color="#1E6EE7" />
                 <GradientStop Offset="0.28" Color="#0D5CE3" />
                 <GradientStop Offset="0.62" Color="#0A51DF" />
                 <GradientStop Offset="1" Color="#003EC9" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="Bevel.Brush.CaptionInactive" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#9EBBEA" />
+                <GradientStop Offset="0.5" Color="#7FA0D2" />
+                <GradientStop Offset="1" Color="#5E82B8" />
             </LinearGradientBrush>
 
             <!-- ── Caption buttons: 21x21 glossy "shiny bead" squares; close is red (LUN chrome). Overriding
