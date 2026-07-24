@@ -111,9 +111,6 @@
                     <Style Selector="Button.lunarow:pointerover /template/ Border#row">
                         <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
                     </Style>
-                    <Style Selector="Button.lunarow:pointerover TextBlock">
-                        <Setter Property="Foreground" Value="White" />
-                    </Style>
                     <Style Selector="TextBlock.pintitle">
                         <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPinTitle}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
@@ -127,6 +124,12 @@
                         <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPlaceText}" />
                         <Setter Property="FontSize" Value="13" />
                         <Setter Property="VerticalAlignment" Value="Center" />
+                    </Style>
+                    <!-- Hover foreground LAST so it beats the per-class foregrounds above: Avalonia styles
+                         win by document order, so if this came first the hovered row kept dark text on the
+                         blue highlight. Covers pintitle, pinsub and place (all descendant TextBlocks). -->
+                    <Style Selector="Button.lunarow:pointerover TextBlock">
+                        <Setter Property="Foreground" Value="White" />
                     </Style>
                     <Style Selector="Button.footer">
                         <Setter Property="Background" Value="Transparent" />
