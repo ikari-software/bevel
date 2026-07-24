@@ -89,8 +89,11 @@ public static class LunaVariantService
             (0.0,"5A97F0"),(0.5,"2F6FE0"),(0.5,"215FD8"),(1.0,"4483EC")}),
         new("Luna.Brush.TaskButtonHover", true, GlossRole.Control, new[]{
             (0.0,"79ABF2"),(0.5,"4384E4"),(1.0,"5695EC")}),
+        // Active window's task button: a LIT, brighter highlight (not XP's sunken-darker, which vanishes
+        // into a dark bar under Black/Purple). Brighter than default + hover with a bright border so the
+        // focused window reads on every variant.
         new("Luna.Brush.TaskButtonChecked", true, GlossRole.Control, new[]{
-            (0.0,"1B4EA8"),(0.5,"2559BC"),(1.0,"2E63C8")}),
+            (0.0,"9CC4FF"),(0.5,"5590EE"),(0.5,"427EE8"),(1.0,"72A9F6")}),
         new("Luna.Brush.CaptionButton", true, GlossRole.Control, new[]{
             (0.0,"5AA6FF"),(0.5,"1E70EF"),(0.5,"0D57E6"),(1.0,"3F8BF3")}),
 
@@ -111,7 +114,7 @@ public static class LunaVariantService
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
         Surface.Solid("Luna.Brush.TaskButtonBorder", true, "1C4D9C"),
-        Surface.Solid("Luna.Brush.TaskButtonCheckedBorder", true, "12358A"),
+        Surface.Solid("Luna.Brush.TaskButtonCheckedBorder", true, "2A5DB8"),
         Surface.Solid("Luna.Brush.CaptionButtonBorder", true, "0A3EA8"),
         Surface.Solid("Luna.Brush.ButtonBorder", true, "7B9EBD"),
         Surface.Solid("Luna.Brush.ButtonBorderDefault", true, "2C628B"),
@@ -182,8 +185,36 @@ public static class LunaVariantService
         res[Classic.CommonControls.SystemColors.ActiveCaptionTextBrushKey] = onChromeBrush;   // caption title
         _injected.Add(Classic.CommonControls.SystemColors.ActiveCaptionTextBrushKey);
 
+        // White specular sheen overlays for the glossy controls, scaled by the gloss axis: Gloss brings
+        // back the strong wet "Royale" sheen the matte design dropped; Hybrid keeps the restrained sheen;
+        // Matte nearly none.
+        var (sheenTop, sheenMid) = g switch
+        {
+            LunaGloss.Matte => ((byte)0x12, (byte)0x04),
+            LunaGloss.Gloss => ((byte)0xB0, (byte)0x34),
+            _ => ((byte)0x60, (byte)0x14), // Hybrid (current)
+        };
+        res["Luna.Brush.Gloss"] = VSheen((sheenTop, 0.0), (sheenMid, 0.5), ((byte)0x00, 1.0));
+        _injected.Add("Luna.Brush.Gloss");
+        var capTop = g switch { LunaGloss.Matte => (byte)0x28, LunaGloss.Gloss => (byte)0xCE, _ => (byte)0xA0 };
+        res["Luna.Brush.CaptionButtonGloss"] = VSheen((capTop, 0.0), ((byte)0x10, 1.0));
+        _injected.Add("Luna.Brush.CaptionButtonGloss");
+
         _appliedColor = color;
         _appliedGloss = gloss;
+    }
+
+    /// <summary>Vertical white-alpha sheen overlay from the given (alpha, offset) stops.</summary>
+    private static IBrush VSheen(params (byte A, double Off)[] stops)
+    {
+        var gs = new GradientStops();
+        foreach (var (a, off) in stops) gs.Add(new GradientStop(Color.FromArgb(a, 255, 255, 255), off));
+        return new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = gs,
+        };
     }
 
     /// <summary>Removes the factory's injected brushes so the shared chrome keys (CaptionActive,
@@ -224,7 +255,7 @@ public static class LunaVariantService
         }
         else
         {
-            stops = targetGlossy ? Bead(BaseColor(s, C)) : Matte(BaseColor(s, C));
+            stops = targetGlossy ? Bead(BaseColor(s, C), gloss == LunaGloss.Gloss) : Matte(BaseColor(s, C));
         }
 
         return new LinearGradientBrush
@@ -250,13 +281,14 @@ public static class LunaVariantService
         return c(best.Hex);
     }
 
-    /// <summary>Glossy "shiny bead": bright top sheen, hard 50% split, lighter bottom.</summary>
-    private static List<GradientStop> Bead(Color b) => new()
+    /// <summary>Glossy "shiny bead": bright top sheen, hard 50% split, lighter bottom. <paramref name="wet"/>
+    /// pushes the aftermarket "Royale" wet-glass look for the full Gloss mode.</summary>
+    private static List<GradientStop> Bead(Color b, bool wet = false) => new()
     {
-        new GradientStop(Lighten(b, 0.34), 0.0),
-        new GradientStop(Lighten(b, 0.08), 0.5),
-        new GradientStop(Darken(b, 0.10), 0.5),
-        new GradientStop(Lighten(b, 0.10), 1.0),
+        new GradientStop(Lighten(b, wet ? 0.52 : 0.34), 0.0),
+        new GradientStop(Lighten(b, wet ? 0.20 : 0.08), 0.5),
+        new GradientStop(Darken(b, wet ? 0.14 : 0.10), 0.5),
+        new GradientStop(Lighten(b, wet ? 0.14 : 0.10), 1.0),
     };
 
     /// <summary>Matte concave: soft light top edge, dim body, faint lighter bottom — no hard split.</summary>

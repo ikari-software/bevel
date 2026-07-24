@@ -88,6 +88,55 @@ public class RenderLunaVariantsTest
         return window.CaptureRenderedFrame();
     }
 
+    /// <summary>Renders a taskbar strip with the three task-button states (default / hover / active) on
+    /// the bar for each colour, so the button highlight/contrast can be judged per variant.</summary>
+    [AvaloniaFact]
+    public void Render_task_button_states()
+    {
+        var dir = Environment.GetEnvironmentVariable("BEVEL_LUNA_VARIANTS_DIR");
+        if (string.IsNullOrEmpty(dir)) return;
+        Directory.CreateDirectory(dir);
+        try
+        {
+            Bevel.UI.ThemeService.Apply("luna");
+            foreach (var (color, _) in Bevel.UI.Luna.LunaVariantService.Colors)
+            {
+                Bevel.UI.Luna.LunaVariantService.Apply(color, "Hybrid");
+                RenderTaskbarStrip($"{color}")?.Save(Path.Combine(dir, $"taskbar-{color}.png"));
+            }
+        }
+        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+    }
+
+    private static IBrush R(string key)
+    {
+        Application.Current!.TryGetResource(key, null, out var v);
+        return v as IBrush ?? Brushes.Magenta;
+    }
+
+    private static Avalonia.Media.Imaging.WriteableBitmap? RenderTaskbarStrip(string title)
+    {
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, Margin = new Thickness(6, 3), VerticalAlignment = VerticalAlignment.Center };
+        (string Key, string Border, string Label)[] btns =
+        {
+            ("Luna.Brush.TaskButton", "Luna.Brush.TaskButtonBorder", "Documents"),
+            ("Luna.Brush.TaskButtonHover", "Luna.Brush.TaskButtonBorder", "Hover"),
+            ("Luna.Brush.TaskButtonChecked", "Luna.Brush.TaskButtonCheckedBorder", "Active window"),
+        };
+        foreach (var (k, bd, lbl) in btns)
+            bar.Children.Add(new Border
+            {
+                Height = 22, MinWidth = 150, CornerRadius = new CornerRadius(3), BorderThickness = new Thickness(1),
+                Background = R(k), BorderBrush = R(bd),
+                Child = new TextBlock { Text = lbl, Margin = new Thickness(8, 0), VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Foreground = R("Bevel.Brush.TrayText") },
+            });
+        var strip = new Border { Background = R("Bevel.Brush.TaskbarBackground"), Height = 30, Child = bar };
+        var win = new Bevel.UI.BevelWindow { Title = title, Width = 580, Height = 70, Content = strip };
+        win.Show();
+        Dispatcher.UIThread.RunJobs();
+        return win.CaptureRenderedFrame();
+    }
+
     /// <summary>Renders the Properties dialog's Appearance tab under Luna and Win2000 so the dynamic
     /// theme-options subpanel (Colour + Gloss for Luna; Colour scheme for Win2000) can be eyeballed.</summary>
     [AvaloniaFact]
