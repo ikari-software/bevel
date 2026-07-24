@@ -51,7 +51,7 @@
                 <MenuItem Header="Show the _Desktop" Command="{Binding ShowDesktopCommand}" />
                 <MenuItem Header="_Task Manager…" Click="OnTaskManagerClick" />
                 <Separator />
-                <MenuItem Header="_Lock the Taskbar" Click="OnLockTaskbarClick" />
+                <MenuItem x:Name="LockMenuItem" Header="_Lock the Taskbar" Click="OnLockTaskbarClick" />
                 <MenuItem Header="P_roperties…" Click="OnPropertiesClick" />
             </MenuFlyout>
         </Grid.ContextFlyout>

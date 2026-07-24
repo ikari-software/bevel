@@ -1005,6 +1005,11 @@
                                 <ContentControl Name="PART_IconPresenter" Grid.Column="0" Width="16" Height="16"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Content="{TemplateBinding Icon}" />
+                                <!-- Check mark for toggle/IsChecked items (e.g. "Lock the Taskbar"). -->
+                                <Path Name="CheckGlyph" Grid.Column="0" IsVisible="False"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M0,3.2 L2.6,6 L7,0.4" Stroke="{DynamicResource Bevel.Brush.MenuText}"
+                                      StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" />
                                 <ContentPresenter Name="PART_HeaderPresenter" Grid.Column="1" Margin="{TemplateBinding Padding}"
                                                   VerticalAlignment="Center" Content="{TemplateBinding Header}"
                                                   ContentTemplate="{TemplateBinding HeaderTemplate}"
@@ -1050,6 +1055,12 @@
                 </Style>
                 <Style Selector="^:empty /template/ Path#rightArrow">
                     <Setter Property="IsVisible" Value="False" />
+                </Style>
+                <Style Selector="^:checked /template/ Path#CheckGlyph">
+                    <Setter Property="IsVisible" Value="True" />
+                </Style>
+                <Style Selector="^:selected /template/ Path#CheckGlyph">
+                    <Setter Property="Stroke" Value="{DynamicResource Bevel.Brush.HighlightText}" />
                 </Style>
                 <Style Selector="^:disabled">
                     <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />

@@ -189,6 +189,7 @@ public partial class TaskbarView : UserControl
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         _locked = s.TaskbarLocked;
         ResizeGrip.IsVisible = !_locked;
+        LockMenuItem.IsChecked = _locked;   // reflect lock state as the context-menu check mark
         // Only re-issue the native window-level set when it actually changed — every dialog toggle
         // funnels through here, and re-stacking the NSWindow on unrelated changes can flicker z-order.
         if (_alwaysOnTop != s.TaskbarAlwaysOnTop)
