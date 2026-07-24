@@ -23,9 +23,11 @@
                         <StackPanel Spacing="6">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Border x:Name="PermStatusDot" Width="15" Height="15" CornerRadius="3"
-                                        Margin="0,1,0,0" VerticalAlignment="Center">
+                                        Background="#9AA0A6" Margin="0,1,0,0" VerticalAlignment="Center">
+                                    <!-- Neutral filled dot + dash until the async permission check resolves
+                                         (UpdatePermissionUI swaps in the real colour + check/cross/dash). -->
                                     <Path x:Name="PermStatusGlyph" Stroke="White" StrokeThickness="1.8"
-                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L7,3"
                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <TextBlock x:Name="PermStatusText"
@@ -240,7 +242,7 @@
                             <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Theme" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBlock Text="Theme" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <ComboBox x:Name="ThemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="The visual style engine (chrome geometry, bevels, metrics). The colour scheme and font below layer on top."
@@ -253,14 +255,14 @@
                             <StackPanel x:Name="ThemeOptionsPanel" Spacing="6" Margin="0,4,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <Slider x:Name="FontSizeSlider" Minimum="9" Maximum="16"
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="FontSizeValue" FontSize="11" VerticalAlignment="Center" Width="42" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Font" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBlock Text="Font" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <ComboBox x:Name="FontFamilyCombo" FontSize="11" Width="200" VerticalAlignment="Center"
                                           MaxDropDownHeight="260" />
                             </StackPanel>
@@ -268,14 +270,14 @@
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Opacity" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBlock Text="Opacity" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <Slider x:Name="OpacitySlider" Minimum="20" Maximum="100"
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="OpacityValue" FontSize="11" VerticalAlignment="Center" Width="42" />
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <TextBlock Text="Tint" FontSize="11" VerticalAlignment="Center" Width="66" />
+                                <TextBlock Text="Tint" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <TextBox x:Name="BgColorBox" FontSize="11" Width="150"
                                          Watermark="(theme default)" VerticalAlignment="Center" />
                             </StackPanel>

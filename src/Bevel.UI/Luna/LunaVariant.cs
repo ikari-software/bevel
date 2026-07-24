@@ -123,8 +123,10 @@ public static class LunaVariantService
         Surface.Solid("Luna.Brush.StartMenuFooterHover", true, "4E93EC"),
         Surface.Solid("Luna.Brush.StartMenuDivider", true, "C9D2E4"),
         Surface.Solid("Luna.Brush.StartMenuPlacesDivider", true, "AEBFDB"),
-        Surface.Solid("Luna.Brush.StartMenuComputerIcon", true, "3F6FC5"),
-        Surface.Solid("Luna.Brush.StartMenuHelpIcon", true, "3F8EE6"),
+        // StartMenuComputerIcon / StartMenuHelpIcon deliberately NOT re-hued: their inner glyphs (monitor
+        // screen, "?", Search/Run) are hardcoded blue and don't follow the variant, so a re-hued tile would
+        // fight them (and wash the white glyph out under Silver). Shell icons are theme-independent in XP —
+        // the static XAML fallbacks keep them constant blue like the yellow folder.
         Surface.Solid("Bevel.Brush.Highlight", true, "316AC5"),
     };
 
@@ -173,6 +175,15 @@ public static class LunaVariantService
             res[key] = xform.Apply(Hex(hex));
             _injected.Add(key);
         }
+
+        // Selection highlight must stay saturated enough to read on the beige field for ALL variants — a
+        // light variant's uniform lightening (Silver) lifts #316AC5 to ~L0.72, ghosting the selected radio
+        // dot / list selection. Clamp its lightness so selection stays crisp without darkening the chrome.
+        var hl = xform.Apply(Hex("316AC5"));
+        var hsl = ToHsl(hl);
+        if (hsl.L > 0.55) hl = FromHsl(hsl.H, hsl.S, 0.55, hl.A);
+        res["Bevel.Color.Highlight"] = hl;
+        res["Bevel.Brush.Highlight"] = new SolidColorBrush(hl);   // keys already tracked from the loops
 
         // On-chrome text: a light chrome (Silver) needs DARK text on the taskbar buttons, caption and
         // clock; a dark chrome (Blue/Black/Purple) needs light text. Decide from the transformed taskbar
