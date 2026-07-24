@@ -14,7 +14,7 @@
             <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="Border.flyoutrow:pointerover">
-            <Setter Property="Background" Value="#316AC5" />
+            <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
         </Style>
         <Style Selector="Border.flyoutrow:pointerover TextBlock">
             <Setter Property="Foreground" Value="White" />
@@ -299,7 +299,7 @@
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
                                                 <Border Height="1" Margin="4,3"
-                                                        Background="{DynamicResource SystemButtonShadowBrush}" />
+                                                        Background="{DynamicResource Bevel.Brush.ButtonShadow}" />
                                                 <Button Command="{Binding OpenFolderCommand}" Content="Open folder"
                                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                                         Background="Transparent" BorderThickness="0" Padding="6,3" FontSize="11" />

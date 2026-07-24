@@ -447,12 +447,13 @@
                                 <DockPanel x:Name="PART_Track" LastChildFill="False" ClipToBounds="True">
                                     <Border x:Name="PART_Indicator" CornerRadius="1" ClipToBounds="True">
                                         <!-- Discrete Luna segments (design shows blocks, not a continuous bar):
-                                             a 7px green block + 2px gap, tiled horizontally. -->
+                                             a 9px green block + 3px gap = 12px pitch, per the styleguide
+                                             (rect width=9 at 12px spacing), tiled horizontally. -->
                                         <Border.Background>
-                                            <DrawingBrush TileMode="Tile" Stretch="None" DestinationRect="0,0,16,20">
+                                            <DrawingBrush TileMode="Tile" Stretch="None" DestinationRect="0,0,12,20">
                                                 <DrawingBrush.Drawing>
                                                     <GeometryDrawing Brush="{DynamicResource Luna.Brush.Progress}"
-                                                                     Geometry="M0,0 L13,0 L13,20 L0,20 Z" />
+                                                                     Geometry="M0,0 L9,0 L9,20 L0,20 Z" />
                                                 </DrawingBrush.Drawing>
                                             </DrawingBrush>
                                         </Border.Background>

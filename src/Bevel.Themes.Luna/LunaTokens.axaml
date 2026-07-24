@@ -63,6 +63,12 @@
     <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="{StaticResource Bevel.Color.HotTracking}" />
     <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="{StaticResource Bevel.Color.Desktop}" />
 
+    <!-- The vendored ClassicWindow paints its backdrop and the frame/caption GAPS with ControlBrushKey
+         (Classic grey #D4D0C8). Left un-remapped under Luna it showed as an off-palette grey wedge in
+         the rounded-caption top corners and a 1px grey seam around the caption. Remap to the beige face
+         so those gaps blend into the window body instead. -->
+    <SolidColorBrush x:Key="{x:Static common:SystemColors.ControlBrushKey}" Color="{StaticResource Bevel.Color.ButtonFace}" />
+
     <!-- ── Metrics (XP Luna column, §3) ───────────────────────────────────── -->
     <x:Double x:Key="Bevel.Metric.CaptionHeight">25</x:Double>
     <x:Double x:Key="Bevel.Metric.CaptionButtonWidth">21</x:Double>

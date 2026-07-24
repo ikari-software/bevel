@@ -172,7 +172,7 @@
                     </Border>
                     <!-- Orange banded separator under the header -->
                     <Border DockPanel.Dock="Top" Height="3" Background="{DynamicResource Luna.Brush.StartMenuHeaderRule}" />
-                    <Border DockPanel.Dock="Top" Height="1.5" Background="{DynamicResource Luna.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
+                    <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Luna.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
 
                     <!-- Footer: coloured band with Log Off / Turn Off -->
                     <Border DockPanel.Dock="Bottom" Height="44" Padding="10,0"
@@ -206,7 +206,7 @@
                         <!-- Left column -->
                         <DockPanel Grid.Column="0" Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
                             <!-- All Programs, bottom-anchored -->
-                            <Border DockPanel.Dock="Bottom" Height="1.4" Background="{DynamicResource Luna.Brush.StartMenuDivider}" Margin="12,0" />
+                            <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource Luna.Brush.StartMenuDivider}" Margin="12,0" />
             <Button x:Name="LunaAllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="12,7">
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <TextBlock Text="All Programs" Classes="pintitle" VerticalAlignment="Center" />
@@ -294,14 +294,14 @@
                                     <TextBlock Text="My Computer" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Border Height="1.2" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
+                            <Border Height="1" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
                             <Button Classes="lunarow" Click="OnLunaSettingsClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
                                             <Path Stroke="#5A6472" StrokeThickness="1.4" Data="M5.5,9.5 H18.5 M5.5,15 H18.5" />
-                                            <Path Fill="#4CA64C" Stroke="#2C6B2C" StrokeThickness="0.7" Data="M7.5,9.5 A2,2 0 1 1 11.5,9.5 A2,2 0 1 1 7.5,9.5 Z" />
-                                            <Path Fill="#2A6FD0" Stroke="#1B4E9E" StrokeThickness="0.7" Data="M12.5,15 A2,2 0 1 1 16.5,15 A2,2 0 1 1 12.5,15 Z" />
+                                            <Path Fill="#4CA64C" Stroke="#2C6B2C" StrokeThickness="1" Data="M7.5,9.5 A2,2 0 1 1 11.5,9.5 A2,2 0 1 1 7.5,9.5 Z" />
+                                            <Path Fill="#2A6FD0" Stroke="#1B4E9E" StrokeThickness="1" Data="M12.5,15 A2,2 0 1 1 16.5,15 A2,2 0 1 1 12.5,15 Z" />
                                         </Panel>
                                     </Border>
                                     <TextBlock Text="Control Panel" Classes="place" />
@@ -331,7 +331,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
-                                            <Path Fill="White" Stroke="#7B93B8" StrokeThickness="0.8" Data="M6,7 L18,7 L18,17 L6,17 Z" />
+                                            <Path Fill="White" Stroke="#7B93B8" StrokeThickness="1" Data="M6,7 L18,7 L18,17 L6,17 Z" />
                                             <Path Fill="#2F6FD0" Data="M6,7 L18,7 L18,9.5 L6,9.5 Z" />
                                             <Path Fill="#3FA23F" Data="M8.5,13.5 L12.5,13.5 L12.5,11.5 L15.5,14 L12.5,16.5 L12.5,14.5 L8.5,14.5 Z" />
                                         </Panel>
