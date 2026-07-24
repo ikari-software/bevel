@@ -483,6 +483,26 @@ public sealed class BevelSettings
 
     /// <summary>Show a Win7-style "Show desktop" sliver at the far right that minimizes every window.</summary>
     public bool TaskbarShowDesktopButton { get; set; }
+
+    /// <summary>A detached snapshot copy — used by the Properties dialog to revert on Cancel.</summary>
+    public BevelSettings Clone()
+    {
+        var c = new BevelSettings();
+        c.CopyFrom(this);
+        return c;
+    }
+
+    /// <summary>Copies every settable scalar property from <paramref name="other"/> into this instance
+    /// (deep-copying the one array), so a caller can revert live state to a snapshot without swapping the
+    /// object identity the settings service relies on.</summary>
+    public void CopyFrom(BevelSettings other)
+    {
+        foreach (var p in typeof(BevelSettings).GetProperties(
+                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0 && p.PropertyType != typeof(string[]))
+                p.SetValue(this, p.GetValue(other));
+        TaskbarStacks = (string[])other.TaskbarStacks.Clone();
+    }
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

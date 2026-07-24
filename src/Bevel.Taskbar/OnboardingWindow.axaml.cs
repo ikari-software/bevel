@@ -17,6 +17,7 @@ namespace Bevel.Taskbar;
 public partial class OnboardingWindow : Bevel.UI.BevelWindow
 {
     private readonly SettingsService _settings;
+    private BevelSettings? _baseline;   // settings at open (or last Apply); Cancel reverts to this
     private readonly IPermissionBroker? _permissionBroker;
     private readonly IShellSession? _shellSession;
     private DispatcherTimer? _permPollTimer;
@@ -87,7 +88,40 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
         ShowDesktopCheck.IsCheckedChanged += OnBehaviorChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
-        CloseBtn.Click += (_, _) => Close();
+
+        // OK / Cancel / Apply. Snapshot now (state is clean here — handlers just got wired, no changes yet).
+        _baseline = _settings.Current.Clone();
+        OkBtn.Click += (_, _) => Close();
+        CancelBtn.Click += OnCancel;
+        ApplyBtn.Click += OnApply;
+        _settings.Changed += OnSettingsChanged;
+        Closed += (_, _) => _settings.Changed -= OnSettingsChanged;
+    }
+
+    /// <summary>Any settings mutation dirties the sheet, enabling Apply. Marshalled to the UI thread since
+    /// Changed can be raised off it (persist runs async).</summary>
+    private void OnSettingsChanged() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ApplyBtn.IsEnabled = true);
+
+    private void OnApply(object? sender, RoutedEventArgs e)
+    {
+        _baseline = _settings.Current.Clone();   // commit current as the new revert baseline
+        ApplyBtn.IsEnabled = false;
+    }
+
+    private async void OnCancel(object? sender, RoutedEventArgs e)
+    {
+        if (_baseline is { } b)
+        {
+            try { await _settings.UpdateAsync(s => s.CopyFrom(b)); }
+            catch (Exception ex) { Console.Error.WriteLine($"[settings] cancel revert failed: {ex.Message}"); }
+            // Re-apply the live visual services from the snapshot (they aren't driven by ApplyLive).
+            Bevel.UI.ThemeService.Apply(b.ThemeId);
+            Bevel.UI.ColorSchemeService.Apply(b.ColorScheme);
+            Bevel.UI.FontService.Apply(b.UiFontFamily);
+            ApplyLive?.Invoke(_settings.Current);
+        }
+        Close();
     }
 
     private void LoadSettings()
@@ -175,19 +209,22 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         switch (state)
         {
             case PermissionState.Granted:
-                PermStatusDot.Background = Brushes.Green;
+                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#3FA23F"));
+                PermStatusGlyph.Data = Geometry.Parse("M0,3.5 L2.6,6 L7,0.5");   // check
                 PermStatusText.Text = "Granted";
                 GrantAccessibilityBtn.IsVisible = false;
                 PermHint.Text = "Window management is enabled.";
                 break;
             case PermissionState.Denied:
-                PermStatusDot.Background = Brushes.Red;
+                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#E24A2E"));
+                PermStatusGlyph.Data = Geometry.Parse("M0,0 L6,6 M6,0 L0,6");     // cross
                 PermStatusText.Text = "Not Granted";
                 GrantAccessibilityBtn.IsVisible = true;
                 PermHint.Text = "Grant Accessibility in System Settings to enable window management. No restart required.";
                 break;
             default:
-                PermStatusDot.Background = Brushes.Gray;
+                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#9AA0A6"));
+                PermStatusGlyph.Data = Geometry.Parse("M0,3 L7,3");                // dash
                 PermStatusText.Text = "Unknown";
                 GrantAccessibilityBtn.IsVisible = true;
                 PermHint.Text = "Checking permission status...";
