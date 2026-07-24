@@ -50,4 +50,29 @@ public class RenderOnboardingTest
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ } }
     }
+
+    [AvaloniaFact]
+    public void Render_properties_luna_to_png()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "bevel-onb-luna-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Bevel.UI.ThemeService.Apply("luna");
+            var settings = new SettingsService(dir);
+            var win = new OnboardingWindow(settings) { Width = 470, Height = 460 };
+            win.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var frame = win.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            var outPath = Environment.GetEnvironmentVariable("BEVEL_ONB_LUNA_OUT")
+                          ?? Path.Combine(Path.GetTempPath(), "bevel-onboarding-luna.png");
+            frame!.Save(outPath);
+        }
+        finally
+        {
+            Bevel.UI.ThemeService.Apply("win2000");
+            try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
 }

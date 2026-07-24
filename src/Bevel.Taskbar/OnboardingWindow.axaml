@@ -5,13 +5,12 @@
         Title="Taskbar and Start Menu Properties"
         Width="460" Height="480"
         WindowStartupLocation="CenterScreen"
-        CanResize="False">
-    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
-        <!-- Header -->
-        <TextBlock Grid.Row="0" Text="Taskbar and Start Menu Properties"
-                   FontSize="14" FontWeight="Bold" Margin="0,0,0,10" />
-
-        <TabControl Grid.Row="1">
+        CanResize="False"
+        Background="{DynamicResource Bevel.Brush.ButtonFace}">
+    <!-- Body uses the themed face (beige under Luna, grey under Win2000); the caption already names the
+         dialog, so no redundant in-body title. -->
+    <Grid RowDefinitions="*,Auto" Margin="12">
+        <TabControl Grid.Row="0">
 
             <!-- ── General ──────────────────────────────────────────────── -->
             <TabItem Header="General">
@@ -19,7 +18,7 @@
                 <StackPanel Spacing="12" Margin="2,8,2,2">
 
                     <!-- Accessibility permission -->
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Accessibility Permission"
@@ -43,7 +42,7 @@
                     </Border>
 
                     <!-- Work-area strategy -->
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Work-Area Strategy"
@@ -79,7 +78,7 @@
                     </Border>
 
                     <!-- Run at login -->
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <CheckBox x:Name="RunAtLoginCheck"
@@ -99,7 +98,7 @@
             <TabItem Header="Start">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Start Button" FontWeight="Bold" FontSize="12" />
@@ -119,7 +118,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Start Menu" FontWeight="Bold" FontSize="12" />
@@ -146,7 +145,7 @@
             <TabItem Header="Buttons">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Taskbar Buttons" FontWeight="Bold" FontSize="12" />
@@ -218,7 +217,7 @@
             <TabItem Header="Clock">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Clock" FontWeight="Bold" FontSize="12" />
@@ -249,7 +248,7 @@
             <TabItem Header="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Appearance" FontWeight="Bold" FontSize="12" />
@@ -309,7 +308,7 @@
             <TabItem Header="Tray">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="System Tray" FontWeight="Bold" FontSize="12" />
@@ -342,7 +341,7 @@
             <TabItem Header="Behavior">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource SystemButtonShadowBrush}"
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
                             BorderThickness="1" Padding="8" CornerRadius="2">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Behavior" FontWeight="Bold" FontSize="12" />
@@ -377,7 +376,7 @@
         </TabControl>
 
         <!-- Close button -->
-        <Button Grid.Row="2" Content="Close" HorizontalAlignment="Right"
+        <Button Grid.Row="1" Content="Close" HorizontalAlignment="Right"
                 x:Name="CloseBtn" Width="80" Margin="0,12,0,0" />
     </Grid>
 </ui:BevelWindow>
