@@ -61,7 +61,7 @@ public static class LunaVariantService
         // Purple: rotate blue(~220°) toward violet(~275°). Tuned against the reference chrome.
         LunaColorVariant.Silver => new ColorXform(HueShift: -6, SatMul: 0.22, LightMul: 1.4, LightShift: 0.05),
         LunaColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
-        LunaColorVariant.Purple => new ColorXform(HueShift: 58, SatMul: 0.92, LightMul: 1.0, LightShift: 0.0),
+        LunaColorVariant.Purple => new ColorXform(HueShift: 54, SatMul: 1.15, LightMul: 0.72, LightShift: -0.02),
         _ => ColorXform.Identity,
     };
 
