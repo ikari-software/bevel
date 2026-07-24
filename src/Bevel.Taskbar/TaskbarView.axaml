@@ -330,7 +330,7 @@
                                  since the flyout opens above the bar; lists the hidden icons (dark backed). -->
                             <Button IsVisible="{Binding Tray.HasOverflow}" Focusable="False"
                                     Padding="3,0" Background="Transparent" BorderThickness="0"
-                                    FontSize="13" FontWeight="Bold" Foreground="#E8E8E8"
+                                    FontSize="13" FontWeight="Bold" Foreground="{DynamicResource Bevel.Brush.TrayText}"
                                     Content="&#x2303;" ToolTip.Tip="Show hidden icons" VerticalAlignment="Center">
                                 <Button.Flyout>
                                     <Flyout Placement="Top">

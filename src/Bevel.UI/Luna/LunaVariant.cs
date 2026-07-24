@@ -61,7 +61,7 @@ public static class LunaVariantService
         // Purple: rotate blue(~220°) toward violet(~275°). Tuned against the reference chrome.
         LunaColorVariant.Silver => new ColorXform(HueShift: -6, SatMul: 0.22, LightMul: 1.4, LightShift: 0.05),
         LunaColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
-        LunaColorVariant.Purple => new ColorXform(HueShift: 54, SatMul: 1.15, LightMul: 0.72, LightShift: -0.02),
+        LunaColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02),
         _ => ColorXform.Identity,
     };
 
@@ -137,7 +137,8 @@ public static class LunaVariantService
 
     private static string _appliedColor = DefaultColor;
     private static string _appliedGloss = DefaultGloss;
-    private static readonly List<string> _injected = new();
+    // Keys can be strings (Bevel.Brush.*) or object keys (SystemColors.*), so track as object.
+    private static readonly List<object> _injected = new();
 
     public static bool IsKnownColor(string id) { foreach (var (i, _) in Colors) if (i == id) return true; return false; }
     public static bool IsKnownGloss(string id) { foreach (var (i, _) in Glosses) if (i == id) return true; return false; }
@@ -169,6 +170,17 @@ public static class LunaVariantService
             res[key] = xform.Apply(Hex(hex));
             _injected.Add(key);
         }
+
+        // On-chrome text: a light chrome (Silver) needs DARK text on the taskbar buttons, caption and
+        // clock; a dark chrome (Blue/Black/Purple) needs light text. Decide from the transformed taskbar
+        // base luminance so every variant's chrome text stays readable (XP's Silver used dark text too).
+        var barBase = xform.Apply(Hex("2054BE"));
+        var onChrome = ToHsl(barBase).L > 0.52 ? Hex("16171F") : Hex("EAF2FF");
+        var onChromeBrush = new SolidColorBrush(onChrome);
+        res["Bevel.Brush.TrayText"] = onChromeBrush;           // tray arrows, clock, task-button + chevron text
+        _injected.Add("Bevel.Brush.TrayText");
+        res[Classic.CommonControls.SystemColors.ActiveCaptionTextBrushKey] = onChromeBrush;   // caption title
+        _injected.Add(Classic.CommonControls.SystemColors.ActiveCaptionTextBrushKey);
 
         _appliedColor = color;
         _appliedGloss = gloss;

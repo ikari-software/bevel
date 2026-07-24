@@ -719,7 +719,7 @@
                  live. :checked is the focused window = the sunken active-task look. White text for the
                  blue ground. Combo/ScrollBar toggle-buttons set their Theme locally, so they aren't hit. -->
             <ControlTheme x:Key="Bevel.Theme.ToggleButton" TargetType="ToggleButton">
-                <Setter Property="Foreground" Value="#F2F7FF" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.TrayText}" />
                 <Setter Property="Background" Value="{DynamicResource Luna.Brush.TaskButton}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.TaskButtonBorder}" />
                 <Setter Property="Template">
