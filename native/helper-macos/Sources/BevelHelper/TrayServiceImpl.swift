@@ -403,13 +403,17 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         guard gw > 0, gh > 0, fullH > 0 else { return Data() }
 
         let boxH: CGFloat = 32                                     // 2× the 16px tray box
-        // Scale every glyph by the SAME factor — map the menu-bar window height (fullH) onto the tray box
-        // so the tray reads as a faithful shrink of the real menu bar. Each item keeps its TRUE relative
-        // size: a text glyph like "exo" stays small (as it is in the bar) and icon glyphs stay larger,
-        // rather than the old 1.35 boost that slammed standard icons into the cap while text went tiny
-        // ("one big, others tiny"), or forcing every glyph to one height (which blew text up). Height is
-        // capped at the box; width stays proportional so wide status strips ("347 KiB/s") keep true width.
-        let glyphH = min(boxH, gh * (boxH / fullH))
+        // Menu-bar glyphs carry very different built-in transparent padding: a colourful app icon (a chat
+        // item) fills its cell edge-to-edge (gh/fullH ≈ 0.95), while a monochrome system glyph (wrench,
+        // wifi) sits in ~2/3 of its cell (≈ 0.66). Scaling by the raw trimmed height therefore rendered
+        // app icons much bigger than system glyphs. Normalize the padding away: divide by an assumed
+        // standard fill (0.66) so a typical system glyph reaches the full box and app icons cap there too —
+        // ICONS then read at a UNIFORM size like the real menu bar, while genuinely short glyphs (text
+        // labels like "exo") stay proportionally smaller, as they are up top. Capped at the box; width
+        // proportional so wide status strips ("347 KiB/s") keep their true width.
+        let standardFill: CGFloat = 0.66
+        let frac = min(1.0, (gh / fullH) / standardFill)
+        let glyphH = boxH * frac
         let glyphW = glyphH * (gw / gh)
         let canvasW = max(1, min(Int(glyphW.rounded()), 512))
         let canvasH = Int(boxH)
