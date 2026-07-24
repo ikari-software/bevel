@@ -247,6 +247,26 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return false
     }
 
+    /// Best-effort human name for a status item whose window name is the generic AppKit "Item-0" (empty
+    /// → "Menu item"): the app's real label lives in accessibility. Reads AXTitle → AXDescription →
+    /// AXHelp of the element at the item's centre. Short messaging timeout so an unresponsive app can't
+    /// stall enumeration (same convention as pressViaAX).
+    private func axTitle(at point: CGPoint) -> String? {
+        let systemWide = AXUIElementCreateSystemWide()
+        _ = _AXUIElementSetMessagingTimeout(systemWide, 0.3)
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &element) == .success,
+              let el = element else { return nil }
+        for attr in [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute] as [CFString] {
+            var v: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, attr, &v) == .success, let s = v as? String {
+                let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return nil
+    }
+
     private func clickViaCGEvent(at point: CGPoint, itemID: String,
                                  button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         let (downType, upType, cgButton): (CGEventType, CGEventType, CGMouseButton) =
@@ -318,13 +338,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             // (FB18327911); the real identity lives in kCGWindowName (a bundle id, an app path,
             // or a system-item name). Resolve display name + limited-mode icon from that.
             let identity = resolveItem(windowName: windowName, ownerPID: pid, ownerName: ownerName)
+            // A generic AppKit window name ("Item-0" → "Item", empty → "Menu item") carries no identity,
+            // and every item's owner PID is Control Center on macOS 26 — so the app's real label only
+            // lives in accessibility. Query the AX element at the item's centre so the tooltip reads
+            // "EXO"/"Weather"/… instead of a useless "Item".
+            var displayName = identity.name
+            if displayName == "Item" || displayName == "Menu item",
+               let axName = axTitle(at: CGPoint(x: rect.midX, y: rect.midY)) {
+                displayName = axName
+            }
 
             var item = Bevel_Helper_V1_TrayItem()
             item.itemID = "\(pid):\(windowNumber)"
             item.ownerPid = pid
             item.ownerBundleID = identity.bundleID
-            item.ownerName = identity.name
-            item.tooltip = identity.name
+            item.ownerName = displayName
+            item.tooltip = displayName
             var pr = Bevel_Helper_V1_PixelRect()
             pr.x = Int32(rect.origin.x); pr.y = Int32(rect.origin.y)
             pr.width = Int32(rect.width); pr.height = Int32(rect.height)
