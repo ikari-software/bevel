@@ -7,22 +7,19 @@
         WindowStartupLocation="CenterScreen"
         CanResize="False"
         Background="{DynamicResource Bevel.Brush.ButtonFace}">
-    <!-- Body uses the themed face (beige under Luna, grey under Win2000); the caption already names the
-         dialog, so no redundant in-body title. -->
-    <Grid RowDefinitions="*,Auto" Margin="12">
+    <!-- Sections are the theme's own group box (HeaderedContentControl → etched frame + header notched into
+         the top line, no white card fill), so this dialog uses the Luna components instead of hand-rolled
+         Border cards. Body uses the themed face; the caption already names the dialog. -->
+    <Grid RowDefinitions="*,Auto" Margin="8">
         <TabControl Grid.Row="0">
 
             <!-- ── General ──────────────────────────────────────────────── -->
             <TabItem Header="General">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
 
-                    <!-- Accessibility permission -->
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                    <HeaderedContentControl Header="Accessibility Permission" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Accessibility Permission"
-                                       FontWeight="Bold" FontSize="12" />
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Border x:Name="PermStatusDot" Width="12" Height="12"
                                         CornerRadius="6" Margin="0,3,0,0" />
@@ -36,19 +33,15 @@
                                     IsVisible="False" />
                             <TextBlock x:Name="PermHint"
                                        Text="Grant Accessibility to enable window management."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
 
-                    <!-- Work-area strategy -->
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                    <HeaderedContentControl Header="Work-Area Strategy" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Work-Area Strategy"
-                                       FontWeight="Bold" FontSize="12" />
                             <TextBlock Text="How the taskbar handles the macOS Dock."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" />
 
                             <RadioButton x:Name="WASNudge"
@@ -57,7 +50,7 @@
                                 <RadioButton.IsChecked>True</RadioButton.IsChecked>
                             </RadioButton>
                             <TextBlock Text="Dock auto-hides; overlapping windows are nudged up."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        Margin="20,0,0,0" />
 
                             <RadioButton x:Name="WASDockShim"
@@ -65,30 +58,28 @@
                                          FontSize="11" GroupName="WorkArea" />
                             <TextBlock x:Name="DockShimNote"
                                        Text="Dock stays visible; taskbar height matches Dock inset. (Measurement required)"
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        Margin="20,0,0,0" />
 
                             <RadioButton x:Name="WASNone"
                                          Content="None"
                                          FontSize="11" GroupName="WorkArea" />
                             <TextBlock Text="No mitigation; windows may underlap the taskbar."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
 
-                    <!-- Run at login -->
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                    <HeaderedContentControl Header="Startup" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <CheckBox x:Name="RunAtLoginCheck"
                                       Content="Launch Bevel at login"
-                                      FontSize="12" />
+                                      FontSize="11" />
                             <TextBlock Text="Starts the desktop and taskbar when you log in."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
 
                 </StackPanel>
                 </ScrollViewer>
@@ -97,12 +88,10 @@
             <!-- ── Start (bevel-cust.start) ─────────────────────────────── -->
             <TabItem Header="Start">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Start Button" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Start Button" FontWeight="Bold" FontSize="12" />
-                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
 
                             <CheckBox x:Name="ShowStartCheck"
                                       Content="Show the Start button" FontSize="11" Margin="0,4,0,0" />
@@ -113,16 +102,14 @@
                                          Watermark="(logo only)" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="The button's text next to the logo. Clear it for a logo-only button (Win11-style)."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
 
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                    <HeaderedContentControl Header="Start Menu" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Start Menu" FontWeight="Bold" FontSize="12" />
-                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Programs to show" FontSize="11"
@@ -133,10 +120,10 @@
                                            VerticalAlignment="Center" Width="72" />
                             </StackPanel>
                             <TextBlock Text="How many programs the left column keeps — your most-used, with newly-installed ones on top."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="0,2,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -144,17 +131,14 @@
             <!-- ── Buttons ──────────────────────────────────────────────── -->
             <TabItem Header="Buttons">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Taskbar Buttons" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Taskbar Buttons" FontWeight="Bold" FontSize="12" />
-
                             <CheckBox x:Name="FixedWidthCheck"
                                       Content="Fixed-width buttons"
                                       FontSize="11" />
                             <TextBlock Text="Buttons keep their full width and the strip scrolls when full, instead of shrinking to share the bar."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -165,7 +149,7 @@
                                            VerticalAlignment="Center" Width="46" />
                             </StackPanel>
                             <TextBlock Text="Shrink-to-fit keeps labels down to this width; below it, buttons collapse to icon-only."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -177,7 +161,7 @@
                                 </ComboBox>
                             </StackPanel>
                             <TextBlock Text="Collapse an app's windows into one button with a pop-up list (XP/Win7-style)."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -189,7 +173,7 @@
                                 </ComboBox>
                             </StackPanel>
                             <TextBlock Text="Whether window buttons show their title, or just the icon (Dock/KDE-style)."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <CheckBox x:Name="MiddleClickCloseCheck"
@@ -205,10 +189,10 @@
                                 </ComboBox>
                             </StackPanel>
                             <TextBlock Text="Taller or shorter taskbar rows — applies immediately."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -216,13 +200,11 @@
             <!-- ── Clock (bevel-cust.clock) ─────────────────────────────── -->
             <TabItem Header="Clock">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Clock" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Clock" FontWeight="Bold" FontSize="12" />
                             <TextBlock Text="Changes apply to the taskbar clock immediately."
-                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" />
 
                             <CheckBox x:Name="ShowClockCheck"
                                       Content="Show the clock" FontSize="11" Margin="0,4,0,0" />
@@ -233,13 +215,13 @@
                             <CheckBox x:Name="ClockSecondsCheck"
                                       Content="Show seconds" FontSize="11" />
                             <TextBlock Text="Ticks every second while on (otherwise once a minute)."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <CheckBox x:Name="ClockDateCheck"
                                       Content="Show the date beside the time" FontSize="11" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -247,26 +229,24 @@
             <!-- ── Appearance (bevel-cust.appearance) ───────────────────── -->
             <TabItem Header="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Appearance" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Appearance" FontWeight="Bold" FontSize="12" />
-                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Theme" FontSize="11" VerticalAlignment="Center" Width="66" />
                                 <ComboBox x:Name="ThemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="The visual style engine (chrome geometry, bevels, metrics). The colour scheme and font below layer on top."
-                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Colour scheme" FontSize="11" VerticalAlignment="Center" Width="66" />
                                 <ComboBox x:Name="ColorSchemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="The Win2000 palette (Brick, Eggplant, …) — recolours the whole shell live."
-                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="66" />
@@ -281,7 +261,7 @@
                                           MaxDropDownHeight="260" />
                             </StackPanel>
                             <TextBlock Text="The UI font. '(Theme default)' uses the theme's bundled face."
-                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" Margin="20,0,0,0" />
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Opacity" FontSize="11" VerticalAlignment="Center" Width="66" />
@@ -296,10 +276,10 @@
                                          Watermark="(theme default)" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock Text="A hex colour like #2A3F5F for the bar background. Clear it to use the theme colour."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -307,13 +287,11 @@
             <!-- ── Tray (bevel-cust.tray) ───────────────────────────────── -->
             <TabItem Header="Tray">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="System Tray" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="System Tray" FontWeight="Bold" FontSize="12" />
                             <TextBlock Text="The mirrored macOS menu-bar icons. Changes apply immediately."
-                                       FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Show up to" FontSize="11" VerticalAlignment="Center" Width="66" />
@@ -322,7 +300,7 @@
                                 <TextBlock x:Name="TrayCapValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
                             <TextBlock Text="Icons shown inline before the rest move under the overflow chevron."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -332,7 +310,7 @@
                                 <TextBlock x:Name="TrayIconSizeValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -340,35 +318,33 @@
             <!-- ── Behavior (bevel-cust.behavior) ───────────────────────── -->
             <TabItem Header="Behavior">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="12" Margin="2,8,2,2">
-                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                            BorderThickness="1" Padding="8" CornerRadius="2">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Behavior" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Behavior" FontWeight="Bold" FontSize="12" />
-                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="Gray" />
+                            <TextBlock Text="Changes apply immediately." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
 
                             <CheckBox x:Name="LockCheck"
                                       Content="Lock the taskbar (disable resizing)"
                                       FontSize="11" Margin="0,4,0,0" />
                             <TextBlock Text="Hides the row-resize gripper so the taskbar height can't be dragged."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <CheckBox x:Name="AlwaysOnTopCheck"
                                       Content="Keep on top of other windows"
                                       FontSize="11" Margin="0,4,0,0" />
                             <TextBlock Text="Off drops the taskbar to the normal window level, so windows can cover it."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <CheckBox x:Name="ShowDesktopCheck"
                                       Content="Show a &quot;Show desktop&quot; button (far right)"
                                       FontSize="11" Margin="0,4,0,0" />
                             <TextBlock Text="A Win7-style sliver at the end of the bar that minimizes every window."
-                                       FontSize="10" Foreground="Gray"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
-                    </Border>
+                    </HeaderedContentControl>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -377,6 +353,6 @@
 
         <!-- Close button -->
         <Button Grid.Row="1" Content="Close" HorizontalAlignment="Right"
-                x:Name="CloseBtn" Width="80" Margin="0,12,0,0" />
+                x:Name="CloseBtn" Width="80" Margin="0,10,0,0" />
     </Grid>
 </ui:BevelWindow>

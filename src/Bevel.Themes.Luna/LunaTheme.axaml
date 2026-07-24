@@ -241,9 +241,10 @@
                 <GradientStop Offset="0.5" Color="#ECE9D8" />
                 <GradientStop Offset="1"   Color="#DCD7C3" />
             </LinearGradientBrush>
+            <!-- XP tab pages are the beige window face, not white. -->
             <LinearGradientBrush x:Key="Luna.Brush.TabPanel" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#FFFFFF" />
-                <GradientStop Offset="1" Color="#F6F4EC" />
+                <GradientStop Offset="0" Color="#F1EEE0" />
+                <GradientStop Offset="1" Color="#ECE9D8" />
             </LinearGradientBrush>
 
             <!-- ── Start menu (Luna two-column panel, docs/design/luna/styleguide.html) ──
@@ -563,7 +564,8 @@
                     <Setter Property="Margin" Value="0,0,0,-1" />
                 </Style>
                 <Style Selector="^:selected /template/ Border#Tab">
-                    <Setter Property="Background" Value="#FFFFFF" />
+                    <!-- Selected tab is the page beige so it fuses with the pane (XP). -->
+                    <Setter Property="Background" Value="#ECE9D8" />
                 </Style>
                 <Style Selector="^:disabled">
                     <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
