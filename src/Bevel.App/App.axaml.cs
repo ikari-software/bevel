@@ -191,7 +191,16 @@ public partial class App : Application
     private static void OpenTaskbarSettings(IServiceProvider services, Taskbar.TaskbarView taskbarView)
     {
         var win = services.GetRequiredService<Taskbar.OnboardingWindow>();
-        win.ApplyLive = taskbarView.ApplyLiveSettings;
+        // ShellModel is a singleton, so this is the same instance driving the live Start menu. The
+        // frequent-count cap lives on it, and settings.Changed only fires on EXTERNAL writes — so route
+        // the dialog's live-apply through here too, otherwise a local frequent-count change wouldn't
+        // re-cap the Start menu until a restart.
+        var shellModel = services.GetRequiredService<Taskbar.ShellModel>();
+        win.ApplyLive = s =>
+        {
+            taskbarView.ApplyLiveSettings(s);
+            shellModel.FrequentCap = s.TaskbarStartMenuFrequentCount;
+        };
         win.Show();
         win.Activate();
     }

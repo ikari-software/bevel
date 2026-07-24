@@ -19,7 +19,18 @@ public static class FontService
 {
     /// <summary>Installed font families the picker offers, name-sorted. Index 0 in the picker is the
     /// synthetic "(theme default)" entry — these back indices 1…N.</summary>
-    public static IReadOnlyList<string> Families => _families ??= BuildFamilies();
+    public static IReadOnlyList<string> Families
+    {
+        get
+        {
+            if (_families is { Count: > 0 }) return _families;
+            // Don't memoize an early-call empty result (FontManager not yet initialized) — that would
+            // poison the picker permanently. Cache only once a real family list is available.
+            var built = BuildFamilies();
+            if (built.Count > 0) _families = built;
+            return built;
+        }
+    }
     private static IReadOnlyList<string>? _families;
 
     private static readonly string[] _keys = { "Bevel.Font.UI", "Bevel.Font.Caption" };

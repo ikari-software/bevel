@@ -403,12 +403,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         guard gw > 0, gh > 0, fullH > 0 else { return Data() }
 
         let boxH: CGFloat = 32                                     // 2× the 16px tray box
-        // Size the glyph to the fraction of the tray box that it occupies of its menu-bar window, boosted
-        // so a standard icon (≈75% of the bar height) fills the box — small text glyphs (like "exo") then
-        // land at their true, smaller size instead of being blown up to fill (bevel). Width stays
-        // proportional; the glyph is centred vertically in the box.
-        let frac = min(1.0, (gh / fullH) * 1.35)
-        let glyphH = boxH * frac
+        // Scale every glyph by the SAME factor — map the menu-bar window height (fullH) onto the tray box
+        // so the tray reads as a faithful shrink of the real menu bar. Each item keeps its TRUE relative
+        // size: a text glyph like "exo" stays small (as it is in the bar) and icon glyphs stay larger,
+        // rather than the old 1.35 boost that slammed standard icons into the cap while text went tiny
+        // ("one big, others tiny"), or forcing every glyph to one height (which blew text up). Height is
+        // capped at the box; width stays proportional so wide status strips ("347 KiB/s") keep true width.
+        let glyphH = min(boxH, gh * (boxH / fullH))
         let glyphW = glyphH * (gw / gh)
         let canvasW = max(1, min(Int(glyphW.rounded()), 512))
         let canvasH = Int(boxH)

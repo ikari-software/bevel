@@ -578,8 +578,15 @@
                     <Setter Property="Margin" Value="0,0,0,-1" />
                 </Style>
                 <Style Selector="^:selected /template/ Border#Tab">
-                    <!-- Selected tab is the page beige so it fuses with the pane (XP). -->
-                    <Setter Property="Background" Value="#ECE9D8" />
+                    <!-- Selected tab lifts to white at the top and settles to the page beige at the bottom,
+                         so it reads as raised (styleguide tabActive) yet still fuses with the pane edge —
+                         ending at #ECE9D8 keeps the seamless bottom the flat fill had. -->
+                    <Setter Property="Background">
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Offset="0" Color="#FFFFFF" />
+                            <GradientStop Offset="1" Color="#ECE9D8" />
+                        </LinearGradientBrush>
+                    </Setter>
                 </Style>
                 <Style Selector="^:disabled">
                     <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
