@@ -41,6 +41,9 @@
     <!-- Taller Luna caption (25px vs the Classic 18px). This key IS a DynamicResource on the internal
          AutoAttachTitleBar, so overriding it here retitles the caption height without a re-template. -->
     <x:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">25</x:Double>
+    <!-- Smooth (antialiased) text — XP renders type with ClearType, not the Win2000 crisp aliased look.
+         FontUtils.FontAliasing reads this: false → SubpixelAntialias, true → Alias. -->
+    <x:Boolean x:Key="{x:Static common:SystemParameters.FontAliasingKey}">False</x:Boolean>
 
     <!-- Brushes over the overridden colours (same key names as the base). -->
     <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="{StaticResource Bevel.Color.ButtonFace}" />

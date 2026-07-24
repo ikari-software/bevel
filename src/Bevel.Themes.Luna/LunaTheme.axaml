@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:conv="using:Avalonia.Controls.Converters">
+        xmlns:conv="using:Avalonia.Controls.Converters"
+        xmlns:classic="clr-namespace:Classic.Avalonia.Theme;assembly=Classic.Avalonia.Theme">
     <!--
       XP Luna Blue control-template set (bevel-dob). ThemeService adds this Styles set to
       Application.Styles ON TOP of the Win2000 base, so the ControlThemes below override the
@@ -241,11 +242,9 @@
                 <GradientStop Offset="0.5" Color="#ECE9D8" />
                 <GradientStop Offset="1"   Color="#DCD7C3" />
             </LinearGradientBrush>
-            <!-- XP tab pages are the beige window face, not white. -->
-            <LinearGradientBrush x:Key="Luna.Brush.TabPanel" StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Offset="0" Color="#F1EEE0" />
-                <GradientStop Offset="1" Color="#ECE9D8" />
-            </LinearGradientBrush>
+            <!-- XP tab pages are the flat beige window face (NOT a gradient) — matches the group-box header
+                 patch and the window body so the section labels' break in the frame reads seamlessly. -->
+            <SolidColorBrush x:Key="Luna.Brush.TabPanel" Color="#ECE9D8" />
 
             <!-- ── Start menu (Luna two-column panel, docs/design/luna/styleguide.html) ──
                  The Start-menu panel lives in Bevel.Taskbar/StartMenu.axaml (both layouts always in the
@@ -1107,4 +1106,12 @@
             </ControlTheme>
         </ResourceDictionary>
     </Styles.Resources>
+
+    <!-- Luna window frame: a flat blue border instead of the Classic grey 3D bevel. Per ClassicBorderDecorator,
+         giving the window template's Bd decorator a non-Classic brush renders a solid border of that colour.
+         :is(Window) so it also matches BevelWindow/ClassicWindow subclasses. Only active under Luna. -->
+    <Style Selector=":is(Window) /template/ classic|ClassicBorderDecorator#Bd">
+        <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.WindowFrame}" />
+        <Setter Property="BorderThickness" Value="3" />
+    </Style>
 </Styles>
