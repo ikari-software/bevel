@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Theme Studio (dev only): a live editor for the Bevel theme tokens. Boots the REAL Win2000/Luna
+       themes, shows a gallery of the actual themed chrome (its own title bar is the live caption preview),
+       lets you drag the geometry/colour tokens with instant feedback, annotates each with the value
+       measured from the Luna design plate at its true 1.32x scale, and exports theme.json-ready JSON.
+       Run it with dotnet run from the tools/ThemeStudio directory. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Skia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Bevel.UI\Bevel.UI.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Themes.Luna\Bevel.Themes.Luna.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The design plate, embedded so the studio can show it as the matched-scale reference. -->
+    <AvaloniaResource Include="..\..\docs\design\luna\preview.png" Link="Assets/preview.png" />
+  </ItemGroup>
+
+</Project>
