@@ -87,6 +87,6 @@
     <!-- Roomier caption padding than the Classic 2px — the icon/title sit in from the rounded left corner
          and the buttons in from the right. Left inset derived from the Luna plate at its true 1.32x scale:
          the plate's frame->icon gap is 14 plate-px = ~10.6 logical px (NOT the ~6 an un-scaled eyeball gives). -->
-    <Thickness x:Key="Bevel.Metric.CaptionPadding">10,0,6,0</Thickness>
+    <Thickness x:Key="Bevel.Metric.CaptionPadding">11,0,3,0</Thickness>
     <Thickness x:Key="Bevel.Metric.ButtonPadding">8,2</Thickness>
 </ResourceDictionary>

@@ -245,6 +245,11 @@
             <SolidColorBrush x:Key="Luna.Brush.TrackBorder" Color="#C9C5B4" />
             <SolidColorBrush x:Key="Luna.Brush.Grip"        Color="#8A887A" />
             <SolidColorBrush x:Key="Luna.Brush.MenuBorder"  Color="#ACA899" />
+            <!-- XP Luna dropdown/context menu: white item area with a soft cream icon gutter down the left
+                 (docs/design/luna/preview.png right-click menu). The Classic container is a grey 3D bevel;
+                 Luna overrides {x:Type ContextMenu} below to this flatter white+gutter+rounded look. -->
+            <SolidColorBrush x:Key="Luna.Brush.MenuArea"    Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Luna.Brush.MenuGutter"  Color="#E8E7DD" />
             <LinearGradientBrush x:Key="Luna.Brush.ScrollThumb" StartPoint="0%,0%" EndPoint="100%,0%">
                 <GradientStop Offset="0"   Color="#FBFBF7" />
                 <GradientStop Offset="0.5" Color="#ECE9D8" />
@@ -666,13 +671,16 @@
                                        IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
                                        Placement="BottomEdgeAlignedLeft" WindowManagerAddShadowHint="True"
                                        OverlayInputPassThroughElement="{Binding $parent[Menu]}">
-                                    <Border Background="{DynamicResource Bevel.Brush.Menu}"
-                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1">
-                                        <ScrollViewer>
-                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="1"
+                                    <Border Background="{DynamicResource Luna.Brush.MenuArea}"
+                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1"
+                                            CornerRadius="3" BoxShadow="0 2 7 0 #35000000">
+                                        <Panel>
+                                            <Border Width="24" HorizontalAlignment="Left" Margin="2,2,0,2"
+                                                    Background="{DynamicResource Luna.Brush.MenuGutter}" />
+                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="2"
                                                             Grid.IsSharedSizeScope="True"
                                                             ItemsPanel="{TemplateBinding ItemsPanel}" />
-                                        </ScrollViewer>
+                                        </Panel>
                                     </Border>
                                 </Popup>
                             </Panel>
@@ -1040,19 +1048,23 @@
                                                   RecognizesAccessKey="True" />
                                 <TextBlock Name="PART_InputGestureText" Grid.Column="2" Margin="12,0,0,0"
                                            VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                            Text="{TemplateBinding InputGesture, Converter={StaticResource KeyGestureConverter}}" />
                                 <Path Name="rightArrow" Grid.Column="3" Margin="8,0,0,0" VerticalAlignment="Center"
                                       Data="M0,0 L4,3.5 0,7 Z" Fill="{DynamicResource Bevel.Brush.MenuText}" />
                                 <Popup Name="PART_Popup" IsLightDismissEnabled="False"
                                        IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
                                        Placement="RightEdgeAlignedTop" HorizontalOffset="-3" VerticalOffset="-3">
-                                    <Border Background="{DynamicResource Bevel.Brush.Menu}"
-                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1">
-                                        <ScrollViewer>
-                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="1"
+                                    <Border Background="{DynamicResource Luna.Brush.MenuArea}"
+                                            BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1"
+                                            CornerRadius="3" BoxShadow="0 2 7 0 #35000000">
+                                        <Panel>
+                                            <Border Width="24" HorizontalAlignment="Left" Margin="2,2,0,2"
+                                                    Background="{DynamicResource Luna.Brush.MenuGutter}" />
+                                            <ItemsPresenter Name="PART_ItemsPresenter" Margin="2"
                                                             Grid.IsSharedSizeScope="True"
                                                             ItemsPanel="{TemplateBinding ItemsPanel}" />
-                                        </ScrollViewer>
+                                        </Panel>
                                     </Border>
                                 </Popup>
                             </Grid>
@@ -1089,6 +1101,31 @@
                 <Style Selector="^:disabled">
                     <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
                 </Style>
+            </ControlTheme>
+
+            <!-- ── Context-menu container (XP Luna: white item area + cream icon gutter + rounded) ──
+                 The Classic {x:Type ContextMenu} is a grey 3D ClassicBorderDecorator, so even with Luna
+                 items the popup read as Win2000. Override the container here; Luna's Styles set loads AFTER
+                 Classic so this wins, and reverts to Classic when the Luna set is removed. -->
+            <ControlTheme x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
+                <Setter Property="TextBlock.FontSize" Value="{DynamicResource FontSizeNormal}" />
+                <Setter Property="TextBlock.FontWeight" Value="Normal" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Background="{DynamicResource Luna.Brush.MenuArea}"
+                                BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1"
+                                CornerRadius="3" BoxShadow="0 2 7 0 #35000000">
+                            <Panel>
+                                <Border Width="24" HorizontalAlignment="Left" Margin="2,2,0,2"
+                                        Background="{DynamicResource Luna.Brush.MenuGutter}" />
+                                <ItemsPresenter Name="PART_ItemsPresenter" Margin="2"
+                                                Grid.IsSharedSizeScope="True"
+                                                ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                KeyboardNavigation.TabNavigation="Continue" />
+                            </Panel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
             </ControlTheme>
 
             <!-- ── TabControl: Luna content panel below the tabs (Top placement) ── -->

@@ -42,6 +42,6 @@
     "ButtonPadding": { "thickness": "8,2" },
     "WindowContentBorder": { "thickness": "3,0,3,3" },
     "WindowContentInset": { "thickness": "0" },
-    "CaptionPadding": { "thickness": "10,0,6,0" }
+    "CaptionPadding": { "thickness": "11,0,3,0" }
   }
 }
