@@ -39,7 +39,12 @@ jobs:
         run: dotnet restore Bevel.sln
 
       - name: Build
-        run: dotnet build Bevel.sln --no-restore --configuration Release
+        # Dead-code gate: these diagnostics are all at zero today, so treat them as ERRORS — new unused
+        # members / dead locals / unreachable code fail CI instead of accumulating silently (the class of
+        # rot found in the ToolbarIcons audit). Noisier nullability (CS86xx) and obsolete-API (CS0618) stay
+        # warnings; the drag-drop CS0618 migration is tracked as its own bead. The ;-list is %3B-escaped so
+        # MSBuild doesn't parse each code as a separate command-line switch (MSB1006).
+        run: dotnet build Bevel.sln --no-restore --configuration Release -p:WarningsAsErrors=CS0168%3BCS0169%3BCS0219%3BCS0414%3BCS0649%3BCS0162%3BCS8321
 
       - name: Test
         run: dotnet test Bevel.sln --no-build --configuration Release

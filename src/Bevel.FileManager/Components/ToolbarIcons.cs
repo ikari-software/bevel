@@ -59,9 +59,6 @@ public static class ToolbarIcons
     private static readonly string TokBS = ThemeTokens.ColorButtonShadow;         // #808080
     private static readonly string TokBD = ThemeTokens.ColorButtonDkShadow;       // #404040
     private static readonly string TokW  = ThemeTokens.ColorWindow;               // #FFFFFF
-    private static readonly string TokWT = ThemeTokens.ColorWindowText;           // #000000
-    private static readonly string TokWF = ThemeTokens.ColorWindowFrame;          // #000000
-    private static readonly string TokGT = ThemeTokens.ColorGrayText;             // #808080
     private static readonly string TokAT = ThemeTokens.ColorActiveTitle;          // #0A246A
     private static readonly string TokGA = ThemeTokens.ColorGradientActiveTitle;  // #A6CAF0
     private static readonly string TokHL = ThemeTokens.ColorHighlight;            // #0A246A
