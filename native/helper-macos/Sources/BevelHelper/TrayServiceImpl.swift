@@ -431,25 +431,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let gw = CGFloat(glyph.width), gh = CGFloat(glyph.height)
         guard gw > 0, gh > 0, fullH > 0 else { return Data() }
 
-        let boxH: CGFloat = 32                                     // 2× the 16px tray box
-        // Menu-bar glyphs carry very different built-in transparent padding: a colourful app icon (a chat
-        // item) fills its cell edge-to-edge (gh/fullH ≈ 0.95), while a monochrome system glyph (wrench,
-        // wifi) sits in ~2/3 of its cell (≈ 0.66). Scaling by the raw trimmed height therefore rendered
-        // app icons much bigger than system glyphs. Normalize the padding away: divide by an assumed
-        // standard fill (0.66) so a typical system glyph reaches the full box and app icons cap there too —
-        // ICONS then read at a UNIFORM size like the real menu bar, while genuinely short glyphs (text
-        // labels like "exo") stay proportionally smaller, as they are up top. Capped at the box; width
-        // proportional so wide status strips ("347 KiB/s") keep their true width.
-        let standardFill: CGFloat = 0.66
-        let frac = min(1.0, (gh / fullH) / standardFill)
-        let glyphH = boxH * frac
-        let glyphW = glyphH * (gw / gh)
-        let canvasW = max(1, min(Int(glyphW.rounded()), 512))
-        let canvasH = Int(boxH)
-        // Keep aspect ratio against the (possibly clamped) canvas width, so an extreme-aspect glyph shrinks
-        // vertically instead of squashing to full height when the 512px width clamp bites (review: swift-ios).
-        let drawnW = CGFloat(canvasW)
-        let drawnH = min(glyphH, drawnW * (gh / gw))
+        // Sizing math lives in the pure, unit-tested Self.trayGlyphLayout (this sizing regressed
+        // repeatedly — see TrayServiceTests). It normalizes each glyph's cell-padding so icons render at a
+        // UNIFORM size while short text glyphs ("exo") stay proportionally small.
+        let L = Self.trayGlyphLayout(gw: gw, gh: gh, fullH: fullH)
+        let canvasW = L.canvasW, canvasH = L.canvasH, drawnW = L.drawnW, drawnH = L.drawnH
 
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: canvasW, pixelsHigh: canvasH,
@@ -468,6 +454,35 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                    from: .zero, operation: .copy, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:]) ?? Data()
+    }
+
+    /// Output layout for a trimmed tray glyph — the sizing math, PURE so it can be regression-tested
+    /// without a real capture. This sizing oscillated repeatedly: a 1.35× boost made "one big, others
+    /// tiny", forcing every glyph to one height blew short TEXT up, and scaling by raw trimmed height made
+    /// full-bleed app icons much bigger than padded system glyphs. The shipped rule normalizes each glyph's
+    /// cell-padding against an assumed `standardFill`, so a typical system glyph reaches the full box and
+    /// app icons cap there too (icons UNIFORM, like the real menu bar), while short glyphs stay
+    /// proportionally small. Width is proportional (true width) and clamped so an extreme-aspect strip
+    /// shrinks vertically rather than squashing to full height. Glyph is centred vertically in the box.
+    struct TrayGlyphLayout: Equatable {
+        let canvasW: Int
+        let canvasH: Int
+        let drawnW: CGFloat
+        let drawnH: CGFloat
+        let dstY: CGFloat
+    }
+
+    static func trayGlyphLayout(gw: CGFloat, gh: CGFloat, fullH: CGFloat,
+                                boxH: CGFloat = 32, standardFill: CGFloat = 0.66) -> TrayGlyphLayout {
+        let frac = min(1.0, (gh / fullH) / standardFill)
+        let glyphH = boxH * frac
+        let glyphW = glyphH * (gw / gh)
+        let canvasW = max(1, min(Int(glyphW.rounded()), 512))
+        let canvasH = Int(boxH)
+        let drawnW = CGFloat(canvasW)
+        let drawnH = min(glyphH, drawnW * (gh / gw))
+        let dstY = (CGFloat(canvasH) - drawnH) / 2
+        return TrayGlyphLayout(canvasW: canvasW, canvasH: canvasH, drawnW: drawnW, drawnH: drawnH, dstY: dstY)
     }
 
     /// Crops a captured image to the bounding box of its non-transparent pixels, discarding the

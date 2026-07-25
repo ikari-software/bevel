@@ -114,4 +114,48 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertEqual(svc.friendlyNameForTest("WiFi"), "WiFi")
         XCTAssertEqual(svc.friendlyNameForTest(""), "Menu item")
     }
+
+    // MARK: - Tray glyph sizing (regression guard)
+
+    /// The tray-icon sizing oscillated repeatedly (a 1.35x boost made "one big, others tiny"; forcing one
+    /// uniform height blew short TEXT like "exo" up; scaling by raw trimmed height made full-bleed app
+    /// icons much bigger than padded system glyphs). These lock the shipped behaviour: cell-padding
+    /// normalized against standardFill so ICONS render uniform while short glyphs stay proportionally small.
+    func testTrayGlyphSizing() {
+        let box: CGFloat = 32
+
+        // A typical padded system glyph fills ~2/3 (standardFill) of its cell -> reaches the full box.
+        let sys = TrayServiceImpl.trayGlyphLayout(gw: 20, gh: 22, fullH: 33) // 22/33 == 0.667
+        XCTAssertEqual(sys.drawnH, box, accuracy: 0.6, "a ~0.66-fill system glyph should fill the box")
+
+        // A full-bleed app icon (fills its whole cell) is CAPPED at the box, never bigger.
+        let app = TrayServiceImpl.trayGlyphLayout(gw: 30, gh: 30, fullH: 31)
+        XCTAssertLessThanOrEqual(app.drawnH, box + 0.01, "full-bleed icon must not exceed the box")
+
+        // KEY: app icon and padded system glyph render at ~the SAME height (guards "one big, others tiny").
+        XCTAssertEqual(app.drawnH, sys.drawnH, accuracy: 1.0, "app icons must not dwarf system glyphs")
+
+        // A short TEXT glyph (small fraction of the cell, like "exo") stays proportionally SMALLER — the
+        // regression where it got blown up to the full box height must not come back.
+        let text = TrayServiceImpl.trayGlyphLayout(gw: 40, gh: 12, fullH: 33) // 12/33 == 0.36
+        XCTAssertLessThan(text.drawnH, box * 0.72, "short text glyph must stay smaller than an icon")
+        XCTAssertGreaterThan(text.drawnH, 8, "but still visible")
+
+        // Monotonic: more cell-fill => taller (up to the cap) — never inverted.
+        XCTAssertGreaterThan(sys.drawnH, text.drawnH)
+
+        // A wide status strip keeps its TRUE width; height stays bounded by the box.
+        let wide = TrayServiceImpl.trayGlyphLayout(gw: 120, gh: 20, fullH: 30)
+        XCTAssertLessThanOrEqual(wide.drawnH, box + 0.01)
+        XCTAssertGreaterThan(wide.drawnW, wide.drawnH, "wide strip keeps its true width, not squashed to a square")
+
+        // An extreme-aspect glyph is clamped at 512px wide and shrinks VERTICALLY (doesn't squash to full height).
+        let extreme = TrayServiceImpl.trayGlyphLayout(gw: 2000, gh: 20, fullH: 30)
+        XCTAssertEqual(extreme.canvasW, 512)
+        XCTAssertLessThan(extreme.drawnH, box, "extreme aspect shrinks vertically under the 512 width clamp")
+
+        // Glyph is vertically centred in the box.
+        XCTAssertEqual(text.dstY, (CGFloat(text.canvasH) - text.drawnH) / 2, accuracy: 0.01)
+        XCTAssertEqual(text.canvasH, 32)
+    }
 }
