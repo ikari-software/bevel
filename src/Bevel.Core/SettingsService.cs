@@ -482,7 +482,7 @@ public sealed class BevelSettings
     public int TaskbarTrayOverflowCap { get; set; } = 8;
 
     /// <summary>Displayed size (px) of each mirrored tray icon. Default 16 (classic).</summary>
-    public int TaskbarTrayIconSize { get; set; } = 28;
+    public int TaskbarTrayIconSize { get; set; } = 16;
 
     // ── Behavior (bevel-cust.behavior) ──────────────────────────────────────────────────────────
 

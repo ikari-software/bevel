@@ -34,7 +34,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public const int MinIconSize = 12;
     public const int MaxIconSize = 32;
 
-    private int _iconSize = 28;
+    private int _iconSize = 16;
 
     /// <summary>Inline tray-icon count before the overflow chevron. Set live via <see cref="Configure"/>.</summary>
     public int VisibleCap { get; private set; } = DefaultVisibleCap;
@@ -183,9 +183,20 @@ public sealed class TrayItemViewModel : ObservableObject
     public string Tooltip { get => _tooltip; private set => SetProperty(ref _tooltip, value); }
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
 
-    private double _iconSize = 28;
-    /// <summary>Displayed icon edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
-    public double IconSize { get => _iconSize; set => SetProperty(ref _iconSize, value); }
+    private double _iconSize = 16;
+    /// <summary>Target icon-content edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
+    public double IconSize
+    {
+        get => _iconSize;
+        set { if (SetProperty(ref _iconSize, value)) OnPropertyChanged(nameof(CellHeight)); }
+    }
+
+    /// <summary>Height the tray Image is rendered at. The captured PNG is the whole menu-bar CELL (the
+    /// glyph/text padded inside it, as the bar draws it — see TrayServiceImpl.pngFromCGImage), so it must
+    /// render TALLER than the icon content: a typical glyph is ~0.6 of its cell, so rendering at ~1.7×
+    /// IconSize lands the icon content at IconSize (matching the macOS menu bar) while text stays small
+    /// with its padding. Clamped to the taskbar height so it can't overflow the bar.</summary>
+    public double CellHeight => Math.Min(30.0, _iconSize * 1.7);
 
     public void Update(TrayItem item)
     {

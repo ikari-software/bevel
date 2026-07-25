@@ -31,7 +31,7 @@ public partial class TaskbarView : UserControl
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
     private int _trayOverflowCap = 8;
-    private int _trayIconSize = 28;
+    private int _trayIconSize = 16;
     private bool _locked;
     private bool _alwaysOnTop = true;
     private bool _showDesktop;
@@ -86,7 +86,7 @@ public partial class TaskbarView : UserControl
         string backgroundColor = "",
         int opacity = 100,
         int trayOverflowCap = 8,
-        int trayIconSize = 28,
+        int trayIconSize = 16,
         bool locked = false,
         bool alwaysOnTop = true,
         bool showDesktopButton = false)

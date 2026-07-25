@@ -344,7 +344,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                                         <Image Source="{Binding IconSource}"
-                                                               Height="{Binding IconSize}" Stretch="Uniform"
+                                                               Height="{Binding CellHeight}" Stretch="Uniform"
                                                                Margin="4" VerticalAlignment="Center"
                                                                ToolTip.Tip="{Binding Tooltip}"
                                                                PointerPressed="OnTrayIconPressed" />
@@ -365,7 +365,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                         <Image Source="{Binding IconSource}"
-                                               Height="{Binding IconSize}" Stretch="Uniform"
+                                               Height="{Binding CellHeight}" Stretch="Uniform"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
                                     </DataTemplate>
