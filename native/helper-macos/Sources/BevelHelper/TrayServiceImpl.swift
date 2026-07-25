@@ -472,10 +472,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let dstY: CGFloat
     }
 
-    static func trayGlyphLayout(gw: CGFloat, gh: CGFloat, fullH: CGFloat,
-                                boxH: CGFloat = 32, standardFill: CGFloat = 0.66) -> TrayGlyphLayout {
-        let frac = min(1.0, (gh / fullH) / standardFill)
-        let glyphH = boxH * frac
+    /// UNIFORM height for every item — matches the macOS menu bar, which renders icons AND text ("PL",
+    /// "19°C") at one height. Every glyph fills the box; width is proportional (true width) and clamped so
+    /// an extreme-aspect strip shrinks vertically rather than squashing to full height. `fullH` (the
+    /// captured window height) is intentionally unused: sizing by how much of its window a glyph fills is
+    /// fragile (windows are ~3x the glyph, which rendered icons half-size).
+    static func trayGlyphLayout(gw: CGFloat, gh: CGFloat, fullH: CGFloat, boxH: CGFloat = 32) -> TrayGlyphLayout {
+        _ = fullH
+        let glyphH = boxH
         let glyphW = glyphH * (gw / gh)
         let canvasW = max(1, min(Int(glyphW.rounded()), 512))
         let canvasH = Int(boxH)
