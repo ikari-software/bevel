@@ -253,45 +253,66 @@ public sealed class SettingsService : IDisposable
         return version;
     }
 
-    /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).</summary>
+    /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).
+    ///
+    /// <para>Only values that DIFFER from the code default are written; a value equal to its default is
+    /// pruned from the blob. An absent key resolves to the default in <see cref="ApplyRaw"/>, so this is
+    /// lossless — but it means a setting the user never deliberately changed keeps following the code
+    /// default even when that default later improves (e.g. a corrected tray size), instead of freezing the
+    /// old default in the DB. Explicit choices (which differ from the default) are always kept; unknown
+    /// keys are preserved untouched.</para></summary>
     private string SerializeRaw()
     {
-        _raw["themeId"] = JsonSerializer.SerializeToElement(_settings.ThemeId, SettingsJsonContext.Default.String);
-        _raw["colorScheme"] = JsonSerializer.SerializeToElement(_settings.ColorScheme, SettingsJsonContext.Default.String);
-        _raw["lunaColor"] = JsonSerializer.SerializeToElement(_settings.LunaColor, SettingsJsonContext.Default.String);
-        _raw["lunaGloss"] = JsonSerializer.SerializeToElement(_settings.LunaGloss, SettingsJsonContext.Default.String);
-        _raw["uiFontFamily"] = JsonSerializer.SerializeToElement(_settings.UiFontFamily, SettingsJsonContext.Default.String);
-        _raw["shellEnabled"] = JsonSerializer.SerializeToElement(_settings.ShellEnabled, SettingsJsonContext.Default.Boolean);
-        _raw["showHiddenFiles"] = JsonSerializer.SerializeToElement(_settings.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
-        _raw["workAreaStrategy"] = JsonSerializer.SerializeToElement(_settings.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
-        _raw["runAtLogin"] = JsonSerializer.SerializeToElement(_settings.RunAtLogin, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
-        _raw["taskbarStartMenuFrequentCount"] = JsonSerializer.SerializeToElement(_settings.TaskbarStartMenuFrequentCount, SettingsJsonContext.Default.Int32);
-        _raw["taskbarButtonWidthMode"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
-        _raw["taskbarMinButtonWidth"] = JsonSerializer.SerializeToElement(_settings.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
-        _raw["taskbarButtonSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
-        _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
-        _raw["taskbarRows"] = JsonSerializer.SerializeToElement(_settings.TaskbarRows, SettingsJsonContext.Default.Int32);
-        _raw["taskbarShowClock"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowClock, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarClock24Hour"] = JsonSerializer.SerializeToElement(_settings.TaskbarClock24Hour, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarClockShowSeconds"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowSeconds, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarClockShowDate"] = JsonSerializer.SerializeToElement(_settings.TaskbarClockShowDate, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarShowStart"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowStart, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarStartLabel"] = JsonSerializer.SerializeToElement(_settings.TaskbarStartLabel, SettingsJsonContext.Default.String);
-        _raw["taskbarGrouping"] = JsonSerializer.SerializeToElement(_settings.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
-        _raw["taskbarButtonLabels"] = JsonSerializer.SerializeToElement(_settings.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
-        _raw["taskbarMiddleClickCloses"] = JsonSerializer.SerializeToElement(_settings.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarFontSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarFontSize, SettingsJsonContext.Default.Int32);
-        _raw["taskbarBackgroundColor"] = JsonSerializer.SerializeToElement(_settings.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
-        _raw["taskbarOpacity"] = JsonSerializer.SerializeToElement(_settings.TaskbarOpacity, SettingsJsonContext.Default.Int32);
-        _raw["taskbarTrayOverflowCap"] = JsonSerializer.SerializeToElement(_settings.TaskbarTrayOverflowCap, SettingsJsonContext.Default.Int32);
-        _raw["taskbarTrayIconSize"] = JsonSerializer.SerializeToElement(_settings.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
-        _raw["taskbarLocked"] = JsonSerializer.SerializeToElement(_settings.TaskbarLocked, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarAlwaysOnTop"] = JsonSerializer.SerializeToElement(_settings.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
-        _raw["taskbarShowDesktopButton"] = JsonSerializer.SerializeToElement(_settings.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
+        var d = new BevelSettings();
+        SetOrPrune("themeId", _settings.ThemeId, d.ThemeId, SettingsJsonContext.Default.String);
+        SetOrPrune("colorScheme", _settings.ColorScheme, d.ColorScheme, SettingsJsonContext.Default.String);
+        SetOrPrune("lunaColor", _settings.LunaColor, d.LunaColor, SettingsJsonContext.Default.String);
+        SetOrPrune("lunaGloss", _settings.LunaGloss, d.LunaGloss, SettingsJsonContext.Default.String);
+        SetOrPrune("uiFontFamily", _settings.UiFontFamily, d.UiFontFamily, SettingsJsonContext.Default.String);
+        SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("workAreaStrategy", _settings.WorkAreaStrategy.ToString(), d.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("runAtLogin", _settings.RunAtLogin, d.RunAtLogin, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarButtonWidth", _settings.TaskbarButtonWidth, d.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarStartMenuFrequentCount", _settings.TaskbarStartMenuFrequentCount, d.TaskbarStartMenuFrequentCount, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarButtonWidthMode", _settings.TaskbarButtonWidthMode.ToString(), d.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarMinButtonWidth", _settings.TaskbarMinButtonWidth, d.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarButtonSize", _settings.TaskbarButtonSize.ToString(), d.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarRows", _settings.TaskbarRows, d.TaskbarRows, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarShowClock", _settings.TaskbarShowClock, d.TaskbarShowClock, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarClock24Hour", _settings.TaskbarClock24Hour, d.TaskbarClock24Hour, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarClockShowSeconds", _settings.TaskbarClockShowSeconds, d.TaskbarClockShowSeconds, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarClockShowDate", _settings.TaskbarClockShowDate, d.TaskbarClockShowDate, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarShowStart", _settings.TaskbarShowStart, d.TaskbarShowStart, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarStartLabel", _settings.TaskbarStartLabel, d.TaskbarStartLabel, SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarGrouping", _settings.TaskbarGrouping.ToString(), d.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarButtonLabels", _settings.TaskbarButtonLabels.ToString(), d.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarMiddleClickCloses", _settings.TaskbarMiddleClickCloses, d.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarFontSize", _settings.TaskbarFontSize, d.TaskbarFontSize, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarBackgroundColor", _settings.TaskbarBackgroundColor, d.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarOpacity", _settings.TaskbarOpacity, d.TaskbarOpacity, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarTrayOverflowCap", _settings.TaskbarTrayOverflowCap, d.TaskbarTrayOverflowCap, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarTrayIconSize", _settings.TaskbarTrayIconSize, d.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarShowDesktopButton", _settings.TaskbarShowDesktopButton, d.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
+        // Arrays + per-theme overrides: prune when identical to the default / empty.
+        if (_settings.TaskbarStacks.SequenceEqual(d.TaskbarStacks)) _raw.Remove("taskbarStacks");
+        else _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
         foreach (var (id, overrides) in _themeOverrides)
-            _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
+        {
+            if (overrides.CrispBevels is null) _raw.Remove($"theme:{id}");
+            else _raw[$"theme:{id}"] = JsonSerializer.SerializeToElement(overrides, SettingsJsonContext.Default.ThemeOverrides);
+        }
         return JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement);
+    }
+
+    /// <summary>Writes <paramref name="key"/> only when it differs from the default; otherwise removes it
+    /// so the blob carries just deliberate overrides (see <see cref="SerializeRaw"/>).</summary>
+    private void SetOrPrune<T>(string key, T value, T dflt, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+    {
+        if (EqualityComparer<T>.Default.Equals(value, dflt)) _raw.Remove(key);
+        else _raw[key] = JsonSerializer.SerializeToElement(value, typeInfo);
     }
 
     /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>

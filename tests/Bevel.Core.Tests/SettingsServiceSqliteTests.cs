@@ -52,6 +52,33 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task Only_non_default_values_are_persisted_so_defaults_stay_live()
+    {
+        using (var w = new SettingsService(_dir))
+        {
+            await w.LoadAsync();
+            await w.UpdateAsync(s => s.TaskbarStartLabel = "Menu");   // the ONLY deliberate, non-default change
+        }
+
+        var json = await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json"));
+        // The deliberate change is written...
+        Assert.Contains("taskbarStartLabel", json);
+        Assert.Contains("Menu", json);
+        // ...but settings left at their defaults are PRUNED, not frozen into the blob — so a corrected
+        // default (e.g. the tray size) later reaches them instead of a stale saved value winning.
+        Assert.DoesNotContain("taskbarTrayIconSize", json);   // == default 16
+        Assert.DoesNotContain("\"taskbarRows\"", json);       // == default 1
+        Assert.DoesNotContain("\"themeId\"", json);           // == default win2000
+
+        // Lossless: the pruned defaults still load as the code default; the explicit value round-trips.
+        using var r = new SettingsService(_dir);
+        await r.LoadAsync();
+        Assert.Equal("Menu", r.Current.TaskbarStartLabel);
+        Assert.Equal(16, r.Current.TaskbarTrayIconSize);
+        Assert.Equal("win2000", r.Current.ThemeId);
+    }
+
+    [Fact]
     public async Task Version_increments_on_every_write()
     {
         using var svc = new SettingsService(_dir);
