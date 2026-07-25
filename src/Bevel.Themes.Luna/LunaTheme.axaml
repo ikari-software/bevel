@@ -1130,11 +1130,21 @@
         </ResourceDictionary>
     </Styles.Resources>
 
-    <!-- Luna window frame: a flat blue border instead of the Classic grey 3D bevel. Per ClassicBorderDecorator,
-         giving the window template's Bd decorator a non-Classic brush renders a solid border of that colour.
-         :is(Window) so it also matches BevelWindow/ClassicWindow subclasses. Only active under Luna. -->
+    <!-- Luna window frame: the caption is the rounded top of the frame and a 3px blue border wraps the
+         content on the sides+bottom (see the ClassicWindow template + Bevel.Metric.WindowContentBorder).
+         So the outer Bd 3D bevel is switched OFF here — it would otherwise paint a square border OVER the
+         caption's rounded top corners, trapping the title bar inside a box. :is(Window) also matches
+         BevelWindow/ClassicWindow subclasses. Only active under Luna. -->
     <Style Selector=":is(Window) /template/ classic|ClassicBorderDecorator#Bd">
-        <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.WindowFrame}" />
-        <Setter Property="BorderThickness" Value="3" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Transparent window surface so the triangles outside the caption's rounded top corners show the
+         desktop through (authentic XP), instead of the opaque window body filling them. The body stays
+         opaque: the caption paints blue and the content frame paints the beige face over it; only the
+         uncovered rounded-corner notches are see-through. -->
+    <Style Selector=":is(Window)">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="TransparencyLevelHint" Value="Transparent" />
     </Style>
 </Styles>

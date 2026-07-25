@@ -43,6 +43,9 @@ public sealed class ThemeTokenTests
                 case var n when n.StartsWith("Font"): Assert.IsType<FontFamily>(value); break;
                 case "MetricCornerRadius": Assert.IsType<CornerRadius>(value); break;
                 case "MetricButtonPadding": Assert.IsType<Thickness>(value); break;
+                case "MetricWindowContentBorder": Assert.IsType<Thickness>(value); break;
+                case "MetricWindowContentInset": Assert.IsType<Thickness>(value); break;
+                case "MetricCaptionPadding": Assert.IsType<Thickness>(value); break;
                 case var n when n.StartsWith("Metric"): Assert.IsType<double>(value); break;
                 case "EdgeRendering": Assert.IsType<Classic.Avalonia.Theme.EdgeRendering>(value); break;
                 default: Assert.Fail($"unclassified token constant '{name}'"); break;

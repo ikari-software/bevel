@@ -91,7 +91,10 @@
     "IconGridCellHeight": { "double": 75 },
     "FocusRectInset": { "double": 1 },
     "CornerRadius": { "cornerRadius": "0" },
-    "ButtonPadding": { "thickness": "6,1" }
+    "ButtonPadding": { "thickness": "6,1" },
+    "WindowContentBorder": { "thickness": "0" },
+    "WindowContentInset": { "thickness": "4" },
+    "CaptionPadding": { "thickness": "2,0,2,0" }
   },
   "fonts": {
     "UI": "avares://Bevel.Themes.Win2000/Assets/#Noto Sans",

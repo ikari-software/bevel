@@ -39,6 +39,9 @@
     "TaskbarHeight": { "double": 30 },
     "FocusRectInset": { "double": 1 },
     "CornerRadius": { "cornerRadius": "8,8,0,0" },
-    "ButtonPadding": { "thickness": "8,2" }
+    "ButtonPadding": { "thickness": "8,2" },
+    "WindowContentBorder": { "thickness": "3,0,3,3" },
+    "WindowContentInset": { "thickness": "0" },
+    "CaptionPadding": { "thickness": "10,0,6,0" }
   }
 }

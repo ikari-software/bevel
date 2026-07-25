@@ -171,6 +171,9 @@ public static class ThemeTokens
     public const string MetricFocusRectInset = "Bevel.Metric.FocusRectInset";
     public const string MetricCornerRadius = "Bevel.Metric.CornerRadius";
     public const string MetricButtonPadding = "Bevel.Metric.ButtonPadding";
+    public const string MetricWindowContentBorder = "Bevel.Metric.WindowContentBorder";
+    public const string MetricWindowContentInset = "Bevel.Metric.WindowContentInset";
+    public const string MetricCaptionPadding = "Bevel.Metric.CaptionPadding";
 
     public const string FontUI = "Bevel.Font.UI";
     public const string FontCaption = "Bevel.Font.Caption";

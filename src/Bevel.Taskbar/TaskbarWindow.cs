@@ -44,6 +44,12 @@ public sealed class TaskbarWindow : BevelWindow
         SystemDecorations = SystemDecorations.None;
         ShowInTaskbar = false;
 
+        // The taskbar is a chromeless special window: the Luna framed-window frame
+        // (Bevel.Metric.WindowContentBorder — a blue border on the sides+bottom below the caption) must NOT
+        // wrap it. Zero it in the window's own resource scope so the ClassicWindow template resolves 0 here
+        // while framed dialogs still get their frame.
+        Resources["Bevel.Metric.WindowContentBorder"] = new Avalonia.Thickness(0);
+
         // Let the background-opacity setting actually show through (bevel-cust.appearance): a transparent
         // window means RootGrid's translucent background composites over the desktop instead of an opaque
         // window fill (the root cause of "opacity did nothing"). At 100% opacity RootGrid is fully opaque,

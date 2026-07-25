@@ -29,31 +29,50 @@
                utils:FontUtils.FontAliasing="{DynamicResource {x:Static common:SystemParameters.FontAliasingKey}}">
           <Border Name="PART_TransparencyFallback"
                   IsHitTestVisible="False"
+                  CornerRadius="{DynamicResource Bevel.Metric.CornerRadius}"
                   Margin="2" />
+          <!-- Backdrop fill. Rounded top under Luna (CornerRadius token 8,8,0,0) so it does NOT paint the
+               triangles outside the caption's rounded corners — with a transparent Luna window surface those
+               corners then show the desktop through. Win2000 radius is 0, so this stays a square fill. -->
           <Border Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}"
                   IsHitTestVisible="False"
+                  CornerRadius="{DynamicResource Bevel.Metric.CornerRadius}"
                   Margin="2" />
 
           <Border Margin="{TemplateBinding OffScreenMargin}">
-            <DockPanel Name="RootLayout"
-                       Margin="4"
-                       ClipToBounds="True">
+            <!-- The caption docks full-width at the very top so its rounded top corners ARE the window's
+                 top corners (it's the top of the frame, not a bar floating inside it). The window "frame"
+                 is then a border on the sides+bottom only, wrapping the content BELOW the caption — driven
+                 by Bevel.Metric.WindowContentBorder (Luna: 3px blue L/R/B, 0 top; Win2000: 0, since its Bd
+                 3D bevel is the frame). -->
+            <DockPanel LastChildFill="True">
 
-              <utils:AutoAttachTitleBar DockPanel.Dock="Top" Margin="0,0,0,1" />
+              <!-- No bottom gap: the caption must meet the content frame so the side borders flow straight
+                   up into the title bar as one continuous frame (a 1px gap here reads as a transparent notch
+                   under a transparent window surface). -->
+              <utils:AutoAttachTitleBar DockPanel.Dock="Top" />
 
-              <VisualLayerManager>
-                <VisualLayerManager.ChromeOverlayLayer>
-                  <TitleBar />
-                </VisualLayerManager.ChromeOverlayLayer>
-                <ContentPresenter Name="PART_ContentPresenter"
-                                  Margin="{TemplateBinding Padding}"
-                                  Background="{TemplateBinding Background}"
-                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                                  Content="{TemplateBinding Content}"
-                                  ContentTemplate="{TemplateBinding ContentTemplate}"
-                                  ClipToBounds="True"/>
-              </VisualLayerManager>
+              <Border BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
+                      BorderThickness="{DynamicResource Bevel.Metric.WindowContentBorder}"
+                      Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}">
+                <DockPanel Name="RootLayout"
+                           Margin="{DynamicResource Bevel.Metric.WindowContentInset}"
+                           ClipToBounds="True">
+                  <VisualLayerManager>
+                    <VisualLayerManager.ChromeOverlayLayer>
+                      <TitleBar />
+                    </VisualLayerManager.ChromeOverlayLayer>
+                    <ContentPresenter Name="PART_ContentPresenter"
+                                      Margin="{TemplateBinding Padding}"
+                                      Background="{TemplateBinding Background}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      ClipToBounds="True"/>
+                  </VisualLayerManager>
+                </DockPanel>
+              </Border>
             </DockPanel>
           </Border>
 
