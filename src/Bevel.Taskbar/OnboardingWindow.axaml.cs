@@ -74,6 +74,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         StartLabelBox.TextChanged += (_, _) => PersistStart();
         FrequentCountSlider.ValueChanged += OnFrequentCountChanged;
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
+        RowsSlider.ValueChanged += OnRowsChanged;
+        CrispBevelsCheck.IsCheckedChanged += OnCrispBevelsChanged;
         ShowClockCheck.IsCheckedChanged += OnClockChanged;
         Clock24Check.IsCheckedChanged += OnClockChanged;
         ClockSecondsCheck.IsCheckedChanged += OnClockChanged;
@@ -147,6 +149,9 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         LabelModeCombo.SelectedIndex = (int)s.TaskbarButtonLabels;   // Auto=0, Always=1, IconOnly=2
         MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
+        RowsSlider.Value = s.TaskbarRows;
+        RowsValue.Text = $"{s.TaskbarRows} row{(s.TaskbarRows == 1 ? "" : "s")}";
+        RefreshCrispBevels();
 
         ShowStartCheck.IsChecked = s.TaskbarShowStart;
         StartLabelBox.Text = s.TaskbarStartLabel;
@@ -372,6 +377,34 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         await PersistAndApply(s => s.TaskbarButtonSize = size);
     }
 
+    private async void OnRowsChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        var rows = (int)Math.Round(RowsSlider.Value);
+        RowsValue.Text = $"{rows} row{(rows == 1 ? "" : "s")}";
+        if (_settings.Current.TaskbarRows == rows) return;
+        await PersistAndApply(s => s.TaskbarRows = rows);   // ApplyLiveSettings calls _window.SetRows
+    }
+
+    private bool _refreshingCrisp;
+    /// <summary>Crisp-bevels is a PER-THEME override, so the checkbox reflects the ACTIVE theme's value and
+    /// is re-read on load and whenever the theme changes (set without firing the change handler).</summary>
+    private void RefreshCrispBevels()
+    {
+        _refreshingCrisp = true;
+        CrispBevelsCheck.IsChecked = _settings.ThemeOverridesFor(_settings.Current.ThemeId).CrispBevels ?? false;
+        _refreshingCrisp = false;
+    }
+
+    private async void OnCrispBevelsChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_refreshingCrisp) return;
+        var crisp = CrispBevelsCheck.IsChecked == true;
+        var theme = _settings.Current.ThemeId;
+        if (Application.Current is { } app) Bevel.UI.ThemeOptions.ApplyCrispBevels(app, crisp);   // live
+        try { await _settings.UpdateThemeOverridesAsync(theme, o => o.CrispBevels = crisp); }
+        catch (Exception ex) { Console.Error.WriteLine($"[settings] crisp-bevels persist failed: {ex.Message}"); }
+    }
+
     /// <summary>All four clock toggles funnel here: persist the set, then push it onto the live clock
     /// via <see cref="ApplyLive"/> so the change is visible immediately.</summary>
     private async void OnClockChanged(object? sender, RoutedEventArgs e)
@@ -424,6 +457,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         // others, then rebuild the options subpanel so it shows what THIS theme contributes.
         Bevel.UI.ThemeVariants.Apply(_settings.Current);
         BuildThemeOptions();
+        RefreshCrispBevels();   // per-theme override: reflect the new theme's value
         RestoreDialogPosition(pos);   // keep the user on the Appearance tab (theming in flight)
     }
 

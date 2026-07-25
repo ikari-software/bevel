@@ -215,6 +215,10 @@ public partial class TaskbarView : UserControl
             StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
             ReapplyButtonHeights();
         }
+        // Row count from the settings slider — the same knob as dragging the resize grip. SetRows is a
+        // no-op when unchanged and clamps to the screen-derived MaxRows.
+        if (_window != null && _window.Rows != s.TaskbarRows)
+            _window.SetRows(s.TaskbarRows);
         LayoutButtons();
     }
 

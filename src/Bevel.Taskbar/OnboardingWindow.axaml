@@ -195,7 +195,17 @@
                                     <ComboBoxItem>Large</ComboBoxItem>
                                 </ComboBox>
                             </StackPanel>
-                            <TextBlock Text="Taller or shorter taskbar rows — applies immediately."
+                            <TextBlock Text="Taller or shorter taskbar buttons — applies immediately."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Rows" FontSize="11" VerticalAlignment="Center" Width="84" />
+                                <Slider x:Name="RowsSlider" Minimum="1" Maximum="4"
+                                        Width="150" VerticalAlignment="Center" />
+                                <TextBlock x:Name="RowsValue" FontSize="11" VerticalAlignment="Center" Width="56" />
+                            </StackPanel>
+                            <TextBlock Text="How many rows of buttons the bar grows to (also draggable from the taskbar's top edge)."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
@@ -253,6 +263,12 @@
                                  code-behind whenever the theme changes, so this panel always reflects the
                                  active theme's capabilities. -->
                             <StackPanel x:Name="ThemeOptionsPanel" Spacing="6" Margin="0,4,0,0" />
+
+                            <CheckBox x:Name="CrispBevelsCheck"
+                                      Content="Crisp (pixel-snapped) bevels" FontSize="11" Margin="0,4,0,0" />
+                            <TextBlock Text="Sharpen the theme's 3D edges by snapping them to whole pixels (remembered per theme)."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="84" />
