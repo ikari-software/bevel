@@ -40,6 +40,9 @@
          override wins over the transitive resolve (bevel-711). -->
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
 
+    <!-- Benchmarking (perf harness, benchmarks/Bevel.Benchmarks — not in Bevel.sln; run directly) -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
