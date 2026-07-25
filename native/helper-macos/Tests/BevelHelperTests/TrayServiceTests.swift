@@ -117,11 +117,12 @@ final class TrayServiceTests: XCTestCase {
 
     // MARK: - Tray glyph sizing (regression guard)
 
-    /// The tray-icon sizing oscillated repeatedly: a 1.35x boost made "one big, others tiny"; forcing one
-    /// uniform height blew short TEXT like "exo" up; and normalizing by cell-fill (standardFill) rendered
-    /// real icons HALF-size because menu-bar windows are ~3x their glyph. These lock the shipped rule:
-    /// square ICONS fill the box (uniform, full size), wide TEXT strips render smaller — distinguished by
-    /// ASPECT, not fill (which is why fullH is irrelevant to the result).
+    /// The tray sizing oscillated repeatedly before landing on "don't trim": the shipped rule scales the
+    /// whole captured menu-bar CELL uniformly to the tray box (the caller passes the window dims), so each
+    /// item keeps its true menu-bar proportion — icons large, text ("exo") small with its padding. These
+    /// lock the pure scaling math: the cell fills the box height independent of the captured window height
+    /// (fullH — the source of the half-size regression), width stays proportional, and extreme aspect
+    /// shrinks vertically under the 512 clamp.
     func testTrayGlyphSizing() {
         let box: CGFloat = 32
 

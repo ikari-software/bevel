@@ -424,18 +424,18 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// the transparent padding then fitting to height keeps the item's TRUE width. Height is 2× the 16px
     /// display for a crisp downscale; width is clamped so a runaway capture can't emit a huge strip.
     private func pngFromCGImage(_ cgImage: CGImage) -> Data {
-        let fullH = CGFloat(cgImage.height)                        // the item WINDOW height (≈ menu-bar height)
-        // A nil trim means the capture is fully transparent (or unreadable): emit nothing so the caller
-        // keeps the limited-mode icon instead of overwriting it with a blank frame (review: adversarial).
-        guard let glyph = trimTransparent(cgImage) else { return Data() }
-        let gw = CGFloat(glyph.width), gh = CGFloat(glyph.height)
-        guard gw > 0, gh > 0, fullH > 0 else { return Data() }
+        let fullW = CGFloat(cgImage.width), fullH = CGFloat(cgImage.height)
+        // Use trim ONLY as the blank-frame guard: a nil trim means the capture is fully transparent (or
+        // unreadable), so emit nothing and let the caller keep the limited-mode icon (review: adversarial).
+        guard trimTransparent(cgImage) != nil, fullW > 0, fullH > 0 else { return Data() }
 
-        // Sizing math lives in the pure, unit-tested Self.trayGlyphLayout (this sizing regressed
-        // repeatedly — see TrayServiceTests). It normalizes each glyph's cell-padding so icons render at a
-        // UNIFORM size while short text glyphs ("exo") stay proportionally small.
-        let L = Self.trayGlyphLayout(gw: gw, gh: gh, fullH: fullH)
-        let canvasW = L.canvasW, canvasH = L.canvasH, drawnW = L.drawnW, drawnH = L.drawnH
+        // Do NOT trim for sizing. The captured status-item window IS a uniform menu-bar CELL (every item's
+        // window is ~30px tall), with its glyph/text positioned + padded within it exactly as macOS draws
+        // it. Trimming deleted that padding and inflated short text ("exo") to full height. Scale the WHOLE
+        // cell uniformly to the tray box, so every item keeps its true menu-bar proportion — icons large,
+        // text small with the padding the bar keeps — a faithful shrink of the real menu bar.
+        let L = Self.trayGlyphLayout(gw: fullW, gh: fullH, fullH: fullH)
+        let canvasW = L.canvasW, canvasH = L.canvasH
 
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: canvasW, pixelsHigh: canvasH,
@@ -448,9 +448,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = ctx
         ctx.imageInterpolation = .high
-        let image = NSImage(cgImage: glyph, size: NSSize(width: gw, height: gh))
-        let dstY = (CGFloat(canvasH) - drawnH) / 2
-        image.draw(in: NSRect(x: 0, y: dstY, width: drawnW, height: drawnH),
+        // Draw the whole captured cell into the canvas (uniform scale — canvas aspect == window aspect).
+        let image = NSImage(cgImage: cgImage, size: NSSize(width: fullW, height: fullH))
+        image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(canvasW), height: CGFloat(canvasH)),
                    from: .zero, operation: .copy, fraction: 1.0)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:]) ?? Data()
@@ -472,11 +472,12 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let dstY: CGFloat
     }
 
-    /// UNIFORM height for every item — matches the macOS menu bar, which renders icons AND text ("PL",
-    /// "19°C") at one height. Every glyph fills the box; width is proportional (true width) and clamped so
-    /// an extreme-aspect strip shrinks vertically rather than squashing to full height. `fullH` (the
-    /// captured window height) is intentionally unused: sizing by how much of its window a glyph fills is
-    /// fragile (windows are ~3x the glyph, which rendered icons half-size).
+    /// Scales a captured status-item CELL (the whole menu-bar window — pass its width as `gw`, height as
+    /// `gh`) uniformly to the tray box. The caller does NOT trim: the window is a uniform menu-bar cell
+    /// with its glyph/text padded inside exactly as macOS draws it, so scaling the whole cell preserves
+    /// each item's true proportion (icons large, text small with padding) — a faithful shrink of the bar.
+    /// The cell fills the box height; width is proportional (true width) and clamped so an extreme-aspect
+    /// strip shrinks vertically rather than squashing. `fullH` is unused (kept for API/test stability).
     static func trayGlyphLayout(gw: CGFloat, gh: CGFloat, fullH: CGFloat, boxH: CGFloat = 32) -> TrayGlyphLayout {
         _ = fullH
         let glyphH = boxH

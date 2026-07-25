@@ -34,7 +34,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public const int MinIconSize = 12;
     public const int MaxIconSize = 32;
 
-    private int _iconSize = 16;
+    private int _iconSize = 28;
 
     /// <summary>Inline tray-icon count before the overflow chevron. Set live via <see cref="Configure"/>.</summary>
     public int VisibleCap { get; private set; } = DefaultVisibleCap;
@@ -183,7 +183,7 @@ public sealed class TrayItemViewModel : ObservableObject
     public string Tooltip { get => _tooltip; private set => SetProperty(ref _tooltip, value); }
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
 
-    private double _iconSize = 16;
+    private double _iconSize = 28;
     /// <summary>Displayed icon edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
     public double IconSize { get => _iconSize; set => SetProperty(ref _iconSize, value); }
 
