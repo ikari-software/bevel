@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Performance benchmark harness for the shell's pure-CPU hot paths (bevel-zhmr).
+       NOT part of Bevel.sln; build/run it directly:
+         dotnet run -c Release ProjectFlag benchmarks/Bevel.Benchmarks
+       BenchmarkDotNet is driven with an in-process toolchain so the one-time headless-Avalonia +
+       Skia bootstrap in Program.Main is visible to every benchmark that decodes or rasterizes a
+       Bitmap (TrayIconTint, the icon glyphs). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Release-only harness; BDN refuses to run a DEBUG build anyway. -->
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <!-- Skia + headless drawing so Bitmap decode/rasterize works off-screen (as the tests do). -->
+    <PackageReference Include="Avalonia.Skia" />
+    <PackageReference Include="Avalonia.Headless" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Bevel.Taskbar\Bevel.Taskbar.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Core\Bevel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+    <!-- App type is the AppBuilder root used to bring up the headless platform. -->
+    <ProjectReference Include="..\..\src\Bevel.App\Bevel.App.csproj" />
+  </ItemGroup>
+
+</Project>

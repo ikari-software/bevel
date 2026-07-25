@@ -10,6 +10,8 @@
        time, free of the poll loop's timing. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
+    <!-- Perf harness benchmarks ComputeButtonLayout / AssignRows (both internal). -->
+    <InternalsVisibleTo Include="Bevel.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>

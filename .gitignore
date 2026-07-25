@@ -55,3 +55,6 @@ dist/
 native/ae-probe/out/
 
 native/ae-probe2/out/
+
+# BenchmarkDotNet output (perf harness, bevel-zhmr)
+BenchmarkDotNet.Artifacts/
