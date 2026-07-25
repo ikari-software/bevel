@@ -173,7 +173,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         BgColorBox.Text = s.TaskbarBackgroundColor;
 
         TrayCapSlider.Value = s.TaskbarTrayOverflowCap;
-        TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} icons";
+        TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} / row";
         TrayIconSizeSlider.Value = s.TaskbarTrayIconSize;
         TrayIconSizeValue.Text = $"{s.TaskbarTrayIconSize} px";
 
@@ -559,7 +559,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
     private void OnTraySliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        TrayCapValue.Text = $"{(int)Math.Round(TrayCapSlider.Value)} icons";
+        TrayCapValue.Text = $"{(int)Math.Round(TrayCapSlider.Value)} / row";
         TrayIconSizeValue.Text = $"{(int)Math.Round(TrayIconSizeSlider.Value)} px";
         PersistTray();
     }

@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
@@ -35,9 +35,38 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public const int MaxIconSize = 32;
 
     private int _iconSize = 16;
+    private Color _ink = Colors.White;
 
     /// <summary>Inline tray-icon count before the overflow chevron. Set live via <see cref="Configure"/>.</summary>
     public int VisibleCap { get; private set; } = DefaultVisibleCap;
+
+    /// <summary>The bar's contrast ink (Bevel.Brush.TrayText — dark on bright bars, light on dark). Template
+    /// glyphs are recoloured to it; called on theme/variant change so mirrored icons re-adapt in place.</summary>
+    public void SetInk(Color ink)
+    {
+        if (_ink == ink) return;
+        _ink = ink;
+        foreach (var it in Items) it.Ink = ink;
+    }
+
+    private int _rows = 1;
+
+    /// <summary>Taskbar row count. Bound by the tray panel (a UniformGrid) so it lays out exactly this many
+    /// rows — robust to per-icon pixel heights, unlike a height-driven WrapPanel.</summary>
+    public int Rows { get => _rows; private set => SetProperty(ref _rows, value); }
+
+    /// <summary>Effective inline capacity = the PER-ROW cap × the taskbar row count — a taller bar shows
+    /// proportionally more icons before the overflow chevron.</summary>
+    private int EffectiveCap => Math.Max(1, VisibleCap * Math.Max(1, _rows));
+
+    /// <summary>Track the taskbar row count (bevel-m3). Reslices when it changes.</summary>
+    public void SetRows(int rows)
+    {
+        rows = Math.Max(1, rows);
+        if (_rows == rows) return;
+        Rows = rows;
+        Reslice();
+    }
 
     /// <summary>Applies the user's tray tuning live (bevel-cust.tray): inline overflow cap + icon size.</summary>
     public void Configure(int overflowCap, int iconSize)
@@ -82,9 +111,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         var index = -1;
         for (var i = 0; i < Items.Count; i++)
             if (Items[i].Id.Equals(id)) { index = i; break; }
-        if (index >= VisibleCap)
+        if (index >= EffectiveCap)
         {
-            Items.Move(index, VisibleCap - 1);
+            Items.Move(index, EffectiveCap - 1);
             Reslice();
         }
     }
@@ -120,7 +149,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(item.Id));
         if (existing is not null) { existing.Update(item); return; } // in-place update — no reslice needed
-        Items.Add(new TrayItemViewModel(item) { IconSize = _iconSize });
+        Items.Add(new TrayItemViewModel(item) { IconSize = _iconSize, Ink = _ink });
         Reslice();
     }
 
@@ -136,9 +165,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// rest of <see cref="Items"/> in place (shared VM instances, so bindings/icons survive).</summary>
     private void Reslice()
     {
-        SyncTo(VisibleItems, Items.Take(VisibleCap));
-        SyncTo(OverflowItems, Items.Skip(VisibleCap));
-        HasOverflow = Items.Count > VisibleCap;
+        SyncTo(VisibleItems, Items.Take(EffectiveCap));
+        SyncTo(OverflowItems, Items.Skip(EffectiveCap));
+        HasOverflow = Items.Count > EffectiveCap;
         HasAnyItems = Items.Count > 0;
     }
 
@@ -183,6 +212,13 @@ public sealed class TrayItemViewModel : ObservableObject
     public string Tooltip { get => _tooltip; private set => SetProperty(ref _tooltip, value); }
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
 
+    private byte[]? _png;
+    private Color _ink = Colors.White;
+
+    /// <summary>The bar's contrast ink (Bevel.Brush.TrayText). Template glyphs recolour to it; changing it
+    /// (theme/variant switch) re-tints in place.</summary>
+    public Color Ink { get => _ink; set { if (_ink != value) { _ink = value; Retint(); } } }
+
     private double _iconSize = 16;
     /// <summary>Target icon-content edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
     public double IconSize
@@ -201,13 +237,10 @@ public sealed class TrayItemViewModel : ObservableObject
     public void Update(TrayItem item)
     {
         Tooltip = string.IsNullOrEmpty(item.Tooltip) ? (item.OwnerName ?? "") : item.Tooltip;
-        IconSource = Decode(item.IconPng);
+        _png = item.IconPng;
+        Retint();
     }
 
-    private static Bitmap? Decode(byte[]? png)
-    {
-        if (png is null || png.Length == 0) return null;
-        try { using var ms = new MemoryStream(png); return new Bitmap(ms); }
-        catch { return null; }
-    }
+    /// <summary>Re-run adaptive tinting for the current ink (macOS template model, see <see cref="TrayIconTint"/>).</summary>
+    private void Retint() => IconSource = TrayIconTint.Process(_png, _ink)?.Image;
 }

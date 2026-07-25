@@ -114,11 +114,27 @@ public partial class ClockWidget : UserControl
         UpdateTime();
     }
 
+    private int _rows = 1;
+
+    /// <summary>Track the taskbar row count. On a multi-row bar the date moves under the time; on a single
+    /// row it stays inline. Called from the taskbar's ApplyRowLayout.</summary>
+    public void SetRows(int rows)
+    {
+        rows = Math.Max(1, rows);
+        if (_rows == rows) return;
+        _rows = rows;
+        UpdateTime();
+    }
+
     private void UpdateTime()
     {
         var now = DateTime.Now;
         var time = now.ToString(TimeFormat(_h24, _seconds));
-        TimeDisplay.Text = _showDate ? $"{time}   {now:ddd d MMM}" : time;
+        var date = now.ToString("ddd d MMM");
+        var stacked = _showDate && _rows > 1;                 // second line only when there's vertical room
+        TimeDisplay.Text = _showDate && !stacked ? $"{time}   {date}" : time;
+        DateDisplay.Text = date;
+        DateDisplay.IsVisible = stacked;
         ToolTip.SetTip(TimeDisplay, now.ToLongDateString());
     }
 }

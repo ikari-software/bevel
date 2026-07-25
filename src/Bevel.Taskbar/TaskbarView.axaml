@@ -319,11 +319,11 @@
                    (seamless, keeps the sunken bevel), blue-on-grey in Luna (covers it; bevel off). -->
               <Border Background="{DynamicResource Bevel.Brush.TrayWell}" Padding="4,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
-                    <!-- Mirrored menu-bar status items (bevel-m3.1) on a DARK strip: menu-bar glyphs
-                         are usually white template icons, invisible on the light tray — the dark chip
-                         gives them a menu-bar-like backing so they read. First N inline; the rest
-                         behind the » chevron (bevel-m3.4). Hidden entirely when the tray is empty. -->
-                    <Border Background="#33373D" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                    <!-- Mirrored menu-bar status items (bevel-m3.1). No dark backing chip anymore: template
+                         glyphs are recoloured to the bar's contrast ink (TrayIconTint, macOS model) so they
+                         read directly on the tray; colourful/self-contained icons keep their own look.
+                         First N inline; the rest behind the » chevron (bevel-m3.4). Hidden when empty. -->
+                    <Border Background="Transparent" Padding="3,0" VerticalAlignment="Center"
                             IsVisible="{Binding Tray.HasAnyItems}">
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <!-- Overflow chevron on the LEFT (Windows "show hidden icons"): an up glyph
@@ -334,7 +334,10 @@
                                     Content="&#x2303;" ToolTip.Tip="Show hidden icons" VerticalAlignment="Center">
                                 <Button.Flyout>
                                     <Flyout Placement="Top">
-                                        <Border Background="#33373D" Padding="4" CornerRadius="3">
+                                        <!-- Overflow popup matches the bar's tray well so the same contrast
+                                             ink reads here too. -->
+                                        <Border Background="{DynamicResource Bevel.Brush.TrayWell}" Padding="4" CornerRadius="3"
+                                                BorderBrush="{DynamicResource Bevel.Brush.TaskbarDividerDark}" BorderThickness="1">
                                             <ItemsControl ItemsSource="{Binding Tray.OverflowItems}" MaxWidth="220">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -359,13 +362,17 @@
                             <ItemsControl ItemsSource="{Binding Tray.VisibleItems}" VerticalAlignment="Center">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="4" />
+                                        <!-- Rows = the taskbar row count (bevel-m3). TrayRowsPanel packs
+                                             icons into exactly that many rows at their NATURAL widths
+                                             (a wide status item takes proportional room), unlike a
+                                             UniformGrid which would size every cell to the widest icon. -->
+                                        <tb:TrayRowsPanel Rows="{Binding Tray.Rows}" />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                         <Image Source="{Binding IconSource}"
-                                               Height="{Binding CellHeight}" Stretch="Uniform"
+                                               Height="{Binding CellHeight}" Stretch="Uniform" Margin="2,1"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
                                     </DataTemplate>

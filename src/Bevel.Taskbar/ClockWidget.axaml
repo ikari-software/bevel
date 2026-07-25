@@ -6,10 +6,12 @@
             <MenuItem Header="Adjust _Date &amp; Time…" Click="OnAdjustDateTime" />
         </MenuFlyout>
     </UserControl.ContextFlyout>
-    <TextBlock x:Name="TimeDisplay"
-               FontSize="11"
-               Foreground="{DynamicResource Bevel.Brush.TrayText}"
-               VerticalAlignment="Center"
-               HorizontalAlignment="Right"
-               Margin="4,0,6,0" />
+    <!-- Time on top; on a MULTI-ROW bar the date drops to a second line under it (there's the vertical
+         room); on a single-row bar the date sits inline in TimeDisplay instead (see ClockWidget code). -->
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right" Margin="4,0,6,0" Spacing="-1">
+        <TextBlock x:Name="TimeDisplay" FontSize="11" TextAlignment="Right" HorizontalAlignment="Right"
+                   Foreground="{DynamicResource Bevel.Brush.TrayText}" />
+        <TextBlock x:Name="DateDisplay" FontSize="9" TextAlignment="Right" HorizontalAlignment="Right"
+                   IsVisible="False" Foreground="{DynamicResource Bevel.Brush.TrayText}" />
+    </StackPanel>
 </UserControl>

@@ -321,7 +321,7 @@
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TrayCapValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
-                            <TextBlock Text="Icons shown inline before the rest move under the overflow chevron."
+                            <TextBlock Text="Icons per taskbar ROW shown inline before the rest move under the overflow chevron — a 2-row bar shows twice as many."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 

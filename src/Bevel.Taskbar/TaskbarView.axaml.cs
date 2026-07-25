@@ -355,6 +355,17 @@ public partial class TaskbarView : UserControl
         if (!_wired)
         {
             _wired = true;
+
+            // Adaptive tray ink (bevel-m3, macOS template model): re-tint mirrored template glyphs to the
+            // bar's contrast colour whenever a theme/variant switch changes Bevel.Brush.TrayText — dark on
+            // bright bars (Silver/grey), light on dark (Luna blue). Colourful / self-contained icons are
+            // left alone by TrayIconTint. A resource observable fires the initial value + every change.
+            this.GetResourceObservable("Bevel.Brush.TrayText").Subscribe(
+                new Avalonia.Reactive.AnonymousObserver<object?>(v =>
+                {
+                    if (v is Avalonia.Media.ISolidColorBrush b) _vm?.Tray.SetInk(b.Color);
+                }));
+
             // Host-OS badge on the Start button: Windows flag / Apple / Tux, self-drawn vectors.
             StartLogoHost.Content = StartLogo.For(16);
             StartButton.Click += OnStartButtonClick;
@@ -664,6 +675,9 @@ public partial class TaskbarView : UserControl
     private void ApplyRowLayout()
     {
         RootGrid.Height = TaskbarTheme.HeightForRows(_window?.Rows ?? 1);
+        var rows = _window?.Rows ?? 1;
+        _vm?.Tray.SetRows(rows);   // tray visible cap is PER ROW, and it lays out that many rows (bevel-m3)
+        Clock.SetRows(rows);       // date drops under the time on a multi-row bar
         LayoutButtons();
     }
 
