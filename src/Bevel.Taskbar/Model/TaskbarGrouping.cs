@@ -39,9 +39,21 @@ public static class TaskbarGrouping
     {
         var result = new List<TaskbarPlanEntry>(windows.Count);
 
-        // Which apps have ≥2 live (non-closing) windows — the group candidates.
+        // App-presence dedup (bevel-ww71): a windowless-app button is suppressed whenever a REAL window
+        // for the same app is present — so the merge transition (a window opens while the presence entry
+        // is still in the set for one frame) never shows a duplicate, and grouping-mode is irrelevant.
+        var appsWithWindow = new HashSet<string>();
+        foreach (var w in windows)
+            if (!w.IsClosing && !w.IsAppPresence && w.AppId is { Length: > 0 } id)
+                appsWithWindow.Add(id);
+
+        bool Suppressed(TaskItemViewModel w) =>
+            w.IsAppPresence && w.AppId is { Length: > 0 } a && appsWithWindow.Contains(a);
+
+        // Which apps have ≥2 live (non-closing, real) windows — the group candidates. Presence entries
+        // are synthetic singletons and never participate in grouping.
         var groups = grouping
-            ? windows.Where(w => !w.IsClosing && !string.IsNullOrEmpty(w.AppId))
+            ? windows.Where(w => !w.IsClosing && !w.IsAppPresence && !string.IsNullOrEmpty(w.AppId))
                      .GroupBy(w => w.AppId!)
                      .Where(g => g.Count() >= 2)
                      .ToDictionary(g => g.Key, g => (IReadOnlyList<TaskItemViewModel>)g.ToList())
@@ -50,7 +62,9 @@ public static class TaskbarGrouping
         var emitted = new HashSet<string>();
         foreach (var w in windows)
         {
-            if (!w.IsClosing && w.AppId is { Length: > 0 } appId && groups.TryGetValue(appId, out var members))
+            if (Suppressed(w))
+                continue;
+            if (!w.IsClosing && !w.IsAppPresence && w.AppId is { Length: > 0 } appId && groups.TryGetValue(appId, out var members))
             {
                 if (emitted.Add(appId))
                     result.Add(new TaskbarPlanEntry("g:" + appId, appId, members));

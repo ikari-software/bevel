@@ -150,6 +150,11 @@ message TaskbarWindow {
   PixelRect frame = 8;
   // App icon as PNG bytes (from the owning app's bundle id), or empty if unavailable.
   bytes app_icon_png = 9;
+  // True for a synthetic "app-presence" entry: a regular app that is RUNNING but owns no window
+  // (bevel-ww71). Its window_id is "app:<bundle_id>", frame is empty, and the taskbar renders it as a
+  // dim icon-only button whose click reopens the app. Suppressed when a real window for the same bundle
+  // exists, so the merge transition is duplicate-free.
+  bool is_app_presence = 10;
 }
 
 message PixelRect {

@@ -298,6 +298,12 @@ public nonisolated struct Bevel_Helper_V1_TaskbarWindow: Sendable {
   /// App icon as PNG bytes (from the owning app's bundle id), or empty if unavailable.
   public var appIconPng: Data = Data()
 
+  /// True for a synthetic "app-presence" entry: a regular app that is RUNNING but owns no window
+  /// (bevel-ww71). Its window_id is "app:<bundle_id>", frame is empty, and the taskbar renders it as a
+  /// dim icon-only button whose click reopens the app. Suppressed when a real window for the same bundle
+  /// exists, so the merge transition is duplicate-free.
+  public var isAppPresence: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -880,7 +886,7 @@ nonisolated extension Bevel_Helper_V1_WindowRef: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TaskbarWindow"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -897,6 +903,7 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
       case 7: try { try decoder.decodeSingularBoolField(value: &self.isFocused) }()
       case 8: try { try decoder.decodeSingularMessageField(value: &self._frame) }()
       case 9: try { try decoder.decodeSingularBytesField(value: &self.appIconPng) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.isAppPresence) }()
       default: break
       }
     }
@@ -934,6 +941,9 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if !self.appIconPng.isEmpty {
       try visitor.visitSingularBytesField(value: self.appIconPng, fieldNumber: 9)
     }
+    if self.isAppPresence != false {
+      try visitor.visitSingularBoolField(value: self.isAppPresence, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -947,6 +957,7 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if lhs.isFocused != rhs.isFocused {return false}
     if lhs._frame != rhs._frame {return false}
     if lhs.appIconPng != rhs.appIconPng {return false}
+    if lhs.isAppPresence != rhs.isAppPresence {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

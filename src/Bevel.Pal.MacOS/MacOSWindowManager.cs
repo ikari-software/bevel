@@ -246,14 +246,18 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         // (never null), so fall back explicitly on empty.
         var appId = string.IsNullOrEmpty(tw.AppName) ? tw.AppBundleId : tw.AppName;
         var icon = tw.AppIconPng.ToByteArray();
+        // App-presence entries (bevel-ww71) carry no frame — guard the message-type field, which is null
+        // on the C# side when unset.
+        var f = tw.Frame;
         return new(
             Id: new ForeignWindowId(tw.WindowId),
             Title: tw.Title,
             AppId: appId,
             IsMinimized: tw.IsMinimized,
             IsFocused: tw.IsFocused,
-            Bounds: new PalRect(tw.Frame.X, tw.Frame.Y, tw.Frame.Width, tw.Frame.Height),
-            IconPng: icon.Length == 0 ? null : icon);
+            Bounds: f is null ? default : new PalRect(f.X, f.Y, f.Width, f.Height),
+            IconPng: icon.Length == 0 ? null : icon,
+            IsAppPresence: tw.IsAppPresence);
     }
 
     public void Dispose()

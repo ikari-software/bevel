@@ -85,6 +85,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     private let stateLock = NSLock()
     private var windowStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
 
+    /// Running-but-windowless regular apps (bevel-ww71), keyed by bundle id. Each is a synthetic
+    /// TaskbarWindow (windowID "app:<bundle>", isAppPresence=true, no frame) diffed + emitted on the
+    /// Changes stream exactly like windows. Guarded by `stateLock` alongside `windowStore`.
+    private var appStore: [String: Bevel_Helper_V1_TaskbarWindow] = [:]
+
     /// App-icon PNG cache keyed by bundle id. The reconciliation poll now builds
     /// full descriptors (icons included) every ~1s, so re-rendering each app's icon
     /// from disk on every tick would be wasteful — cache the PNG once per bundle id.
@@ -694,7 +699,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let axMap = correlateAXElements(forPIDs: pidSet, entries: entries)
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
-        return entries.compactMap { describe(entry: $0, axMap: axMap, effectiveFrontmost: effectiveFrontmost) }
+        var windows = entries.compactMap { describe(entry: $0, axMap: axMap, effectiveFrontmost: effectiveFrontmost) }
+        // Append the last-computed app-presence entries (bevel-ww71) so ListWindows + the Changes snapshot
+        // carry windowless-running apps too. The 500ms reconcile keeps `appStore` current.
+        windows.append(contentsOf: stateLock.withLock { Array(appStore.values) })
+        return windows
     }
 
     // MARK: - App icon
@@ -950,6 +959,23 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     func activateWindow(windowID: String) throws {
+        // App-presence entry (bevel-ww71): windowID is "app:<bundle>", there's no window to resolve.
+        // Activating the app IS the reopen — macOS fires applicationShouldHandleReopen, which makes a
+        // window (the app then flows in as a normal window button and the presence entry drops).
+        if windowID.hasPrefix("app:") {
+            let bundle = String(windowID.dropFirst("app:".count))
+            let app = NSWorkspace.shared.runningApplications.first {
+                $0.bundleIdentifier == bundle && $0.activationPolicy == .regular
+            }
+            guard let app else {
+                throw RPCError(code: .notFound, message: "app-presence target not running: \(bundle)")
+            }
+            let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            app.activate()
+            return
+        }
+
         let (pid, axWin) = try resolveWindow(windowID: windowID)
 
         // AXRaise reorders the window WITHIN its own app. Best-effort: some apps (Apple Music) expose
@@ -1459,6 +1485,32 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     /// Full reconciliation: enumerate windows, diff against the store, emit deltas.
+    /// Windowless-running regular apps (bevel-ww71): every `.regular` (Dock) app that is running but does
+    /// NOT own a kept window. Same activation-policy gate as `describe()` (so `.accessory` menu-bar agents,
+    /// already surfaced via the systray mirror, aren't double-represented), minus Bevel's own processes.
+    /// Keyed by bundle id — stable across the app's window lifecycle. `windowPIDs` is the set of PIDs that
+    /// own a real kept window this poll.
+    private func computeAppPresence(windowPIDs: Set<pid_t>) -> [String: Bevel_Helper_V1_TaskbarWindow] {
+        let ownPID = getpid()
+        var result: [String: Bevel_Helper_V1_TaskbarWindow] = [:]
+        for app in NSWorkspace.shared.runningApplications {
+            guard app.activationPolicy == .regular else { continue }
+            let pid = app.processIdentifier
+            if pid == ownPID || pid == parentPID { continue }
+            if windowPIDs.contains(pid) { continue }              // owns a window → shown as a window button
+            guard let bundle = app.bundleIdentifier, !bundle.isEmpty else { continue }
+            var win = Bevel_Helper_V1_TaskbarWindow()
+            win.windowID = "app:" + bundle
+            win.appBundleID = bundle
+            win.appName = app.localizedName ?? bundle
+            win.pid = pid
+            win.isAppPresence = true
+            win.appIconPng = cachedAppIconPNG(bundleID: bundle)
+            result[bundle] = win
+        }
+        return result
+    }
+
     private func reconcile() {
         let ownPID = getpid()
 
@@ -1562,5 +1614,37 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         // Update the store atomically.
         stateLock.withLock { windowStore = newStore }
+
+        // App-presence (bevel-ww71): windowless-running apps = running .regular apps minus those owning a
+        // kept window this poll. Diffed + emitted as OPENED/CLOSED synthetic windows, exactly like windows,
+        // so the merge transition is just: app opens a window → its PID enters windowPIDs → the presence
+        // entry drops (CLOSED) while the real window arrives (OPENED); the C# projector suppresses the
+        // presence entry for that bundle in the overlap frame so there's never a visible duplicate.
+        let windowPIDs = Set(newStore.values.map { $0.pid })
+        let newApps = computeAppPresence(windowPIDs: windowPIDs)
+        let prevAppKeys: Set<String> = stateLock.withLock { Set(appStore.keys) }
+        let curAppKeys = Set(newApps.keys)
+
+        for bundle in curAppKeys.subtracting(prevAppKeys) {
+            guard let app = newApps[bundle] else { continue }
+            var change = Bevel_Helper_V1_WindowChange()
+            change.kind = .opened
+            change.window = app
+            broadcast(change)
+        }
+        for bundle in prevAppKeys.subtracting(curAppKeys) {
+            let app = stateLock.withLock { appStore[bundle] }
+            var change = Bevel_Helper_V1_WindowChange()
+            change.kind = .closed
+            if let app {
+                change.window = app
+            } else {
+                var stub = Bevel_Helper_V1_TaskbarWindow()
+                stub.windowID = "app:" + bundle
+                change.window = stub
+            }
+            broadcast(change)
+        }
+        stateLock.withLock { appStore = newApps }
     }
 }

@@ -89,7 +89,12 @@ public sealed record ForeignWindow(
     bool IsFocused,
     PalRect Bounds,
     /// <summary>App icon PNG bytes (from the owning app), or empty when unavailable.</summary>
-    byte[]? IconPng = null);
+    byte[]? IconPng = null,
+    /// <summary>True for a synthetic app-presence entry (bevel-ww71): a regular app running with no
+    /// window. Its <see cref="Id"/> is <c>app:&lt;bundle&gt;</c>; the taskbar renders it dim + icon-only
+    /// and a click reopens the app. Suppressed by the projector when a real window for the same app
+    /// exists.</summary>
+    bool IsAppPresence = false);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

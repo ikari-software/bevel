@@ -31,6 +31,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         _windows = windows;
         Id = w.Id;
         AppId = w.AppId;
+        IsAppPresence = w.IsAppPresence;
         Update(w);
         if (w.IsFocused)
             SetFocused(true);
@@ -45,6 +46,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Owning app's identifier (bundle id), used to collapse multi-window apps into a group
     /// (bevel-m2.10.3). Null/empty for windows with no known app — those never group.</summary>
     public string? AppId { get; }
+
+    /// <summary>True for a running-but-windowless app entry (bevel-ww71): rendered dim + icon-only, and a
+    /// click just reopens the app (no minimize/toggle, since there's no window).</summary>
+    public bool IsAppPresence { get; }
 
     public string Title
     {
@@ -106,7 +111,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     public FontWeight TitleWeight => IsFocused ? FontWeight.Bold : FontWeight.Normal;
 
     /// <summary>Minimized windows remain actionable but their content is visibly recessed.</summary>
-    public double ContentOpacity => IsMinimized ? 0.55 : 1;
+    public double ContentOpacity => IsAppPresence ? 0.6 : IsMinimized ? 0.55 : 1;
 
     /// <summary>Accessible state and the action clicking the button will perform.</summary>
     public string StatusText => IsMinimized
@@ -199,6 +204,16 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// </summary>
     private async Task ToggleAsync()
     {
+        // App-presence button (bevel-ww71): no window to minimize/toggle — a click just reopens the app.
+        // The helper's activateWindow resolves the "app:<bundle>" id to NSRunningApplication.activate().
+        if (IsAppPresence)
+        {
+            TaskbarLog.Debug($"CLICK id={Id.Value} app-presence -> reopen");
+            try { await _windows.ActivateAsync(Id); }
+            catch (Exception ex) { TaskbarLog.Debug($"CLICK app-presence failed id={Id.Value}: {ex.Message}"); }
+            return;
+        }
+
         var action = IsMinimized ? "restore+activate" : IsFocused ? "minimize" : "activate";
         TaskbarLog.Debug($"CLICK id={Id.Value} title='{Title}' min={IsMinimized} focus={IsFocused} -> {action}");
         try
