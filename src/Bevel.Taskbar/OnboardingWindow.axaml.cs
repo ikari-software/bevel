@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using System.Linq;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
@@ -413,6 +416,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         if (idx < 0 || idx >= Bevel.UI.ThemeService.Themes.Count) return;
         var id = Bevel.UI.ThemeService.Themes[idx].Id;
         if (_settings.Current.ThemeId == id) return;
+        var pos = CaptureDialogPosition();
         Bevel.UI.ThemeService.Apply(id);   // live reskin
         try { await _settings.UpdateAsync(s => s.ThemeId = id); }
         catch (Exception ex) { Console.Error.WriteLine($"[settings] theme persist failed: {ex.Message}"); }
@@ -420,6 +424,30 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         // others, then rebuild the options subpanel so it shows what THIS theme contributes.
         Bevel.UI.ThemeVariants.Apply(_settings.Current);
         BuildThemeOptions();
+        RestoreDialogPosition(pos);   // keep the user on the Appearance tab (theming in flight)
+    }
+
+    /// <summary>Selected tab + active scroll offset, captured before a theme/variant apply.</summary>
+    private (int Tab, Vector Offset) CaptureDialogPosition()
+    {
+        var tabs = this.GetVisualDescendants().OfType<TabControl>().FirstOrDefault();
+        var sv = tabs?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault(s => s.IsEffectivelyVisible);
+        return (tabs?.SelectedIndex ?? -1, sv?.Offset ?? default);
+    }
+
+    /// <summary>Restores the tab + scroll after a theme/variant apply. ThemeService.Apply swaps the theme's
+    /// Styles set, which re-templates the whole dialog and resets the selected tab + scroll — so live
+    /// theming would kick the user off the Appearance tab. Restore once the re-layout settles so the theme
+    /// applies "in flight", leaving the user exactly where they were.</summary>
+    private void RestoreDialogPosition((int Tab, Vector Offset) pos)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var tabs = this.GetVisualDescendants().OfType<TabControl>().FirstOrDefault();
+            if (tabs != null && pos.Tab >= 0 && pos.Tab < tabs.ItemCount) tabs.SelectedIndex = pos.Tab;
+            var sv = tabs?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault(s => s.IsEffectivelyVisible);
+            if (sv != null) sv.Offset = pos.Offset;
+        }, DispatcherPriority.Background);   // after the re-template/layout resets, so our restore wins
     }
 
     /// <summary>Builds the theme-specific appearance subpanel from <see cref="Bevel.UI.ThemeVariants"/>:
@@ -450,9 +478,11 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         if (idx < 0 || idx >= option.Choices.Count) return;
         var id = option.Choices[idx].Id;
         if (option.Get(_settings.Current) == id) return;
+        var pos = CaptureDialogPosition();
         try { await _settings.UpdateAsync(s => option.Set(s, id)); }
         catch (Exception ex) { Console.Error.WriteLine($"[settings] theme option persist failed: {ex.Message}"); return; }
         Bevel.UI.ThemeVariants.Apply(_settings.Current);   // live recolour in this process
+        RestoreDialogPosition(pos);
     }
 
     /// <summary>UI font-family picker (FNT-01): reskins the shell font live via
