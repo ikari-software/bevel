@@ -1128,6 +1128,28 @@
                 </Setter>
             </ControlTheme>
 
+            <!-- ── MenuFlyout container ── The taskbar/clock menus use ContextFlyout -> MenuFlyout, whose
+                 presenter is a SEPARATE type from ContextMenu; without this override they keep the Classic
+                 grey bevel. Same XP look: white area, cream gutter, rounded, shadow. -->
+            <ControlTheme x:Key="{x:Type MenuFlyoutPresenter}" TargetType="MenuFlyoutPresenter">
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Background="{DynamicResource Luna.Brush.MenuArea}"
+                                BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1"
+                                CornerRadius="3" BoxShadow="0 2 7 0 #35000000">
+                            <Panel>
+                                <Border Width="24" HorizontalAlignment="Left" Margin="2,2,0,2"
+                                        Background="{DynamicResource Luna.Brush.MenuGutter}" />
+                                <ItemsPresenter Name="PART_ItemsPresenter" Margin="2"
+                                                Grid.IsSharedSizeScope="True"
+                                                ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                KeyboardNavigation.TabNavigation="Continue" />
+                            </Panel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
             <!-- ── TabControl: Luna content panel below the tabs (Top placement) ── -->
             <ControlTheme x:Key="Bevel.Theme.TabControl" TargetType="TabControl">
                 <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />

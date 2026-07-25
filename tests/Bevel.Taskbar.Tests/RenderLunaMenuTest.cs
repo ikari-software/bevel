@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -52,6 +53,42 @@ public class RenderLunaMenuTest
             Assert.NotNull(frame);
             var outPath = Environment.GetEnvironmentVariable("BEVEL_MENU_LUNA_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-menu-luna.png");
+            frame!.Save(outPath);
+        }
+        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+    }
+
+    /// <summary>The taskbar/clock menus use MenuFlyout, whose presenter is a distinct type from
+    /// ContextMenu — render it directly to prove the Luna container override reaches it too.</summary>
+    [AvaloniaFact]
+    public void Render_luna_menu_flyout_presenter_to_png()
+    {
+        Bevel.UI.ThemeService.Apply("luna");
+        try
+        {
+            var presenter = new MenuFlyoutPresenter();
+            presenter.Items.Add(new MenuItem { Header = "Cascade Windows" });
+            presenter.Items.Add(new MenuItem { Header = "Show the Desktop" });
+            presenter.Items.Add(new Separator());
+            presenter.Items.Add(new MenuItem { Header = "Lock the Taskbar", IsChecked = true });
+            presenter.Items.Add(new MenuItem { Header = "Properties", InputGesture = new KeyGesture(Key.Enter) });
+
+            var win = new Window
+            {
+                Width = 240, Height = 200,
+                Content = new Border { Padding = new Thickness(20), Child = presenter },
+            };
+            win.Show();
+            for (var i = 0; i < 12; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            }
+
+            var frame = win.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            var outPath = Environment.GetEnvironmentVariable("BEVEL_FLYOUT_LUNA_OUT")
+                          ?? Path.Combine(Path.GetTempPath(), "bevel-flyout-luna.png");
             frame!.Save(outPath);
         }
         finally { Bevel.UI.ThemeService.Apply("win2000"); }
