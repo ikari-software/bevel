@@ -250,6 +250,9 @@
                  Luna overrides {x:Type ContextMenu} below to this flatter white+gutter+rounded look. -->
             <SolidColorBrush x:Key="Luna.Brush.MenuArea"    Color="#FFFFFF" />
             <SolidColorBrush x:Key="Luna.Brush.MenuGutter"  Color="#E8E7DD" />
+            <!-- Menu separator: a single thin light line inset to the white item area (starts past the
+                 gutter, which stays unbroken) — not the Classic full-width etched line. -->
+            <SolidColorBrush x:Key="Luna.Brush.MenuSeparator" Color="#D6D3C8" />
             <LinearGradientBrush x:Key="Luna.Brush.ScrollThumb" StartPoint="0%,0%" EndPoint="100%,0%">
                 <GradientStop Offset="0"   Color="#FBFBF7" />
                 <GradientStop Offset="0.5" Color="#ECE9D8" />
@@ -1072,7 +1075,6 @@
                     </ControlTemplate>
                 </Setter>
                 <Style Selector="^:separator">
-                    <Setter Property="Height" Value="10" />
                     <Setter Property="Template">
                         <ControlTemplate><Separator /></ControlTemplate>
                     </Setter>
@@ -1146,6 +1148,23 @@
                                                 KeyboardNavigation.TabNavigation="Continue" />
                             </Panel>
                         </Border>
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
+            <!-- ── Menu separator ── The REAL menu divider is a Separator control ({x:Type Separator}),
+                 not the MenuItem :separator template (that just delegates to <Separator/>). Classic renders
+                 it as a full-width etched HorizontalLine straight across the gutter; override it to a single
+                 thin light line inset past the gutter. Every app Separator is a menu separator (toolbars use
+                 the VerticalSeparator key), so this override is safely menu-scoped. -->
+            <ControlTheme x:Key="{x:Type Separator}" TargetType="Separator">
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Height" Value="7" />
+                <Setter Property="Margin" Value="26,3,7,3" />
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <Border Height="1" VerticalAlignment="Center"
+                                Background="{DynamicResource Luna.Brush.MenuSeparator}" />
                     </ControlTemplate>
                 </Setter>
             </ControlTheme>
