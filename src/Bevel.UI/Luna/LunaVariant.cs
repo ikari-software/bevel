@@ -82,7 +82,11 @@ public static class LunaVariantService
             (0.0,"4F97EE"),(0.5,"2F7EE6"),(1.0,"1E63D6")}),
         new("Luna.Brush.StartMenuFooter", true, GlossRole.Chrome, new[]{
             (0.0,"3F8CE8"),(0.5,"245EDC"),(1.0,"1A4FBE")}),
-        new("Luna.Brush.StartMenuPlacesColumn", true, GlossRole.Inert, new[]{ (0.0,"DCE8FA"),(1.0,"C6D8F0") }, Horizontal: true),
+        // Right "places" column stays a LIGHT panel across every variant (XP keeps it light regardless of
+        // the blue/silver/black/purple chrome) so the dark place-text always reads. It must NOT be re-hued:
+        // the colour axis darkens (Purple/Black use LightMul<1), which turned it into a dark purple panel
+        // with unreadable dark text. chromatic:false pins it to these pale stops.
+        new("Luna.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
 
         // Glossy chrome controls (bead in Gloss/Hybrid, flattened under Matte)
         new("Luna.Brush.TaskButton", true, GlossRole.Control, new[]{

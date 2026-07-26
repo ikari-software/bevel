@@ -310,8 +310,8 @@
             <!-- Right column: a clearly-blue but light panel — distinct from the white left column
                  (XP two-tone) yet light enough that the dark navy place-text reads with strong contrast. -->
             <LinearGradientBrush x:Key="Luna.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
-                <GradientStop Offset="0" Color="#DCEAFB" />
-                <GradientStop Offset="1" Color="#C7DCF5" />
+                <GradientStop Offset="0" Color="#E7F0FC" />
+                <GradientStop Offset="1" Color="#D6E4F7" />
             </LinearGradientBrush>
 
             <!-- Converter for the MenuItem shortcut column (Classic's is internal). -->
@@ -675,6 +675,7 @@
                                 <ContentPresenter Name="PART_HeaderPresenter" Margin="{TemplateBinding Padding}"
                                                   Content="{TemplateBinding Header}"
                                                   ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  RecognizesAccessKey="True"
                                                   VerticalContentAlignment="Center" />
                                 <Popup Name="PART_Popup" IsLightDismissEnabled="True"
                                        IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
