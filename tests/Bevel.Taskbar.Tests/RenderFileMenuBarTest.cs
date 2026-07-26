@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using System.Linq;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -47,6 +49,45 @@ public class RenderFileMenuBarTest
         // Don't leak the Luna/Purple state into other tests.
         Bevel.UI.Luna.LunaVariantService.Clear();
         Bevel.UI.ThemeService.Apply("win2000");
+    }
+
+    [AvaloniaFact]
+    public async Task Reopening_a_menubar_submenu_does_not_crash_under_luna()
+    {
+        try
+        {
+            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+
+            var menuBar = new Bevel.FileManager.Components.MenuBar();
+            var window = new Window
+            {
+                SystemDecorations = SystemDecorations.None,
+                Width = 560,
+                Height = 300,
+                Content = new DockPanel { Children = { menuBar } },
+            };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var menu = menuBar.GetVisualDescendants().OfType<Menu>().First();
+            var tools = menu.Items.OfType<MenuItem>().First(m => (m.Header as string) == "_Tools");
+
+            // open → close → reopen: the second open double-parented the XAML-declared submenu items.
+            tools.IsSubMenuOpen = true;
+            Dispatcher.UIThread.RunJobs();
+            tools.IsSubMenuOpen = false;
+            Dispatcher.UIThread.RunJobs();
+            tools.IsSubMenuOpen = true;   // <-- threw InvalidOperationException before the fix
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(tools.IsSubMenuOpen);
+        }
+        finally
+        {
+            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.ThemeService.Apply("win2000");
+        }
     }
 
     [AvaloniaFact]

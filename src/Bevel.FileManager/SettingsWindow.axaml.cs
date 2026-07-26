@@ -75,6 +75,12 @@ public partial class SettingsWindow : UI.BevelWindow
         // Live theme switch: the picker reskins the running app immediately by swapping the theme's
         // Styles set + tokens (bevel-dob) — no restart.
         Bevel.UI.ThemeService.Apply(themeId);
+        // …and route the per-theme variant engines: this DEACTIVATES the previous theme's (e.g. clears the
+        // Luna colour-variant overrides — window frame, caption brushes — when switching Luna→Win2000) and
+        // applies the new theme's. Without this the old theme's Application-level chrome lingered, leaving
+        // borderless windows with a Luna-ish title bar. Every other theme-switch call site already pairs
+        // these two; this one was the straggler.
+        Bevel.UI.ThemeVariants.Apply(_settings.Current);
 
         // Whitelisted per-theme override (bevel-wym): persisted under theme:<id> and applied
         // live — the Application-level resource shadow flips every bevel immediately.

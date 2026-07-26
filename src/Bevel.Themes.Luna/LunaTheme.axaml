@@ -677,7 +677,13 @@
                                                   ContentTemplate="{TemplateBinding HeaderTemplate}"
                                                   RecognizesAccessKey="True"
                                                   VerticalContentAlignment="Center" />
-                                <Popup Name="PART_Popup" IsLightDismissEnabled="True"
+                                <!-- IsLightDismissEnabled MUST stay False: the file-manager menu bar's items
+                                     are literal XAML MenuItem instances (not data-generated), and a
+                                     light-dismiss popup tears down + re-templates its ItemsPresenter on
+                                     reopen, re-adding those same instances → "already has a visual parent"
+                                     crash. The Menu's own interaction handler still dismisses on outside
+                                     click. (Matches the dropdown MenuItem popup, which never crashed.) -->
+                                <Popup Name="PART_Popup" IsLightDismissEnabled="False"
                                        IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
                                        Placement="BottomEdgeAlignedLeft" WindowManagerAddShadowHint="True"
                                        OverlayInputPassThroughElement="{Binding $parent[Menu]}">
