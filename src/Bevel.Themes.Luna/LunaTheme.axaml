@@ -677,16 +677,17 @@
                                                   ContentTemplate="{TemplateBinding HeaderTemplate}"
                                                   RecognizesAccessKey="True"
                                                   VerticalContentAlignment="Center" />
-                                <!-- IsLightDismissEnabled MUST stay False: the file-manager menu bar's items
-                                     are literal XAML MenuItem instances (not data-generated), and a
-                                     light-dismiss popup tears down + re-templates its ItemsPresenter on
-                                     reopen, re-adding those same instances → "already has a visual parent"
-                                     crash. The Menu's own interaction handler still dismisses on outside
-                                     click. (Matches the dropdown MenuItem popup, which never crashed.) -->
+                                <!-- Structured to match the dropdown MenuItem popup below, which is proven
+                                     crash-free on reopen (the Start menu's cascades reuse the same MenuItem
+                                     instances across every reopen). The reopen crash ("already has a visual
+                                     parent") came from the two extras this top-level popup used that the
+                                     dropdown one didn't — WindowManagerAddShadowHint + OverlayInputPassThrough
+                                     — which forced a native PopupRoot that re-templated its ItemsPresenter on
+                                     reopen, re-adding the XAML-declared bar items. Dropped both; only the
+                                     Placement (Bottom vs Right) differs from the dropdown popup now. -->
                                 <Popup Name="PART_Popup" IsLightDismissEnabled="False"
                                        IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}"
-                                       Placement="BottomEdgeAlignedLeft" WindowManagerAddShadowHint="True"
-                                       OverlayInputPassThroughElement="{Binding $parent[Menu]}">
+                                       Placement="BottomEdgeAlignedLeft" HorizontalOffset="-3" VerticalOffset="-3">
                                     <Border Background="{DynamicResource Luna.Brush.MenuArea}"
                                             BorderBrush="{DynamicResource Luna.Brush.MenuBorder}" BorderThickness="1"
                                             CornerRadius="3" BoxShadow="0 2 7 0 #35000000">
@@ -1020,17 +1021,10 @@
             </ControlTheme>
 
             <!-- ── Menu bar ── -->
-            <!-- NOTE: intentionally NOT setting ItemContainerTheme to Luna.Theme.TopLevelMenuItem. That
-                 custom top-level template's popup re-templates its ItemsPresenter on reopen and re-adds the
-                 file-manager menu bar's XAML-declared MenuItems → "already has a visual parent" CRASH on
-                 reopening a menu (e.g. Tools). Letting the bar items fall back to Avalonia's default
-                 MenuItem (as Win2000 does) renders them correctly (flat, no arrows, mnemonics work) AND is
-                 crash-free. Dropdown/context items still get Luna styling via App.axaml's
-                 "MenuItem MenuItem" / MenuFlyout / ContextMenu selectors. Restoring a Luna-blue menu-BAR
-                 hover needs a non-crashing custom template (tracked separately). -->
-            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu" BasedOn="{StaticResource {x:Type Menu}}">
+            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu">
                 <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Menu}" />
                 <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}" />
+                <Setter Property="ItemContainerTheme" Value="{StaticResource Luna.Theme.TopLevelMenuItem}" />
                 <Setter Property="Template">
                     <ControlTemplate>
                         <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
