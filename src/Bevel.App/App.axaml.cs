@@ -254,7 +254,10 @@ public partial class App : Application
             trayIconSize: settings.Current.TaskbarTrayIconSize,
             locked: settings.Current.TaskbarLocked,
             alwaysOnTop: settings.Current.TaskbarAlwaysOnTop,
-            showDesktopButton: settings.Current.TaskbarShowDesktopButton);
+            showDesktopButton: settings.Current.TaskbarShowDesktopButton,
+            // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
+            // at that folder, reusing the shared factory — the same object graph the modules register.
+            openFolder: path => services.GetRequiredService<FileManagerWindowFactory>().Create(path));
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

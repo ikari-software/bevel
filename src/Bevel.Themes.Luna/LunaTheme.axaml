@@ -281,6 +281,9 @@
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuComputerIcon"    Color="#3F6FC5" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconGeneric" Color="#E6ECF7" />
+            <!-- Neutral tile shown behind a pinned app's icon while its real bitmap loads (or when the
+                 icon provider yields none) so a pinned row is never a hollow gap. -->
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPinIconFallback" Color="#DCE6F5" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconBorder"  Color="#8AA3C9" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHelpIcon"        Color="#3F8EE6" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuLogOffIcon"      Color="#E8A23C" />
@@ -304,9 +307,11 @@
                 <GradientStop Offset="0.5" Color="#3F9A41" />
                 <GradientStop Offset="1"   Color="#2F7A33" />
             </LinearGradientBrush>
+            <!-- Right column: pale near-white blue so the dark place-text ink reads clearly (XP-authentic
+                 light right column). Lifted from #DCE8FA→#C6D8F0, which was too saturated for dark ink. -->
             <LinearGradientBrush x:Key="Luna.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
-                <GradientStop Offset="0" Color="#DCE8FA" />
-                <GradientStop Offset="1" Color="#C6D8F0" />
+                <GradientStop Offset="0" Color="#EEF4FE" />
+                <GradientStop Offset="1" Color="#E1ECFB" />
             </LinearGradientBrush>
 
             <!-- Converter for the MenuItem shortcut column (Classic's is internal). -->

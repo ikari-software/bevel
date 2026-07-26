@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:classic="clr-namespace:Classic.Avalonia.Theme;assembly=Classic.Avalonia.Theme"
              xmlns:tb="clr-namespace:Bevel.Taskbar"
+             xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="Bevel.Taskbar.StartMenu">
     <!-- UserControl requires a single child; the Popup carries the menu. -->
     <Panel>
@@ -199,10 +200,14 @@
                             <Button Classes="footer" Click="OnLunaLogOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">
-                                        <!-- Log Off = exit-through-door (distinct from Turn Off's power symbol). -->
-                                        <Path Data="M10,4 L4,4 L4,16 L10,16 M7,10 L14,10 M11.5,7.5 L14,10 L11.5,12.5"
-                                              Stroke="White" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" Margin="0"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <!-- Log Off = exit-through-door (distinct from Turn Off's power symbol).
+                                             Viewbox-centred: the arrow tail makes the raw path bounds asymmetric,
+                                             so plain alignment looked off-centre in the circle. -->
+                                        <Viewbox Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Stretch="Uniform">
+                                            <Path Data="M10,4 L4,4 L4,16 L10,16 M7,10 L14,10 M11.5,7.5 L14,10 L11.5,12.5"
+                                                  Stroke="White" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" />
+                                        </Viewbox>
                                     </Border>
                                     <TextBlock Text="Log Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
                                 </StackPanel>
@@ -210,9 +215,11 @@
                             <Button Classes="footer" Click="OnLunaTurnOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
-                                        <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
-                                              Stroke="White" StrokeThickness="2"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Viewbox Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Stretch="Uniform">
+                                            <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
+                                                  Stroke="White" StrokeThickness="2" StrokeLineCap="Round" />
+                                        </Viewbox>
                                     </Border>
                                     <TextBlock Text="Turn Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
                                 </StackPanel>
@@ -227,8 +234,9 @@
                         <DockPanel Grid.Column="0" Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
                             <!-- All Programs, bottom-anchored — the Button is bottom-most so the divider (docked
                                  bottom AFTER it) renders directly above it, not floored against the footer. -->
-                            <Button x:Name="LunaAllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="10,7">
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="LunaAllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="10,7"
+                                    HorizontalContentAlignment="Right">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
                                     <TextBlock Text="All Programs" Classes="pintitle" VerticalAlignment="Center" />
                                     <Border Width="20" Height="20" CornerRadius="10"
                                             Background="{DynamicResource Luna.Brush.StartMenuAllProgramsGlyph}">
@@ -245,8 +253,19 @@
                                             <Button Classes="lunarow" Command="{Binding LaunchCommand}"
                                                     Click="OnLunaProgramClick">
                                                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                                                    <Image Source="{Binding IconSource}" Width="28" Height="28"
-                                                           VerticalAlignment="Center" />
+                                                    <!-- Icon slot: a neutral rounded tile shows while the real
+                                                         icon loads off-thread (or if the provider yields none),
+                                                         so a pinned row is never a hollow gap. -->
+                                                    <Panel Width="28" Height="28" VerticalAlignment="Center">
+                                                        <Border CornerRadius="5"
+                                                                Background="{DynamicResource Luna.Brush.StartMenuPinIconFallback}"
+                                                                IsVisible="{Binding IconSource, Converter={x:Static conv:ObjectConverters.IsNull}}">
+                                                            <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                  Fill="#8AA0C4"
+                                                                  Data="M7,8 H21 V20 H7 Z M7,8 V11 H21" />
+                                                        </Border>
+                                                        <Image Source="{Binding IconSource}" Width="28" Height="28" />
+                                                    </Panel>
                                                     <!-- Two-line featured entry: bold name + grey category sub-label
                                                          (design). Apps with no category collapse to a single line. -->
                                                     <StackPanel VerticalAlignment="Center">
@@ -267,7 +286,7 @@
                              the top and the space below stays pale-blue instead of showing the white face. -->
                         <Border Grid.Column="1" Background="{DynamicResource Luna.Brush.StartMenuPlacesColumn}">
                         <StackPanel Spacing="1" VerticalAlignment="Top">
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="documents">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -279,7 +298,7 @@
                                     <TextBlock Text="My Documents" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="pictures">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -291,7 +310,7 @@
                                     <TextBlock Text="My Pictures" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="music">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -303,7 +322,7 @@
                                     <TextBlock Text="My Music" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick">
+                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="computer">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuComputerIcon}">
                                         <Panel>
@@ -358,6 +377,30 @@
                                         </Panel>
                                     </Border>
                                     <TextBlock Text="Run…" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <!-- Bevel shell-management actions (parity with the Win2000 "Restart Bevel" /
+                                 "Quit Bevel" items), surfaced honestly here rather than hidden behind the
+                                 footer's Log Off / Turn Off wording. -->
+                            <Border Height="1" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
+                            <Button Classes="lunarow" Click="OnRestartClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">
+                                        <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Data="M15.5,8.5 A5,5 0 1 1 11.5,6 M15.5,4 L15.5,8.5 L11,8.5" />
+                                    </Border>
+                                    <TextBlock Text="Restart Bevel" Classes="place" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="lunarow" Click="OnQuitClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
+                                        <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Data="M12,5 V11 M8.5,7.5 A5,5 0 1 0 15.5,7.5" />
+                                    </Border>
+                                    <TextBlock Text="Quit Bevel" Classes="place" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>

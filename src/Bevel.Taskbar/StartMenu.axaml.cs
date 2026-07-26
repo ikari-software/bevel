@@ -36,6 +36,7 @@ public partial class StartMenu : UserControl
     private readonly Action _quit;
     private readonly Action _restart;
     private readonly Action _openSettings;
+    private readonly Action<VfsPath> _openFolder;
 
     public StartMenu() : this(null, null) { }
 
@@ -48,13 +49,15 @@ public partial class StartMenu : UserControl
         Action? quit = null,
         Action? restart = null,
         StartMenuViewModel? programs = null,
-        Action? openSettings = null)
+        Action? openSettings = null,
+        Action<VfsPath>? openFolder = null)
     {
         InitializeComponent();
         _programsVm = programs;
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         _openSettings = openSettings ?? (() => { });
+        _openFolder = openFolder ?? (_ => { });
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
@@ -94,6 +97,10 @@ public partial class StartMenu : UserControl
             if (_programsVm is not null)
             {
                 LunaPinned.ItemsSource = _programsVm.FrequentPrograms;   // curated: newest + most-used, capped
+                // The pinned rows bind IconSource, but nothing triggered the lazy, off-thread icon load
+                // the way the classic cascade does via OnProgramContainerPrepared — so pinned icons stayed
+                // blank. Kick EnsureIcon() as each row's container is realized.
+                LunaPinned.ContainerPrepared += OnLunaPinnedContainerPrepared;
                 WireAllProgramsFlyout();                                 // full list lives in the flyout
             }
             _lunaWired = true;
@@ -343,15 +350,35 @@ public partial class StartMenu : UserControl
     // ── Luna two-column handlers ───────────────────────────────────────
     // All Programs opens a flyout bound to the full Programs collection (see StartMenu.axaml). Launching
     // a program closes the whole menu. Places/Search/Help/Run are visual stubs, matching the classic leaves.
-    private void OnLunaProgramClick(object? sender, RoutedEventArgs e)
+    private void OnLunaPinnedContainerPrepared(object? sender, ContainerPreparedEventArgs e)
     {
-        // Actually launch the pinned app — the handler previously only closed the menu, so clicking a
-        // pinned app in Luna did nothing (its ProgramItemViewModel.LaunchCommand was never invoked).
-        if (sender is Control { DataContext: ProgramItemViewModel vm })
-            vm.LaunchCommand.Execute(null);
+        if (e.Container.DataContext is ProgramItemViewModel vm)
+            vm.EnsureIcon();   // lazy, off-thread, idempotent
+    }
+
+    // Launch is driven by the row's Command="{Binding LaunchCommand}"; this handler only dismisses the
+    // menu. (Don't also Execute the command here — that would launch the app twice.)
+    private void OnLunaProgramClick(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnLunaPlaceClick(object? sender, RoutedEventArgs e)
+    {
+        // Places open a Bevel Explorer window at the mapped folder (the row's Tag names it). Without this
+        // the "My Documents / Pictures / Music / Computer" rows did nothing but close the menu.
+        if (sender is Control { Tag: string tag })
+            _openFolder(ResolvePlace(tag));
         Close();
     }
-    private void OnLunaPlaceClick(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Maps a place row's Tag to the folder Bevel Explorer should open. "computer" opens the
+    /// filesystem root; the rest resolve to the user's known folders.</summary>
+    private static VfsPath ResolvePlace(string tag) => tag switch
+    {
+        "computer" => new VfsPath("file", "/"),
+        "pictures" => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)),
+        "music"    => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.MyMusic)),
+        "documents" => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
+        _ => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+    };
     private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }
     private void OnLunaHelpClick(object? sender, RoutedEventArgs e) => Close();
     private void OnLunaSearchClick(object? sender, RoutedEventArgs e) => Close();
