@@ -52,9 +52,22 @@
         <Style Selector="Menu">
             <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.Menu}" />
         </Style>
-        <Style Selector="MenuItem">
+        <!-- Theme menu items that are meant to render as a vertical list (dropdown/submenu items, and
+             MenuFlyout / ContextMenu items) — but NOT the top-level items of a horizontal Menu BAR.
+             A blanket "Selector=MenuItem" forced Bevel.Theme.MenuItem onto bar items too, which gave them
+             a right-opening submenu arrow instead of a flat bar item (the File-manager menu bug). Top-level
+             bar items are direct Menu children and match none of these, so they keep the native bar look.
+             The vertical Start menu themes its own items via a local ItemContainerTheme. -->
+        <Style Selector="MenuItem MenuItem">
             <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.MenuItem}" />
         </Style>
+        <Style Selector="MenuFlyoutPresenter MenuItem">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.MenuItem}" />
+        </Style>
+        <Style Selector="ContextMenu MenuItem">
+            <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.MenuItem}" />
+        </Style>
+
         <Style Selector="TabControl">
             <Setter Property="Theme" Value="{DynamicResource Bevel.Theme.TabControl}" />
         </Style>
