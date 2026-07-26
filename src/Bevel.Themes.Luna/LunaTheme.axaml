@@ -1020,10 +1020,17 @@
             </ControlTheme>
 
             <!-- ── Menu bar ── -->
-            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu">
+            <!-- NOTE: intentionally NOT setting ItemContainerTheme to Luna.Theme.TopLevelMenuItem. That
+                 custom top-level template's popup re-templates its ItemsPresenter on reopen and re-adds the
+                 file-manager menu bar's XAML-declared MenuItems → "already has a visual parent" CRASH on
+                 reopening a menu (e.g. Tools). Letting the bar items fall back to Avalonia's default
+                 MenuItem (as Win2000 does) renders them correctly (flat, no arrows, mnemonics work) AND is
+                 crash-free. Dropdown/context items still get Luna styling via App.axaml's
+                 "MenuItem MenuItem" / MenuFlyout / ContextMenu selectors. Restoring a Luna-blue menu-BAR
+                 hover needs a non-crashing custom template (tracked separately). -->
+            <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu" BasedOn="{StaticResource {x:Type Menu}}">
                 <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Menu}" />
                 <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}" />
-                <Setter Property="ItemContainerTheme" Value="{StaticResource Luna.Theme.TopLevelMenuItem}" />
                 <Setter Property="Template">
                     <ControlTemplate>
                         <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
