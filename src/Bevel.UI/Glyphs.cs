@@ -5,9 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 using Bevel.Core.Vfs;
-using Bevel.UI;
 
-namespace Bevel.FileManager.Components;
+namespace Bevel.UI;
 
 /// <summary>Shared self-drawn vector icon glyphs (semantic icon key -> Control), used by
 /// ItemView (file listing), ToolbarIcons (folder path data) and PropertiesDialog.

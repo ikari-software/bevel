@@ -275,6 +275,7 @@
             <SolidColorBrush x:Key="Luna.Brush.StartMenuDivider"         Color="#C9D2E4" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlacesDivider"   Color="#AEBFDB" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuFooterHover"     Color="#4E93EC" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuFooterRule"      Color="#6AA8F2" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRule"      Color="#F4A020" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuHeaderRuleLight" Color="#FFD27F" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />

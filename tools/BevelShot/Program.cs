@@ -79,7 +79,7 @@ Pump(60);
 if (args.Length > 3 && args[3].StartsWith("Glyph:", StringComparison.OrdinalIgnoreCase))
 {
     var semanticId = args[3]["Glyph:".Length..];
-    var glyph = Bevel.FileManager.Components.Glyphs.GlyphPreview(new IconKey(semanticId), width - 24);
+    var glyph = Bevel.UI.Glyphs.GlyphPreview(new IconKey(semanticId), width - 24);
     var host = new Avalonia.Controls.Window
     {
         Width = width,

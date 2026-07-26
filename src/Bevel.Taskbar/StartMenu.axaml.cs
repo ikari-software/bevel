@@ -12,7 +12,9 @@ using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Bevel.Core.Vfs;
 using Bevel.Pal.Abstractions;
+using Bevel.UI;
 
 namespace Bevel.Taskbar;
 
@@ -220,36 +222,23 @@ public partial class StartMenu : UserControl
 
     // ── Fixed-item icons (bevel-m2.14) ─────────────────────────────────
 
-    // The Win2000 Start-menu glyphs are theme assets authored in Glyphs.cs and exported to PNG
-    // (Bevel.IconPreview) under the Win2000 theme assembly. Bevel.Taskbar doesn't reference the
-    // theme project, but avares:// resolves across any assembly loaded into the running app, so we
-    // load the 16px variant by URI. The MenuItem theme already reserves a 19px icon column.
-    private const string IconBase = "avares://Bevel.Themes.Win2000/Assets/Icons/";
-
     private void WireFixedItemIcons()
     {
-        SetItemIcon(ProgramsItem, "start-programs");
-        SetItemIcon(DocumentsItem, "start-documents");
-        SetItemIcon(SettingsItem, "start-settings");
-        SetItemIcon(SearchItem, "start-search");
-        SetItemIcon(HelpItem, "start-help");
-        SetItemIcon(RunItem, "start-run");
-        SetItemIcon(LogOffItem, "start-logoff");
-        SetItemIcon(ShutDownItem, "start-shutdown");
+        SetItemIcon(ProgramsItem, "start.programs");
+        SetItemIcon(DocumentsItem, "start.documents");
+        SetItemIcon(SettingsItem, "start.settings");
+        SetItemIcon(SearchItem, "start.search");
+        SetItemIcon(HelpItem, "start.help");
+        SetItemIcon(RunItem, "start.run");
+        SetItemIcon(LogOffItem, "start.logoff");
+        SetItemIcon(ShutDownItem, "start.shutdown");
     }
 
-    private static void SetItemIcon(MenuItem item, string name)
-    {
-        try
-        {
-            using var stream = AssetLoader.Open(new Uri($"{IconBase}{name}-16.png"));
-            item.Icon = new Image { Width = 16, Height = 16, Source = new Bitmap(stream) };
-        }
-        catch
-        {
-            // Asset unavailable (headless test with no theme assembly loaded) — leave the column empty.
-        }
-    }
+    // Fixed-item glyphs are the shared code-drawn vectors (Glyphs, Bevel.UI) — crisp at any DPI and
+    // theme-token colored. Previously loaded non-embedded PNGs by URI, which silently failed and left the
+    // whole icon column empty; vectors also satisfy the vector-only asset rule.
+    private static void SetItemIcon(MenuItem item, string key)
+        => item.Icon = Glyphs.Icon(16, new IconKey(key));
 
     // ── Cascading groups ───────────────────────────────────────────────
 
@@ -354,7 +343,14 @@ public partial class StartMenu : UserControl
     // ── Luna two-column handlers ───────────────────────────────────────
     // All Programs opens a flyout bound to the full Programs collection (see StartMenu.axaml). Launching
     // a program closes the whole menu. Places/Search/Help/Run are visual stubs, matching the classic leaves.
-    private void OnLunaProgramClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaProgramClick(object? sender, RoutedEventArgs e)
+    {
+        // Actually launch the pinned app — the handler previously only closed the menu, so clicking a
+        // pinned app in Luna did nothing (its ProgramItemViewModel.LaunchCommand was never invoked).
+        if (sender is Control { DataContext: ProgramItemViewModel vm })
+            vm.LaunchCommand.Execute(null);
+        Close();
+    }
     private void OnLunaPlaceClick(object? sender, RoutedEventArgs e) => Close();
     private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }
     private void OnLunaHelpClick(object? sender, RoutedEventArgs e) => Close();

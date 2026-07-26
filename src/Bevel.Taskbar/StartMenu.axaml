@@ -22,14 +22,20 @@
                                             BorderThickness="2"
                                             Background="{DynamicResource Bevel.Brush.Menu}">
                 <Grid ColumnDefinitions="26,*">
-                    <!-- Sidebar banner: flat navy (#0A246A, the theme's active-title/
-                         highlight navy) with white product text rotated bottom-to-top.
-                         A LayoutTransformControl (not RenderTransform) is used so the
-                         rotation participates in layout — otherwise the text is measured
-                         against the 26px column width first and truncates to "Bev". -->
+                    <!-- Sidebar banner: a vertical caption gradient (dark ActiveTitle → light
+                         GradientActiveTitle, the classic title-bar pair) with white product text rotated
+                         bottom-to-top. Theme-tokened, so it recolours per scheme/theme (incl. flat). A
+                         LayoutTransformControl (not RenderTransform) is used so the rotation participates
+                         in layout — otherwise the text is measured against the 26px column width first and
+                         truncates to "Bev". -->
                     <Border Grid.Column="0"
-                            ClipToBounds="True"
-                            Background="{DynamicResource Bevel.Brush.ActiveTitle}">
+                            ClipToBounds="True">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Offset="0" Color="{DynamicResource Bevel.Color.ActiveTitle}" />
+                                <GradientStop Offset="1" Color="{DynamicResource Bevel.Color.GradientActiveTitle}" />
+                            </LinearGradientBrush>
+                        </Border.Background>
                         <LayoutTransformControl HorizontalAlignment="Center"
                                                 VerticalAlignment="Center">
                             <LayoutTransformControl.LayoutTransform>
@@ -167,18 +173,30 @@
                             </Border>
                             <TextBlock x:Name="LunaUserName" Text="User"
                                        Foreground="White" FontWeight="Bold" FontSize="17"
-                                       VerticalAlignment="Center" />
+                                       VerticalAlignment="Center">
+                                <!-- Subtle dark shadow so white name stays legible over the light top of
+                                     the header gradient (the plate uses a dark text stroke). AA stays on. -->
+                                <TextBlock.Effect>
+                                    <DropShadowEffect Color="#123A8F" BlurRadius="3" OffsetX="0" OffsetY="1" Opacity="0.55" />
+                                </TextBlock.Effect>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                     <!-- Orange banded separator under the header -->
                     <Border DockPanel.Dock="Top" Height="3" Background="{DynamicResource Luna.Brush.StartMenuHeaderRule}" />
                     <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Luna.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
 
-                    <!-- Footer: coloured band with Log Off / Turn Off -->
-                    <Border DockPanel.Dock="Bottom" Height="44" Padding="10,0"
+                    <!-- Footer: coloured band with Log Off / Turn Off grouped to the RIGHT (the plate
+                         places both buttons in the right portion, empty space at left), with a thin top
+                         highlight rule along the band's edge. -->
+                    <Border DockPanel.Dock="Bottom" Height="44"
                             Background="{DynamicResource Luna.Brush.StartMenuFooter}">
-                        <Grid ColumnDefinitions="*,*" VerticalAlignment="Center">
-                            <Button Grid.Column="0" Classes="footer" Click="OnLunaLogOffClick">
+                        <DockPanel LastChildFill="True">
+                            <Border DockPanel.Dock="Top" Height="2"
+                                    Background="{DynamicResource Luna.Brush.StartMenuFooterRule}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6"
+                                        VerticalAlignment="Center" Margin="0,0,10,0">
+                            <Button Classes="footer" Click="OnLunaLogOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">
                                         <!-- Log Off = exit-through-door (distinct from Turn Off's power symbol). -->
@@ -189,7 +207,7 @@
                                     <TextBlock Text="Log Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                            <Button Grid.Column="1" Classes="footer" Click="OnLunaTurnOffClick">
+                            <Button Classes="footer" Click="OnLunaTurnOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
                                         <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
@@ -199,7 +217,8 @@
                                     <TextBlock Text="Turn Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                        </Grid>
+                            </StackPanel>
+                        </DockPanel>
                     </Border>
 
                     <!-- Body: pinned (left, white) + places (right, pale-blue) -->

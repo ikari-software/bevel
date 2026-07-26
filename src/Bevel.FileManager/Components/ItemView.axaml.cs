@@ -16,6 +16,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.FileOperations;
+using Bevel.UI;
 
 namespace Bevel.FileManager.Components;
 
