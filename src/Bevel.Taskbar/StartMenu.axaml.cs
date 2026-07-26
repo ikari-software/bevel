@@ -97,10 +97,12 @@ public partial class StartMenu : UserControl
             if (_programsVm is not null)
             {
                 LunaPinned.ItemsSource = _programsVm.FrequentPrograms;   // curated: newest + most-used, capped
-                // The pinned rows bind IconSource, but nothing triggered the lazy, off-thread icon load
-                // the way the classic cascade does via OnProgramContainerPrepared — so pinned icons stayed
-                // blank. Kick EnsureIcon() as each row's container is realized.
-                LunaPinned.ContainerPrepared += OnLunaPinnedContainerPrepared;
+                // The pinned rows bind IconSource, but nothing triggered the (off-thread) icon load the way
+                // the classic cascade does — so pinned icons stayed blank. The frequent list is tiny and
+                // always visible, so load eagerly (EnsureIcon is async/non-blocking) rather than relying on
+                // container realization, and re-load whenever the curated list is recomputed.
+                EnsureFrequentIcons();
+                _programsVm.FrequentPrograms.CollectionChanged += (_, _) => EnsureFrequentIcons();
                 WireAllProgramsFlyout();                                 // full list lives in the flyout
             }
             _lunaWired = true;
@@ -154,7 +156,9 @@ public partial class StartMenu : UserControl
     private Control BuildAllProgramsRow(ProgramItemViewModel p)
     {
         var icon = new Image { Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center };
+        RenderOptions.SetBitmapInterpolationMode(icon, BitmapInterpolationMode.HighQuality);
         icon.Bind(Image.SourceProperty, new Binding(nameof(ProgramItemViewModel.IconSource)) { Source = p });
+        p.EnsureIcon();   // every row must kick its own load — without this only pre-loaded icons showed
         var label = new TextBlock
         {
             Text = p.DisplayName,
@@ -332,6 +336,7 @@ public partial class StartMenu : UserControl
         item.Command = vm.LaunchCommand;
 
         var icon = new Image { Width = 16, Height = 16 };
+        RenderOptions.SetBitmapInterpolationMode(icon, BitmapInterpolationMode.HighQuality);
         icon.Bind(Image.SourceProperty, new Binding(nameof(ProgramItemViewModel.IconSource)) { Source = vm });
         item.Icon = icon;
 
@@ -350,10 +355,11 @@ public partial class StartMenu : UserControl
     // ── Luna two-column handlers ───────────────────────────────────────
     // All Programs opens a flyout bound to the full Programs collection (see StartMenu.axaml). Launching
     // a program closes the whole menu. Places/Search/Help/Run are visual stubs, matching the classic leaves.
-    private void OnLunaPinnedContainerPrepared(object? sender, ContainerPreparedEventArgs e)
+    private void EnsureFrequentIcons()
     {
-        if (e.Container.DataContext is ProgramItemViewModel vm)
-            vm.EnsureIcon();   // lazy, off-thread, idempotent
+        if (_programsVm is null) return;
+        foreach (var p in _programsVm.FrequentPrograms)
+            p.EnsureIcon();   // off-thread, idempotent
     }
 
     // Launch is driven by the row's Command="{Binding LaunchCommand}"; this handler only dismisses the

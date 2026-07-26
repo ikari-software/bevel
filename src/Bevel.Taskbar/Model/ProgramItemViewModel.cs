@@ -64,9 +64,15 @@ public sealed class ProgramItemViewModel : ObservableObject
         _ = LoadIconAsync();
     }
 
+    /// <summary>Pixel size the app icon is rendered at. Kept well above the largest on-screen use
+    /// (Luna pins at 28, All Programs at 18, the classic cascade at 16) and doubled again for hi-DPI,
+    /// so every display site downscales a crisp source instead of upscaling a 16px one (which looked
+    /// blurry everywhere but the 16px cascade). Downscaling uses HighQuality interpolation at each site.</summary>
+    private const int IconPixelSize = 64;
+
     private async Task LoadIconAsync()
     {
-        var bmp = await _icons.LoadAsync(_iconPath, 16).ConfigureAwait(false);
+        var bmp = await _icons.LoadAsync(_iconPath, IconPixelSize).ConfigureAwait(false);
         if (bmp is null) return;
         // Only the assignment marshals to the UI thread; the render happened off-thread.
         await Dispatcher.UIThread.InvokeAsync(() => IconSource = bmp);

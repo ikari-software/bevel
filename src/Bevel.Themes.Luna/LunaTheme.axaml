@@ -271,7 +271,7 @@
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPinnedColumn"    Color="#FFFFFF" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPinTitle"        Color="#0A1A3A" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPinSub"          Color="#7A869C" />
-            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceText"       Color="#0A1F52" />
+            <SolidColorBrush x:Key="Luna.Brush.StartMenuPlaceText"       Color="#08152E" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuDivider"         Color="#C9D2E4" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuPlacesDivider"   Color="#AEBFDB" />
             <SolidColorBrush x:Key="Luna.Brush.StartMenuFooterHover"     Color="#4E93EC" />
@@ -307,11 +307,11 @@
                 <GradientStop Offset="0.5" Color="#3F9A41" />
                 <GradientStop Offset="1"   Color="#2F7A33" />
             </LinearGradientBrush>
-            <!-- Right column: pale near-white blue so the dark place-text ink reads clearly (XP-authentic
-                 light right column). Lifted from #DCE8FA→#C6D8F0, which was too saturated for dark ink. -->
+            <!-- Right column: a clearly-blue but light panel — distinct from the white left column
+                 (XP two-tone) yet light enough that the dark navy place-text reads with strong contrast. -->
             <LinearGradientBrush x:Key="Luna.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
-                <GradientStop Offset="0" Color="#EEF4FE" />
-                <GradientStop Offset="1" Color="#E1ECFB" />
+                <GradientStop Offset="0" Color="#DCEAFB" />
+                <GradientStop Offset="1" Color="#C7DCF5" />
             </LinearGradientBrush>
 
             <!-- Converter for the MenuItem shortcut column (Classic's is internal). -->

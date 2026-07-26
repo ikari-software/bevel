@@ -256,8 +256,9 @@ public partial class App : Application
             alwaysOnTop: settings.Current.TaskbarAlwaysOnTop,
             showDesktopButton: settings.Current.TaskbarShowDesktopButton,
             // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
-            // at that folder, reusing the shared factory — the same object graph the modules register.
-            openFolder: path => services.GetRequiredService<FileManagerWindowFactory>().Create(path));
+            // at that folder — in-process in the single-process shell, or as its own --role=explorer
+            // process in a split launch (the taskbar process has no explorer surface).
+            openFolder: path => OpenExplorerAt(services, path));
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.
@@ -308,12 +309,30 @@ public partial class App : Application
     /// the Ctrl+N new-window wiring. Built via the shared factory so the SAME object graph the
     /// modules register drives the running app (VfsRoot with file + computer providers, settings,
     /// file operations).</summary>
+    /// <summary>Opens a Bevel Explorer window at <paramref name="path"/>. In the single-process shell the
+    /// explorer surface lives in THIS process, so open in-process; in a split launch the taskbar has no
+    /// explorer surface, so spawn the file manager as its own --role=explorer process (correct window +
+    /// menu setup) instead of building a malformed window in the taskbar process.</summary>
+    private static void OpenExplorerAt(IServiceProvider services, VfsPath path)
+    {
+        if (Role is ShellRole.All or ShellRole.Explorer)
+            services.GetRequiredService<FileManagerWindowFactory>().Create(path);
+        else
+            Program.SpawnExplorer(path.Value);
+    }
+
     private static void CreateExplorerSurface(
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
         var factory = services.GetRequiredService<FileManagerWindowFactory>();
-        var homePath = new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        var fm = factory.Create(homePath);
+        // A spawned explorer process (Start-menu "places") passes the folder to open via --open-path;
+        // otherwise land on the user's home.
+        var openArg = Environment.GetCommandLineArgs()
+            .FirstOrDefault(a => a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase));
+        var startPath = !string.IsNullOrEmpty(openArg)
+            ? new VfsPath("file", openArg.Substring("--open-path=".Length))
+            : new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        var fm = factory.Create(startPath);
         desktop.MainWindow = fm;
 
         // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which

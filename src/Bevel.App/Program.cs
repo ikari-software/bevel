@@ -300,6 +300,42 @@ internal static class Program
         }
     }
 
+    /// <summary>Opens a Bevel Explorer window at <paramref name="filePath"/> as its OWN
+    /// <c>--role=explorer</c> process — the way the split shell hosts the file manager. Called from the
+    /// taskbar's Start-menu "places": creating the window in the taskbar process instead gives it none
+    /// of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus role /
+    /// open-path), so the child inherits the same PAL + control/shell-core environment.</summary>
+    internal static void SpawnExplorer(string filePath)
+    {
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(processPath)) return;
+
+        var childArgs = Environment.GetCommandLineArgs().Skip(1)
+            .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase)
+                     && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase))
+            .Append("--role=explorer")
+            .Append("--open-path=" + filePath)
+            .ToList();
+
+        try
+        {
+            var entryAssemblyPath = EntryAssemblyLocation();
+            var startInfo = CreateRestartStartInfo(processPath, entryAssemblyPath, childArgs);
+            startInfo.WorkingDirectory = !string.IsNullOrEmpty(entryAssemblyPath)
+                ? Path.GetDirectoryName(entryAssemblyPath) ?? startInfo.WorkingDirectory
+                : Path.GetDirectoryName(processPath) ?? startInfo.WorkingDirectory;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                startInfo = CreateDetachedMacOSStartInfo(startInfo);
+
+            Process.Start(startInfo);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Bevel explorer spawn failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Reconstructs the current launch for both a published app executable and a framework-
     /// dependent <c>dotnet Bevel.App.dll</c> invocation, preserving the original arguments.

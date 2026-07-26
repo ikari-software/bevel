@@ -264,7 +264,8 @@
                                                                   Fill="#8AA0C4"
                                                                   Data="M7,8 H21 V20 H7 Z M7,8 V11 H21" />
                                                         </Border>
-                                                        <Image Source="{Binding IconSource}" Width="28" Height="28" />
+                                                        <Image Source="{Binding IconSource}" Width="28" Height="28"
+                                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
                                                     </Panel>
                                                     <!-- Two-line featured entry: bold name + grey category sub-label
                                                          (design). Apps with no category collapse to a single line. -->
