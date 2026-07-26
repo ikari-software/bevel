@@ -30,6 +30,6 @@ internal static class TaskbarLog
     public static void Debug(string message)
     {
         if (DebugEnabled)
-            Console.Error.WriteLine($"[TASKBAR] {message}");
+            Console.Error.WriteLine($"[TASKBAR {DateTime.Now:HH:mm:ss.fff}] {message}");
     }
 }

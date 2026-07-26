@@ -661,6 +661,7 @@ public partial class TaskbarView : UserControl
         if (e.Kind != ActivationKind.Background) return;
         HideTaskbarTooltip();
         _startMenu?.Close();
+        _openTaskMenu?.Hide();   // the app-centric task-button menu (bevel-ww71) — same non-activating reason
     }
 
     /// <summary>Start button height cap, in button rows (user: "cap start at 2x-3x row height").</summary>
@@ -672,10 +673,26 @@ public partial class TaskbarView : UserControl
     /// explicit height the RootGrid sizes to its content and the full-height Start button and tray
     /// don't track the taller bar's real edges (bevel-0ml).
     /// </summary>
+    /// <summary>Open the app-centric taskbar-button menu (bevel-ww71) — app header, per-window submenu,
+    /// Quit/Force-Quit — built in code so the Alt swap + nesting stay simple.</summary>
+    private Avalonia.Controls.MenuFlyout? _openTaskMenu;
+
+    private void OnTaskButtonContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (sender is not Control c) return;
+        if (TaskButtonMenu.TryShow(c) is { } menu)
+        {
+            _openTaskMenu = menu;
+            menu.Closed += (_, _) => { if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null; };
+            e.Handled = true;
+        }
+    }
+
     private void ApplyRowLayout()
     {
         RootGrid.Height = TaskbarTheme.HeightForRows(_window?.Rows ?? 1);
         var rows = _window?.Rows ?? 1;
+        TaskbarLog.Debug($"ApplyRowLayout rows={rows} rootHeight={RootGrid.Height} scaling={_window?.RenderScaling}");
         _vm?.Tray.SetRows(rows);   // tray visible cap is PER ROW, and it lays out that many rows (bevel-m3)
         Clock.SetRows(rows);       // date drops under the time on a multi-row bar
         LayoutButtons();

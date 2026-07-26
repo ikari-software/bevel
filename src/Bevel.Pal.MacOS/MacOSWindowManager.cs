@@ -103,6 +103,15 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: ct);
     }
 
+    public async Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        if (string.IsNullOrEmpty(bundleId)) return;
+        var ws = GetWindowClient();
+        await ws.TerminateAppAsync(new TerminateAppRequest { BundleId = bundleId, Force = force },
+            headers: AuthHeader(), cancellationToken: ct);
+    }
+
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (_disposed) return null;
@@ -257,7 +266,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             IsFocused: tw.IsFocused,
             Bounds: f is null ? default : new PalRect(f.X, f.Y, f.Width, f.Height),
             IconPng: icon.Length == 0 ? null : icon,
-            IsAppPresence: tw.IsAppPresence);
+            IsAppPresence: tw.IsAppPresence,
+            BundleId: string.IsNullOrEmpty(tw.AppBundleId) ? null : tw.AppBundleId);
     }
 
     public void Dispose()

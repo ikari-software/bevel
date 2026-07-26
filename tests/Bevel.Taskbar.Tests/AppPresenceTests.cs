@@ -79,15 +79,54 @@ public class AppPresenceTests
         Assert.Empty(wm.Minimized);   // no minimize/toggle for a windowless app
     }
 
+    [Fact]
+    public void Quit_terminates_the_app_by_bundle_id_gracefully()
+    {
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default,
+                BundleId: "com.apple.Safari"), wm);
+
+        vm.QuitCommand.Execute(null);
+        Assert.Equal(new[] { "com.apple.Safari:false" }, wm.Terminated);
+    }
+
+    [Fact]
+    public void Force_quit_sets_the_force_flag()
+    {
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default,
+                BundleId: "com.apple.Safari"), wm);
+
+        vm.ForceQuitCommand.Execute(null);
+        Assert.Equal(new[] { "com.apple.Safari:true" }, wm.Terminated);
+    }
+
+    [Fact]
+    public void Presence_bundle_id_is_parsed_from_the_app_prefixed_id()
+    {
+        // An app-presence entry with no explicit BundleId still quits — the id is "app:<bundle>".
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("app:com.apple.Music"), "", "Music", false, false, default,
+                IconPng: null, IsAppPresence: true), wm);
+
+        vm.QuitCommand.Execute(null);
+        Assert.Equal(new[] { "com.apple.Music:false" }, wm.Terminated);
+    }
+
     private sealed class RecordingWm : IWindowManager
     {
         public List<string> Activated { get; } = new();
         public List<string> Minimized { get; } = new();
+        public List<string> Terminated { get; } = new();
         public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>([]);
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
+        public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) { Terminated.Add($"{bundleId}:{force.ToString().ToLowerInvariant()}"); return Task.CompletedTask; }
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;

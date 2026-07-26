@@ -38,6 +38,10 @@ service WindowService {
   // Close a window.
   rpc Close(WindowRef) returns (CloseReply);
 
+  // Quit (or force-quit) a whole app by bundle id (bevel-ww71): terminate() / forceTerminate().
+  // The app-level action every taskbar button offers, including windowless-running ones.
+  rpc TerminateApp(TerminateAppRequest) returns (TerminateAppReply);
+
   // Reposition/resize a window to an absolute target rect (device pixels, AppKit origin).
   rpc Reposition(RepositionRequest) returns (RepositionReply);
 
@@ -199,6 +203,16 @@ message RestoreReply {}
 message CloseReply {}
 
 message ChangesRequest {}
+
+// Quit/force-quit an app by bundle id (bevel-ww71).
+message TerminateAppRequest {
+  string bundle_id = 1;
+  bool force = 2;   // false = terminate() (graceful), true = forceTerminate() (SIGKILL-equivalent)
+}
+
+message TerminateAppReply {
+  bool ok = 1;
+}
 
 // Reposition target: window + absolute device-pixel rect (AppKit bottom-left origin).
 message RepositionRequest {

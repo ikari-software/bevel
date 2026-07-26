@@ -23,6 +23,12 @@ public interface IWindowManager
     Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
         => Task.FromResult<byte[]?>(null);
 
+    /// <summary>Quit (<paramref name="force"/>=false → graceful terminate, may prompt to save) or
+    /// force-quit (true) a whole app by bundle id — the app-level action every taskbar button offers,
+    /// including windowless-running ones (bevel-ww71). Default: unsupported (non-macOS backends / stubs).</summary>
+    Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     event EventHandler<ForeignWindow>? WindowOpened;
     event EventHandler<ForeignWindow>? WindowClosed;
     event EventHandler<ForeignWindow>? WindowChanged;

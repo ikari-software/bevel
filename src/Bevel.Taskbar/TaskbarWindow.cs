@@ -91,7 +91,9 @@ public sealed class TaskbarWindow : BevelWindow
     /// </summary>
     public void SetRows(int rows)
     {
-        rows = Math.Clamp(rows, 1, MaxRows);
+        var clamped = Math.Clamp(rows, 1, MaxRows);
+        TaskbarLog.Debug($"SetRows req={rows} clamped={clamped} MaxRows={MaxRows} cur={_rows}");
+        rows = clamped;
         if (rows == _rows) return;
         _rows = rows;
         var h = TaskbarTheme.HeightForRows(_rows);
@@ -133,8 +135,8 @@ public sealed class TaskbarWindow : BevelWindow
         // Publish the taskbar band for WorkAreaMitigator (bevel-m2.13). Screen geometry is
         // only known once opened; recompute on move/scale so display reconfigs are picked up.
         RecomputeWorkAreaBand();
-        PositionChanged += (_, _) => RecomputeWorkAreaBand();
-        ScalingChanged += (_, _) => RecomputeWorkAreaBand();
+        PositionChanged += (_, _) => { TaskbarLog.Debug($"PositionChanged scaling={RenderScaling} bounds={(Screens?.Primary ?? Screens?.All?.FirstOrDefault())?.Bounds}"); RecomputeWorkAreaBand(); };
+        ScalingChanged += (_, _) => { TaskbarLog.Debug($"ScalingChanged scaling={RenderScaling} MaxRows={MaxRows} rows={_rows}"); RecomputeWorkAreaBand(); };
 
         // A resolution/arrangement change (applicationDidChangeScreenParameters on macOS) moves
         // the bottom edge but neither Avalonia nor the OS re-anchors our borderless bar, and no
@@ -410,6 +412,91 @@ internal static class TaskbarNative
     {
         if (objc_msgSend_bool_sel(nsWindow, sel_respondsToSelector, sel_setAcceptsMouseMovedEvents) != 0)
             objc_msgSend_void_intptr_bool(nsWindow, sel_setAcceptsMouseMovedEvents, accepts ? (byte)1 : (byte)0);
+    }
+
+    // ── Live modifier state (bevel-ww71) ─────────────────────────────────────
+    // The taskbar is non-activating, so keyboard events don't route to its popups and (verified) macOS
+    // pointer events over the popup carry NO modifier flags. [NSEvent modifierFlags] returns the CURRENT
+    // global modifier state on demand, independent of focus — poll it to drive the Quit ⇄ Force Quit swap.
+
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_getClass")]
+    private static extern IntPtr objc_getClass(string name);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern nuint objc_msgSend_nuint(IntPtr receiver, IntPtr selector);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern IntPtr objc_msgSend_ret_nuint_ptr(IntPtr receiver, IntPtr selector, nuint mask, IntPtr block);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern void objc_msgSend_void_ptr(IntPtr receiver, IntPtr selector, IntPtr arg);
+
+    private static readonly IntPtr cls_NSEvent = objc_getClass("NSEvent");
+    private static readonly IntPtr sel_modifierFlags = SelectorCache.Get("modifierFlags");
+    private static readonly IntPtr sel_addGlobalMonitor = SelectorCache.Get("addGlobalMonitorForEventsMatchingMask:handler:");
+    private static readonly IntPtr sel_removeMonitor = SelectorCache.Get("removeMonitor:");
+
+    private static readonly nuint NSEventModifierFlagOption = (nuint)(1UL << 19);
+    private static readonly nuint NSEventMaskLeftMouseDown = (nuint)(1UL << 1);
+    private static readonly nuint NSEventMaskRightMouseDown = (nuint)(1UL << 3);
+
+    /// <summary>True iff Option/Alt is held right now (queried from macOS, focus-independent).</summary>
+    public static bool OptionKeyDown()
+        => cls_NSEvent != IntPtr.Zero && (objc_msgSend_nuint(cls_NSEvent, sel_modifierFlags) & NSEventModifierFlagOption) != 0;
+
+    // ── Global mouse-down monitor for click-outside dismiss (bevel-ww71) ──────
+    // addGlobalMonitorForEventsMatchingMask: fires ONLY for events delivered to OTHER apps — exactly
+    // "the user clicked away from us". No focus/coordinate assumptions. The handler is a non-capturing
+    // GLOBAL ObjC block; a single static callback dispatches to whatever menu is currently open.
+
+    private static Action? _globalMouseDown;
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    private static void MonitorInvoke(IntPtr block, IntPtr nsEvent) => _globalMouseDown?.Invoke();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlockLiteral { public IntPtr Isa; public int Flags; public int Reserved; public IntPtr Invoke; public IntPtr Descriptor; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlockDescriptor { public nuint Reserved; public nuint Size; }
+
+    [DllImport("/usr/lib/libSystem.dylib", EntryPoint = "dlsym")]
+    private static extern IntPtr dlsym(IntPtr handle, string symbol);
+    private static readonly IntPtr RTLD_DEFAULT = new(-2);
+
+    private static BlockDescriptor _blockDesc = new() { Reserved = 0, Size = (nuint)Marshal.SizeOf<BlockLiteral>() };
+    private static BlockLiteral _block;
+    private static GCHandle _descHandle, _blockHandle;
+
+    /// <summary>Install a global mouse-down monitor; <paramref name="onOutsideClick"/> runs (on the calling
+    /// dispatcher's thread is the caller's job) when a click lands in another app. Returns a token to pass to
+    /// <see cref="RemoveMonitor"/>, or Zero on failure (dismiss then falls back to Avalonia light-dismiss).</summary>
+    public static unsafe IntPtr AddGlobalMouseDownMonitor(Action onOutsideClick)
+    {
+        try
+        {
+            _globalMouseDown = onOutsideClick;
+            var isa = dlsym(RTLD_DEFAULT, "_NSConcreteGlobalBlock");
+            if (isa == IntPtr.Zero || cls_NSEvent == IntPtr.Zero) return IntPtr.Zero;
+
+            _descHandle = GCHandle.Alloc(_blockDesc, GCHandleType.Pinned);
+            _block = new BlockLiteral
+            {
+                Isa = isa,
+                Flags = 1 << 28,                 // BLOCK_IS_GLOBAL
+                Reserved = 0,
+                Invoke = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&MonitorInvoke,
+                Descriptor = _descHandle.AddrOfPinnedObject(),
+            };
+            _blockHandle = GCHandle.Alloc(_block, GCHandleType.Pinned);
+            var mask = NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown;
+            return objc_msgSend_ret_nuint_ptr(cls_NSEvent, sel_addGlobalMonitor, mask, _blockHandle.AddrOfPinnedObject());
+        }
+        catch { return IntPtr.Zero; }
+    }
+
+    public static void RemoveMonitor(IntPtr token)
+    {
+        _globalMouseDown = null;
+        try { if (token != IntPtr.Zero) objc_msgSend_void_ptr(cls_NSEvent, sel_removeMonitor, token); } catch { }
+        if (_blockHandle.IsAllocated) _blockHandle.Free();
+        if (_descHandle.IsAllocated) _descHandle.Free();
     }
 
     public static void SetCollectionBehavior(IntPtr nsWindow, int behavior)

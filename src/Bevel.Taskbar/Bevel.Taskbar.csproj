@@ -4,6 +4,8 @@
        Bevel.UI + Bevel.Core + Bevel.Pal.Abstractions ONLY — never a concrete PAL (ARCH-03). -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Native ObjC block interop for the global mouse-down monitor (bevel-ww71, TaskbarNative). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- The test project drives WorkAreaMitigator.MitigateOnceAsync (internal) a tick at a

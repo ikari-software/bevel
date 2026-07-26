@@ -94,7 +94,10 @@ public sealed record ForeignWindow(
     /// window. Its <see cref="Id"/> is <c>app:&lt;bundle&gt;</c>; the taskbar renders it dim + icon-only
     /// and a click reopens the app. Suppressed by the projector when a real window for the same app
     /// exists.</summary>
-    bool IsAppPresence = false);
+    bool IsAppPresence = false,
+    /// <summary>Owning app's bundle id (a stable machine key), used for app-level actions like Quit
+    /// (bevel-ww71). Distinct from <see cref="AppId"/>, which is the friendly display name.</summary>
+    string? BundleId = null);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

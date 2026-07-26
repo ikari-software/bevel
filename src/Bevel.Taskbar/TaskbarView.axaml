@@ -126,22 +126,17 @@
                                       Height="24" Margin="1,2,0,2" Padding="4,0" FontSize="11"
                                       HorizontalContentAlignment="Stretch"
                                       VerticalContentAlignment="Center"
-                                      ClipToBounds="True">
+                                      ClipToBounds="True"
+                                      ContextRequested="OnTaskButtonContextRequested">
                             <ToggleButton.Transitions>
                                 <Transitions>
                                     <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
                             </ToggleButton.Transitions>
-                            <!-- Right-click system menu (bevel-cust.ctxmenu): the taskbar-button verbs. -->
-                            <ToggleButton.ContextFlyout>
-                                <MenuFlyout>
-                                    <MenuItem Header="_Restore" Command="{Binding RestoreCommand}" />
-                                    <MenuItem Header="Mi_nimize" Command="{Binding MinimizeCommand}" />
-                                    <Separator />
-                                    <MenuItem Header="_Close" Command="{Binding CloseCommand}" />
-                                </MenuFlyout>
-                            </ToggleButton.ContextFlyout>
+                            <!-- App-centric right-click menu (bevel-ww71): app header, Windows submenu (per-
+                                 window Activate/Minimize/Close), Quit (Alt → Force Quit). Built in code —
+                                 see TaskButtonMenu / OnTaskButtonContextRequested. -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" Opacity="{Binding ContentOpacity}"
@@ -168,25 +163,16 @@
                                       Height="24" Margin="1,2,0,2" Padding="4,0" FontSize="11"
                                       HorizontalContentAlignment="Stretch"
                                       VerticalContentAlignment="Center"
-                                      ClipToBounds="True">
+                                      ClipToBounds="True"
+                                      ContextRequested="OnTaskButtonContextRequested">
                             <ToggleButton.Transitions>
                                 <Transitions>
                                     <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
                             </ToggleButton.Transitions>
-                            <!-- Right-click menu for a grouped app: the app name identifies it, the verbs
-                                 act on every window of that app (bevel-cust.ctxmenu). -->
-                            <ToggleButton.ContextFlyout>
-                                <MenuFlyout>
-                                    <MenuItem Header="{Binding DisplayName}" IsEnabled="False" />
-                                    <Separator />
-                                    <MenuItem Header="Mi_nimize All" Command="{Binding MinimizeAllCommand}" />
-                                    <MenuItem Header="_Restore All" Command="{Binding RestoreAllCommand}" />
-                                    <Separator />
-                                    <MenuItem Header="_Close All" Command="{Binding CloseAllCommand}" />
-                                </MenuFlyout>
-                            </ToggleButton.ContextFlyout>
+                            <!-- App-centric right-click menu (bevel-ww71): app header, Windows submenu (per-
+                                 window Activate/Minimize/Close), Quit (Alt → Force Quit). Built in code. -->
                             <ToggleButton.Flyout>
                                 <Flyout Placement="Top">
                                     <ItemsControl ItemsSource="{Binding Windows}" MinWidth="160">

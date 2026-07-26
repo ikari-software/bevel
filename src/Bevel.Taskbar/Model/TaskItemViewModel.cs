@@ -32,6 +32,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         Id = w.Id;
         AppId = w.AppId;
         IsAppPresence = w.IsAppPresence;
+        // Bundle id for app-level actions (Quit). Prefer the explicit field; for a windowless entry the
+        // id is "app:<bundle>", so parse it as a fallback.
+        BundleId = w.BundleId ?? (w.Id.Value.StartsWith("app:") ? w.Id.Value["app:".Length..] : null);
         Update(w);
         if (w.IsFocused)
             SetFocused(true);
@@ -39,7 +42,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         CloseCommand = new AsyncRelayCommand(() => _windows.CloseAsync(Id));
         MinimizeCommand = new AsyncRelayCommand(() => _windows.MinimizeAsync(Id));
         RestoreCommand = new AsyncRelayCommand(() => _windows.RestoreAsync(Id));
+        QuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: false));
+        ForceQuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: true));
     }
+
+    private Task TerminateAsync(bool force) =>
+        string.IsNullOrEmpty(BundleId) ? Task.CompletedTask : _windows.TerminateAppAsync(BundleId, force);
 
     public ForeignWindowId Id { get; }
 
@@ -50,6 +58,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>True for a running-but-windowless app entry (bevel-ww71): rendered dim + icon-only, and a
     /// click just reopens the app (no minimize/toggle, since there's no window).</summary>
     public bool IsAppPresence { get; }
+
+    /// <summary>Owning app's bundle id (stable key), used by <see cref="QuitCommand"/>. Null when unknown.</summary>
+    public string? BundleId { get; }
 
     public string Title
     {
@@ -182,6 +193,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Right-click context-menu verbs (bevel-cust.ctxmenu): the taskbar-button system menu.</summary>
     public ICommand MinimizeCommand { get; }
     public ICommand RestoreCommand { get; }
+
+    /// <summary>Quit the owning app (graceful terminate) — the app-level action every button offers.</summary>
+    public ICommand QuitCommand { get; }
+
+    /// <summary>Force-quit the owning app (Alt/Option in the menu).</summary>
+    public ICommand ForceQuitCommand { get; }
 
     /// <summary>Refreshes the label/focus/minimized state from a fresh window snapshot in place,
     /// keeping the same VM object so the list row and its icon survive the update.</summary>

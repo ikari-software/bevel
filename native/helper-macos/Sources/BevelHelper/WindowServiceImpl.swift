@@ -292,6 +292,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         )
 
+        // ── TerminateApp ─────────────────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "TerminateApp"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_TerminateAppRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_TerminateAppReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                let ok = self.terminateApp(bundleID: req.message.bundleID, force: req.message.force)
+                var reply = Bevel_Helper_V1_TerminateAppReply()
+                reply.ok = ok
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
         // ── Reposition ────────────────────────────────────────────────
         router.registerHandler(
             forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Reposition"),
@@ -997,6 +1019,19 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // activation). NSRunningApplication.activate is not accessibility-dependent, so it brings such
         // apps forward when the AX path can't. Harmless for the apps AX already handled.
         NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+
+    /// Quit (or force-quit) every running instance of an app by bundle id (bevel-ww71). Graceful
+    /// `terminate()` posts the standard quit (apps may prompt to save); `forceTerminate()` is the
+    /// SIGKILL-equivalent "Force Quit". Returns true if at least one instance was asked to quit.
+    func terminateApp(bundleID: String, force: Bool) -> Bool {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == bundleID }
+        var any = false
+        for app in apps {
+            let quit = force ? app.forceTerminate() : app.terminate()
+            any = any || quit
+        }
+        return any
     }
 
     func minimizeWindow(windowID: String) throws {

@@ -96,6 +96,7 @@ public enum CoreCommandKind
     LaunchApp,
     ForwardTrayClick,
     CaptureWindow,
+    TerminateApp,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -109,7 +110,9 @@ public sealed record CoreCommand(
     TrayButton? TrayButton = null,
     TrayModifiers? TrayModifiers = null,
     int? MaxWidth = null,
-    int? MaxHeight = null);
+    int? MaxHeight = null,
+    /// <summary>TerminateApp: force-quit (true) vs graceful quit (false). Bundle id rides AppIdOrPath.</summary>
+    bool Force = false);
 
 /// <summary>The core's reply to a <see cref="CoreCommand"/>. <see cref="Ok"/>=false carries <see cref="Error"/>;
 /// the query commands fill the matching list.</summary>

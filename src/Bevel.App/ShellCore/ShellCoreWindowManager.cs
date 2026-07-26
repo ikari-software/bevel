@@ -73,6 +73,8 @@ public sealed class ShellCoreWindowManager : IWindowManager
     public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Minimize, id, ct);
     public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Restore, id, ct);
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Close, id, ct);
+    public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
+        Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds), ct);

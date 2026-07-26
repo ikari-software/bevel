@@ -36,7 +36,13 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
         MinimizeAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.MinimizeCommand); return Task.CompletedTask; });
         RestoreAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.RestoreCommand); return Task.CompletedTask; });
         CloseAllCommand = new AsyncRelayCommand(() => { RunOnAll(w => w.CloseCommand); return Task.CompletedTask; });
+        // Quit acts on the whole app (all members share one bundle) — delegate to any member's command.
+        QuitCommand = new AsyncRelayCommand(() => { Windows.FirstOrDefault()?.QuitCommand.Execute(null); return Task.CompletedTask; });
+        ForceQuitCommand = new AsyncRelayCommand(() => { Windows.FirstOrDefault()?.ForceQuitCommand.Execute(null); return Task.CompletedTask; });
     }
+
+    /// <summary>The app's bundle id (all members share it) for app-level actions like Quit.</summary>
+    public string? BundleId => Windows.FirstOrDefault()?.BundleId;
 
     public string AppId { get; }
     public string DisplayName { get; }
@@ -45,6 +51,10 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     public ICommand MinimizeAllCommand { get; }
     public ICommand RestoreAllCommand { get; }
     public ICommand CloseAllCommand { get; }
+
+    /// <summary>Quit / force-quit the whole app (bevel-ww71).</summary>
+    public ICommand QuitCommand { get; }
+    public ICommand ForceQuitCommand { get; }
 
     /// <summary>Runs one per-window command across the whole group. Snapshots the collection first —
     /// closing/minimizing mutates <see cref="Windows"/> as the shell reacts to each window op.</summary>
