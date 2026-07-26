@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Avalonia;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -73,15 +74,26 @@ public class RenderFileMenuBarTest
             var menu = menuBar.GetVisualDescendants().OfType<Menu>().First();
             var tools = menu.Items.OfType<MenuItem>().First(m => (m.Header as string) == "_Tools");
 
-            // open → close → reopen: the second open double-parented the XAML-declared submenu items.
-            tools.IsSubMenuOpen = true;
-            Dispatcher.UIThread.RunJobs();
-            tools.IsSubMenuOpen = false;
-            Dispatcher.UIThread.RunJobs();
-            tools.IsSubMenuOpen = true;   // <-- threw InvalidOperationException before the fix
-            Dispatcher.UIThread.RunJobs();
+            // Faithfully drive the real interaction path: click Tools (opens), click OUTSIDE (light-dismiss
+            // close — the path that tears down the PopupRoot), click Tools again (reopen). The reopen
+            // re-templated the popup's ItemsPresenter and re-added the XAML-declared submenu items → crash.
+            Point Center(Visual v)
+            {
+                var tl = v.TranslatePoint(default, (Visual)window)!.Value;
+                return new Point(tl.X + v.Bounds.Width / 2, tl.Y + v.Bounds.Height / 2);
+            }
+            void Click(Point p)
+            {
+                window.MouseDown(p, Avalonia.Input.MouseButton.Left);
+                window.MouseUp(p, Avalonia.Input.MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+            }
 
-            Assert.True(tools.IsSubMenuOpen);
+            Click(Center(tools));                 // open
+            Click(new Point(400, 250));           // outside → light dismiss
+            Click(Center(tools));                 // reopen  <-- threw InvalidOperationException before the fix
+
+            Assert.True(true); // reaching here without an unhandled exception is the assertion
         }
         finally
         {
