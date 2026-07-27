@@ -19,6 +19,13 @@ public enum LunaGloss { Matte, Gloss, Hybrid }
 internal readonly record struct ColorXform(double HueShift, double SatMul, double LightMul, double LightShift)
 {
     public static readonly ColorXform Identity = new(0, 1, 1, 0);
+
+    /// <summary>Gradient-contrast gain for the chrome bands (taskbar + caption): expands each stop's
+    /// lightness around the band's mean by this factor (1.0 = unchanged). A low-lightMul axis compresses
+    /// the light→dark spread, and eyes resolve violet lightness steps poorly, so Purple's bands read flat
+    /// without a boost here. Applies only to the surfaces in <see cref="LunaVariantService.ContrastBands"/>.</summary>
+    public double BandContrast { get; init; } = 1.0;
+
     public Color Apply(Color c) => this == Identity ? c : Transform(c, HueShift, SatMul, LightMul, LightShift);
 }
 
@@ -61,7 +68,9 @@ public static class LunaVariantService
         // Purple: rotate blue(~220°) toward violet(~275°). Tuned against the reference chrome.
         LunaColorVariant.Silver => new ColorXform(HueShift: -6, SatMul: 0.22, LightMul: 1.4, LightShift: 0.05),
         LunaColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
-        LunaColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02),
+        // BandContrast re-expands the taskbar/caption gradient the LightMul:0.6 compression flattens —
+        // violet lightness steps read weakly, so the bands need a punchier light→dark spread than blue.
+        LunaColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) { BandContrast = 2.2 },
         _ => ColorXform.Identity,
     };
 
@@ -148,6 +157,16 @@ public static class LunaVariantService
     private static string _appliedGloss = DefaultGloss;
     // Keys can be strings (Bevel.Brush.*) or object keys (SystemColors.*), so track as object.
     private static readonly List<object> _injected = new();
+
+    /// <summary>Chrome bands whose gradient contrast is amplified per-variant (see
+    /// <see cref="ColorXform.BandContrast"/>): the taskbar and the window caption (active + inactive).
+    /// Scoped to these so the boost lands on the large flat purple surfaces the user reads, not every band.</summary>
+    internal static readonly HashSet<string> ContrastBands = new()
+    {
+        "Bevel.Brush.TaskbarBackground",
+        "Bevel.Brush.CaptionActive",
+        "Bevel.Brush.CaptionInactive",
+    };
 
     public static bool IsKnownColor(string id) { foreach (var (i, _) in Colors) if (i == id) return true; return false; }
     public static bool IsKnownGloss(string id) { foreach (var (i, _) in Glosses) if (i == id) return true; return false; }
@@ -273,6 +292,11 @@ public static class LunaVariantService
             stops = targetGlossy ? Bead(BaseColor(s, C), gloss == LunaGloss.Gloss) : Matte(BaseColor(s, C));
         }
 
+        // Per-variant contrast boost for the big flat chrome bands (taskbar/caption): widen the light→dark
+        // spread the re-hue may have compressed. No-op unless this variant sets BandContrast (only Purple).
+        if (s.Chromatic && xform.BandContrast != 1.0 && ContrastBands.Contains(s.Key))
+            ExpandContrast(stops, xform.BandContrast);
+
         return new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
@@ -305,6 +329,23 @@ public static class LunaVariantService
         new GradientStop(Darken(b, wet ? 0.14 : 0.10), 0.5),
         new GradientStop(Lighten(b, wet ? 0.14 : 0.10), 1.0),
     };
+
+    /// <summary>Expands the lightness spread of a band's stops around their mean by <paramref name="gain"/>
+    /// (keeps each stop's hue/sat and the band's mean lightness, just widens light→dark). Mutates in place.
+    /// Clamps to [0.02, 0.98] so a stop is never crushed to pure black/white.</summary>
+    private static void ExpandContrast(List<GradientStop> stops, double gain)
+    {
+        if (gain == 1.0 || stops.Count < 2) return;
+        var hsl = new (double H, double S, double L)[stops.Count];
+        double mean = 0;
+        for (var i = 0; i < stops.Count; i++) { hsl[i] = ToHsl(stops[i].Color); mean += hsl[i].L; }
+        mean /= stops.Count;
+        for (var i = 0; i < stops.Count; i++)
+        {
+            var l = Math.Clamp(mean + (hsl[i].L - mean) * gain, 0.02, 0.98);
+            stops[i] = new GradientStop(FromHsl(hsl[i].H, hsl[i].S, l, stops[i].Color.A), stops[i].Offset);
+        }
+    }
 
     /// <summary>Matte concave: soft light top edge, dim body, faint lighter bottom — no hard split.</summary>
     private static List<GradientStop> Matte(Color b) => new()
