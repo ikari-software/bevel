@@ -805,8 +805,10 @@ public partial class ItemView : UserControl
         if (host is null) return;
         var tb = host.FindDescendantOfType<TextBlock>();
         if (tb is null) return;
-        vm.IsEditing = true; vm.EditName = vm.DisplayName;
-        _renameBox = new TextBox { Text = vm.DisplayName, MinWidth = Math.Max(tb.Bounds.Width, 60), FontSize = tb.FontSize };
+        // Rename edits the REAL on-disk name, not the possibly extension-hidden DisplayName, so hiding
+        // extensions never truncates a file on rename.
+        vm.IsEditing = true; vm.EditName = vm.RealName;
+        _renameBox = new TextBox { Text = vm.RealName, MinWidth = Math.Max(tb.Bounds.Width, 60), FontSize = tb.FontSize };
         var layer = AdornerLayer.GetAdornerLayer(host);
         if (layer is null) return;
         layer.Children.Add(_renameBox);

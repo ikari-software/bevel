@@ -63,7 +63,9 @@ public sealed partial class LocalFsProvider : IVfsProvider
                 continue;
             }
 
-            var isHidden = attrs.HasFlag(System.IO.FileAttributes.Hidden);
+            // On macOS/Unix a leading-dot name is hidden by convention even without the Hidden
+            // attribute (.git, .DS_Store, dotfiles) — honour that too, gated by the same flag.
+            var isHidden = attrs.HasFlag(System.IO.FileAttributes.Hidden) || name.StartsWith('.');
             var isSystem = attrs.HasFlag(System.IO.FileAttributes.System);
             var isDir = attrs.HasFlag(System.IO.FileAttributes.Directory);
 

@@ -52,4 +52,11 @@ public sealed class FileManagerWindowRegistry
     {
         lock (_gate) return _windows.OrderBy(kv => kv.Key).Select(kv => kv.Value).FirstOrDefault();
     }
+
+    /// <summary>Snapshot of every open window (registration order) — for cross-window fan-out such as a
+    /// live Folder Options re-list. Returns a copy so callers can iterate without holding the lock.</summary>
+    public IReadOnlyList<FileManagerWindow> All()
+    {
+        lock (_gate) return _windows.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
+    }
 }

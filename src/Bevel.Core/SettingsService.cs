@@ -271,6 +271,9 @@ public sealed class SettingsService : IDisposable
         SetOrPrune("uiFontFamily", _settings.UiFontFamily, d.UiFontFamily, SettingsJsonContext.Default.String);
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("hideKnownExtensions", _settings.HideKnownExtensions, d.HideKnownExtensions, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("defaultViewMode", _settings.DefaultViewMode, d.DefaultViewMode, SettingsJsonContext.Default.String);
+        SetOrPrune("infoPaneStyle", _settings.InfoPaneStyle.ToString(), d.InfoPaneStyle.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("workAreaStrategy", _settings.WorkAreaStrategy.ToString(), d.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("runAtLogin", _settings.RunAtLogin, d.RunAtLogin, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarButtonWidth", _settings.TaskbarButtonWidth, d.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
@@ -327,6 +330,9 @@ public sealed class SettingsService : IDisposable
             UiFontFamily = GetString("uiFontFamily") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
+            HideKnownExtensions = GetBool("hideKnownExtensions") ?? false,
+            DefaultViewMode = GetString("defaultViewMode") ?? "LargeIcons",
+            InfoPaneStyle = Enum.TryParse<InfoPaneStyle>(GetString("infoPaneStyle"), out var ips) ? ips : InfoPaneStyle.Win2000,
             WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
                 ? was : WorkAreaStrategy.Nudge,
             RunAtLogin = GetBool("runAtLogin") ?? false,
@@ -416,7 +422,20 @@ public sealed class BevelSettings
     public string UiFontFamily { get; set; } = "";
 
     public bool ShellEnabled { get; set; } = true;
+
+    // ── Folder Options (Explorer view/behaviour) ──────────────────────
     public bool ShowHiddenFiles { get; set; }
+
+    /// <summary>Hide the extension of files that have one (never dotfiles/extensionless) in the listing.</summary>
+    public bool HideKnownExtensions { get; set; }
+
+    /// <summary>The view mode a newly-opened Explorer window/tab starts in. Stored as a string because the
+    /// <c>ViewMode</c> enum lives in Bevel.FileManager (which Bevel.Core can't reference); the file manager
+    /// parses it. Default matches the historic hard-coded LargeIcons.</summary>
+    public string DefaultViewMode { get; set; } = "LargeIcons";
+
+    /// <summary>Visual style of the Explorer's left info pane (folder "webview").</summary>
+    public InfoPaneStyle InfoPaneStyle { get; set; } = InfoPaneStyle.Win2000;
 
     /// <summary>M2: work-area strategy (how the taskbar coexists with the Dock).</summary>
     public WorkAreaStrategy WorkAreaStrategy { get; set; } = WorkAreaStrategy.Nudge;
@@ -536,6 +555,23 @@ public sealed class BevelSettings
                 p.SetValue(this, p.GetValue(other));
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
     }
+}
+
+/// <summary>Visual style of the Explorer's left info pane (the folder "webview"). Each is a native,
+/// code-drawn vector template — not HTML — selectable in Folder Options.</summary>
+public enum InfoPaneStyle
+{
+    /// <summary>No info pane (Win95-era Explorer had none).</summary>
+    Off,
+
+    /// <summary>Flat, minimal panel — Win9x "Web View" era, understated.</summary>
+    Win9x,
+
+    /// <summary>Sky-gradient banner + vector illustration + metadata/links (current default).</summary>
+    Win2000,
+
+    /// <summary>XP Luna task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
+    WinXP,
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

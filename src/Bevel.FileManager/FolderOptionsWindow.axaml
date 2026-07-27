@@ -1,0 +1,47 @@
+<components:BevelWindow xmlns="https://github.com/avaloniaui"
+         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+         xmlns:components="using:Bevel.UI"
+         x:Class="Bevel.FileManager.FolderOptionsWindow"
+         Title="Folder Options"
+         Width="420" Height="330"
+         MinWidth="380" MinHeight="300"
+         WindowStartupLocation="CenterOwner"
+         CanResize="False">
+
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,12,0,0">
+            <Button x:Name="OkButton" Content="OK" Width="75" />
+            <Button x:Name="CancelButton" Content="Cancel" Width="75" />
+            <Button x:Name="ApplyButton" Content="Apply" Width="75" />
+        </StackPanel>
+
+        <TabControl>
+            <TabItem Header="View">
+                <StackPanel Spacing="10" Margin="8">
+                    <TextBlock Text="Files and Folders" FontWeight="SemiBold" FontSize="12" />
+                    <CheckBox x:Name="ShowHiddenCheck"
+                              Content="Show hidden files and folders" />
+                    <CheckBox x:Name="HideExtensionsCheck"
+                              Content="Hide extensions for known file types" />
+
+                    <Separator Margin="0,4" />
+
+                    <TextBlock Text="Default view for new windows" FontWeight="SemiBold" FontSize="12" />
+                    <ComboBox x:Name="DefaultViewCombo" Width="180" HorizontalAlignment="Left" />
+                    <TextBlock Text="New Explorer windows open in this view. Change a window's view any time from the View menu."
+                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Info Panel">
+                <StackPanel Spacing="10" Margin="8">
+                    <TextBlock Text="Left info panel style" FontWeight="SemiBold" FontSize="12" />
+                    <ComboBox x:Name="InfoPaneCombo" Width="220" HorizontalAlignment="Left" />
+                    <TextBlock Text="The folder info panel shown on the left. Rendered as native vector art (no web engine), themed to match."
+                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</components:BevelWindow>

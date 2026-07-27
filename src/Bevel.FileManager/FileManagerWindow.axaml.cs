@@ -205,12 +205,14 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.Properties.Click += (_, _) => ShowProperties();
         MenuBar.CloseWindow.Click += (_, _) => Close();
 
-        // Tools
-        MenuBar.FolderOptions.Click += (_, _) =>
+        // Tools → Folder Options: a focused folder/view dialog (NOT the app theme settings, which live on
+        // the taskbar's Properties). Re-list this window immediately on close so changes apply live even
+        // before the cross-window fan-out (App's settings.Changed) runs.
+        MenuBar.FolderOptions.Click += async (_, _) =>
         {
             if (_settings is null) return;
-            var win = new SettingsWindow(_settings);
-            win.ShowDialog(this);
+            await new FolderOptionsWindow(_settings).ShowDialog(this);
+            ReloadWithCurrentOptions();
         };
 
         // Edit
@@ -475,7 +477,7 @@ public partial class FileManagerWindow : BevelWindow
 
         try
         {
-            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), ct))
+            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
             {
                 if (child.Kind is not (VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot))
                     continue;
@@ -611,6 +613,15 @@ public partial class FileManagerWindow : BevelWindow
 
     private void OnNavigationStateChanged() => UpdateNavigationButtons();
 
+    /// <summary>Force a fresh re-list of the current directory — re-runs the hidden-file filter AND rebuilds
+    /// every ItemViewModel (so Folder Options' Show-Hidden / Hide-Extensions apply live). Deliberately uses
+    /// LoadDirectory, not the differential reconcile, which keeps existing VMs and wouldn't pick up the
+    /// extension-hiding change.</summary>
+    public void ReloadWithCurrentOptions()
+    {
+        if (_loadedPath is { } path) _ = LoadDirectory(path);
+    }
+
     private async System.Threading.Tasks.Task LoadDirectory(VfsPath path)
     {
         if (_vfsRoot is null) return;
@@ -641,7 +652,7 @@ public partial class FileManagerWindow : BevelWindow
             var chunk = new List<IVfsNode>(32);
             try
             {
-                await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), ct))
+                await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
                 {
                     chunk.Add(node);
                     count++;
@@ -1131,7 +1142,7 @@ public partial class FileManagerWindow : BevelWindow
         long totalSize = 0;
         try
         {
-            await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), ct))
+            await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
             {
                 nodes.Add(node);
                 if (node.Size.HasValue) totalSize += node.Size.Value;

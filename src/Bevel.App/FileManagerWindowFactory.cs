@@ -54,6 +54,10 @@ public sealed class FileManagerWindowFactory
         window.SetSettingsService(_settings);
         window.SetSearchService(new SearchService(_vfsRoot)); // Find/Search shares the app VfsRoot
         window.SetController(controller); // also navigates to Home internally (fixed contract)
+        // Open in the user's chosen default view (Folder Options). Parse the persisted string here — the
+        // ViewMode enum lives in Bevel.FileManager, so Bevel.Core stores it as a name.
+        if (System.Enum.TryParse<Bevel.FileManager.Components.ViewMode>(_settings.Current.DefaultViewMode, out var vm))
+            window.SetViewMode(vm);
         controller.NavigateTo(startDirectory); // land on the requested folder; a no-op push if
                                                 // startDirectory == Home (NavigationStack dedupes
                                                 // identical consecutive pushes), so this preserves

@@ -97,6 +97,9 @@ public partial class App : Application
             // the settings-DB version in ITS process; every OTHER role polls the shared DB for that
             // external write and re-applies theme/scheme/font live — so a theme switch reskins every
             // shell surface (taskbar, desktop, …), not just the process that owns Settings.
+            // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
+            // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
+            Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = settings.Current.HideKnownExtensions;
             settings.Changed += () =>
             {
                 var s = settings.Current;
@@ -104,6 +107,14 @@ public partial class App : Application
                 UI.ThemeVariants.Apply(s);
                 UI.FontService.Apply(s.UiFontFamily);
                 UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
+
+                // Folder Options → apply live to every open file-manager window: update the app-wide
+                // extension-hiding flag and re-list each window (also re-runs the hidden-file filter).
+                // Null in non-FM roles (taskbar/desktop), where the fan-out is a no-op.
+                Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = s.HideKnownExtensions;
+                if (services.GetService<FileManagerWindowRegistry>() is { } fmReg)
+                    foreach (var w in fmReg.All())
+                        w.ReloadWithCurrentOptions();
             };
             var reloadTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
             var reloadInFlight = false;

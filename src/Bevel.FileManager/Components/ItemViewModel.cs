@@ -42,7 +42,26 @@ public sealed class ItemViewModel : INotifyPropertyChanged
     // ── VFS data ──────────────────────────────────────────────────────
 
     public VfsPath Path => _node.Path;
-    public string DisplayName => _node.DisplayName;
+
+    /// <summary>Folder Options "Hide extensions for known types" — app-wide, so a process-wide flag rather
+    /// than a per-item field. A full re-list rebuilds every ItemViewModel, so toggling + reload applies it.</summary>
+    public static bool HideKnownExtensions;
+
+    /// <summary>The real on-disk name (used for rename, so hiding the extension never truncates a file).</summary>
+    public string RealName => _node.DisplayName;
+
+    public string DisplayName
+    {
+        get
+        {
+            var name = _node.DisplayName;
+            if (!HideKnownExtensions || IsFolder) return name;
+            var ext = System.IO.Path.GetExtension(name);
+            // Never strip dotfiles (".bashrc" → ext == the whole name) or extensionless names.
+            if (ext.Length <= 1 || ext.Length >= name.Length) return name;
+            return name[..^ext.Length];
+        }
+    }
     public VfsNodeKind Kind => _node.Kind;
     public bool IsFolder => _node.Kind is VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot;
     public long? Size => _node.Size;
