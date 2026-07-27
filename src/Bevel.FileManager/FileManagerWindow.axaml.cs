@@ -212,6 +212,10 @@ public partial class FileManagerWindow : BevelWindow
         var style = _settings?.Current.InfoPaneStyle ?? Bevel.Core.InfoPaneStyle.Win2000;
         InfoPane.Style = style;
         _infoPaneOff = style == Bevel.Core.InfoPaneStyle.Off;
+        // Set the app-wide extension flag HERE too, not only in App's settings.Changed handler — so the
+        // reload below always sees the right value regardless of handler ordering (and so a window without
+        // that App handler, e.g. in tests, still applies it). Idempotent.
+        Components.ItemViewModel.HideKnownExtensions = _settings?.Current.HideKnownExtensions ?? false;
         UpdateLeftColumn();
         ReloadWithCurrentOptions();
     }

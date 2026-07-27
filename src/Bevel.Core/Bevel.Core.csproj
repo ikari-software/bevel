@@ -27,6 +27,8 @@
     <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
     <!-- Perf harness roots SettingsService at a temp dir via the internal (configDir) ctor. -->
     <InternalsVisibleTo Include="Bevel.Benchmarks" />
+    <!-- Folder Options end-to-end test roots SettingsService at a temp dir (isolated from the real DB). -->
+    <InternalsVisibleTo Include="Bevel.FileManager.Tests" />
   </ItemGroup>
 
 </Project>
