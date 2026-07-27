@@ -330,9 +330,16 @@ public static class LunaVariantService
         new GradientStop(Lighten(b, wet ? 0.14 : 0.10), 1.0),
     };
 
-    /// <summary>Expands the lightness spread of a band's stops around their mean by <paramref name="gain"/>
-    /// (keeps each stop's hue/sat and the band's mean lightness, just widens light→dark). Mutates in place.
-    /// Clamps to [0.02, 0.98] so a stop is never crushed to pure black/white.</summary>
+    /// <summary>Expands the lightness spread of a band's stops around their mean by <paramref name="gain"/>,
+    /// keeping each stop's hue AND its actual chroma (colourfulness) — so the band gets a wider light→dark
+    /// gradient while staying vividly purple instead of washing toward white on the highlights. Mutates in
+    /// place; clamps lightness to [0.02, 0.98] so nothing crushes to pure black/white.
+    ///
+    /// <para>Chroma-aware because plain HSL lightness expansion desaturates: HSL chroma is
+    /// C = (1 − |2L − 1|)·S, so raising L toward 1 collapses C to 0 (white) regardless of S. We therefore
+    /// capture each stop's chroma first, expand L, then re-solve S = C / (1 − |2L − 1|) to hold that chroma
+    /// at the new lightness. Answers "is it HSV/saturation aware?" — yes: hue + chroma are preserved,
+    /// only lightness is spread.</para></summary>
     private static void ExpandContrast(List<GradientStop> stops, double gain)
     {
         if (gain == 1.0 || stops.Count < 2) return;
@@ -342,8 +349,12 @@ public static class LunaVariantService
         mean /= stops.Count;
         for (var i = 0; i < stops.Count; i++)
         {
-            var l = Math.Clamp(mean + (hsl[i].L - mean) * gain, 0.02, 0.98);
-            stops[i] = new GradientStop(FromHsl(hsl[i].H, hsl[i].S, l, stops[i].Color.A), stops[i].Offset);
+            var (h, s, l0) = hsl[i];
+            var chroma = (1.0 - Math.Abs(2.0 * l0 - 1.0)) * s;   // colourfulness this stop currently carries
+            var l = Math.Clamp(mean + (l0 - mean) * gain, 0.02, 0.98);
+            var denom = 1.0 - Math.Abs(2.0 * l - 1.0);           // HSL chroma envelope at the new lightness
+            var sNew = denom <= 1e-4 ? s : Math.Clamp(chroma / denom, 0.0, 1.0);
+            stops[i] = new GradientStop(FromHsl(h, sNew, l, stops[i].Color.A), stops[i].Offset);
         }
     }
 
