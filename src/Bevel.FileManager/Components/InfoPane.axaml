@@ -3,116 +3,117 @@
              x:Class="Bevel.FileManager.Components.InfoPane"
              Focusable="False">
 
-    <!-- Win2000 Folder Info Pane: gradient banner + metadata + links. The banner/illustration
-         colours below are webview ART specific to this pane (not system palette) and stay
-         literal; only the page background is a theme token (bevel-38y). -->
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Background="{DynamicResource Bevel.Brush.Window}">
+    <!-- Left info pane, selectable style (Folder Options). Exactly one view is visible at a time; the
+         code-behind pushes the shared data (folder name, description, links, count) to the active one.
+         All art is native vector — no web engine. -->
+    <Panel>
 
-        <!-- Banner area: sky gradient with computer vector -->
-        <Border Grid.Row="0" Height="120" ClipToBounds="True">
-            <Panel>
-                <!-- Sky gradient background: white → light blue -->
-                <Border>
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                            <GradientStop Color="#FFFFFF" Offset="0.0" />
-                            <GradientStop Color="#C8DDF0" Offset="0.4" />
-                            <GradientStop Color="#98C0E8" Offset="1.0" />
-                        </LinearGradientBrush>
-                    </Border.Background>
+        <!-- ═══ Windows 2000: sky-gradient banner + vector computer + yellow info box ═══ -->
+        <Grid x:Name="Win2000View" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+              Background="{DynamicResource Bevel.Brush.Window}">
+            <Border Grid.Row="0" Height="120" ClipToBounds="True">
+                <Panel>
+                    <Border>
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                <GradientStop Color="#FFFFFF" Offset="0.0" />
+                                <GradientStop Color="#C8DDF0" Offset="0.4" />
+                                <GradientStop Color="#98C0E8" Offset="1.0" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Canvas Margin="12,8,0,0">
+                        <Rectangle Canvas.Left="18" Canvas.Top="6" Width="72" Height="54" RadiusX="3" RadiusY="3"
+                                   Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
+                        <Rectangle Canvas.Left="22" Canvas.Top="10" Width="64" Height="46" Fill="#003399" />
+                        <Rectangle Canvas.Left="22" Canvas.Top="10" Width="64" Height="30" Fill="#1A5FB4" />
+                        <Ellipse Canvas.Left="30" Canvas.Top="16" Width="20" Height="10" Fill="White" Opacity="0.9" />
+                        <Ellipse Canvas.Left="40" Canvas.Top="14" Width="18" Height="12" Fill="White" Opacity="0.85" />
+                        <Ellipse Canvas.Left="50" Canvas.Top="18" Width="14" Height="8" Fill="White" Opacity="0.8" />
+                        <Rectangle Canvas.Left="48" Canvas.Top="60" Width="12" Height="6" Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
+                        <Rectangle Canvas.Left="40" Canvas.Top="66" Width="28" Height="4" RadiusX="1" RadiusY="1" Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
+                        <Rectangle Canvas.Left="94" Canvas.Top="48" Width="24" Height="20" RadiusX="2" RadiusY="2" Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
+                        <Rectangle Canvas.Left="98" Canvas.Top="52" Width="16" Height="3" Fill="#808080" />
+                    </Canvas>
+                </Panel>
+            </Border>
+            <Border Grid.Row="0" VerticalAlignment="Bottom" Height="1" Background="#D0D0D0" />
+            <StackPanel Grid.Row="1" Margin="12,8,12,4">
+                <TextBlock x:Name="TitleLabel" FontSize="14" FontWeight="Bold" Foreground="#003399" TextWrapping="Wrap" />
+            </StackPanel>
+            <TextBlock Grid.Row="2" x:Name="InstructionLabel" Margin="12,0,12,8" FontSize="11" Foreground="#000000"
+                       Text="Select an item to view its description." TextWrapping="Wrap" />
+            <Border Grid.Row="3" Margin="14,0,14,8" Padding="6,4" Background="#FFFFE1" BorderBrush="#D0C080"
+                    BorderThickness="1" CornerRadius="1">
+                <TextBlock x:Name="DescriptionLabel" FontSize="11" Foreground="#000000" TextWrapping="Wrap" />
+            </Border>
+            <StackPanel Grid.Row="4" VerticalAlignment="Bottom">
+                <Border Height="1" Background="#D0D0D0" Margin="12,4,12,0" />
+                <StackPanel x:Name="SeeAlsoPanel" Margin="14,8,12,4" Spacing="0" />
+            </StackPanel>
+            <Border Grid.Row="5" Background="Transparent" BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Padding="12,3">
+                <TextBlock x:Name="ObjectCountLabel" FontSize="11" Foreground="#000000" />
+            </Border>
+        </Grid>
+
+        <!-- ═══ Windows XP (Luna): blue watermark gradient + rounded task-pane group boxes ═══ -->
+        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#6787D9" Offset="0.0" />
+                    <GradientStop Color="#5075CE" Offset="0.5" />
+                    <GradientStop Color="#4A6FC9" Offset="1.0" />
+                </LinearGradientBrush>
+            </ScrollViewer.Background>
+            <StackPanel Margin="8,10,8,10" Spacing="10">
+                <!-- Other Places group -->
+                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="#D6E3F5" BorderThickness="1">
+                    <StackPanel>
+                        <Border CornerRadius="4,4,0,0" Padding="8,4">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Color="#EBF2FD" Offset="0.0" />
+                                    <GradientStop Color="#C7D9F4" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="Other Places" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
+                        </Border>
+                        <StackPanel x:Name="XpLinksPanel" Margin="12,6,10,8" Spacing="4" />
+                    </StackPanel>
                 </Border>
+                <!-- Details group -->
+                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="#D6E3F5" BorderThickness="1">
+                    <StackPanel>
+                        <Border CornerRadius="4,4,0,0" Padding="8,4">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                                    <GradientStop Color="#EBF2FD" Offset="0.0" />
+                                    <GradientStop Color="#C7D9F4" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="Details" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
+                        </Border>
+                        <StackPanel Margin="12,6,10,8" Spacing="3">
+                            <TextBlock x:Name="XpTitle" FontWeight="Bold" FontSize="12" Foreground="#20325C" TextWrapping="Wrap" />
+                            <TextBlock x:Name="XpDescription" FontSize="11" Foreground="#31456F" TextWrapping="Wrap" />
+                            <TextBlock x:Name="XpCount" FontSize="11" Foreground="#5A6E96" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
-                <!-- Vector computer illustration -->
-                <Canvas Margin="12,8,0,0">
-                    <!-- Monitor body -->
-                    <Rectangle Canvas.Left="18" Canvas.Top="6"
-                               Width="72" Height="54" RadiusX="3" RadiusY="3"
-                               Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
-                    <!-- Monitor screen -->
-                    <Rectangle Canvas.Left="22" Canvas.Top="10"
-                               Width="64" Height="46"
-                               Fill="#003399" />
-                    <!-- Screen: sky gradient inside monitor -->
-                    <Rectangle Canvas.Left="22" Canvas.Top="10"
-                               Width="64" Height="30"
-                               Fill="#1A5FB4" />
-                    <!-- Screen: white cloud shapes -->
-                    <Ellipse Canvas.Left="30" Canvas.Top="16"
-                             Width="20" Height="10" Fill="White" Opacity="0.9" />
-                    <Ellipse Canvas.Left="40" Canvas.Top="14"
-                             Width="18" Height="12" Fill="White" Opacity="0.85" />
-                    <Ellipse Canvas.Left="50" Canvas.Top="18"
-                             Width="14" Height="8" Fill="White" Opacity="0.8" />
-                    <!-- Monitor stand -->
-                    <Rectangle Canvas.Left="48" Canvas.Top="60"
-                               Width="12" Height="6" Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
-                    <!-- Monitor base -->
-                    <Rectangle Canvas.Left="40" Canvas.Top="66"
-                               Width="28" Height="4" RadiusX="1" RadiusY="1"
-                               Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
-
-                    <!-- Floppy drive -->
-                    <Rectangle Canvas.Left="94" Canvas.Top="48"
-                               Width="24" Height="20" RadiusX="2" RadiusY="2"
-                               Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
-                    <Rectangle Canvas.Left="98" Canvas.Top="52"
-                               Width="16" Height="3" Fill="#808080" />
-                </Canvas>
-            </Panel>
+        <!-- ═══ Windows 9x: flat, minimal panel — no banner, plain system face ═══ -->
+        <Border x:Name="Win9xView" IsVisible="False" Background="{DynamicResource Bevel.Brush.ButtonFace}">
+            <StackPanel Margin="10,12,10,10" Spacing="6">
+                <TextBlock x:Name="Win9xTitle" FontWeight="Bold" FontSize="12"
+                           Foreground="{DynamicResource Bevel.Brush.WindowText}" TextWrapping="Wrap" />
+                <Border Height="1" Background="{DynamicResource Bevel.Brush.ButtonShadow}" />
+                <TextBlock x:Name="Win9xDescription" FontSize="11"
+                           Foreground="{DynamicResource Bevel.Brush.WindowText}" TextWrapping="Wrap" />
+                <TextBlock x:Name="Win9xCount" FontSize="11" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
+            </StackPanel>
         </Border>
 
-        <!-- Divider line below banner -->
-        <Border Grid.Row="0" VerticalAlignment="Bottom"
-                Height="1" Background="#D0D0D0" />
-
-        <!-- Folder name in bold blue -->
-        <StackPanel Grid.Row="1" Margin="12,8,12,4">
-            <TextBlock x:Name="TitleLabel"
-                       FontSize="14" FontWeight="Bold"
-                       Foreground="#003399"
-                       TextWrapping="Wrap" />
-        </StackPanel>
-
-        <!-- "Select an item..." text -->
-        <TextBlock Grid.Row="2" x:Name="InstructionLabel"
-                   Margin="12,0,12,8"
-                   FontSize="11"
-                   Foreground="#000000"
-                   Text="Select an item to view its description."
-                   TextWrapping="Wrap" />
-
-        <!-- Yellow info box with description -->
-        <Border Grid.Row="3"
-                Margin="14,0,14,8"
-                Padding="6,4"
-                Background="#FFFFE1"
-                BorderBrush="#D0C080"
-                BorderThickness="1"
-                CornerRadius="1">
-            <TextBlock x:Name="DescriptionLabel"
-                       FontSize="11"
-                       Foreground="#000000"
-                       TextWrapping="Wrap" />
-        </Border>
-
-        <!-- Spacer -->
-        <Grid Grid.Row="4" />
-
-        <!-- "See also" section -->
-        <StackPanel Grid.Row="4" VerticalAlignment="Bottom">
-            <Border Height="1" Background="#D0D0D0" Margin="12,4,12,0" />
-            <StackPanel x:Name="SeeAlsoPanel" Margin="14,8,12,4" Spacing="0" />
-        </StackPanel>
-
-        <!-- Object count footer -->
-        <Border Grid.Row="5"
-                Background="Transparent"
-                BorderBrush="#D0D0D0"
-                BorderThickness="0,1,0,0"
-                Padding="12,3">
-            <TextBlock x:Name="ObjectCountLabel"
-                       FontSize="11"
-                       Foreground="#000000" />
-        </Border>
-    </Grid>
+    </Panel>
 </UserControl>

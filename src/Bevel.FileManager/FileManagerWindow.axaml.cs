@@ -185,11 +185,35 @@ public partial class FileManagerWindow : BevelWindow
         SearchPane.SetResultCount(results.Count);
     }
 
+    private bool _infoPaneOff;
+
     void ToggleFolders()
     {
         _showTree = !_showTree;
-        InfoPane.IsVisible = !_showTree;
+        UpdateLeftColumn();
+    }
+
+    /// <summary>Shows the folders tree, the info pane, or nothing (info style = Off), and collapses the
+    /// whole left column + splitter when neither is shown so the item view gets the full width.</summary>
+    void UpdateLeftColumn()
+    {
+        var showLeft = _showTree || !_infoPaneOff;
+        InfoPane.IsVisible = !_showTree && !_infoPaneOff;
         ExplorerPane.IsVisible = _showTree;
+        LeftSplitter.IsVisible = showLeft;
+        ContentGrid.ColumnDefinitions[0].Width = showLeft ? new GridLength(200) : new GridLength(0);
+        ContentGrid.ColumnDefinitions[1].Width = showLeft ? new GridLength(4) : new GridLength(0);
+    }
+
+    /// <summary>Applies the current Folder Options to this window: the info-pane style + column visibility,
+    /// and a fresh re-list (hidden files / extension hiding). Called on load and on live changes.</summary>
+    public void ApplyFolderOptions()
+    {
+        var style = _settings?.Current.InfoPaneStyle ?? Bevel.Core.InfoPaneStyle.Win2000;
+        InfoPane.Style = style;
+        _infoPaneOff = style == Bevel.Core.InfoPaneStyle.Off;
+        UpdateLeftColumn();
+        ReloadWithCurrentOptions();
     }
 
     private void WireMenuBar()
@@ -212,7 +236,7 @@ public partial class FileManagerWindow : BevelWindow
         {
             if (_settings is null) return;
             await new FolderOptionsWindow(_settings).ShowDialog(this);
-            ReloadWithCurrentOptions();
+            ApplyFolderOptions();
         };
 
         // Edit
@@ -394,6 +418,12 @@ public partial class FileManagerWindow : BevelWindow
     public void SetSettingsService(Core.SettingsService settings)
     {
         _settings = settings;
+        // Open with the persisted info-pane style + column layout (Folder Options). A fresh window has no
+        // directory listed yet, so this only sets the style/visibility, not a reload.
+        var style = settings.Current.InfoPaneStyle;
+        InfoPane.Style = style;
+        _infoPaneOff = style == Bevel.Core.InfoPaneStyle.Off;
+        UpdateLeftColumn();
     }
 
     public void SetVfsRoot(VfsRoot root)

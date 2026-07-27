@@ -114,7 +114,7 @@ public partial class App : Application
                 Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = s.HideKnownExtensions;
                 if (services.GetService<FileManagerWindowRegistry>() is { } fmReg)
                     foreach (var w in fmReg.All())
-                        w.ReloadWithCurrentOptions();
+                        w.ApplyFolderOptions();   // info-pane style + column + re-list
             };
             var reloadTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
             var reloadInFlight = false;
