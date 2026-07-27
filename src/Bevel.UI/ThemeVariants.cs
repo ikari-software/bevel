@@ -71,9 +71,13 @@ public static class ThemeVariants
     /// Call after <see cref="ThemeService"/>.Apply and whenever a variant option changes. UI thread only.</summary>
     public static void Apply(BevelSettings s)
     {
-        // Deactivate engines that own shared resource keys before applying the active theme's.
+        // Deactivate engines that own shared resource keys before applying the active theme's — each
+        // engine merges Application-level resources that would otherwise linger and outrank the incoming
+        // theme (e.g. a Win2000 scheme's WindowCaptionHeightKey=18 shrinking Luna's 25 caption — bevel-p3va).
         if (!string.Equals(s.ThemeId, "luna", StringComparison.OrdinalIgnoreCase))
             LunaVariantService.Clear();
+        if (!string.Equals(s.ThemeId, "win2000", StringComparison.OrdinalIgnoreCase))
+            ColorSchemeService.Clear();
 
         if (ByTheme.TryGetValue(s.ThemeId, out var spec))
             spec.ApplyLive(s);

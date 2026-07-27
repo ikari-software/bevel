@@ -95,4 +95,21 @@ public static class ColorSchemeService
         _applied = dict;
         _appliedId = scheme;
     }
+
+    /// <summary>Removes the merged Win2000 colour-scheme dictionary. Call when switching AWAY from the
+    /// Win2000 theme (symmetric to <see cref="LunaVariantService.Clear"/>) — otherwise the scheme's
+    /// Application-level values (e.g. WindowCaptionHeightKey=18) LINGER and outrank the incoming theme's,
+    /// which is what shrank Luna's title bar after a Win2000 round-trip (bevel-p3va). The alias layer is
+    /// left in place (it's inert unless a scheme overrides the SystemColors it aliases). Idempotent.</summary>
+    public static void Clear()
+    {
+        if (Application.Current?.Resources is not { } appResources) return;
+        if (_applied is not null)
+        {
+            appResources.MergedDictionaries.Remove(_applied);
+            _applied = null;
+        }
+        // Leave _appliedId as-is: Apply's guard also checks `_applied is not null`, so a later
+        // Apply(sameScheme) still re-merges after a Clear.
+    }
 }
