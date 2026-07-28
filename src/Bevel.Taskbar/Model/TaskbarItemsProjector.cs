@@ -25,6 +25,8 @@ public sealed class TaskbarItemsProjector : IDisposable
 
     private readonly ObservableCollection<TaskItemViewModel> _source;
     private TaskbarGroupingMode _mode;
+    private TaskbarWindowSort _sort = TaskbarWindowSort.OpenOrder;
+    private bool _windowlessLast;
 
     public TaskbarItemsProjector(ObservableCollection<TaskItemViewModel> source, TaskbarGroupingMode mode = TaskbarGroupingMode.Never)
     {
@@ -42,6 +44,15 @@ public sealed class TaskbarItemsProjector : IDisposable
     {
         if (_mode == mode) return;
         _mode = mode;
+        RePlan();
+    }
+
+    /// <summary>Sets the button sort mode + the windowless-apps-last toggle and re-plans immediately.</summary>
+    public void SetSort(TaskbarWindowSort sort, bool windowlessLast)
+    {
+        if (_sort == sort && _windowlessLast == windowlessLast) return;
+        _sort = sort;
+        _windowlessLast = windowlessLast;
         RePlan();
     }
 
@@ -78,6 +89,12 @@ public sealed class TaskbarItemsProjector : IDisposable
             }
         }
 
+        // Order the strip per the user's sort + windowless-last preference (bevel-ww71 follow-up). Stable:
+        // within an equal key items keep their open order, so the classic positional feel survives when
+        // sort is OpenOrder, and Name/windowless-last only reorder what they must.
+        if (_windowlessLast || _sort != TaskbarWindowSort.OpenOrder)
+            desired = SortItems(desired);
+
         // Apply in place: remove vanished items (detaching group child subscriptions), then move/insert
         // to match desired order. A full clear would drop bindings and restart the width animations.
         for (var i = Items.Count - 1; i >= 0; i--)
@@ -98,6 +115,28 @@ public sealed class TaskbarItemsProjector : IDisposable
             else Items.Insert(i, desired[i]);
         }
     }
+
+    /// <summary>Stable sort: primary = windowless (app-presence) buttons last when enabled; secondary =
+    /// the sort mode; tertiary = original (open) order, so equal-key items don't shuffle.</summary>
+    private List<ITaskbarItem> SortItems(List<ITaskbarItem> items)
+        => items
+            .Select((it, i) => (it, i))
+            .OrderBy(x => _windowlessLast && IsWindowless(x.it) ? 1 : 0)
+            .ThenBy(x => _sort == TaskbarWindowSort.Name ? SortName(x.it) : string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.i)
+            .Select(x => x.it)
+            .ToList();
+
+    /// <summary>A group always has windows, so only a single app-presence button counts as windowless.</summary>
+    private static bool IsWindowless(ITaskbarItem it) => it is TaskItemViewModel { IsAppPresence: true };
+
+    /// <summary>App name for the Name sort — the friendly AppId, falling back to a window's title.</summary>
+    private static string SortName(ITaskbarItem it) => it switch
+    {
+        TaskGroupViewModel g => g.AppId ?? string.Empty,
+        TaskItemViewModel t => (string.IsNullOrEmpty(t.AppId) ? t.Title : t.AppId) ?? string.Empty,
+        _ => string.Empty,
+    };
 
     public void Dispose()
     {

@@ -183,6 +183,21 @@
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Sort buttons" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="SortModeCombo" FontSize="11" Width="160" VerticalAlignment="Center">
+                                    <ComboBoxItem>Open order (classic)</ComboBoxItem>
+                                    <ComboBoxItem>By app name (A–Z)</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="How buttons are ordered. Open order keeps a button where it opened; by-name sorts A–Z."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <CheckBox x:Name="WindowlessLastCheck"
+                                      Content="Show windowless apps (dock-dots) last"
+                                      FontSize="11" Margin="0,4,0,0" />
+
                             <CheckBox x:Name="MiddleClickCloseCheck"
                                       Content="Middle-click a button to close its window"
                                       FontSize="11" Margin="0,4,0,0" />

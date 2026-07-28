@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -62,6 +64,33 @@ public class AppPresenceTests
     {
         Assert.Equal(0.6, AppPresence("com.music").ContentOpacity);
         Assert.Equal(1.0, Win("w1", "com.other").ContentOpacity);
+    }
+
+    [Fact]
+    public void Sort_orders_the_strip_by_name_and_windowless_last()
+    {
+        var source = new ObservableCollection<TaskItemViewModel>
+        {
+            Win("z", "Zebra"),
+            AppPresence("Aardvark"),   // windowless — alphabetically first, but should land LAST when enabled
+            Win("a", "Apple"),
+        };
+        using var proj = new TaskbarItemsProjector(source, TaskbarGroupingMode.Never);
+
+        // Open order + windowless-last: windows keep their source order, the dock-dot trails.
+        proj.SetSort(TaskbarWindowSort.OpenOrder, windowlessLast: true);
+        Assert.Equal(new[] { "Zebra", "Apple", "Aardvark" }, Names(proj));
+
+        // By name + windowless-last: windows A→Z, the dock-dot still trails.
+        proj.SetSort(TaskbarWindowSort.Name, windowlessLast: true);
+        Assert.Equal(new[] { "Apple", "Zebra", "Aardvark" }, Names(proj));
+
+        // By name, windowless mixed in: pure A→Z, so the dock-dot sorts by its own name.
+        proj.SetSort(TaskbarWindowSort.Name, windowlessLast: false);
+        Assert.Equal(new[] { "Aardvark", "Apple", "Zebra" }, Names(proj));
+
+        static string[] Names(TaskbarItemsProjector p)
+            => p.Items.Cast<TaskItemViewModel>().Select(t => t.AppId!).ToArray();
     }
 
     [Fact]

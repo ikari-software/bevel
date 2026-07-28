@@ -308,6 +308,8 @@ public sealed class SettingsService : IDisposable
         SetOrPrune("taskbarGrouping", _settings.TaskbarGrouping.ToString(), d.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarButtonLabels", _settings.TaskbarButtonLabels.ToString(), d.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarMiddleClickCloses", _settings.TaskbarMiddleClickCloses, d.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarWindowSort", _settings.TaskbarWindowSort.ToString(), d.TaskbarWindowSort.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("windowlessAppsLast", _settings.WindowlessAppsLast, d.WindowlessAppsLast, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarFontSize", _settings.TaskbarFontSize, d.TaskbarFontSize, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarBackgroundColor", _settings.TaskbarBackgroundColor, d.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
         SetOrPrune("taskbarOpacity", _settings.TaskbarOpacity, d.TaskbarOpacity, SettingsJsonContext.Default.Int32);
@@ -375,6 +377,9 @@ public sealed class SettingsService : IDisposable
             TaskbarButtonLabels = Enum.TryParse<TaskbarButtonLabels>(GetString("taskbarButtonLabels"), out var tbl)
                 ? tbl : TaskbarButtonLabels.Auto,
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
+            TaskbarWindowSort = Enum.TryParse<TaskbarWindowSort>(GetString("taskbarWindowSort"), out var tws)
+                ? tws : TaskbarWindowSort.OpenOrder,
+            WindowlessAppsLast = GetBool("windowlessAppsLast") ?? false,
             TaskbarFontSize = GetInt("taskbarFontSize") ?? 0,
             TaskbarBackgroundColor = GetString("taskbarBackgroundColor") ?? "",
             TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
@@ -522,6 +527,14 @@ public sealed class BevelSettings
     /// <summary>Middle-clicking a window button closes that window (Win7+/browser-tab convention).</summary>
     public bool TaskbarMiddleClickCloses { get; set; } = true;
 
+    /// <summary>How taskbar buttons are ordered. OpenOrder keeps the classic positional order (a window
+    /// stays put — muscle memory); Name sorts by app name A→Z.</summary>
+    public TaskbarWindowSort TaskbarWindowSort { get; set; } = TaskbarWindowSort.OpenOrder;
+
+    /// <summary>Push running-but-windowless "app-presence" buttons (the dock-dot entries) to the end of
+    /// the strip, after every window button — independent of, and layered on top of, the sort mode.</summary>
+    public bool WindowlessAppsLast { get; set; }
+
     // ── Appearance (bevel-cust.appearance) ──────────────────────────────────────────────────────
 
     /// <summary>Taskbar font size in points; 0 = the theme baseline (11).</summary>
@@ -603,6 +616,16 @@ public enum TaskbarGroupingMode
 
     /// <summary>Always one button per app with a flyout list (Win7 "always combine").</summary>
     Always,
+}
+
+/// <summary>bevel-cust.buttons: how taskbar buttons are ordered.</summary>
+public enum TaskbarWindowSort
+{
+    /// <summary>Classic positional order — a button stays where it opened (default).</summary>
+    OpenOrder,
+
+    /// <summary>By app name, A→Z.</summary>
+    Name,
 }
 
 /// <summary>bevel-cust.buttons: window-button label visibility.</summary>

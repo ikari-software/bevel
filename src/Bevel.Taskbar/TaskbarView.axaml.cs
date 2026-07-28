@@ -29,6 +29,8 @@ public partial class TaskbarView : UserControl
     private TaskbarButtonWidthMode _widthMode = TaskbarButtonWidthMode.ShrinkToFit;
     private TaskbarButtonSize _buttonSize = TaskbarButtonSize.Normal;
     private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
+    private TaskbarWindowSort _sort = TaskbarWindowSort.OpenOrder;
+    private bool _windowlessLast;
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
     private int _trayOverflowCap = 8;
@@ -183,6 +185,9 @@ public partial class TaskbarView : UserControl
         ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
         _grouping = s.TaskbarGrouping;
         _vm?.SetGrouping(_grouping);
+        _sort = s.TaskbarWindowSort;
+        _windowlessLast = s.WindowlessAppsLast;
+        _vm?.SetSort(_sort, _windowlessLast);
         _buttonLabels = s.TaskbarButtonLabels;
         _middleClickCloses = s.TaskbarMiddleClickCloses;
         _fontSize = s.TaskbarFontSize;
@@ -337,6 +342,7 @@ public partial class TaskbarView : UserControl
         // Apply the grouping mode before the first layout so Items is already in its final shape
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
         _vm?.SetGrouping(_grouping);
+        _vm?.SetSort(_sort, _windowlessLast);
         _vm?.Tray.Configure(_trayOverflowCap, _trayIconSize);
         _window?.SetAlwaysOnTop(_alwaysOnTop);
         ResizeGrip.IsVisible = !_locked;

@@ -69,6 +69,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         MinWidthSlider.ValueChanged += OnMinWidthChanged;
         GroupingCombo.SelectionChanged += OnGroupingChanged;
         LabelModeCombo.SelectionChanged += OnLabelModeChanged;
+        SortModeCombo.SelectionChanged += OnSortModeChanged;
+        WindowlessLastCheck.IsCheckedChanged += OnWindowlessLastChanged;
         MiddleClickCloseCheck.IsCheckedChanged += OnMiddleClickChanged;
         ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
         StartLabelBox.TextChanged += (_, _) => PersistStart();
@@ -147,6 +149,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         GroupingCombo.SelectedIndex = (int)s.TaskbarGrouping;        // Never=0, WhenFull=1, Always=2
         LabelModeCombo.SelectedIndex = (int)s.TaskbarButtonLabels;   // Auto=0, Always=1, IconOnly=2
+        SortModeCombo.SelectedIndex = (int)s.TaskbarWindowSort;      // OpenOrder=0, Name=1
+        WindowlessLastCheck.IsChecked = s.WindowlessAppsLast;
         MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
         RowsSlider.Value = s.TaskbarRows;
@@ -327,6 +331,21 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         var mode = (TaskbarGroupingMode)GroupingCombo.SelectedIndex;
         if (_settings.Current.TaskbarGrouping == mode) return;
         await PersistAndApply(s => s.TaskbarGrouping = mode);
+    }
+
+    private async void OnSortModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (SortModeCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarWindowSort)SortModeCombo.SelectedIndex;
+        if (_settings.Current.TaskbarWindowSort == mode) return;
+        await PersistAndApply(s => s.TaskbarWindowSort = mode);
+    }
+
+    private async void OnWindowlessLastChanged(object? sender, RoutedEventArgs e)
+    {
+        if (WindowlessLastCheck.IsChecked is not { } v) return;
+        if (_settings.Current.WindowlessAppsLast == v) return;
+        await PersistAndApply(s => s.WindowlessAppsLast = v);
     }
 
     private async void OnLabelModeChanged(object? sender, SelectionChangedEventArgs e)
