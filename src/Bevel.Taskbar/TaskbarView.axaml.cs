@@ -66,65 +66,47 @@ public partial class TaskbarView : UserControl
     /// subscribes to window events or builds/mutates buttons by hand (bevel-d2z).
     /// </summary>
     public void Initialize(
-        IAppEnvironment? appEnv,
+        Bevel.Core.BevelSettings settings,
+        IAppEnvironment? appEnv = null,
         IIconProvider? iconProvider = null,
-        int buttonWidth = 160,
         Action? quit = null,
         Action? restart = null,
-        TaskbarButtonWidthMode widthMode = TaskbarButtonWidthMode.ShrinkToFit,
-        int minButtonWidth = 80,
-        TaskbarButtonSize buttonSize = TaskbarButtonSize.Normal,
-        TaskbarGroupingMode grouping = TaskbarGroupingMode.Never,
-        TaskbarButtonLabels buttonLabels = TaskbarButtonLabels.Auto,
-        bool middleClickCloses = true,
-        TaskbarWindowSort sort = TaskbarWindowSort.OpenOrder,
-        bool windowlessLast = false,
-        bool showStart = true,
-        string startLabel = "Start",
         Action? openSettings = null,
         Action? toggleLock = null,
-        bool showClock = true,
-        bool clock24Hour = true,
-        bool clockShowSeconds = false,
-        bool clockShowDate = false,
-        int fontSize = 0,
-        string backgroundColor = "",
-        int opacity = 100,
-        int trayOverflowCap = 8,
-        int trayIconSize = 16,
-        bool locked = false,
-        bool alwaysOnTop = true,
-        bool showDesktopButton = false,
         Action<Bevel.Core.Vfs.VfsPath>? openFolder = null)
     {
+        // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
         _iconProvider = iconProvider;
-        _maxButtonWidth = buttonWidth;
-        _widthMode = widthMode;
-        _buttonSize = buttonSize;
-        // Keep the text floor sane: never above the max, never below the icon-only floor.
-        _minButtonWidth = Math.Clamp(minButtonWidth, IconOnlyFloor, buttonWidth);
-        _grouping = grouping;
-        _buttonLabels = buttonLabels;
-        _middleClickCloses = middleClickCloses;
-        _sort = sort;                       // apply the persisted sort at STARTUP, not only on a later change
-        _windowlessLast = windowlessLast;
-        _trayOverflowCap = trayOverflowCap;
-        _trayIconSize = trayIconSize;
-        _locked = locked;
-        _alwaysOnTop = alwaysOnTop;
-        _showDesktop = showDesktopButton;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
         _openFolder = openFolder;
         _toggleLock = toggleLock;
-        Clock.Configure(showClock, clock24Hour, clockShowSeconds, clockShowDate);
-        ApplyStart(showStart, startLabel);
-        // Appearance reads theme resources, which don't resolve until attached — apply it in OnLoaded.
-        _fontSize = fontSize;
-        _bgColor = backgroundColor;
-        _opacity = opacity;
+
+        // Every persisted setting flows from the one BevelSettings (bevel-ccs) — no more 25-param call.
+        // These mirror ApplyLiveSettings; startup can't diverge from a live change because both read the
+        // same fields. (Appearance is deferred to OnLoaded, since it reads theme resources that don't
+        // resolve until the view is attached — so it's stored here, not applied.)
+        _maxButtonWidth = settings.TaskbarButtonWidth;
+        _widthMode = settings.TaskbarButtonWidthMode;
+        _buttonSize = settings.TaskbarButtonSize;
+        _minButtonWidth = Math.Clamp(settings.TaskbarMinButtonWidth, IconOnlyFloor, settings.TaskbarButtonWidth);
+        _grouping = settings.TaskbarGrouping;
+        _buttonLabels = settings.TaskbarButtonLabels;
+        _middleClickCloses = settings.TaskbarMiddleClickCloses;
+        _sort = settings.TaskbarWindowSort;
+        _windowlessLast = settings.WindowlessAppsLast;
+        _trayOverflowCap = settings.TaskbarTrayOverflowCap;
+        _trayIconSize = settings.TaskbarTrayIconSize;
+        _locked = settings.TaskbarLocked;
+        _alwaysOnTop = settings.TaskbarAlwaysOnTop;
+        _showDesktop = settings.TaskbarShowDesktopButton;
+        Clock.Configure(settings.TaskbarShowClock, settings.TaskbarClock24Hour, settings.TaskbarClockShowSeconds, settings.TaskbarClockShowDate);
+        ApplyStart(settings.TaskbarShowStart, settings.TaskbarStartLabel);
+        _fontSize = settings.TaskbarFontSize;
+        _bgColor = settings.TaskbarBackgroundColor;
+        _opacity = settings.TaskbarOpacity;
     }
 
     /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>

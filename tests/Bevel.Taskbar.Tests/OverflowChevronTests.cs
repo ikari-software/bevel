@@ -25,7 +25,7 @@ public class OverflowChevronTests
         var wm = new StubWm();
 
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(null, null, buttonWidth: 150, widthMode: TaskbarButtonWidthMode.Fixed);
+        view.Initialize(new BevelSettings { TaskbarButtonWidth = 150, TaskbarButtonWidthMode = TaskbarButtonWidthMode.Fixed });
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
@@ -69,7 +69,7 @@ public class OverflowChevronTests
         var wm = new StubWm();
 
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(null, null, buttonWidth: 150, widthMode: TaskbarButtonWidthMode.ShrinkToFit);
+        view.Initialize(new BevelSettings { TaskbarButtonWidth = 150, TaskbarButtonWidthMode = TaskbarButtonWidthMode.ShrinkToFit });
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();

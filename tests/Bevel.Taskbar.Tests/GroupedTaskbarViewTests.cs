@@ -24,8 +24,11 @@ public class GroupedTaskbarViewTests
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new GroupViewStubWm();
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(null, null, buttonWidth: 150,
-            grouping: grouping ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never);
+        view.Initialize(new BevelSettings
+        {
+            TaskbarButtonWidth = 150,
+            TaskbarGrouping = grouping ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never,
+        });
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
