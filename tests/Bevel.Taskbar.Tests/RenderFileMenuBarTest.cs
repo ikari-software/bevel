@@ -16,6 +16,7 @@ namespace Bevel.Taskbar.Tests;
 /// <summary>Dev-only: renders the FileManager MenuBar under the real app styles so the "menu bar renders
 /// vertically with right-opening submenus" bug can be eyeballed and a fix verified. Output via
 /// BEVEL_FILEMENU_OUT.</summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderFileMenuBarTest
 {
     [AvaloniaFact]

@@ -16,6 +16,7 @@ namespace Bevel.Taskbar.Tests;
 /// window caption (drawn by Classic's AutoAttachTitleBar off the overridden caption SystemColors) can be
 /// eyeballed against the styleguide. Dumps a PNG; not a pixel assertion.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderLunaWindowTest
 {
     [AvaloniaFact]

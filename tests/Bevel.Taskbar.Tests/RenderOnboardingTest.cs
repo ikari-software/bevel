@@ -15,6 +15,7 @@ namespace Bevel.Taskbar.Tests;
 /// Dev-only visual render of the Taskbar Properties dialog's Start tab, to eyeball the new Start-menu
 /// "Programs to show" control. Vector controls in a BevelWindow → crisp at any DPI. Dumps a PNG.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderOnboardingTest
 {
     [AvaloniaFact]

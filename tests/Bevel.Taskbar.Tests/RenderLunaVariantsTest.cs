@@ -21,6 +21,7 @@ namespace Bevel.Taskbar.Tests;
 /// 12 looks can be eyeballed. Set BEVEL_LUNA_VARIANTS_DIR to dump one PNG per combo (colour-gloss.png).
 /// Blue-Hybrid must match the current tuned look (the colour axis is identity for Blue).
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderLunaVariantsTest
 {
     [AvaloniaFact]

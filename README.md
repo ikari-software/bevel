@@ -2,24 +2,26 @@
 
 **Bevel** is a cross-platform desktop **shell replacement** — a themable desktop,
 taskbar (window list, start menu, system tray, clock) and a Windows-2000-Explorer-style
-file manager — all fully owner-drawn in C# / [Avalonia](https://avaloniaui.net/) and
-rendered pixel-identically on macOS, Windows and Linux. The default look is the
-Windows 2000 "Classic" theme. Identifiers are frozen at M0: reverse-DNS `pl.ikari.bevel`,
-URL scheme `bevel://`.
+file manager — all fully owner-drawn in C# / [Avalonia](https://avaloniaui.net/). It targets
+**macOS today** (Windows and Linux PALs are planned). The default look is the Windows 2000
+"Classic" theme, with a switchable **Luna** (XP) theme and a Flat/Whistler theme in design.
+Identifiers are frozen: reverse-DNS `pl.ikari.bevel`, URL scheme `bevel://`.
 
 The full design lives in [`docs/spec/`](docs/spec/) — start with
 [`00-master-plan.md`](docs/spec/00-master-plan.md) and
 [`01-architecture.md`](docs/spec/01-architecture.md).
 
-## Status: M0 — Bootstrap scaffold
+## Status
 
-This is the **M0 bootstrap**: a buildable, trimmed solution that boots an Avalonia
-window on macOS and establishes the project graph. It is the foundation, **not** the
-product — feature modules are placeholders and the platform layers are stubs.
+Working macOS shell, well past the bootstrap. The taskbar (window list with grouping,
+Start menu, adaptive system tray, clock), the Win2000 + Luna theme engines, a multi-process
+split (`--role` launcher/core/taskbar + per-window Explorer processes), a real macOS platform
+layer with a Swift helper (window/tray enumeration over gRPC/UDS), and a Windows-2000-style
+file manager (navigation, tabs, streaming enumeration, drag-drop, rename, Folder Options,
+selectable info panel) are all implemented. Code-signing + notarization + a DMG release lane
+exist. `Bevel.Pal.Windows` / `Bevel.Pal.Linux` and a Flat theme are still to come.
 
-Per master-plan §3 R9 the M0 solution is trimmed to the **macOS-v1 + Fake** slice.
-`Bevel.Pal.Windows`, `Bevel.Pal.Linux`, `Bevel.Themes.Luna`, `Bevel.Themes.Win11`
-and the Linux/Windows helpers are added when their platform tracks start.
+See open work with `bd ready`; the design spec is in [`docs/spec/`](docs/spec/).
 
 ## Layout
 
@@ -28,22 +30,25 @@ Bevel.sln
 global.json / Directory.Build.props / Directory.Packages.props   # SDK pin + CPM
 src/
   Bevel.Pal.Abstractions   # capability-oriented PAL interfaces + DTOs (BCL only)
-  Bevel.Core               # domain / services / settings placeholder
-  Bevel.Pal.Fake           # deterministic in-memory PAL (--pal=fake, default)
-  Bevel.Pal.MacOS          # macOS PAL impl stubs (AppKit / helper client land here)
-  Bevel.Ipc                # gRPC/proto helper contract placeholder -> proto/
-  Bevel.UI                 # shared chrome primitives (Avalonia)
-  Bevel.Themes.Win2000     # default theme (references Classic.Avalonia.Theme)
-  Bevel.Desktop            # desktop surface module (placeholder)
-  Bevel.Taskbar            # taskbar module (placeholder)
-  Bevel.FileManager        # file manager module (placeholder)
-  Bevel.App                # Avalonia executable, composition root (Hosting + DI)
-tests/
-  Bevel.Pal.ContractTests  # PAL contract assertions vs Fake
-  Bevel.Core.Tests         # unit test placeholder
-  Bevel.UI.Tests           # Avalonia.Headless UI smoke test
-native/helper-macos/       # Swift Package skeleton (BevelHelper) — gRPC/UDS is a later task
-proto/                     # bevel.helper.v1.proto placeholder
+  Bevel.Core               # domain / services / settings / VFS (no Avalonia — ARCH-02)
+  Bevel.Pal.Fake           # deterministic in-memory PAL (--pal=fake)
+  Bevel.Pal.MacOS          # macOS PAL: AppKit interop, helper client, window/tray/icons
+  Bevel.Ipc                # gRPC-over-UDS helper transport (nonce auth)
+  Bevel.ShellCore.Ipc      # taskbar <-> core UDS transport
+  Bevel.Interop            # ObjC interop + automation control socket (bevel:// / CLI)
+  Bevel.UI                 # shared chrome (BevelWindow, Glyphs, theming services)
+  Bevel.Themes.Win2000     # default theme (aliases Classic.Avalonia.Theme)
+  Bevel.Themes.Luna        # Luna (XP) glossy vector ControlThemes
+  Bevel.Desktop            # desktop surface window
+  Bevel.Taskbar            # taskbar, Start menu, tray, background ShellModel
+  Bevel.FileManager        # Explorer window + components + VFS UI
+  Bevel.App                # executable: composition root, --role/--pal, window factories
+  bevelctl                 # small CLI
+tests/                     # xUnit + Avalonia.Headless (per-project test suites)
+benchmarks/Bevel.Benchmarks# BenchmarkDotNet (not in the solution)
+native/helper-macos/       # Swift helper (BevelHelper): AX/CGWindowList/SCK over gRPC
+packaging/macos/           # build-app.sh, dev-sign.sh, notarization
+proto/                     # bevel.helper.v1.proto
 ```
 
 ## Build & test

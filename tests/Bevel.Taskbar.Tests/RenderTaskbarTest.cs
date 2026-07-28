@@ -17,6 +17,7 @@ namespace Bevel.Taskbar.Tests;
 /// the full height, window buttons wrap across the rows. Dumps a PNG to the scratchpad; not a
 /// pixel assertion.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderTaskbarTest
 {
     [AvaloniaFact]

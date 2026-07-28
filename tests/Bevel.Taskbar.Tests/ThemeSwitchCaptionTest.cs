@@ -10,6 +10,7 @@ namespace Bevel.Taskbar.Tests;
 /// + ThemeVariants, i.e. incl. the Win2000 ColorScheme engine) must leave Luna's caption height at 25.
 /// Before the fix the Win2000 scheme's WindowCaptionHeightKey=18 lingered (never cleared on switch-away)
 /// and outranked Luna's 25 at the Application level, shrinking the title bar on windows opened afterwards.</summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class ThemeSwitchCaptionTest
 {
     private static void Switch(string themeId)

@@ -60,18 +60,80 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
+.NET 10 SDK (pinned in `global.json`), macOS-first. Common commands:
 
 ```bash
-# Example:
-# npm install
-# npm test
+dotnet build Bevel.sln -clp:ErrorsOnly          # build everything
+dotnet test  Bevel.sln                          # full test suite (xUnit + Avalonia.Headless)
+dotnet test  tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj   # one project
+
+# Run the shell (single-process, Fake PAL — safe for dev, no helper/AX prompts):
+dotnet run --project src/Bevel.App -- --pal=fake
+
+# Run against the real macOS PAL, split multi-process:
+dotnet run --project src/Bevel.App -- --role=launcher            # launcher supervises core + taskbar
+dotnet run --project src/Bevel.App -- --role=explorer --open-path ~/Documents
+
+# Package + code-sign a dev .app (re-run after each build so TCC grants stick — ad-hoc
+# cdhash churn otherwise forces re-granting Accessibility/Screen Recording every rebuild):
+./packaging/macos/build-app.sh && ./packaging/macos/dev-sign.sh
+
+# Reload a running dev shell:
+pkill -9 -f "Bevel.App" && <relaunch the launcher>
 ```
+
+Benchmarks live in `benchmarks/Bevel.Benchmarks` (BenchmarkDotNet; **not** in `Bevel.sln` —
+build/run explicitly). See `docs/perf.md`.
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+**Multi-process shell.** The shipped `.app` boots `--role=all` (single process). Passing
+`--role=launcher` splits it: a **launcher** supervises a **core** process and a **taskbar**
+process, and each Explorer window spawns as its own `--role=explorer` process (`--open-path`).
+`RoleProcessSupervisor` (in `Bevel.App/Supervision`) owns spawn/restart; SIGTERM handlers must
+set `ctx.Cancel` or children orphan.
+
+**Projects:**
+- `Bevel.Core` — domain, services, settings, VFS. **Must not reference Avalonia** (ARCH-02).
+- `Bevel.App` — composition root: DI wiring, `--role`/`--pal` arg parsing, entry point, window factories.
+- `Bevel.UI` — shared Avalonia chrome: `BevelWindow` (inherits Classic.Avalonia `ClassicWindow` for
+  client-drawn Win2000 chrome), `Glyphs` (self-drawn vector file icons), and the theming services
+  `ThemeService` / `LunaVariantService` / `ColorSchemeService`.
+- `Bevel.Themes.Win2000` (default; aliases Classic.Avalonia via `BasedOn`) and `Bevel.Themes.Luna`
+  (glossy vector ControlThemes). Flat/Whistler is spec-only so far (`docs/design/flat/`).
+- `Bevel.FileManager` — Explorer window + `Components/` (ItemView, InfoPane, address bar, …) + VFS UI.
+- `Bevel.Taskbar` — taskbar, Start menu, tray, and the background `ShellModel` (owns window/app/tray
+  observable collections, updated off-thread).
+- `Bevel.Desktop` — the desktop surface window.
+- `Bevel.Ipc` / `Bevel.ShellCore.Ipc` — gRPC-over-Unix-domain-socket transports (helper client;
+  taskbar↔core). Per-session HMAC **nonce** auth; socket dir hardened to 0700.
+- `Bevel.Pal.Abstractions` / `Bevel.Pal.MacOS` / `Bevel.Pal.Fake` — capability-oriented platform
+  abstraction layer (`--pal=fake` is the deterministic in-memory impl used by most tests).
+- `Bevel.Interop` — ObjC interop + the automation control socket (`bevel://` / CLI verbs).
+- `native/helper-macos/` — Swift helper: window/tray enumeration (AX + CGWindowList + ScreenCaptureKit)
+  exposed over gRPC-swift. Needs its **own** TCC grant (keyed by binary path).
+
+**Settings** persist as a single-row JSON blob in SQLite at `~/.config/bevel/settings.db`
+(`SettingsService`), polled every 750 ms so peer processes pick up changes (`settings.json` is a
+passive export). **Icons** render off-thread, cached, and are shared across processes via a
+memory-mapped BGRA pool (`MmfBgraPool`).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- **NEVER block the Avalonia UI thread** (non-negotiable). No `.Result`/`.Wait()`/`.GetAwaiter().GetResult()`
+  on the UI thread, no inline icon render / enumeration / file I/O in handlers or startup. Do heavy work
+  off-thread and marshal only the cheap result back (`Dispatcher.UIThread.Post/InvokeAsync`).
+- **Vector-only assets** — SVG or code-drawn geometry bound to theme tokens, never bitmaps. **Never
+  disable antialiasing**, even for "authenticity".
+- **"Fidelity = colours + feel + function," not pixel-perfect.** The north star is "Win2000 as if
+  designed in 2026"; tasteful cross-era extensions (XP/macOS niceties) are welcome, rendered in the skin.
+- App pins `RequestedThemeVariant="Light"` — do not add `RequestedThemeVariant`/`ThemeVariantScope`
+  overrides (popups follow `Application.ActualThemeVariant`; a Dark leak washes out menus).
+- Two runtime recolor engines (`LunaVariantService`, `ColorSchemeService`) **override** static theme
+  tokens and must be `Clear()`'d symmetrically when switching away.
+- **Task tracking is `bd` (beads), not TodoWrite/markdown.** Run `bd prime`. Persistent knowledge via
+  `bd remember`.
+- **Tests:** xUnit + Avalonia.Headless (`UseSkia()` + `UseHeadlessDrawing=false` yields real pixels via
+  `CaptureRenderedFrame()`). Theme/resource-mutating test classes share `[Collection("TaskbarTheme")]`
+  so they don't collide on the `Application.Current` singleton.
+- macOS/BSD shell syntax; conventional-commit messages.

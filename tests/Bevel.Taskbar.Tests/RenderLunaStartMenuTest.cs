@@ -17,6 +17,7 @@ namespace Bevel.Taskbar.Tests;
 /// Applies the Luna theme, drives the theme-based layout selection, detaches the popup content, and
 /// captures it. Not a pixel assertion — it proves the Luna layout renders and dumps an image.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderLunaStartMenuTest
 {
     [AvaloniaFact]

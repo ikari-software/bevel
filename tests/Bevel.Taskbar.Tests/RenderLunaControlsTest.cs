@@ -17,6 +17,7 @@ namespace Bevel.Taskbar.Tests;
 /// radio, textbox, progress bar, combo box, slider, group box and tabs can be eyeballed against the
 /// styleguide (docs/design/luna/preview.png). Dumps a PNG; not a pixel assertion.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderLunaControlsTest
 {
     [AvaloniaFact]

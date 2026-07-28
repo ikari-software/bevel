@@ -12,6 +12,7 @@ namespace Bevel.Taskbar.Tests;
 /// Purple colour axis compresses the taskbar/caption light→dark spread (LightMul 0.6) and violet steps
 /// read weakly, so the bands are re-expanded. Asserts the generated Purple caption gradient keeps a
 /// meaningful lightness spread — a regression to no boost would drop it well below this floor.</summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class LunaPurpleBandContrastTest
 {
     // HSL lightness = (max+min)/2 of the normalized RGB channels.

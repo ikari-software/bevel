@@ -16,6 +16,7 @@ namespace Bevel.Taskbar.Tests;
 /// white item area, cream icon gutter, rounded corners, right-aligned accelerators, submenu arrow,
 /// disabled greying. Opens a real <see cref="ContextMenu"/> and captures its popup TopLevel to a PNG.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class RenderLunaMenuTest
 {
     [AvaloniaFact]

@@ -13,6 +13,7 @@ namespace Bevel.Taskbar.Tests;
 /// <c>ThemeFlat.axaml</c> dictionary actually loads and its overrides win over the base tokens.
 /// Each test restores the default statics so it doesn't perturb the shared app for other renders.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class ThemeEngineTests
 {
     private static object? Resolve(string key)

@@ -22,6 +22,7 @@ namespace Bevel.Taskbar.Tests;
 /// base palette/metrics. These assert the engine end-to-end and dump a PNG of the Luna push-buttons
 /// to eyeball against docs/design/luna/styleguide.html.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize theme-mutating tests: they share Application.Current (bevel-hd05)
 public class LunaThemeTests
 {
     private static object? Resolve(string key)
