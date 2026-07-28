@@ -27,6 +27,11 @@ public partial class FileManagerWindow : BevelWindow
     private VfsRoot? _vfsRoot;
     private FileManagerController? _controller;
     private Core.SettingsService? _settings;
+    private Bevel.Pal.Abstractions.IFileOpener? _fileOpener;
+
+    /// <summary>Wire the OS default-handler opener (set by the window factory). Activating a FILE
+    /// (double-click / Enter / context Open) opens it with the OS default app.</summary>
+    public void SetFileOpener(Bevel.Pal.Abstractions.IFileOpener opener) => _fileOpener = opener;
     private readonly ItemContextMenu _itemMenu = new();
     private readonly FolderContextMenu _folderMenu = new();
 
@@ -580,6 +585,24 @@ public partial class FileManagerWindow : BevelWindow
         if (e.Item.Node.Kind is VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot)
         {
             NavigateTo(ToNavigablePath(e.Item.Path));
+            return;
+        }
+
+        // A file: open it with the OS default handler (bevel-wqus). Resolve the on-disk path via the
+        // provider (a file-scheme path's Value is already the real path; a mounted node resolves too).
+        string? local = null;
+        try { local = _vfsRoot?.GetProvider(e.Item.Path).ResolveEffectivePath(e.Item.Path); } catch { }
+        local ??= e.Item.Path.Scheme == "file" ? e.Item.Path.Value : null;
+        if (!string.IsNullOrEmpty(local) && _fileOpener is not null)
+            _ = OpenFileAsync(local!);
+    }
+
+    private async System.Threading.Tasks.Task OpenFileAsync(string localPath)
+    {
+        try { await _fileOpener!.OpenPathAsync(localPath); }
+        catch (Exception ex)
+        {
+            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowMessageAsync(this);
         }
     }
 

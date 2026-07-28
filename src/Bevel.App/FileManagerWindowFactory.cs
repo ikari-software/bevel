@@ -2,6 +2,7 @@ using Bevel.Core;
 using Bevel.Core.Vfs;
 using Bevel.FileManager;
 using Bevel.FileManager.FileOperations;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.App;
 
@@ -25,14 +26,16 @@ public sealed class FileManagerWindowFactory
     private readonly SettingsService _settings;
     private readonly IConflictHandler _conflictHandler;
     private readonly FileManagerWindowRegistry _registry;
+    private readonly IFileOpener _fileOpener;
 
     public FileManagerWindowFactory(VfsRoot vfsRoot, SettingsService settings, IConflictHandler conflictHandler,
-        FileManagerWindowRegistry registry)
+        FileManagerWindowRegistry registry, IFileOpener fileOpener)
     {
         _vfsRoot = vfsRoot;
         _settings = settings;
         _conflictHandler = conflictHandler;
         _registry = registry;
+        _fileOpener = fileOpener;
     }
 
     /// <summary>
@@ -52,6 +55,7 @@ public sealed class FileManagerWindowFactory
         var window = new FileManagerWindow();
         window.SetVfsRoot(_vfsRoot);
         window.SetSettingsService(_settings);
+        window.SetFileOpener(_fileOpener); // double-click / Open a file -> OS default handler
         window.SetSearchService(new SearchService(_vfsRoot)); // Find/Search shares the app VfsRoot
         window.SetController(controller); // also navigates to Home internally (fixed contract)
         // Open in the user's chosen default view (Folder Options). Parse the persisted string here — the

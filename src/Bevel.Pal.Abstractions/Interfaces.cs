@@ -127,6 +127,14 @@ public interface IAppEnvironment
     event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
 }
 
+/// <summary>Opens a filesystem path with the OS default handler — what double-clicking a document (or
+/// the "Open" verb) does in a file manager. A purely local operation (no shell-core round-trip), so
+/// every process implements it directly rather than proxying through the owner.</summary>
+public interface IFileOpener
+{
+    Task OpenPathAsync(string path, CancellationToken ct = default);
+}
+
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>
 public interface IPermissionBroker
 {

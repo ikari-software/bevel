@@ -45,6 +45,7 @@ public static class CompositionRoot
         services.AddSingleton<IFileOperations, Pal.Fake.FakeFileOperations>();
         services.AddSingleton<IIconProvider, Pal.Fake.FakeIconProvider>();
         services.AddSingleton<IAppEnvironment, Pal.Fake.FakeAppEnvironment>();
+        services.AddSingleton<IFileOpener, Pal.Fake.FakeFileOpener>();
         services.AddSingleton<IPermissionBroker, Pal.Fake.FakePermissionBroker>();
         services.AddSingleton<IAudioPlayback, Pal.Fake.FakeAudioPlayback>();
         services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
@@ -73,6 +74,8 @@ public static class CompositionRoot
             isWriter: role is ShellRole.All or ShellRole.Core));
 
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
+        // Opening a document is a purely local `open`(1) spawn — no shell-core proxy, every role direct.
+        services.AddSingleton<IFileOpener, Pal.MacOS.MacOSFileOpener>();
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
         services.AddSingleton<IDockController, Pal.MacOS.MacOSDockController>();
         services.AddSingleton<IVolumeLabelSource, Pal.MacOS.MacOSVolumeLabelSource>();
