@@ -63,6 +63,13 @@ public class RenderLunaStartMenuTest
                 Content = content,
             };
             window.Show();
+            // Settle the layout before capturing: async icon loads + the theme-based two-column layout
+            // selection can leave the first frame narrow under load, which flaked the width assertion.
+            for (var i = 0; i < 60 && window.Bounds.Width < 340; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
             Dispatcher.UIThread.RunJobs();
 
             var frame = window.CaptureRenderedFrame();

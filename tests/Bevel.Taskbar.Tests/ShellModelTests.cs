@@ -199,23 +199,28 @@ public sealed class ShellModelTests
     {
         var manager = new StubWindowManager();
 
+        // StatusText/ContentOpacity describe the click AFFORDANCE for the current state, so assert them
+        // before the click. The click then optimistically flips the state (bevel-nxic), so post-click
+        // StatusText intentionally reflects the new state, not the old one.
         var minimized = new TaskItemViewModel(Window("min", "Minimized", minimized: true), manager);
-        minimized.ActivateCommand.Execute(null);
-        Assert.Equal(["restore:min", "activate:min"], manager.Actions);
         Assert.Contains("click to restore", minimized.StatusText);
         Assert.Equal(0.55, minimized.ContentOpacity);
+        minimized.ActivateCommand.Execute(null);
+        Assert.Equal(["restore:min", "activate:min"], manager.Actions);
+        Assert.False(minimized.IsMinimized);   // optimistic: un-minimized on the click
 
         manager.Actions.Clear();
         var active = new TaskItemViewModel(Window("active", "Active", focused: true), manager);
+        Assert.Contains("click to minimize", active.StatusText);
         active.ActivateCommand.Execute(null);
         Assert.Equal(["minimize:active"], manager.Actions);
-        Assert.Contains("click to minimize", active.StatusText);
+        Assert.True(active.IsMinimized);       // optimistic: minimized on the click
 
         manager.Actions.Clear();
         var inactive = new TaskItemViewModel(Window("open", "Open"), manager);
+        Assert.Contains("click to activate", inactive.StatusText);
         inactive.ActivateCommand.Execute(null);
         Assert.Equal(["activate:open"], manager.Actions);
-        Assert.Contains("click to activate", inactive.StatusText);
     }
 
     private static ForeignWindow Window(

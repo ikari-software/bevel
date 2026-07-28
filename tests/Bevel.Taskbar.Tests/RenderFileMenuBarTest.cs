@@ -143,9 +143,17 @@ public class RenderFileMenuBarTest
                 Content = content,
             };
             window.Show();
-            Dispatcher.UIThread.RunJobs();
-
-            var frame = window.CaptureRenderedFrame();
+            // Settle the layout AND the capture: async icon loads + the two-column layout selection can
+            // leave the first frame incomplete, and on the suite's shared headless surface under load
+            // CaptureRenderedFrame can transiently return null — retry until we get a real frame (flaky).
+            Avalonia.Media.Imaging.WriteableBitmap? frame = null;
+            for (var i = 0; i < 80 && (frame is null || window.Bounds.Width < 340); i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+                frame = window.CaptureRenderedFrame();
+            }
+            Assert.NotNull(frame);
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_PURPLE_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-purple.png");
             frame!.Save(outPath);

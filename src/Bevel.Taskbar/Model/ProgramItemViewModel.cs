@@ -80,11 +80,13 @@ public sealed class ProgramItemViewModel : ObservableObject
 
     private async Task LaunchAsync()
     {
+        // Dismiss the menu immediately (bevel-nxic) instead of holding it open for the launch
+        // round-trip (a cross-process RPC in split mode). The launch then proceeds fire-and-forget.
+        Launched?.Invoke();
         if (_appEnv is not null)
         {
             try { await _appEnv.LaunchAsync(_appId); }
             catch (Exception ex) { TaskbarLog.Swallowed("Program.Launch", ex); }
         }
-        Launched?.Invoke();
     }
 }

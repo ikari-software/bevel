@@ -237,11 +237,13 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         {
             if (IsMinimized)
             {
+                IsMinimized = false;   // optimistic: the button un-dims on the click, not a round-trip later
                 await _windows.RestoreAsync(Id);
                 await _windows.ActivateAsync(Id);
             }
             else if (IsFocused)
             {
+                IsMinimized = true; IsFocused = false;   // optimistic: button un-presses + dims immediately
                 await _windows.MinimizeAsync(Id);
             }
             else

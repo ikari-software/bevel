@@ -53,6 +53,22 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
 
     // ── IWindowManager ──────────────────────────────────────────────────
 
+    // A wedged helper (blocked on an AX call to a hung app) must not hang the awaiting UI action
+    // indefinitely (bevel-dem). Every interactive command carries a bounded deadline: on expiry the
+    // linked token cancels the RPC and the caller's catch treats it as "helper unavailable → next
+    // poll reconciles", instead of a dead click. The helper self-caps AX messaging at ~1s per element,
+    // and forwardClick can walk several, so 3s leaves headroom while staying imperceptible on failure.
+    private static readonly TimeSpan InteractiveRpcTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>A CTS linked to <paramref name="ct"/> that also cancels after the interactive deadline.
+    /// Dispose it (via <c>using</c>) after the call.</summary>
+    private static CancellationTokenSource TimeoutScope(CancellationToken ct)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(InteractiveRpcTimeout);
+        return cts;
+    }
+
     public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
     {
         if (_disposed) return Array.Empty<ForeignWindow>();
@@ -75,32 +91,36 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
         await ws.ActivateAsync(new WindowRef { WindowId = id.Value },
-            headers: AuthHeader(), cancellationToken: ct);
+            headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
     public async Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
         await ws.MinimizeAsync(new WindowRef { WindowId = id.Value },
-            headers: AuthHeader(), cancellationToken: ct);
+            headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
     public async Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
         await ws.RestoreAsync(new WindowRef { WindowId = id.Value },
-            headers: AuthHeader(), cancellationToken: ct);
+            headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
     public async Task CloseAsync(ForeignWindowId id, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
         await ws.CloseAsync(new WindowRef { WindowId = id.Value },
-            headers: AuthHeader(), cancellationToken: ct);
+            headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
     public async Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default)
@@ -108,8 +128,9 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         if (string.IsNullOrEmpty(bundleId)) return;
         var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
         await ws.TerminateAppAsync(new TerminateAppRequest { BundleId = bundleId, Force = force },
-            headers: AuthHeader(), cancellationToken: ct);
+            headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)

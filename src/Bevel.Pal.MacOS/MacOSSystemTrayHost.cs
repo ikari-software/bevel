@@ -80,6 +80,10 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         CancellationToken ct = default)
     {
         if (_disposed) return false;
+        // Bound the click on a wedged helper (bevel-dem): forwardClick can walk several AX calls, each
+        // capped ~1s helper-side, so a 3s deadline keeps a dead tray click from hanging the caller.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
         try
         {
             var tray = GetTrayClient();
@@ -90,13 +94,17 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                     ? ForwardClickRequest.Types.Button.Right
                     : ForwardClickRequest.Types.Button.Left,
                 Modifiers = (uint)modifiers,
-            }, headers: AuthHeader(), cancellationToken: ct);
+            }, headers: AuthHeader(), cancellationToken: cts.Token);
             return reply.Delivered;
         }
-        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.Cancelled or StatusCode.DeadlineExceeded)
         {
             _logger.LogWarning("TrayService unavailable for ForwardClick: {Message}", ex.Message);
             return false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return false;   // our deadline fired (not the caller cancelling) — treat as not delivered
         }
     }
 
