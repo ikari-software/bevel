@@ -110,7 +110,7 @@ if (args.Length > 3 && string.Equals(args[3], "CtxMenu", StringComparison.Ordina
     var noop = new Action(() => { });
     var actions = new Bevel.FileManager.Components.ContextMenuActions
     {
-        Open = noop, OpenWith = noop, SendTo = noop, Cut = noop, Copy = noop,
+        Open = noop, SendTo = noop, Cut = noop, Copy = noop,
         Paste = noop, PasteShortcut = noop, CreateShortcut = noop, Delete = noop,
         Rename = noop, Properties = noop, Undo = noop, Refresh = noop,
         CanPaste = () => true, CanUndo = () => true,
