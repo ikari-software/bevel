@@ -278,15 +278,22 @@ public partial class FileManagerWindow : BevelWindow
     /// navigation/selection/clipboard state the window used to own. Becomes tab 0 (bevel-6j9);
     /// additional tabs are opened via <see cref="NewTab"/>.
     /// </summary>
-    public void SetController(FileManagerController controller)
+    public void SetController(FileManagerController controller) => SetController(controller, null);
+
+    /// <summary>Wires the controller and navigates ONCE to <paramref name="startDirectory"/> (or Home).
+    /// The factory previously navigated to Home here and then again to the real start dir, so a
+    /// places-spawned Explorer kicked off a wasted Home enumeration on the fresh window before the
+    /// second nav superseded it (bevel-hvce). Passing the start dir here fires a single load.</summary>
+    public void SetController(FileManagerController controller, VfsPath? startDirectory)
     {
-        var stripId = TabStrip.AddTab(LabelFor(HomePath));
+        var start = startDirectory ?? HomePath;
+        var stripId = TabStrip.AddTab(LabelFor(start));
         var session = new TabSession { Controller = controller, StripId = stripId };
         _tabs.Add(session);
         _activeTab = session;
         AttachController(controller);
         TabStrip.SetActive(stripId);
-        controller.NavigateTo(HomePath);
+        controller.NavigateTo(start);
     }
 
     // ── Tabbed browsing (bevel-6j9) ─────────────────────────────────────

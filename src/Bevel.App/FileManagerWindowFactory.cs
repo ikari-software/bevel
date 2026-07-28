@@ -57,15 +57,14 @@ public sealed class FileManagerWindowFactory
         window.SetSettingsService(_settings);
         window.SetFileOpener(_fileOpener); // double-click / Open a file -> OS default handler
         window.SetSearchService(new SearchService(_vfsRoot)); // Find/Search shares the app VfsRoot
-        window.SetController(controller); // also navigates to Home internally (fixed contract)
-        // Open in the user's chosen default view (Folder Options). Parse the persisted string here — the
-        // ViewMode enum lives in Bevel.FileManager, so Bevel.Core stores it as a name.
+        // Open in the user's chosen default view (Folder Options), set BEFORE the single navigation so
+        // the start directory streams straight into the right view. The ViewMode enum lives in
+        // Bevel.FileManager, so Bevel.Core stores it as a name.
         if (System.Enum.TryParse<Bevel.FileManager.Components.ViewMode>(_settings.Current.DefaultViewMode, out var vm))
             window.SetViewMode(vm);
-        controller.NavigateTo(startDirectory); // land on the requested folder; a no-op push if
-                                                // startDirectory == Home (NavigationStack dedupes
-                                                // identical consecutive pushes), so this preserves
-                                                // observable startup behavior for the main window.
+        // Navigate ONCE to the requested folder (bevel-hvce): the old path navigated to Home in
+        // SetController and then again here, wasting a cold Home enumeration on the fresh window.
+        window.SetController(controller, startDirectory);
 
         window.Show();
         // Track it so the automation surface (IShellSurface / M4-B) can address and enumerate it.
