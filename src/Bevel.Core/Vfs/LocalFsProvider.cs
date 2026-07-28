@@ -436,16 +436,32 @@ internal static class LocalTrash
     }
 
     /// <summary>Recursively copies every file and subdirectory of <paramref name="source"/> into
-    /// <paramref name="destination"/> (which is created if needed).</summary>
+    /// <paramref name="destination"/> (which is created if needed). Symlinks are RECREATED as links,
+    /// never followed: following a directory symlink would copy outside the tree — or recurse forever
+    /// if it points at an ancestor (bevel-brax).</summary>
     public static void CopyDirectory(string source, string destination)
     {
         System.IO.Directory.CreateDirectory(destination);
 
         foreach (var file in System.IO.Directory.EnumerateFiles(source))
-            System.IO.File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+        {
+            var dest = Path.Combine(destination, Path.GetFileName(file));
+            var linkTarget = new System.IO.FileInfo(file).LinkTarget;
+            if (linkTarget is not null)
+                System.IO.File.CreateSymbolicLink(dest, linkTarget);   // recreate the link, don't copy its target's bytes
+            else
+                System.IO.File.Copy(file, dest);
+        }
 
         foreach (var dir in System.IO.Directory.EnumerateDirectories(source))
-            CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
+        {
+            var dest = Path.Combine(destination, Path.GetFileName(dir));
+            var linkTarget = new System.IO.DirectoryInfo(dir).LinkTarget;
+            if (linkTarget is not null)
+                System.IO.Directory.CreateSymbolicLink(dest, linkTarget);   // recreate the dir symlink; do NOT recurse into it
+            else
+                CopyDirectory(dir, dest);   // a real subdirectory — recurse
+        }
     }
 }
 
