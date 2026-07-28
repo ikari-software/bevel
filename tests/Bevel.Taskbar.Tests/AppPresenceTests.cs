@@ -94,6 +94,16 @@ public class AppPresenceTests
     }
 
     [Fact]
+    public void Colour_sort_maps_rgb_to_hue()
+    {
+        Assert.Equal(0, TaskbarItemsProjector.RgbToHue(1, 0, 0), 1);     // red
+        Assert.Equal(60, TaskbarItemsProjector.RgbToHue(1, 1, 0), 1);    // yellow
+        Assert.Equal(120, TaskbarItemsProjector.RgbToHue(0, 1, 0), 1);   // green
+        Assert.Equal(240, TaskbarItemsProjector.RgbToHue(0, 0, 1), 1);   // blue
+        Assert.Equal(0, TaskbarItemsProjector.RgbToHue(0.5, 0.5, 0.5), 1); // grey → 0
+    }
+
+    [Fact]
     public void Clicking_a_presence_button_reopens_via_activate()
     {
         var wm = new RecordingWm();

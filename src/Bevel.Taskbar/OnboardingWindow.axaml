@@ -188,6 +188,7 @@
                                 <ComboBox x:Name="SortModeCombo" FontSize="11" Width="160" VerticalAlignment="Center">
                                     <ComboBoxItem>Open order (classic)</ComboBoxItem>
                                     <ComboBoxItem>By app name (A–Z)</ComboBoxItem>
+                                    <ComboBoxItem>By icon colour 🌈</ComboBoxItem>
                                 </ComboBox>
                             </StackPanel>
                             <TextBlock Text="How buttons are ordered. Open order keeps a button where it opened; by-name sorts A–Z."

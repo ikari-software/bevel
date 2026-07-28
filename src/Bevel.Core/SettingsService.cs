@@ -626,6 +626,9 @@ public enum TaskbarWindowSort
 
     /// <summary>By app name, A→Z.</summary>
     Name,
+
+    /// <summary>By the icon's dominant hue (red→orange→…→violet). Yes, really — a rainbow taskbar.</summary>
+    Colour,
 }
 
 /// <summary>bevel-cust.buttons: window-button label visibility.</summary>
