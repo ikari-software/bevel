@@ -68,7 +68,13 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     public async Task<CoreResponse> SendAsync(CoreCommand cmd, CancellationToken ct = default)
     {
         await EnsureConnectedAsync(ct).ConfigureAwait(false);
-        var raw = await _client.RequestAsync(CoreProtocol.Serialize(cmd), ct).ConfigureAwait(false);
+        // Bound the command on a live-but-stuck core (bevel-dem): the correlated response TCS would
+        // otherwise never complete and hang the awaiting UI action forever (a disconnect faults it,
+        // but a core that's up-but-wedged never sends the frame). On the 5s deadline the linked token
+        // cancels the request; the caller treats the cancellation as "unavailable -> next poll reconciles".
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        var raw = await _client.RequestAsync(CoreProtocol.Serialize(cmd), cts.Token).ConfigureAwait(false);
         return CoreProtocol.Deserialize<CoreResponse>(raw);
     }
 
