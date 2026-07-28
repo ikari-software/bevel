@@ -111,7 +111,10 @@ public static class AppleEventBridge
                     await automation.RevealAsync(items, new RevealOptions(), default);
                     break;
                 case AppleEventInbound.Verb.Delete:
-                    await automation.DeleteAsync(items, DeleteMode.Trash, default);
+                    // Destructive + no OS gate on inbound events → require the user's explicit consent
+                    // before trashing files a script asked us to delete (bevel-twq).
+                    if (await ConfirmDestructiveAsync("move to Trash", items.Count))
+                        await automation.DeleteAsync(items, DeleteMode.Trash, default);
                     break;
                 case AppleEventInbound.Verb.Duplicate:
                     await automation.DuplicateAsync(items, target: null, default);
@@ -123,7 +126,8 @@ public static class AppleEventBridge
                         break;
                     }
                     var destination = (await resolver.ResolveAsync(ConvertSpec(request.Container))).FirstOrDefault();
-                    await automation.MoveAsync(items, destination, default);
+                    if (await ConfirmDestructiveAsync("move", items.Count))
+                        await automation.MoveAsync(items, destination, default);
                     break;
                 case AppleEventInbound.Verb.SetSelection:
                     // `set selection to <items>`: select them in the frontmost window.
@@ -138,6 +142,21 @@ public static class AppleEventBridge
             Console.Error.WriteLine($"[apple-event] {request.Verb} failed: {ex.Message}");
         }
     }
+
+    /// <summary>Modal, user-facing consent for an inbound destructive Apple Event (bevel-twq). Runs on
+    /// the UI thread; owned by a visible Explorer window when one exists, otherwise shown ownerless.
+    /// Defaults to DENY if dismissed.</summary>
+    static Task<bool> ConfirmDestructiveAsync(string verb, int count)
+        => Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var owner = (Avalonia.Application.Current?.ApplicationLifetime
+                    as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?
+                .Windows.FirstOrDefault(w => w.IsVisible);
+            var noun = count == 1 ? "1 item" : $"{count} items";
+            var dialog = new ConfirmDialog("Bevel — Automation Request",
+                $"Another application is asking to {verb} {noun} via automation.\n\nAllow this?");
+            return await dialog.ConfirmAsync(owner);
+        });
 
     // ── AeSpecifier (Pal-neutral) → ObjectSpecifier (command model) ───────────────────────────
 
