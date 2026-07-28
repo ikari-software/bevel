@@ -29,6 +29,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private readonly Dictionary<string, TrayItem> _trayById = new();
     private IReadOnlyList<InstalledApp> _installed = Array.Empty<InstalledApp>();
 
+    // Non-null ONLY during StartAsync's seeding window (bevel-8ck): PAL deltas that fire between
+    // subscribing and applying the snapshot buffer their projection mutation here (guarded by _gate)
+    // instead of racing the seed. After the snapshot is applied they replay in arrival order, then this
+    // goes null and handlers mutate the projection directly.
+    private List<Action>? _seedBuffer = new();
+
     public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, ISystemTrayHost tray,
         string socketPath, byte[] nonce)
     {
@@ -49,18 +55,10 @@ public sealed class ShellCoreServer : IAsyncDisposable
     /// </summary>
     public async Task StartAsync(CancellationToken ct = default)
     {
-        var initialWindows = await _windows.EnumerateAsync(ct).ConfigureAwait(false);
-        var initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false);
-        var initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false);
-        lock (_gate)
-        {
-            foreach (var w in initialWindows)
-                _windowById[w.Id.Value] = w;
-            _installed = initialApps;
-            foreach (var t in initialTray)
-                _trayById[t.Id.Value] = t;
-        }
-
+        // Subscribe BEFORE snapshotting (bevel-8ck). The PAL's delta streams are already live, so a
+        // subscribe-AFTER-snapshot order dropped any add/remove that landed in the gap — permanently,
+        // since (unlike windows) the tray has no reconcile backstop to re-derive it. While _seedBuffer
+        // is non-null these handlers buffer their mutation instead of applying it.
         _windows.WindowOpened += OnWindowOpened;
         _windows.WindowClosed += OnWindowClosed;
         _windows.WindowChanged += OnWindowChanged;
@@ -71,6 +69,25 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _tray.ItemAdded += OnTrayItemAdded;
         _tray.ItemRemoved += OnTrayItemRemoved;
         _tray.ItemUpdated += OnTrayItemUpdated;
+
+        var initialWindows = await _windows.EnumerateAsync(ct).ConfigureAwait(false);
+        var initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false);
+        var initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            foreach (var w in initialWindows)
+                _windowById[w.Id.Value] = w;
+            _installed = initialApps;
+            foreach (var t in initialTray)
+                _trayById[t.Id.Value] = t;
+
+            // Replay deltas buffered during the snapshot IN ORDER, then leave seeding mode — so an
+            // add-then-remove in the gap ends removed, and an item removed after the snapshot was
+            // taken doesn't linger as a ghost. From here handlers mutate the projection directly.
+            foreach (var apply in _seedBuffer!)
+                apply();
+            _seedBuffer = null;
+        }
 
         _server.Start();
     }
@@ -101,21 +118,30 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private void OnWindowClosed(object? _, ForeignWindow w)
     {
         lock (_gate)
+        {
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById.Remove(w.Id.Value)); return; }
             _windowById.Remove(w.Id.Value);
+        }
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.WindowClosed, Window: w)));
     }
 
     private void UpsertAndBroadcast(ForeignWindow w, CoreEventKind kind)
     {
         lock (_gate)
+        {
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
             _windowById[w.Id.Value] = w;
+        }
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, Window: w)));
     }
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps)
     {
         lock (_gate)
+        {
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => _installed = apps); return; }
             _installed = apps;   // keep the connect-time snapshot fresh for future clients too
+        }
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: apps)));
     }
 
@@ -131,14 +157,20 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private void OnTrayItemRemoved(object? _, TrayItem t)
     {
         lock (_gate)
+        {
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById.Remove(t.Id.Value)); return; }
             _trayById.Remove(t.Id.Value);
+        }
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t)));
     }
 
     private void UpsertTrayAndBroadcast(TrayItem t, CoreEventKind kind)
     {
         lock (_gate)
+        {
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById[t.Id.Value] = t); return; }
             _trayById[t.Id.Value] = t;
+        }
         _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, TrayItem: t)));
     }
 

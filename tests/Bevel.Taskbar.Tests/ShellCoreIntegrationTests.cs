@@ -202,6 +202,58 @@ public sealed class ShellCoreIntegrationTests
             "the forwarded click should reach the core's tray host with its button + modifiers");
     }
 
+    // bevel-8ck: a tray item that appears in the subscribe→snapshot gap must NOT be lost. The core now
+    // subscribes before snapshotting and buffers gap deltas; here the add fires during GetItemsAsync
+    // (so it lands in the gap) and must still reach the client's connect-time snapshot.
+    [Fact]
+    public async Task Tray_add_during_the_snapshot_gap_is_not_lost()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"), Tray("2:20", "Beta"));
+        pal.OnGetItems = () => pal.RaiseTrayItemAdded(Tray("3:30", "Gamma")); // lands in the gap
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        await core.EnsureConnectedAsync(Ct);
+        // All three — the two seeded AND the gap add — must be in the connect snapshot.
+        await WaitFor(() => added.Contains("3:30") && added.Contains("1:10") && added.Contains("2:20"),
+            "the item added during the snapshot gap must survive into the client's snapshot");
+    }
+
+    // bevel-8ck: the mirror case — an item REMOVED in the gap must not linger as a ghost. The snapshot
+    // (taken before the removal) still lists it, but the buffered remove replays over the seed.
+    [Fact]
+    public async Task Tray_remove_during_the_snapshot_gap_does_not_ghost()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"), Tray("2:20", "Beta"));
+        pal.OnGetItems = () => pal.RaiseTrayItemRemoved(Tray("1:10", "Alpha")); // removed in the gap
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => added.Contains("2:20"), "the surviving item should be in the snapshot");
+        // Give any erroneous "1:10" a chance to arrive, then assert it never did (removed-in-gap wins).
+        await Task.Delay(150);
+        Assert.DoesNotContain("1:10", added);
+    }
+
     /// <summary>
     /// An in-memory PAL that plays both roles the core owns — window manager and app environment. It
     /// seeds the initial projection, lets a test raise deltas on demand, and records the commands the
@@ -306,8 +358,14 @@ public sealed class ShellCoreIntegrationTests
         public void RaiseInstalledAppsChanged(IReadOnlyList<InstalledApp> apps) => InstalledAppsChanged?.Invoke(this, apps);
 
         // ── ISystemTrayHost ──
-        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default) =>
-            ValueTask.FromResult<IReadOnlyList<TrayItem>>(_trayItems.ToArray());
+        /// <summary>Test seam (bevel-8ck): fires while the core is taking its tray snapshot, so a test can
+        /// inject a delta into the exact subscribe→snapshot gap the race lived in.</summary>
+        public Action? OnGetItems;
+        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
+        {
+            OnGetItems?.Invoke();
+            return ValueTask.FromResult<IReadOnlyList<TrayItem>>(_trayItems.ToArray());
+        }
 
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
 
