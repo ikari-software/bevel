@@ -174,6 +174,25 @@ internal static class AppKitInterop
         }
     }
 
+    /// <summary>[workspace URLsForApplicationsToOpenURL:url] — an NSArray&lt;NSURL*&gt; of every app that
+    /// can open the URL, most-suitable first (macOS 12+). The array is AUTORELEASED; do NOT release it.
+    /// Returns IntPtr.Zero when AppKit/workspace/url is unavailable.</summary>
+    public static IntPtr URLsForApplicationsToOpenURL(IntPtr workspace, IntPtr url)
+    {
+        if (workspace == IntPtr.Zero || url == IntPtr.Zero)
+            return IntPtr.Zero;
+        return SendIntPtr_IntPtr(workspace, Sel("URLsForApplicationsToOpenURL:"), url);
+    }
+
+    /// <summary>[workspace URLForApplicationToOpenURL:url] — the NSURL of the DEFAULT handler for the
+    /// URL, or IntPtr.Zero. Autoreleased; do NOT release.</summary>
+    public static IntPtr URLForApplicationToOpenURL(IntPtr workspace, IntPtr url)
+    {
+        if (workspace == IntPtr.Zero || url == IntPtr.Zero)
+            return IntPtr.Zero;
+        return SendIntPtr_IntPtr(workspace, Sel("URLForApplicationToOpenURL:"), url);
+    }
+
     // ------------------------------------------------------------------
     //  NSArray
     // ------------------------------------------------------------------
@@ -232,6 +251,22 @@ internal static class AppKitInterop
     /// <summary>Returns [nsurl path] as an NSString, or IntPtr.Zero.</summary>
     public static IntPtr NSURLPath(IntPtr url)
         => SendIntPtr(url, Sel("path"));
+
+    /// <summary>Creates a file NSURL via <c>[NSURL fileURLWithPath:]</c>. Unlike <see cref="NSStringCreate"/>
+    /// this returns an AUTORELEASED object — the caller must NOT release it (releasing it would double-free;
+    /// cf. the bevel-fo2 hazard note on NSStringCreate). Returns IntPtr.Zero if AppKit is unavailable.</summary>
+    public static IntPtr FileUrl(string path)
+    {
+        var cls = GetClass("NSURL");
+        if (cls == IntPtr.Zero)
+            return IntPtr.Zero;
+
+        var nsPath = NSStringCreate(path);   // +1 owned — released below
+        if (nsPath == IntPtr.Zero)
+            return IntPtr.Zero;
+        try { return SendIntPtr_IntPtr(cls, Sel("fileURLWithPath:"), nsPath); }
+        finally { SendVoid(nsPath, Sel("release")); }
+    }
 
     // ------------------------------------------------------------------
     //  NSString factory

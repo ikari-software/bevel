@@ -137,6 +137,22 @@ public interface IFileOpener
     /// <summary>Show a lightweight preview of the path (macOS Quick Look) without opening it in its
     /// default app — what Space does in Finder. Local, no shell-core round-trip.</summary>
     Task PreviewAsync(string path, CancellationToken ct = default);
+
+    // ── "Open With" + reveal (bevel-wxt) ─────────────────────────────────────
+    // Default-implemented so the Fake PAL and any non-macOS backend stay valid without change.
+
+    /// <summary>Opens <paramref name="path"/> with a SPECIFIC application (its bundle/app path),
+    /// e.g. <c>open -a &lt;app&gt; &lt;path&gt;</c> — the chosen row of the "Open With" submenu.</summary>
+    Task OpenWithAsync(string path, string appPath, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>Reveals <paramref name="path"/> in the system file browser (Finder), selecting it —
+    /// <c>open -R</c>. Falls back to opening the path if the backend can't reveal.</summary>
+    Task RevealAsync(string path, CancellationToken ct = default) => OpenPathAsync(path, ct);
+
+    /// <summary>Enumerates the applications that can open <paramref name="path"/> (LaunchServices),
+    /// default handler first. Empty when the backend can't enumerate (Fake PAL, headless).</summary>
+    ValueTask<IReadOnlyList<OpenWithHandler>> GetHandlersAsync(string path, CancellationToken ct = default)
+        => ValueTask.FromResult<IReadOnlyList<OpenWithHandler>>(System.Array.Empty<OpenWithHandler>());
 }
 
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>

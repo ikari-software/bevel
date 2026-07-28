@@ -135,6 +135,15 @@ public sealed record InstalledApp(
     string? IconPath,
     string? Subtitle = null);
 
+/// <summary>An application that can open a given file — one entry per row of the "Open With" submenu
+/// (bevel-wxt). Deliberately icon-free: the icon comes from <c>IIconProvider</c> keyed on
+/// <see cref="AppPath"/>, the same path that renders app-bundle icons elsewhere.</summary>
+public sealed record OpenWithHandler(
+    string AppName,
+    string AppPath,
+    string? BundleId = null,
+    bool IsDefault = false);
+
 /// <summary>A decoded BGRA image handed across the PAL (icons, tray pixels).</summary>
 public sealed record PalImage(
     int Width,
