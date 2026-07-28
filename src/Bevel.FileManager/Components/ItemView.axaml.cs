@@ -359,11 +359,28 @@ public partial class ItemView : UserControl
         ItemsPresenter.ItemsSource = _viewModels;
     }
 
-    /// <summary>Append items incrementally (streaming enumeration). Sorts after each batch.</summary>
+    /// <summary>Append streamed items, each inserted at its sorted position. Keeps the bound collection
+    /// continuously sorted with one incremental Insert per item, so streaming enumeration never
+    /// detaches/rebuilds the whole ItemsSource — the old per-batch SortItems() made opening a folder
+    /// O(n²) (a full teardown + re-add of the growing list on every 32-item chunk). A deliberate
+    /// re-sort (header click) still goes through SortAsync/ApplyOrder.</summary>
     public void AddItems(IReadOnlyList<IVfsNode> nodes)
     {
-        foreach (var n in nodes) _viewModels.Add(new ItemViewModel(n));
-        SortItems();
+        foreach (var n in nodes) InsertSorted(new ItemViewModel(n));
+    }
+
+    /// <summary>Binary-search the current sorted position for <paramref name="vm"/> and Insert it there
+    /// (equal keys land after existing ones). One collection event, no teardown.</summary>
+    void InsertSorted(ItemViewModel vm)
+    {
+        int lo = 0, hi = _viewModels.Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (CompareItems(_viewModels[mid], vm, _sortCol, _sortAsc) <= 0) lo = mid + 1;
+            else hi = mid;
+        }
+        _viewModels.Insert(lo, vm);
     }
 
     public bool HasItems => _viewModels.Count > 0;
@@ -373,7 +390,7 @@ public partial class ItemView : UserControl
     /// style keyed diff. Surviving rows keep their object identity (and selection); only genuinely
     /// added or removed entries mutate the collection, and metadata is refreshed in place. When the
     /// path set is unchanged (the common watcher/refresh case) nothing rebinds, so the view does
-    /// not flicker. Re-sorting (which detaches the ItemsSource) happens only when items were added.
+    /// not flicker. New rows are inserted in sorted position, so no full re-sort/teardown is needed.
     /// </summary>
     public void ReconcileItems(IReadOnlyList<IVfsNode> nodes)
     {
@@ -381,17 +398,13 @@ public partial class ItemView : UserControl
         foreach (var vm in _viewModels) existing[vm.Path] = vm;
 
         var incoming = new HashSet<VfsPath>(nodes.Count);
-        var added = 0;
         foreach (var n in nodes)
         {
             incoming.Add(n.Path);
             if (existing.TryGetValue(n.Path, out var vm))
                 vm.Update(n);                       // same row, fresh metadata
             else
-            {
-                _viewModels.Add(new ItemViewModel(n));
-                added++;
-            }
+                InsertSorted(new ItemViewModel(n)); // new row placed in order, no teardown
         }
 
         // Drop rows whose paths disappeared (in place — a Remove doesn't tear down the list).
@@ -403,9 +416,7 @@ public partial class ItemView : UserControl
             _selected.Remove(vm);
             _selectedOrder.Remove(vm);
         }
-
-        // Only a genuine insertion needs the collection re-ordered.
-        if (added > 0) SortItems();
+        // Inserts and removals both preserve sorted order, so no full re-sort is needed.
     }
 
     void RebuildItems()
@@ -467,15 +478,28 @@ public partial class ItemView : UserControl
 
     internal static List<ItemViewModel> OrderItems(IEnumerable<ItemViewModel> items, SortColumn col, bool asc)
     {
-        IEnumerable<ItemViewModel> q = col switch
+        var list = items.ToList();
+        list.Sort((a, b) => CompareItems(a, b, col, asc));
+        return list;
+    }
+
+    /// <summary>The total order used by both the full sort and the streaming sorted-insert. Folders
+    /// always precede files (Explorer/Finder behaviour, independent of column and direction); within a
+    /// group the chosen column decides, with a name tiebreak so the order stays deterministic
+    /// (List.Sort/binary-insert aren't otherwise stable).</summary>
+    internal static int CompareItems(ItemViewModel a, ItemViewModel b, SortColumn col, bool asc)
+    {
+        if (a.IsFolder != b.IsFolder) return a.IsFolder ? -1 : 1;   // folders first, always
+        int c = col switch
         {
-            SortColumn.Size     => items.OrderBy(x => x.Size ?? 0),
-            SortColumn.Type     => items.OrderBy(x => x.TypeDescription, StringComparer.OrdinalIgnoreCase),
-            SortColumn.Modified => items.OrderBy(x => x.Modified ?? default),
-            _                   => items.OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase),
+            SortColumn.Size     => Nullable.Compare(a.Size, b.Size),
+            SortColumn.Type     => string.Compare(a.TypeDescription, b.TypeDescription, StringComparison.OrdinalIgnoreCase),
+            SortColumn.Modified => Nullable.Compare(a.Modified, b.Modified),
+            _                   => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase),
         };
-        if (!asc) q = q.Reverse();
-        return q.ToList();
+        if (c == 0 && col != SortColumn.Name)
+            c = string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+        return asc ? c : -c;
     }
 
     void RefreshSortIndicators()

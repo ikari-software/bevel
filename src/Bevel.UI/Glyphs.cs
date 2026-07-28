@@ -213,8 +213,15 @@ public static class Glyphs
 
     // ── Geometry primitives ──────────────────────────────────────────────
 
+    // Parsed path geometry is immutable and identical across every call for a given data string —
+    // all glyphs are authored in the fixed 16-unit space, so the same folder/document/… paths recur
+    // for thousands of items. Cache and share one Geometry across every Path that draws it, instead
+    // of re-running Geometry.Parse per icon per container realization on the UI thread.
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Geometry> _geometryCache = new();
+    static Geometry ParseGeometry(string data) => _geometryCache.GetOrAdd(data, static d => Geometry.Parse(d));
+
     static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
-        new() { Data = Geometry.Parse(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
+        new() { Data = ParseGeometry(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
 
     public const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
     public const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";

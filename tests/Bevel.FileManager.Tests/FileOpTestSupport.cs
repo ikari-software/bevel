@@ -26,6 +26,16 @@ public sealed class FakeNode : IVfsNode
             TypeDescription = type,
             Modified = modified ?? DateTimeOffset.UnixEpoch,
         };
+
+    public static FakeNode Folder(string name)
+        => new()
+        {
+            Path = new VfsPath("test", name),
+            DisplayName = name,
+            Kind = VfsNodeKind.Folder,
+            TypeDescription = "File Folder",
+            MightHaveChildren = true,
+        };
 }
 
 /// <summary>Conflict handler that returns a fixed resolution and counts invocations.</summary>

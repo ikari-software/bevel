@@ -45,6 +45,40 @@ public class ItemViewSortTests
         Assert.Equal(new[] { older, newer }, ItemView.OrderItems(new[] { newer, older }, ItemView.SortColumn.Modified, asc: true));
     }
 
+    [Fact]
+    public void OrderItems_lists_folders_before_files_in_both_directions()
+    {
+        var fileA = Vm("aaa");
+        var folderZ = new ItemViewModel(FakeNode.Folder("zzz"));
+        var folderM = new ItemViewModel(FakeNode.Folder("mmm"));
+        // Ascending: folders (m, z) precede the file, then the file.
+        Assert.Equal(new[] { folderM, folderZ, fileA },
+            ItemView.OrderItems(new[] { fileA, folderZ, folderM }, ItemView.SortColumn.Name, asc: true));
+        // Descending: folders STILL precede files (only the within-group order flips).
+        Assert.Equal(new[] { folderZ, folderM, fileA },
+            ItemView.OrderItems(new[] { fileA, folderZ, folderM }, ItemView.SortColumn.Name, asc: false));
+    }
+
+    [AvaloniaFact]
+    public void Streaming_add_keeps_the_list_sorted_folders_first_without_full_resort()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        new Window { Content = view, Width = 600, Height = 400 }.Show();
+        Dispatcher.UIThread.RunJobs();
+        view.ResetItems();
+        // Deliberately unsorted, mixed folders/files, delivered in several streamed batches —
+        // each item is inserted in sorted position, so the final order is fully sorted with no
+        // per-batch teardown.
+        view.AddItems(new IVfsNode[] { FakeNode.File("delta.txt"), FakeNode.Folder("Zebra") });
+        view.AddItems(new IVfsNode[] { FakeNode.File("alpha.txt"), FakeNode.Folder("Apple") });
+        view.AddItems(new IVfsNode[] { FakeNode.File("charlie.txt") });
+        Dispatcher.UIThread.RunJobs();
+
+        var names = ((System.Collections.IList)view.ItemsControl.ItemsSource!)
+            .Cast<ItemViewModel>().Select(v => v.DisplayName).ToArray();
+        Assert.Equal(new[] { "Apple", "Zebra", "alpha.txt", "charlie.txt", "delta.txt" }, names);
+    }
+
     [AvaloniaFact]
     public void Async_sort_of_large_list_preserves_every_item()
     {
