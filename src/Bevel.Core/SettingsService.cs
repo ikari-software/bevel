@@ -117,6 +117,7 @@ public sealed class SettingsService : IDisposable
             _version = version;
         }
 
+        MigrateRaw();   // upgrade an older-schema blob before projecting it (bevel-4er2)
         ApplyRaw();
     }
 
@@ -178,6 +179,7 @@ public sealed class SettingsService : IDisposable
         _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
                ?? new Dictionary<string, JsonElement>();
         _version = fullVersion;
+        MigrateRaw();   // a peer mid-upgrade may still write an older-schema blob (bevel-4er2)
         ApplyRaw();
         Changed?.Invoke();
         return true;
@@ -281,6 +283,12 @@ public sealed class SettingsService : IDisposable
     private string SerializeRaw()
     {
         var d = new BevelSettings();
+        // Stamp the schema version so every saved blob advertises its shape (bevel-4er2) — but never
+        // DOWNGRADE one written by a newer app (MigrateRaw already lifted _raw to at least the current
+        // version on load, and left an even-newer stamp intact).
+        var stored = _raw.TryGetValue(SchemaVersionKey, out var sv) && sv.ValueKind == JsonValueKind.Number ? sv.GetInt32() : 0;
+        if (stored < CurrentSchemaVersion)
+            _raw[SchemaVersionKey] = JsonSerializer.SerializeToElement(CurrentSchemaVersion, SettingsJsonContext.Default.Int32);
         SetOrPrune("themeId", _settings.ThemeId, d.ThemeId, SettingsJsonContext.Default.String);
         SetOrPrune("colorScheme", _settings.ColorScheme, d.ColorScheme, SettingsJsonContext.Default.String);
         SetOrPrune("lunaColor", _settings.LunaColor, d.LunaColor, SettingsJsonContext.Default.String);
@@ -337,6 +345,54 @@ public sealed class SettingsService : IDisposable
         else _raw[key] = JsonSerializer.SerializeToElement(value, typeInfo);
     }
 
+    // ── Schema versioning + migrations (bevel-4er2) ──────────────────────────────────────────────
+    //
+    // The blob is forward-compatible for ADDING keys (an absent key resolves to its default, unknown
+    // keys are preserved), so a new setting needs NO migration. A migration is only for RENAMING,
+    // re-shaping, or removing a stored key. Each such change bumps CurrentSchemaVersion and adds one
+    // entry to Migrations. Blobs are migrated on READ (before every ApplyRaw) and the upgraded shape
+    // persists on the next Save — so the DB may transiently hold an older-schema blob and every reader
+    // (any process, any version) still converges, without a load-time write storm.
+
+    /// <summary>Current settings-blob schema version. Bump ONLY when a stored key is renamed, re-shaped,
+    /// or removed (adding a key needs no bump); each bump adds one <see cref="Migrations"/> entry.</summary>
+    public const int CurrentSchemaVersion = 1;
+
+    private const string SchemaVersionKey = "schemaVersion";
+
+    /// <summary><c>Migrations[v]</c> upgrades a version-<c>v</c> blob in place to version-<c>(v+1)</c>. A blob
+    /// with no <see cref="SchemaVersionKey"/> is treated as version 0. Each guards on the presence of the
+    /// old/new keys so re-running is harmless.</summary>
+    private static readonly Action<Dictionary<string, JsonElement>>[] Migrations =
+    {
+        // 0 → 1: the grouping toggle went from a bool `taskbarGroupWindows` to the tri-state enum
+        // `taskbarGrouping` (Never/WhenFull/Always). Seed the enum from the old bool, then drop it.
+        raw =>
+        {
+            if (!raw.ContainsKey("taskbarGrouping")
+                && raw.TryGetValue("taskbarGroupWindows", out var el)
+                && el.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                var mode = el.GetBoolean() ? nameof(TaskbarGroupingMode.Always) : nameof(TaskbarGroupingMode.Never);
+                raw["taskbarGrouping"] = JsonSerializer.SerializeToElement(mode, SettingsJsonContext.Default.String);
+            }
+            raw.Remove("taskbarGroupWindows");
+        },
+    };
+
+    /// <summary>Upgrades <c>_raw</c> in place from its stored schema version to
+    /// <see cref="CurrentSchemaVersion"/>. A blob from a NEWER app (version &gt; current) is left untouched —
+    /// we never downgrade — so forward-compat is preserved. Purely in-memory; persists on the next Save.</summary>
+    private void MigrateRaw()
+    {
+        var from = _raw.TryGetValue(SchemaVersionKey, out var v) && v.ValueKind == JsonValueKind.Number
+            ? v.GetInt32() : 0;
+        for (var ver = from; ver < CurrentSchemaVersion && ver < Migrations.Length; ver++)
+            Migrations[ver](_raw);
+        if (from < CurrentSchemaVersion)
+            _raw[SchemaVersionKey] = JsonSerializer.SerializeToElement(CurrentSchemaVersion, SettingsJsonContext.Default.Int32);
+    }
+
     /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>
     private void ApplyRaw()
     {
@@ -370,10 +426,10 @@ public sealed class SettingsService : IDisposable
             TaskbarClockShowDate = GetBool("taskbarClockShowDate") ?? false,
             TaskbarShowStart = GetBool("taskbarShowStart") ?? true,
             TaskbarStartLabel = GetString("taskbarStartLabel") ?? "Start",
-            // Back-compat: if the new key is absent, seed grouping from the legacy bool.
+            // The legacy `taskbarGroupWindows` bool is folded into `taskbarGrouping` by migration 0→1
+            // (bevel-4er2), so this only reads the current key.
             TaskbarGrouping = Enum.TryParse<TaskbarGroupingMode>(GetString("taskbarGrouping"), out var tg)
-                ? tg
-                : ((GetBool("taskbarGroupWindows") ?? false) ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never),
+                ? tg : TaskbarGroupingMode.Never,
             TaskbarButtonLabels = Enum.TryParse<TaskbarButtonLabels>(GetString("taskbarButtonLabels"), out var tbl)
                 ? tbl : TaskbarButtonLabels.Auto,
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
