@@ -146,6 +146,7 @@
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowLabel}"
+                                           FontStyle="{Binding TitleStyle}"
                                            TextTrimming="CharacterEllipsis"
                                            IsHitTestVisible="False" />
                             </StackPanel>

@@ -67,6 +67,13 @@ public class AppPresenceTests
     }
 
     [Fact]
+    public void Presence_button_label_is_italic()
+    {
+        Assert.Equal(Avalonia.Media.FontStyle.Italic, AppPresence("com.music").TitleStyle);
+        Assert.Equal(Avalonia.Media.FontStyle.Normal, Win("w1", "com.other").TitleStyle);
+    }
+
+    [Fact]
     public void Sort_orders_the_strip_by_name_and_windowless_last()
     {
         var source = new ObservableCollection<TaskItemViewModel>

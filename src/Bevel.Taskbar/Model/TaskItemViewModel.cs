@@ -121,6 +121,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Bold label for the focused window (Win2000/XP taskbar convention).</summary>
     public FontWeight TitleWeight => IsFocused ? FontWeight.Bold : FontWeight.Normal;
 
+    /// <summary>Windowless "app-presence" entries (dock-dots) render their label in italic — a running
+    /// app with no open window reads as "present but idle" (bevel-ww71). Immutable, set at construction.</summary>
+    public FontStyle TitleStyle => IsAppPresence ? FontStyle.Italic : FontStyle.Normal;
+
     /// <summary>Minimized windows remain actionable but their content is visibly recessed.</summary>
     public double ContentOpacity => IsAppPresence ? 0.6 : IsMinimized ? 0.55 : 1;
 
