@@ -634,6 +634,45 @@ public partial class FileManagerWindow : BevelWindow
         }
     }
 
+    /// <summary>Resolves a VFS path to the on-disk path the local file opener needs (the provider's
+    /// effective path, or a file-scheme path's own value), or null when it maps to nothing native.</summary>
+    private string? LocalPathOf(VfsPath path)
+    {
+        string? local = null;
+        try { local = _vfsRoot?.GetProvider(path).ResolveEffectivePath(path); } catch { }
+        return string.IsNullOrEmpty(local) ? (path.Scheme == "file" ? path.Value : null) : local;
+    }
+
+    private string? LocalPathOfSelected()
+        => ItemView.SelectedItem is { } i ? LocalPathOf(i.Path) : null;
+
+    /// <summary>Enumerates handler apps for the selected item — feeds the "Open With" submenu (bevel-wxt).</summary>
+    private async System.Threading.Tasks.Task<IReadOnlyList<Bevel.Pal.Abstractions.OpenWithHandler>> GetOpenWithHandlersAsync()
+    {
+        var local = LocalPathOfSelected();
+        if (string.IsNullOrEmpty(local) || _fileOpener is null)
+            return System.Array.Empty<Bevel.Pal.Abstractions.OpenWithHandler>();
+        return await _fileOpener.GetHandlersAsync(local!);
+    }
+
+    private async System.Threading.Tasks.Task OpenWithAsync(string localPath, string appPath)
+    {
+        try { await _fileOpener!.OpenWithAsync(localPath, appPath); }
+        catch (Exception ex)
+        {
+            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowMessageAsync(this);
+        }
+    }
+
+    private async System.Threading.Tasks.Task RevealAsync(string localPath)
+    {
+        try { await _fileOpener!.RevealAsync(localPath); }
+        catch (Exception ex)
+        {
+            await new Components.MessageDialog("Cannot Reveal", ex.Message).ShowMessageAsync(this);
+        }
+    }
+
     // ── Navigation (thin delegators to the controller) ─────────────────
 
     private void NavigateTo(string pathString)
@@ -998,6 +1037,22 @@ public partial class FileManagerWindow : BevelWindow
     ContextMenuActions BuildContextActions() => new()
     {
         Open = () => { if (ItemView.SelectedItem is { } i) OnItemActivated(this, new ItemActivatedEventArgs(i)); },
+        GetOpenWithHandlers = GetOpenWithHandlersAsync,
+        OpenWithApp = handler =>
+        {
+            if (LocalPathOfSelected() is { } local && _fileOpener is not null)
+                _ = OpenWithAsync(local, handler.AppPath);
+        },
+        RevealInFinder = () =>
+        {
+            if (LocalPathOfSelected() is { } local && _fileOpener is not null)
+                _ = RevealAsync(local);
+        },
+        OpenLocationInFinder = () =>
+        {
+            if (LocalPathOf(CurrentPath) is { } local && _fileOpener is not null)
+                _ = _fileOpener.OpenPathAsync(local);
+        },
         Cut = CutSelection,
         Copy = CopySelection,
         Paste = () => _ = PasteAsync(),

@@ -1,7 +1,9 @@
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Bevel.Core.Vfs;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.FileManager.Components;
 
@@ -12,7 +14,15 @@ namespace Bevel.FileManager.Components;
 public sealed class ContextMenuActions
 {
     public Action? Open { get; init; }
-    public Action? OpenWith { get; init; }
+    /// <summary>Lazily enumerates the apps that can open the selected item (populated when the
+    /// "Open With" submenu is first opened, so the LaunchServices query never delays the menu).</summary>
+    public Func<Task<IReadOnlyList<OpenWithHandler>>>? GetOpenWithHandlers { get; init; }
+    /// <summary>Opens the selected item with the chosen handler app.</summary>
+    public Action<OpenWithHandler>? OpenWithApp { get; init; }
+    /// <summary>Reveals the selected item in the system file browser (Finder).</summary>
+    public Action? RevealInFinder { get; init; }
+    /// <summary>Opens the CURRENT folder in the system file browser (Finder) — folder-background menu.</summary>
+    public Action? OpenLocationInFinder { get; init; }
     public Action? SendTo { get; init; }
     public Action? Cut { get; init; }
     public Action? Copy { get; init; }
@@ -57,12 +67,45 @@ public static class ContextMenuBuilder
         defaultItem.IsEnabled = actions.Open is not null;
         menu.Items.Add(defaultItem);
 
-        // 2) Open With submenu (FM-080)
+        // 2) Open With submenu (FM-080 / bevel-wxt) — the handler list is enumerated lazily the first
+        //    time the submenu opens, so the LaunchServices query never delays showing the context menu.
         var openWith = new MenuItem { Header = "Open _With…" };
-        openWith.IsEnabled = actions.OpenWith is not null;
-        if (actions.OpenWith is not null)
-            openWith.Click += (_, _) => actions.OpenWith();
+        if (!isFolder && actions.GetOpenWithHandlers is not null && actions.OpenWithApp is not null)
+        {
+            openWith.Items.Add(new MenuItem { Header = "(loading…)", IsEnabled = false }); // keeps the submenu arrow
+            var populated = false;
+            openWith.SubmenuOpened += async (_, _) =>
+            {
+                if (populated) return;
+                populated = true;
+
+                IReadOnlyList<OpenWithHandler> handlers;
+                try { handlers = await actions.GetOpenWithHandlers(); }
+                catch { handlers = System.Array.Empty<OpenWithHandler>(); }
+
+                openWith.Items.Clear();
+                if (handlers.Count == 0)
+                {
+                    openWith.Items.Add(new MenuItem { Header = "(no applications)", IsEnabled = false });
+                    return;
+                }
+                foreach (var handler in handlers)
+                {
+                    var item = new MenuItem { Header = handler.IsDefault ? $"{handler.AppName} (default)" : handler.AppName };
+                    if (handler.IsDefault) item.FontWeight = BoldWeight;
+                    var captured = handler;
+                    item.Click += (_, _) => actions.OpenWithApp(captured);
+                    openWith.Items.Add(item);
+                }
+            };
+        }
+        else openWith.IsEnabled = false;
         menu.Items.Add(openWith);
+
+        // Reveal in the system file browser (Finder) — reveals + selects the item (bevel-wxt).
+        var reveal = MakeItem("Reveal in _Finder", actions.RevealInFinder);
+        reveal.IsEnabled = actions.RevealInFinder is not null;
+        menu.Items.Add(reveal);
 
         menu.Items.Add(new Separator());
 
@@ -151,9 +194,13 @@ public static class ContextMenuBuilder
         }
         menu.Items.Add(arrange);
 
-        // 3) Refresh
+        // 3) Refresh + Open this folder in the system file browser (Finder) — bevel-wxt.
         var refresh = MakeItem("_Refresh", actions.Refresh, gesture: "F5");
         menu.Items.Add(refresh);
+
+        var openInFinder = MakeItem("_Open in Finder", actions.OpenLocationInFinder);
+        openInFinder.IsEnabled = actions.OpenLocationInFinder is not null;
+        menu.Items.Add(openInFinder);
 
         menu.Items.Add(new Separator());
 
