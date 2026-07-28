@@ -703,6 +703,23 @@ public partial class FileManagerWindow : BevelWindow
                 }
             }
             catch (KeyNotFoundException) { }
+            catch (System.Exception ex) when (
+                ex is System.UnauthorizedAccessException
+                   or System.IO.DirectoryNotFoundException
+                   or System.IO.FileNotFoundException
+                   or System.IO.IOException
+                   or System.Security.SecurityException)
+            {
+                // A protected directory, a path typed into the address bar that no longer exists, or
+                // an I/O failure mid-enumeration. Surface it in the status bar instead of letting it
+                // escape LoadDirectory's async void caller and crash the process (bevel-y67f).
+                StatusBar.ShowMessage(ex switch
+                {
+                    System.UnauthorizedAccessException => "Access is denied.",
+                    System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
+                    _ => "This folder can't be opened.",
+                });
+            }
 
             // Final chunk
             if (chunk.Count > 0)
@@ -993,9 +1010,12 @@ public partial class FileManagerWindow : BevelWindow
         {
             var result = await op();
             if (!string.IsNullOrEmpty(result.ErrorMessage))
-                System.Diagnostics.Debug.WriteLine($"Operation incomplete: {result.ErrorMessage}");
+                await new Components.MessageDialog("Operation Incomplete", result.ErrorMessage!).ShowMessageAsync(this);
         }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Operation failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            await new Components.MessageDialog("Operation Failed", ex.Message).ShowMessageAsync(this);
+        }
         finally { _controller?.Refresh(); }
     }
 

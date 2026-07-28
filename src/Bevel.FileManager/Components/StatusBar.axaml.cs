@@ -30,6 +30,14 @@ public partial class StatusBar : UserControl
         NamespaceZoneText.Text = zone;
     }
 
+    /// <summary>Show a message (e.g. an enumeration error) in the primary panel, replacing the object
+    /// count until the next successful listing/selection update overwrites it.</summary>
+    public void ShowMessage(string message)
+    {
+        ObjectCountText.Text = message;
+        TotalSizeText.Text = string.Empty;
+    }
+
     private static string FormatSize(long bytes)
     {
         if (bytes == 0) return string.Empty;
