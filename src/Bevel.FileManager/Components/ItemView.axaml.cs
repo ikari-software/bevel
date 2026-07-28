@@ -441,6 +441,24 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>Sort by a column key ("name"/"type"/"size"/"date") from the Arrange Icons context menu;
+    /// toggles direction if already sorted by that column, exactly like clicking the Details header.
+    /// Works in every view mode (icons/list/details), not just Details.</summary>
+    public void SortBy(string key)
+    {
+        var col = key switch
+        {
+            "type" => SortColumn.Type,
+            "size" => SortColumn.Size,
+            "date" => SortColumn.Modified,
+            _ => SortColumn.Name,
+        };
+        _sortAsc = _sortCol == col ? !_sortAsc : true;
+        _sortCol = col;
+        _ = SortAsync();
+        RefreshSortIndicators();
+    }
+
     /// <summary>Sort on a background thread for large lists, synchronously for small.</summary>
     async Task SortAsync()
     {
@@ -579,10 +597,22 @@ public partial class ItemView : UserControl
         // Grab keyboard focus — handling the press (below) suppresses Avalonia's automatic
         // focus-on-click, which would otherwise leave arrows/type-ahead/Enter dead after a click.
         Focus();
+        bool leftButton = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed;
         var pt = e.GetPosition(ItemsPresenter);
         var vm = Hit(pt);
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control), shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         if (e.ClickCount == 2 && vm is not null) { ItemActivated?.Invoke(this, new(vm)); e.Handled = true; return; }
+
+        // A non-left press (right-click for the context menu) must NEVER arm a drag or start a marquee —
+        // it only moves the selection onto the item under the pointer (Explorer selects what you
+        // right-click). Leaving _dragArmed set here is what made closing the menu act like a drag.
+        if (!leftButton)
+        {
+            if (vm is not null && !vm.IsSelected && !ctrl && !shift) SelectOne(vm);
+            _dragArmed = false;
+            return;   // let ContextRequested open the menu; no drag/marquee state touched
+        }
+
         if (vm is null)
         {
             if (!ctrl && !shift) { ClearSel(); RaiseSelection(); }
@@ -677,6 +707,12 @@ public partial class ItemView : UserControl
 
     void OnContextRequested(object? _, ContextRequestedEventArgs e)
     {
+        // Opening a context menu cancels any pending drag/marquee gesture, so dismissing the menu can't
+        // resume one (a right-click used to leave _dragArmed set → the next move looked like a drag).
+        _dragArmed = false;
+        _marqueeDragging = false;
+        MarqueeRect.IsVisible = false;
+
         // Locate the item under the pointer; a background (empty-space) request has none.
         ItemViewModel? vm = null;
         if (e.TryGetPosition(ItemsPresenter, out var pos))

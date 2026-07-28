@@ -45,6 +45,29 @@ public class ItemViewSortTests
         Assert.Equal(new[] { older, newer }, ItemView.OrderItems(new[] { newer, older }, ItemView.SortColumn.Modified, asc: true));
     }
 
+    [AvaloniaFact]
+    public void SortBy_reorders_by_the_given_column()
+    {
+        var view = new ItemView { ViewMode = ViewMode.LargeIcons };
+        new Window { Content = view, Width = 400, Height = 300 }.Show();
+        Dispatcher.UIThread.RunJobs();
+        view.ResetItems();
+        view.AddItems(new IVfsNode[]
+        {
+            FakeNode.File("b.txt", size: 30),
+            FakeNode.File("a.txt", size: 10),
+            FakeNode.File("c.txt", size: 20),
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        view.SortBy("size");   // the "Arrange Icons > by Size" context-menu action
+        Dispatcher.UIThread.RunJobs();
+
+        var order = ((System.Collections.IList)view.ItemsControl.ItemsSource!)
+            .Cast<ItemViewModel>().Select(v => v.DisplayName).ToArray();
+        Assert.Equal(new[] { "a.txt", "c.txt", "b.txt" }, order);   // sizes 10, 20, 30
+    }
+
     [Fact]
     public void OrderItems_lists_folders_before_files_in_both_directions()
     {

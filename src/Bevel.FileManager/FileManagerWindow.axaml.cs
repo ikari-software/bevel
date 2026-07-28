@@ -988,6 +988,7 @@ public partial class FileManagerWindow : BevelWindow
         CanPaste = () => _controller?.HasClipboard ?? false,
         CanUndo = () => _controller?.CanUndo ?? false,
         ViewChanged = key => SetView(ViewFromKey(key)),
+        ArrangeIcons = key => ItemView.SortBy(key),
         NewItem = kind =>
         {
             if (kind == "folder") _ = NewFolderAsync();
