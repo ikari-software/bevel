@@ -77,6 +77,8 @@ public partial class TaskbarView : UserControl
         TaskbarGroupingMode grouping = TaskbarGroupingMode.Never,
         TaskbarButtonLabels buttonLabels = TaskbarButtonLabels.Auto,
         bool middleClickCloses = true,
+        TaskbarWindowSort sort = TaskbarWindowSort.OpenOrder,
+        bool windowlessLast = false,
         bool showStart = true,
         string startLabel = "Start",
         Action? openSettings = null,
@@ -105,6 +107,8 @@ public partial class TaskbarView : UserControl
         _grouping = grouping;
         _buttonLabels = buttonLabels;
         _middleClickCloses = middleClickCloses;
+        _sort = sort;                       // apply the persisted sort at STARTUP, not only on a later change
+        _windowlessLast = windowlessLast;
         _trayOverflowCap = trayOverflowCap;
         _trayIconSize = trayIconSize;
         _locked = locked;

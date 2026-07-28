@@ -251,6 +251,8 @@ public partial class App : Application
             grouping: settings.Current.TaskbarGrouping,
             buttonLabels: settings.Current.TaskbarButtonLabels,
             middleClickCloses: settings.Current.TaskbarMiddleClickCloses,
+            sort: settings.Current.TaskbarWindowSort,
+            windowlessLast: settings.Current.WindowlessAppsLast,
             showStart: settings.Current.TaskbarShowStart,
             startLabel: settings.Current.TaskbarStartLabel,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
