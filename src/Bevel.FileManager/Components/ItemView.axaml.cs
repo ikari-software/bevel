@@ -117,6 +117,10 @@ public partial class ItemView : UserControl
     private bool _sortAsc = true;
 
     public event EventHandler<ItemActivatedEventArgs>? ItemActivated;
+
+    /// <summary>Space on a selection asks for a lightweight preview (macOS Quick Look), distinct from
+    /// activation (Enter / double-click), which opens the file or navigates the folder.</summary>
+    public event EventHandler<ItemActivatedEventArgs>? PreviewRequested;
     public event EventHandler<DropEventArgs>? DropRequested;
     public event EventHandler<RenameCommittedEventArgs>? RenameCommitted;
     public event EventHandler<FileContextRequestedEventArgs>? ItemContextRequested;
@@ -734,7 +738,10 @@ public partial class ItemView : UserControl
         switch (e.Key)
         {
             case Key.F2: BeginRename(); e.Handled = true; break;
-            case Key.Space: case Key.Enter: case Key.Down when e.KeyModifiers.HasFlag(KeyModifiers.Meta):
+            case Key.Space:   // macOS Quick Look — preview, don't open
+                if (_selectedOrder.Count > 0) { SelectedItem = _selectedOrder[^1]; PreviewRequested?.Invoke(this, new(SelectedItem)); }
+                e.Handled = true; break;
+            case Key.Enter: case Key.Down when e.KeyModifiers.HasFlag(KeyModifiers.Meta):
                 if (_selectedOrder.Count > 0) { SelectedItem = _selectedOrder[^1]; ItemActivated?.Invoke(this, new(SelectedItem)); }
                 e.Handled = true; break;
             case Key.A when e.KeyModifiers.HasFlag(KeyModifiers.Control):

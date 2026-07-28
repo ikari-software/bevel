@@ -122,6 +122,7 @@ public partial class FileManagerWindow : BevelWindow
 
         // Item activation (double-click / Enter on folder)
         ItemView.ItemActivated += OnItemActivated;
+        ItemView.PreviewRequested += OnItemPreview;
         ItemView.SelectionChanged += OnItemSelectionChanged;
 
         // Keyboard shortcuts (FM-070)
@@ -610,6 +611,26 @@ public partial class FileManagerWindow : BevelWindow
         catch (Exception ex)
         {
             await new Components.MessageDialog("Cannot Open File", ex.Message).ShowMessageAsync(this);
+        }
+    }
+
+    private void OnItemPreview(object? sender, ItemActivatedEventArgs e)
+    {
+        // Space = Quick Look preview (macOS), for a file or a folder — resolve the on-disk path and
+        // preview it rather than opening/navigating (that's Enter / double-click).
+        string? local = null;
+        try { local = _vfsRoot?.GetProvider(e.Item.Path).ResolveEffectivePath(e.Item.Path); } catch { }
+        local ??= e.Item.Path.Scheme == "file" ? e.Item.Path.Value : null;
+        if (!string.IsNullOrEmpty(local) && _fileOpener is not null)
+            _ = PreviewFileAsync(local!);
+    }
+
+    private async System.Threading.Tasks.Task PreviewFileAsync(string localPath)
+    {
+        try { await _fileOpener!.PreviewAsync(localPath); }
+        catch (Exception ex)
+        {
+            await new Components.MessageDialog("Cannot Preview", ex.Message).ShowMessageAsync(this);
         }
     }
 

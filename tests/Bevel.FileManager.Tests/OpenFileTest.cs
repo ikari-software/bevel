@@ -21,7 +21,9 @@ public class OpenFileTest
     private sealed class RecordingOpener : IFileOpener
     {
         public List<string> Opened { get; } = new();
+        public List<string> Previewed { get; } = new();
         public Task OpenPathAsync(string path, CancellationToken ct = default) { Opened.Add(path); return Task.CompletedTask; }
+        public Task PreviewAsync(string path, CancellationToken ct = default) { Previewed.Add(path); return Task.CompletedTask; }
     }
 
     [AvaloniaFact]
@@ -51,6 +53,37 @@ public class OpenFileTest
         Dispatcher.UIThread.RunJobs();
 
         Assert.Contains(file, opener.Opened);
+        try { Directory.Delete(dir, true); } catch { }
+    }
+
+    [AvaloniaFact]
+    public async Task Space_previews_the_file_without_opening_it()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "bevel-preview-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, "hello.txt");
+        File.WriteAllText(file, "x");
+
+        var root = new VfsRoot();
+        root.Register(new LocalFsProvider());
+        var opener = new RecordingOpener();
+        var win = new FileManagerWindow();
+        win.SetVfsRoot(root);
+        win.SetFileOpener(opener);
+        win.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        IVfsNode? node = null;
+        await foreach (var n in root.EnumerateAsync(new VfsPath("file", dir), new EnumerateOptions(), default))
+            if (n.DisplayName == "hello.txt") node = n;
+        Assert.NotNull(node);
+
+        var onPreview = typeof(FileManagerWindow).GetMethod("OnItemPreview", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        onPreview.Invoke(win, new object?[] { win, new ItemActivatedEventArgs(new ItemViewModel(node!)) });
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains(file, opener.Previewed);   // previewed…
+        Assert.Empty(opener.Opened);               // …NOT opened
         try { Directory.Delete(dir, true); } catch { }
     }
 }

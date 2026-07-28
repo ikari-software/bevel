@@ -133,6 +133,10 @@ public interface IAppEnvironment
 public interface IFileOpener
 {
     Task OpenPathAsync(string path, CancellationToken ct = default);
+
+    /// <summary>Show a lightweight preview of the path (macOS Quick Look) without opening it in its
+    /// default app — what Space does in Finder. Local, no shell-core round-trip.</summary>
+    Task PreviewAsync(string path, CancellationToken ct = default);
 }
 
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>

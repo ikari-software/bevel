@@ -10,10 +10,17 @@ namespace Bevel.Pal.Fake;
 public sealed class FakeFileOpener : IFileOpener
 {
     public List<string> Opened { get; } = new();
+    public List<string> Previewed { get; } = new();
 
     public Task OpenPathAsync(string path, CancellationToken ct = default)
     {
         Opened.Add(path);
+        return Task.CompletedTask;
+    }
+
+    public Task PreviewAsync(string path, CancellationToken ct = default)
+    {
+        Previewed.Add(path);
         return Task.CompletedTask;
     }
 }
