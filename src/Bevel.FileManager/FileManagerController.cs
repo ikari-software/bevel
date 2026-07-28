@@ -190,6 +190,36 @@ public sealed class FileManagerController : IDisposable
     }
 
     /// <summary>
+    /// Create a new empty file in <paramref name="directory"/> (default: current), picking a free
+    /// name like Explorer ("New Text Document.txt", "New Text Document (2).txt", …). Returns its
+    /// path, or null when the target is read-only. Reuses the mutator's OpenWriteAsync (FileMode.Create)
+    /// to touch an empty file — no new mutator surface needed.
+    /// </summary>
+    public async Task<VfsPath?> NewFileAsync(VfsPath? directory = null, string baseName = "New Text Document",
+        string extension = ".txt", CancellationToken ct = default)
+    {
+        var dir = directory ?? CurrentDirectory;
+        var mutator = await _vfs.GetProvider(dir).GetMutatorAsync(dir, ct);
+        if (mutator is null) return null;
+
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            await foreach (var child in _vfs.EnumerateAsync(dir, new EnumerateOptions(), ct))
+                existing.Add(child.DisplayName);
+        }
+        catch { /* best-effort — fall back to the base name */ }
+
+        var fileName = baseName + extension;
+        for (var n = 2; existing.Contains(fileName); n++)
+            fileName = $"{baseName} ({n}){extension}";
+
+        var filePath = VfsPath.Combine(dir, fileName);
+        await using (await mutator.OpenWriteAsync(filePath, ct)) { }   // create the empty file, then close
+        return filePath;
+    }
+
+    /// <summary>
     /// Disposes the wrapped <see cref="FileOperationService"/>: this controller's in-flight
     /// operations are cancelled (draining gracefully as Cancelled) and its progress stream
     /// completes. Each controller owns exactly one service (per tab / per window), so the view

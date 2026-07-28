@@ -872,6 +872,14 @@ public partial class FileManagerWindow : BevelWindow
         finally { _controller.Refresh(); }
     }
 
+    async System.Threading.Tasks.Task NewFileAsync()
+    {
+        if (_controller is null) return;
+        try { await _controller.NewFileAsync(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"New file failed: {ex.Message}"); }
+        finally { _controller.Refresh(); }
+    }
+
     /// <summary>Drop a MenuFlyout of the navigation history under the History button; clicking
     /// an entry jumps there without corrupting the stack (see FileManagerController.JumpToHistory).</summary>
     private void ShowHistoryFlyout(Control anchor) => BuildHistoryFlyout()?.ShowAt(anchor);
@@ -980,7 +988,11 @@ public partial class FileManagerWindow : BevelWindow
         CanPaste = () => _controller?.HasClipboard ?? false,
         CanUndo = () => _controller?.CanUndo ?? false,
         ViewChanged = key => SetView(ViewFromKey(key)),
-        NewItem = kind => { if (kind == "folder") _ = NewFolderAsync(); },
+        NewItem = kind =>
+        {
+            if (kind == "folder") _ = NewFolderAsync();
+            else if (kind == "text-document") _ = NewFileAsync();
+        },
     };
 
     static ViewMode ViewFromKey(string key) => key switch
