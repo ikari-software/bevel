@@ -164,13 +164,20 @@ public sealed class SettingsService : IDisposable
     public async Task<bool> ReloadIfChangedAsync(CancellationToken ct = default)
     {
         var conn = await OpenAsync(ct).ConfigureAwait(false);
-        var (json, version) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
-        if (json is null || version == _version)
+        // Cheap probe first: on the common no-change tick pull ONLY the version int, not the whole
+        // settings blob (every ~750ms poll across every process otherwise re-read and discarded the
+        // full JSON just to compare an int; bevel-6nve).
+        var version = await ReadVersionAsync(conn, ct).ConfigureAwait(false);
+        if (version is null || version == _version)
+            return false;
+
+        var (json, fullVersion) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
+        if (json is null)
             return false;
 
         _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
                ?? new Dictionary<string, JsonElement>();
-        _version = version;
+        _version = fullVersion;
         ApplyRaw();
         Changed?.Invoke();
         return true;
@@ -223,6 +230,16 @@ public sealed class SettingsService : IDisposable
 
         _connection = conn;
         return conn;
+    }
+
+    /// <summary>Reads just the monotonic version — the cheap no-change probe for the poll, so a
+    /// steady-state tick never pulls the whole JSON blob.</summary>
+    private static async Task<int?> ReadVersionAsync(SqliteConnection conn, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT version FROM settings WHERE id = 1;";
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return result switch { long l => (int)l, int i => i, _ => null };
     }
 
     private static async Task<(string? Json, int Version)> ReadRowAsync(SqliteConnection conn, CancellationToken ct)
