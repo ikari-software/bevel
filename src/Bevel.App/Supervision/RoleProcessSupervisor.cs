@@ -133,13 +133,18 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             catch (Exception ex) when (ex is TimeoutException or OperationCanceledException) { }
         }
 
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        // Bound the gate acquire: a wedged monitor tick must not block launcher teardown forever
+        // (the 8s cap above only bounds waiting for the task, not the gate). The child Kill() calls
+        // are independently safe, so proceed to kill even if the gate didn't free in time (bevel-ply).
+        var haveGate = false;
+        try { haveGate = await _gate.WaitAsync(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
         try
         {
             for (var i = _processes.Count - 1; i >= 0; i--)
                 _processes[i].Kill();
         }
-        finally { _gate.Release(); }
+        finally { if (haveGate) _gate.Release(); }
     }
 
     private async Task StartAllInOrderLocked(CancellationToken ct)
@@ -195,6 +200,11 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
 
                     try
                     {
+                        // The stop latch can flip between the liveness check above and here (the cooldown
+                        // check sits in that window). A child that exited on its OWN SIGTERM looks "died"
+                        // to this tick; respawning it after the launcher's TERM fan-out gives it a fresh PID
+                        // that never gets the signal — the shell "won't die" without SIGKILL (bevel-ply).
+                        if (_stopped || ct.IsCancellationRequested) break;
                         _log?.Invoke($"supervisor: {p.Role} died — respawning");
                         p.Start();
                         if (p.Role == ShellRole.Core && _coreReadyProbe is not null)

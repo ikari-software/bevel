@@ -36,7 +36,18 @@ public sealed class RoleProcessSupervisorTests
 
         public FakeRoleProcess(ShellRole role, List<string> log) { Role = role; _log = log; }
 
-        public bool IsAlive => Alive;
+        /// <summary>Fired whenever the monitor reads liveness and finds the child dead — lets a test
+        /// inject a mid-tick stop exactly at the point the bevel-ply race opens.</summary>
+        public Action? OnObservedDead;
+
+        public bool IsAlive
+        {
+            get
+            {
+                if (!Alive) OnObservedDead?.Invoke();
+                return Alive;
+            }
+        }
 
         public void Start()
         {
@@ -140,6 +151,31 @@ public sealed class RoleProcessSupervisorTests
         core.Alive = false;
         await Task.Delay(Poll * 6);
         Assert.Equal(startsAtStop, core.StartCount);
+    }
+
+    [Fact]
+    public async Task Does_not_respawn_a_child_when_stop_latches_mid_tick()
+    {
+        // bevel-ply: a kill -TERM fan-out hits the launcher AND its children at once. A child that
+        // exits cleanly on its own SIGTERM looks "died" to the monitor tick; if the stop latch flips
+        // AFTER the liveness check but BEFORE the respawn, the old code started a fresh PID that never
+        // got the signal — the shell "wouldn't die" without SIGKILL. Reproduce that exact window by
+        // latching the stop the instant the monitor observes the child dead.
+        var log = new List<string>();
+        RoleProcessSupervisor? sup = null;
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        core.OnObservedDead = () => sup!.RequestStop();
+        await using var s = new RoleProcessSupervisor(new IRoleProcess[] { core }, Poll);
+        sup = s;
+        await s.StartAsync();
+        Assert.Equal(1, core.StartCount);
+
+        core.Alive = false; // clean shutdown-signal exit that reads as a "crash" to the tick
+
+        // Several ticks pass; with the guard the monitor observes dead → RequestStop latches → break,
+        // so it must NEVER respawn. Without the fix a second (orphan) PID would be started.
+        await Task.Delay(Poll * 8);
+        Assert.Equal(1, core.StartCount);
     }
 
     [Fact]
