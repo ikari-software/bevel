@@ -20,6 +20,28 @@ public class StartMenuTests
     }
 
     [AvaloniaFact]
+    public void Dead_items_are_hidden_and_control_panel_opens_settings()
+    {
+        var opened = 0;
+        var menu = new StartMenu(null, openSettings: () => opened++);
+
+        // Capability-less leaves are hidden, not shown as dead no-ops (bevel-x6pv).
+        Assert.False(menu.FindControl<MenuItem>("SearchItem")!.IsVisible);
+        Assert.False(menu.FindControl<MenuItem>("HelpItem")!.IsVisible);
+        Assert.False(menu.FindControl<MenuItem>("RunItem")!.IsVisible);
+
+        // Settings keeps only the two entries that map to a real surface (Network/Printers dropped).
+        var settings = menu.FindControl<MenuItem>("SettingsItem")!;
+        var labels = settings.Items.OfType<MenuItem>().Select(m => (string?)m.Header).ToArray();
+        Assert.Equal(new[] { "Control Panel", "Taskbar and Start Menu…" }, labels);
+
+        // Control Panel now opens Bevel Settings instead of doing nothing.
+        var cp = settings.Items.OfType<MenuItem>().First(m => (string?)m.Header == "Control Panel");
+        cp.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal(1, opened);
+    }
+
+    [AvaloniaFact]
     public async Task StartMenu_open_and_close_works()
     {
         var button = new Button();

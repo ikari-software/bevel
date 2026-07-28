@@ -264,13 +264,17 @@ public partial class StartMenu : UserControl
         // Documents: recent-documents list (empty for now — no MRU tracking yet).
         DocumentsItem.Items.Add(Disabled("(No recent documents)"));
 
-        AddLeaf(SettingsItem, "Control Panel", () => { });
-        AddLeaf(SettingsItem, "Network and Dial-up Connections", () => { });
-        AddLeaf(SettingsItem, "Printers", () => { });
+        // Control Panel opens Bevel's Settings — the same surface as "Taskbar and Start Menu…" and the
+        // Luna "Control Panel" row (bevel-x6pv). The other classic Settings/Search leaves (Network,
+        // Printers, file/internet search) and the Help/Run leaves have no backing capability yet, so they
+        // are HIDDEN rather than shown as dead no-ops. (Log Off / Shut Down are left to bevel-4vce, which
+        // owns the shell-action semantics.)
+        AddLeaf(SettingsItem, "Control Panel", () => { Close(); _openSettings(); });
         AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { Close(); _openSettings(); });
 
-        AddLeaf(SearchItem, "For Files or Folders…", () => { });
-        AddLeaf(SearchItem, "On the Internet…", () => { });
+        SearchItem.IsVisible = false;   // no search capability yet → hide the whole submenu
+        HelpItem.IsVisible = false;     // no help system
+        RunItem.IsVisible = false;      // no Run dialog
     }
 
     // ── Bound Programs ─────────────────────────────────────────────────
