@@ -67,7 +67,9 @@
                          VerticalScrollBarVisibility="Auto"
                          Background="{DynamicResource Bevel.Brush.Window}">
                 <ItemsControl x:Name="ItemsPresenter"
-                              Focusable="False" />
+                              Focusable="False"
+                              VerticalAlignment="Top"
+                              HorizontalAlignment="Stretch" />
             </ScrollViewer>
             <Canvas x:Name="MarqueeCanvas"
                     IsHitTestVisible="False"
