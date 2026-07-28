@@ -20,6 +20,9 @@ public sealed class FileManagerModule : IModule
             // Volume labels come from the active PAL when it provides them (bevel-1cc);
             // GetService (not Required) because the Fake PAL registers none.
             root.Register(new ComputerProvider(sp.GetService<Bevel.Pal.Abstractions.IVolumeLabelSource>()));
+            // Makes the Trash tree node browsable (bevel-sw3k) — before this, selecting it threw
+            // KeyNotFoundException (swallowed) because no "trash" provider was registered.
+            root.Register(new TrashProvider());
             return root;
         });
 
