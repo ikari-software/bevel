@@ -54,6 +54,7 @@ public static unsafe partial class AppleEventInbound
     static uint FourCC(string s) => ((uint)s[0] << 24) | ((uint)s[1] << 16) | ((uint)s[2] << 8) | s[3];
 
     static readonly uint keyDirectObject = FourCC("----");
+    static readonly uint keyErrorNumber = FourCC("errn");   // keyErrorNumber — reply's error code slot
     static readonly uint typeFileURL = FourCC("furl");
     static readonly uint typeAEList = FourCC("list");
     private static bool _installed;
@@ -115,7 +116,7 @@ public static unsafe partial class AppleEventInbound
             if (cls == FourCC("core") && id == FourCC("getd")) { HandleQuery(QueryOp.Get, evt, reply); return; }
             if (cls == FourCC("core") && id == FourCC("cnte")) { HandleQuery(QueryOp.Count, evt, reply); return; }
             if (cls == FourCC("core") && id == FourCC("doex")) { HandleQuery(QueryOp.Exists, evt, reply); return; }
-            if (cls == FourCC("core") && id == FourCC("setd")) { Handler?.Invoke(BuildSetSelection(evt)); return; }
+            if (cls == FourCC("core") && id == FourCC("setd")) { HandleSet(evt, reply); return; }
             // `select {items}` carries its targets in the direct object (not keyAEData like `set selection to`).
             if (cls == FourCC("misc") && id == FourCC("slct")) { Handler?.Invoke(BuildTargets(Verb.SetSelection, evt)); return; }
 
@@ -196,6 +197,39 @@ public static unsafe partial class AppleEventInbound
     {
         var (paths, specs) = ParseTargets(evt);
         return new AeRequest(Verb.Move, paths, specs, ParseInsertionContainer(evt), null);
+    }
+
+    // `set <property> of <specifier> to <value>`. The direct object is the property SPECIFIER (what is
+    // being set); route on its property key. Only `set selection to …` (prop 'sele') is applied in v1 —
+    // previously EVERY setd was assumed to be set-selection, so `set bounds/current view/target of window`
+    // silently clobbered the selection with the mis-parsed value (bevel-v6o). The sdef advertises
+    // bounds/current view/target/index as writable, so an unsupported set answers errAEEventNotHandled
+    // rather than a wrong no-op. Computed inline (no surface round-trip) so it can't reintroduce the
+    // bevel-odf UI-thread freeze.
+    static void HandleSet(IntPtr evt, IntPtr reply)
+    {
+        var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
+        var form = direct != IntPtr.Zero ? SendU32(DescFor(direct, "form"), Sel("enumCodeValue")) : 0;
+        var prop = form == FourCC("prop") ? SendU32(DescFor(direct, "seld"), Sel("typeCodeValue")) : 0;
+
+        if (prop == FourCC("sele"))
+        {
+            Handler?.Invoke(BuildSetSelection(evt));
+            return;
+        }
+
+        Trace($"AE setd: unsupported set target (prop=0x{prop:X8}) — replying errAEEventNotHandled");
+        WriteErrorReply(reply, -1708);   // errAEEventNotHandled
+    }
+
+    /// <summary>Writes an error code into the reply's <c>keyErrorNumber</c> slot, so a script gets a real
+    /// "can't set that" instead of a silent (wrong) success.</summary>
+    static void WriteErrorReply(IntPtr reply, int errorNumber)
+    {
+        if (reply == IntPtr.Zero) return;
+        var desc = Send_i32(AeDescClass, Sel("descriptorWithInt32:"), errorNumber);
+        if (desc != IntPtr.Zero)
+            SendVoid_ptru32(reply, Sel("setParamDescriptor:forKeyword:"), desc, keyErrorNumber);
     }
 
     // `set selection to <value>`: the new value is in keyAEData ('data').
