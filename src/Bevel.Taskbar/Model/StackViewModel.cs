@@ -52,19 +52,30 @@ public sealed class StackViewModel : ObservableObject, IDisposable
 
     public ICommand OpenFolderCommand { get; }
 
-    /// <summary>Rebuilds the recent-contents list (newest first). Called when the flyout opens, so a
-    /// closed stack costs nothing. Also clears the <see cref="HasNew"/> cue — opening = seen.</summary>
-    public void Refresh()
+    /// <summary>Non-blocking entry for the click path: kicks the off-thread refresh and returns, so
+    /// clicking a stack over a large or slow-backed folder never freezes the taskbar (bevel-gs8l).
+    /// The flyout opens optimistically and fills when the enumeration returns.</summary>
+    public void Refresh() => _ = RefreshAsync();
+
+    /// <summary>Rebuilds the recent-contents list (newest first) with the directory enumeration + per-
+    /// entry stat done OFF the UI thread, marshaling only the item rebuild back. Called when the flyout
+    /// opens, so a closed stack costs nothing. Also clears the <see cref="HasNew"/> cue — opening = seen.</summary>
+    public async Task RefreshAsync()
     {
         HasNew = false;
-        var recent = RecentEntries(FolderPath, MaxItems);
-        Items.Clear();
-        foreach (var path in recent)
+        var folder = FolderPath;
+        var max = MaxItems;
+        var recent = await Task.Run(() => RecentEntries(folder, max)).ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var item = new StackFileViewModel(path, _appEnv, _icons);
-            Items.Add(item);
-            item.EnsureIcon(); // ~16 items, off-thread — no UI-thread render cost
-        }
+            Items.Clear();
+            foreach (var path in recent)
+            {
+                var item = new StackFileViewModel(path, _appEnv, _icons);
+                Items.Add(item);
+                item.EnsureIcon(); // ~16 items, off-thread — no UI-thread render cost
+            }
+        });
     }
 
     /// <summary>The folder's most-recent entries (files and subfolders) as full paths, newest first,

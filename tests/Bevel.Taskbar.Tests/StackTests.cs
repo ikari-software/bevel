@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Bevel.Taskbar;
 using Xunit;
 
@@ -49,14 +52,15 @@ public class StackTests : IDisposable
     public void RecentEntries_missing_folder_is_empty()
         => Assert.Empty(StackViewModel.RecentEntries(Path.Combine(_dir, "nope", "gone"), 16));
 
-    [Fact]
-    public void Refresh_populates_items_newest_first_and_clears_new_cue()
+    [AvaloniaFact]
+    public async Task Refresh_populates_items_newest_first_and_clears_new_cue()
     {
         File("a.txt", 5);
         File("b.txt", 1);
         using var stack = new StackViewModel(_dir, appEnv: null, new IconLoader(null));
 
-        stack.Refresh();
+        await stack.RefreshAsync();   // off-thread enumerate + marshalled rebuild (bevel-gs8l)
+        Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(new[] { "b.txt", "a.txt" }, stack.Items.Select(i => i.Name));
         Assert.False(stack.HasNew); // opening (refresh) marks the stack seen
