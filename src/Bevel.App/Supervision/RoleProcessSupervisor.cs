@@ -144,15 +144,19 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
 
     private async Task StartAllInOrderLocked(CancellationToken ct)
     {
+        // Start every role back-to-back (dependency order preserved) so their cold starts OVERLAP
+        // (bevel-2cbo): the taskbar no longer waits for the core to be reachable before it even forks.
+        // Its shell-core client already retries the connect (ShellModel: 40×750ms + the 2s reconcile),
+        // so overlapping the two cold starts removes the core's entire startup from time-to-taskbar-
+        // visible. Core readiness is still awaited AFTER spawning, so callers can assume a reachable
+        // core — but the taskbar has already forked in parallel by then.
         foreach (var p in _processes)
         {
             _log?.Invoke($"supervisor: starting {p.Role}");
             p.Start();
-            // Gate the UI roles on the core actually being reachable (socket up), so a UI client's
-            // first connect doesn't spend its whole retry budget waiting for a not-yet-bound core.
-            if (p.Role == ShellRole.Core && _coreReadyProbe is not null)
-                await _coreReadyProbe(ct).ConfigureAwait(false);
         }
+        if (_coreReadyProbe is not null)
+            await _coreReadyProbe(ct).ConfigureAwait(false);
     }
 
     /// <summary>

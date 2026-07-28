@@ -48,6 +48,14 @@ internal static class Program
             return;
         }
 
+        // Kick the persisted-settings load off-thread NOW so its SQLite open + WAL + parse overlaps the
+        // Avalonia app construction and hosted-service start below, instead of running serially just
+        // before first paint (bevel-gwb4). It's awaited before StartWithClassicDesktopLifetime — still on
+        // THIS thread, before the dispatcher pumps — so it's loaded by the time theme apply reads it, and
+        // nothing else touches the service until then (no concurrency, no UI-thread block).
+        var settingsLoad = Task.Run(() =>
+            host.Services.GetRequiredService<Bevel.Core.SettingsService>().LoadAsync());
+
         // Let a termination signal (SIGTERM / SIGINT / Ctrl-C) drive a clean Avalonia
         // shutdown so window OnClosed handlers and hosted-service Dispose run (e.g. the
         // Dock controller restores the user's Dock preference). .NET on macOS does NOT
@@ -66,12 +74,11 @@ internal static class Program
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
         host.Start();
 
-        // Load persisted settings on THIS thread, before StartWithClassicDesktopLifetime turns it
-        // into the Avalonia UI thread. A synchronous read here blocks nothing (no dispatcher is
-        // pumping yet); doing it inside OnFrameworkInitializationCompleted blocked — and once
-        // deadlocked — the UI thread instead (core rule: never block the UI thread).
-        host.Services.GetRequiredService<Bevel.Core.SettingsService>()
-            .LoadAsync().GetAwaiter().GetResult();
+        // Ensure the settings load (kicked off-thread above) has finished before StartWithClassicDesktop-
+        // Lifetime turns this into the Avalonia UI thread — theme apply in OnFrameworkInitializationCompleted
+        // reads them. Blocking here is safe: no dispatcher is pumping yet (doing it INSIDE
+        // OnFrameworkInitializationCompleted blocked — and once deadlocked — the UI thread instead).
+        settingsLoad.GetAwaiter().GetResult();
 
         try
         {

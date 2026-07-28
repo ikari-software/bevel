@@ -122,7 +122,8 @@ public partial class App : Application
             {
                 // A DB read that overruns the 750ms interval must not overlap the next tick — two
                 // ReloadIfChangedAsync calls would race on the service's _version/_raw. Tick runs on the
-                // UI thread, so this plain-bool gate is single-threaded and race-free.
+                // UI thread, so this plain-bool gate is single-threaded and race-free. (The read itself is
+                // cheap now: ReloadIfChangedAsync probes only the version int on the no-change tick — bevel-6nve.)
                 if (reloadInFlight) return;
                 reloadInFlight = true;
                 try { await settings.ReloadIfChangedAsync(); }   // raises Changed on an external write
