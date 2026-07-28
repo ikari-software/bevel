@@ -413,7 +413,7 @@ internal static class LocalTrash
             System.IO.File.Move(source, destination);
     }
 
-    private static void MoveDirectory(string source, string destination)
+    internal static void MoveDirectory(string source, string destination)
     {
         try
         {
@@ -428,9 +428,20 @@ internal static class LocalTrash
         catch (IOException)
         {
             // Cross-volume (EXDEV) or a similar rename refusal: recreate the tree at the trash
-            // location, then remove the original. The destination is a fresh, unique path, so
-            // there is nothing to overwrite.
-            CopyDirectory(source, destination);
+            // location, then remove the original. The destination is a fresh, unique path (guarded
+            // in MoveToTrash), so there is nothing to overwrite.
+            try
+            {
+                CopyDirectory(source, destination);
+            }
+            catch
+            {
+                // The copy failed partway (disk full, permission, ...): delete the orphaned partial
+                // destination and leave the SOURCE fully intact, then surface the failure — never
+                // half-move (bevel-a3r). Safe to delete the whole destination: it was freshly created.
+                try { System.IO.Directory.Delete(destination, recursive: true); } catch { }
+                throw;
+            }
             System.IO.Directory.Delete(source, recursive: true);
         }
     }
