@@ -130,40 +130,26 @@ public partial class TaskbarView : UserControl
     {
         FontSize = fontSize > 0 ? Math.Clamp(fontSize, 8, 32) : 11;
 
-        var themeColor = this.TryFindResource("SystemButtonFaceBrush", out var r)
-            && r is Avalonia.Media.ISolidColorBrush b ? b.Color : (Avalonia.Media.Color?)null;
-        if (ComputeTintColor(bgColor, opacity, themeColor) is { } c)
-            RootGrid.Background = new Avalonia.Media.SolidColorBrush(c);
+        // Opacity is the ALPHA of the taskbar fill (RGBA/HSVA): scale the whole themed background LAYER's
+        // alpha uniformly, so the theme's real fill — Luna's purple GRADIENT, Win2000's grey — is kept
+        // (never flattened to the button-face colour) and the desktop shows through it (bevel-cust.appearance).
+        TaskbarBg.Opacity = FillOpacity(opacity);
+
+        if (!string.IsNullOrWhiteSpace(bgColor) && Avalonia.Media.Color.TryParse(bgColor, out var custom))
+            // A user-picked flat colour overrides the theme fill (its alpha still comes from Opacity above).
+            TaskbarBg.Background = new Avalonia.Media.SolidColorBrush(custom);
         else
-            // Re-establish the theme-token binding — NOT ClearValue. The bar's background is set in XAML
-            // as {DynamicResource Bevel.Brush.TaskbarBackground}; that binding IS the local value, so
-            // ClearValue drops the DynamicResource subscription and freezes the bar on whatever value was
-            // current (the grey Win2000 token at startup), blind to later theme swaps. Re-applying the
-            // DynamicResource keeps RootGrid live-tracking the token across theme changes (bevel-dob).
-            RootGrid[!Avalonia.Controls.Panel.BackgroundProperty] =
+            // Re-establish the theme-token binding — NOT ClearValue. The fill is set in XAML as
+            // {DynamicResource Bevel.Brush.TaskbarBackground}; ClearValue would drop the DynamicResource
+            // subscription and freeze the fill on the current token, blind to later theme swaps. Re-applying
+            // the DynamicResource keeps the layer live-tracking the token across theme changes (bevel-dob).
+            TaskbarBg[!Avalonia.Controls.Border.BackgroundProperty] =
                 new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("Bevel.Brush.TaskbarBackground");
     }
 
-    /// <summary>Pure tint policy (bevel-cust.appearance) — testable without a visual tree. Returns the
-    /// ARGB fill for the bar, or null when it should fall back to the theme brush (fully opaque AND no
-    /// custom colour). A parseable custom hex wins; otherwise the theme colour is tinted by opacity.
-    /// Unparseable/empty hex is ignored (never throws). Opacity is clamped to 20–100%.</summary>
-    internal static Avalonia.Media.Color? ComputeTintColor(string bgColor, int opacity, Avalonia.Media.Color? themeColor)
-    {
-        var op = Math.Clamp(opacity, 20, 100);
-        var hasColor = !string.IsNullOrWhiteSpace(bgColor) && Avalonia.Media.Color.TryParse(bgColor, out _);
-        if (op >= 100 && !hasColor)
-            return null;   // no customization → theme brush
-
-        Avalonia.Media.Color baseColor;
-        if (hasColor)
-            Avalonia.Media.Color.TryParse(bgColor, out baseColor);
-        else
-            baseColor = themeColor ?? Avalonia.Media.Colors.Silver;
-
-        var a = (byte)(op * 255 / 100);
-        return Avalonia.Media.Color.FromArgb(a, baseColor.R, baseColor.G, baseColor.B);
-    }
+    /// <summary>The taskbar fill's alpha as a 0–1 opacity (bevel-cust.appearance). Pure + testable.
+    /// The stored percentage is clamped to 20–100 so the bar never vanishes entirely.</summary>
+    internal static double FillOpacity(int opacity) => Math.Clamp(opacity, 20, 100) / 100.0;
 
     /// <summary>Pushes every live-applicable setting onto the running taskbar in one shot (clock, Start,
     /// grouping, label mode). Called by the Properties dialog's ApplyLive hook — same process, so the

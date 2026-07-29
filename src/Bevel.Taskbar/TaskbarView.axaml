@@ -44,7 +44,7 @@
     <Panel>
     <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
           ClipToBounds="False"
-          Background="{DynamicResource Bevel.Brush.TaskbarBackground}">
+          Background="Transparent">
         <!-- Right-click the empty taskbar (bevel-cust.ctxmenu). Cascade/Tile join in the superset pass. -->
         <Grid.ContextFlyout>
             <MenuFlyout>
@@ -55,6 +55,15 @@
                 <MenuItem Header="P_roperties…" Click="OnPropertiesClick" />
             </MenuFlyout>
         </Grid.ContextFlyout>
+
+        <!-- The themed taskbar fill, as its OWN layer behind every button (bevel-cust.appearance).
+             Opacity is the fill's ALPHA: scaling this layer's opacity keeps the theme's real fill —
+             Luna's purple GRADIENT, Win2000's grey — as RGBA and lets the desktop show through it,
+             instead of flattening to the button-face colour. IsHitTestVisible=False so right-click on
+             the empty bar still hits RootGrid's context menu. -->
+        <Border x:Name="TaskbarBg" Grid.Column="0" Grid.ColumnSpan="3"
+                IsHitTestVisible="False"
+                Background="{DynamicResource Bevel.Brush.TaskbarBackground}" />
 
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
