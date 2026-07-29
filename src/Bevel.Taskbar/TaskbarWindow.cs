@@ -79,7 +79,10 @@ public sealed class TaskbarWindow : BevelWindow
                 [!ContentPresenter.ContentTemplateProperty] = parent[!ContentControl.ContentTemplateProperty],
             };
             presenter.RegisterInNameScope(scope);
-            return presenter;
+            // Wrap in a VisualLayerManager so the window still provides the overlay/adorner layers that
+            // popups, tooltips and the window-preview flyout need (the stock ClassicWindow template had
+            // one; a bare ContentPresenter does not → "no overlay layer" and dead tooltips).
+            return new VisualLayerManager { Child = presenter };
         });
 
         // The ClassicWindow theme sets MinHeight=50; without overriding it the taskbar
