@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Classic.Avalonia.Theme;
@@ -58,6 +60,31 @@ public sealed class TaskbarWindow : BevelWindow
         TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent };
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
+
+        // The inherited ClassicWindow template paints an OPAQUE ControlBrushKey (button-face grey) fill
+        // behind the content (Classic's Window.axaml), independent of Window.Background — so a translucent
+        // RootGrid composited over THAT, revealing grey, not the desktop (the "opacity fades back to the
+        // button-face colour" report). The taskbar is chromeless and draws its own band, so give it a
+        // minimal template: a transparent content host plus only the classic raised top bevel. Now the
+        // RootGrid tint composites straight over the transparent window and the desktop shows through.
+        Template = new FuncControlTemplate<TaskbarWindow>((parent, scope) =>
+        {
+            var presenter = new ContentPresenter
+            {
+                Name = "PART_ContentPresenter",
+                [!ContentPresenter.ContentProperty] = parent[!ContentControl.ContentProperty],
+                [!ContentPresenter.ContentTemplateProperty] = parent[!ContentControl.ContentTemplateProperty],
+            };
+            presenter.RegisterInNameScope(scope);
+            // Classic raised top edge (the taskbar's only chrome) — drawn OVER the content, transparent interior.
+            var bevel = new ClassicBorderDecorator
+            {
+                BorderStyle = ClassicBorderStyle.AltRaised,
+                BorderThickness = new Thickness(2),
+                IsHitTestVisible = false,
+            };
+            return new Panel { Children = { presenter, bevel } };
+        });
 
         // The ClassicWindow theme sets MinHeight=50; without overriding it the taskbar
         // window is clamped to 50px (leaving a gray gap above the content). Lock the window
