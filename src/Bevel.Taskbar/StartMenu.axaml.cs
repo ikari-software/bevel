@@ -37,6 +37,7 @@ public partial class StartMenu : UserControl
     private readonly Action _restart;
     private readonly Action _openSettings;
     private readonly Action<VfsPath> _openFolder;
+    private readonly Action _openSearch;
 
     public StartMenu() : this(null, null) { }
 
@@ -50,7 +51,8 @@ public partial class StartMenu : UserControl
         Action? restart = null,
         StartMenuViewModel? programs = null,
         Action? openSettings = null,
-        Action<VfsPath>? openFolder = null)
+        Action<VfsPath>? openFolder = null,
+        Action? openSearch = null)
     {
         InitializeComponent();
         _programsVm = programs;
@@ -58,6 +60,7 @@ public partial class StartMenu : UserControl
         _restart = restart ?? (() => { });
         _openSettings = openSettings ?? (() => { });
         _openFolder = openFolder ?? (_ => { });
+        _openSearch = openSearch ?? (() => { });
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
@@ -264,17 +267,17 @@ public partial class StartMenu : UserControl
         // Documents: recent-documents list (empty for now — no MRU tracking yet).
         DocumentsItem.Items.Add(Disabled("(No recent documents)"));
 
-        // Control Panel opens Bevel's Settings — the same surface as "Taskbar and Start Menu…" and the
-        // Luna "Control Panel" row (bevel-x6pv). The other classic Settings/Search leaves (Network,
-        // Printers, file/internet search) and the Help/Run leaves have no backing capability yet, so they
-        // are HIDDEN rather than shown as dead no-ops. (Log Off / Shut Down are left to bevel-4vce, which
-        // owns the shell-action semantics.)
+        // Every leaf routes to a REAL action (bevel-x6pv) — nothing here is a dead no-op or hidden:
+        // Control Panel + Taskbar open Bevel Settings; Network/Printers launch the matching macOS
+        // settings pane; Search opens Explorer's Find or the browser. (Log Off / Shut Down are owned by
+        // bevel-4vce — the shell-action semantics decision.)
         AddLeaf(SettingsItem, "Control Panel", () => { Close(); _openSettings(); });
+        AddLeaf(SettingsItem, "Network and Dial-up Connections", () => { Close(); LaunchUrl("x-apple.systempreferences:com.apple.Network-Settings.extension"); });
+        AddLeaf(SettingsItem, "Printers", () => { Close(); LaunchUrl("x-apple.systempreferences:com.apple.Print-Scan-Settings.extension"); });
         AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { Close(); _openSettings(); });
 
-        SearchItem.IsVisible = false;   // no search capability yet → hide the whole submenu
-        HelpItem.IsVisible = false;     // no help system
-        RunItem.IsVisible = false;      // no Run dialog
+        AddLeaf(SearchItem, "For Files or Folders…", () => { Close(); _openSearch(); });
+        AddLeaf(SearchItem, "On the Internet…", () => { Close(); LaunchUrl("https://duckduckgo.com"); });
     }
 
     // ── Bound Programs ─────────────────────────────────────────────────
@@ -351,10 +354,32 @@ public partial class StartMenu : UserControl
 
     // ── Leaf handlers (XAML-wired) ─────────────────────────────────────
 
-    private void OnHelpClick(object? sender, RoutedEventArgs e) => Close();
-    private void OnRunClick(object? sender, RoutedEventArgs e) => Close();
-    private void OnLogOffClick(object? sender, RoutedEventArgs e) => Close();
-    private void OnShutDownClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnHelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
+    private void OnRunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
+    private void OnLogOffClick(object? sender, RoutedEventArgs e) => Close();   // bevel-4vce owns Log Off semantics
+    private void OnShutDownClick(object? sender, RoutedEventArgs e) => Close();  // bevel-4vce owns Shut Down semantics
+
+    // ── Real actions for the former dead items (bevel-x6pv) ────────────
+
+    /// <summary>Opens a URL / macOS settings-pane / resource via the OS handler — same mechanism the
+    /// clock and onboarding use. Backs the Network / Printers / "Search on the Internet" leaves.</summary>
+    private static void LaunchUrl(string url)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = url,
+                UseShellExecute = true,
+            });
+        }
+        catch { /* nothing to open */ }
+    }
+
+    private void ShowHelp() => new AboutDialog().Show();
+    private void ShowRun() => new RunDialog().Show();
 
     // ── Luna two-column handlers ───────────────────────────────────────
     // All Programs opens a flyout bound to the full Programs collection (see StartMenu.axaml). Launching
@@ -390,9 +415,9 @@ public partial class StartMenu : UserControl
         _ => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
     private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }
-    private void OnLunaHelpClick(object? sender, RoutedEventArgs e) => Close();
-    private void OnLunaSearchClick(object? sender, RoutedEventArgs e) => Close();
-    private void OnLunaRunClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnLunaHelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
+    private void OnLunaSearchClick(object? sender, RoutedEventArgs e) { Close(); _openSearch(); }
+    private void OnLunaRunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
     private void OnLunaLogOffClick(object? sender, RoutedEventArgs e) { Close(); _restart(); }
     private void OnLunaTurnOffClick(object? sender, RoutedEventArgs e) { Close(); _quit(); }
     private void OnRestartClick(object? sender, RoutedEventArgs e)

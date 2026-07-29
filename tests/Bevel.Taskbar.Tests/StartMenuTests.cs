@@ -20,25 +20,34 @@ public class StartMenuTests
     }
 
     [AvaloniaFact]
-    public void Dead_items_are_hidden_and_control_panel_opens_settings()
+    public void Formerly_dead_items_are_visible_and_wired_to_real_actions()
     {
         var opened = 0;
-        var menu = new StartMenu(null, openSettings: () => opened++);
+        var searched = 0;
+        var menu = new StartMenu(null, openSettings: () => opened++, openSearch: () => searched++);
 
-        // Capability-less leaves are hidden, not shown as dead no-ops (bevel-x6pv).
-        Assert.False(menu.FindControl<MenuItem>("SearchItem")!.IsVisible);
-        Assert.False(menu.FindControl<MenuItem>("HelpItem")!.IsVisible);
-        Assert.False(menu.FindControl<MenuItem>("RunItem")!.IsVisible);
+        // Nothing is hidden — the former dead leaves are real now (bevel-x6pv).
+        Assert.True(menu.FindControl<MenuItem>("SearchItem")!.IsVisible);
+        Assert.True(menu.FindControl<MenuItem>("HelpItem")!.IsVisible);
+        Assert.True(menu.FindControl<MenuItem>("RunItem")!.IsVisible);
 
-        // Settings keeps only the two entries that map to a real surface (Network/Printers dropped).
+        // Settings offers Control Panel + Network + Printers + Taskbar (all wired to real launches).
         var settings = menu.FindControl<MenuItem>("SettingsItem")!;
         var labels = settings.Items.OfType<MenuItem>().Select(m => (string?)m.Header).ToArray();
-        Assert.Equal(new[] { "Control Panel", "Taskbar and Start Menu…" }, labels);
+        Assert.Equal(
+            new[] { "Control Panel", "Network and Dial-up Connections", "Printers", "Taskbar and Start Menu…" },
+            labels);
 
-        // Control Panel now opens Bevel Settings instead of doing nothing.
-        var cp = settings.Items.OfType<MenuItem>().First(m => (string?)m.Header == "Control Panel");
-        cp.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        // Control Panel opens Bevel Settings.
+        settings.Items.OfType<MenuItem>().First(m => (string?)m.Header == "Control Panel")
+            .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.Equal(1, opened);
+
+        // Search ▸ "For Files or Folders" drives the openSearch seam (opens Explorer in Find mode).
+        var search = menu.FindControl<MenuItem>("SearchItem")!;
+        search.Items.OfType<MenuItem>().First(m => ((string?)m.Header)!.StartsWith("For Files"))
+            .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal(1, searched);
     }
 
     [AvaloniaFact]

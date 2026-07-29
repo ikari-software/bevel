@@ -153,6 +153,14 @@ public partial class FileManagerWindow : BevelWindow
     /// <summary>Injected by the composition root / window factory so search shares the app VfsRoot.</summary>
     public void SetSearchService(SearchService searchService) => _searchService = searchService;
 
+    /// <summary>Opens the Find pane and focuses it — the target for the Start menu's "Search ▸ For Files
+    /// or Folders" (bevel-x6pv). Idempotent: if it's already open this just refocuses it.</summary>
+    public void BeginSearch()
+    {
+        if (!SearchPane.IsVisible) SearchPane.IsVisible = true;
+        SearchPane.Focus();
+    }
+
     /// <summary>Show/hide the Find pane (Search toolbar button, F3, Ctrl+F, Edit&gt;Find Files).
     /// Closing cancels any running search and restores the normal directory listing.</summary>
     void ToggleSearchPane()

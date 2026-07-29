@@ -23,6 +23,7 @@ public partial class TaskbarView : UserControl
     private Action? _restart;
     private Action? _openSettings;
     private Action<Bevel.Core.Vfs.VfsPath>? _openFolder;
+    private Action? _openSearch;
     private Action? _toggleLock;
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
@@ -73,7 +74,8 @@ public partial class TaskbarView : UserControl
         Action? restart = null,
         Action? openSettings = null,
         Action? toggleLock = null,
-        Action<Bevel.Core.Vfs.VfsPath>? openFolder = null)
+        Action<Bevel.Core.Vfs.VfsPath>? openFolder = null,
+        Action? openSearch = null)
     {
         // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
@@ -82,6 +84,7 @@ public partial class TaskbarView : UserControl
         _restart = restart;
         _openSettings = openSettings;
         _openFolder = openFolder;
+        _openSearch = openSearch;
         _toggleLock = toggleLock;
 
         // Every persisted setting flows from the one BevelSettings (bevel-ccs) — no more 25-param call.
@@ -337,7 +340,7 @@ public partial class TaskbarView : UserControl
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder);
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.

@@ -250,7 +250,9 @@ public partial class App : Application
             // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
             // at that folder — in-process in the single-process shell, or as its own --role=explorer
             // process in a split launch (the taskbar process has no explorer surface).
-            openFolder: path => OpenExplorerAt(services, path));
+            openFolder: path => OpenExplorerAt(services, path),
+            // Start ▸ Search → open a Bevel Explorer already in Find mode (bevel-x6pv).
+            openSearch: () => OpenExplorerSearch(services));
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.
@@ -313,6 +315,18 @@ public partial class App : Application
             Program.SpawnExplorer(path.Value);
     }
 
+    /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Explorer at Home already in Find
+    /// mode (bevel-x6pv). In-process the factory hands back the window so we focus its Find pane; in a
+    /// split launch the explorer spawns with --search and enters Find mode itself.</summary>
+    private static void OpenExplorerSearch(IServiceProvider services)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (Role is ShellRole.All or ShellRole.Explorer)
+            services.GetRequiredService<FileManagerWindowFactory>().Create(new VfsPath("file", home)).BeginSearch();
+        else
+            Program.SpawnExplorer(home, search: true);
+    }
+
     private static void CreateExplorerSurface(
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
@@ -325,6 +339,9 @@ public partial class App : Application
             ? new VfsPath("file", openArg.Substring("--open-path=".Length))
             : new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         var fm = factory.Create(startPath);
+        // Spawned via Start ▸ Search → open straight into Find mode (bevel-x6pv).
+        if (Environment.GetCommandLineArgs().Any(a => a.Equals("--search", StringComparison.OrdinalIgnoreCase)))
+            fm.BeginSearch();
         desktop.MainWindow = fm;
 
         // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which

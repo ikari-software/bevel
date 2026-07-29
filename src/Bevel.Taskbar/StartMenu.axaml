@@ -348,8 +348,7 @@
                                     <TextBlock Text="Control Panel" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <!-- Hidden until backed by a real capability (bevel-x6pv): no help system yet. -->
-                            <Button Classes="lunarow" Click="OnLunaHelpClick" IsVisible="False">
+                            <Button Classes="lunarow" Click="OnLunaHelpClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuHelpIcon}">
                                         <TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15"
@@ -358,8 +357,7 @@
                                     <TextBlock Text="Help and Support" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <!-- Hidden until backed by a real capability (bevel-x6pv): no search yet. -->
-                            <Button Classes="lunarow" Click="OnLunaSearchClick" IsVisible="False">
+                            <Button Classes="lunarow" Click="OnLunaSearchClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
@@ -370,8 +368,7 @@
                                     <TextBlock Text="Search" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <!-- Hidden until backed by a real capability (bevel-x6pv): no Run dialog yet. -->
-                            <Button Classes="lunarow" Click="OnLunaRunClick" IsVisible="False">
+                            <Button Classes="lunarow" Click="OnLunaRunClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
