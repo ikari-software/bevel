@@ -30,8 +30,10 @@ public sealed class TabbedBrowsingTests : IDisposable
 
     public TabbedBrowsingTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), $"bevel-tabs-{Guid.NewGuid():N}");
-        _sub = Path.Combine(_dir, "sub");
+        // Canonical '/' form (what VfsPath.Value always is): .NET file I/O accepts '/' on Windows too,
+        // so this keeps the fixture cross-platform and comparable to CurrentDirectory.Value.
+        _dir = Path.Combine(Path.GetTempPath(), $"bevel-tabs-{Guid.NewGuid():N}").Replace('\\', '/');
+        _sub = Path.Combine(_dir, "sub").Replace('\\', '/');
         Directory.CreateDirectory(_sub);
         File.WriteAllText(Path.Combine(_dir, "apple.txt"), "a");
         File.WriteAllText(Path.Combine(_sub, "banana.txt"), "b");

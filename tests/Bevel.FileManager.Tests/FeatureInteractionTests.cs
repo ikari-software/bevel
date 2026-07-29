@@ -33,8 +33,9 @@ public sealed class FeatureInteractionTests : IDisposable
 
     public FeatureInteractionTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), $"bevel-feat-{Guid.NewGuid():N}");
-        _sub = Path.Combine(_dir, "sub");
+        // Canonical '/' form (what VfsPath.Value always is); '/' is a valid separator for .NET file I/O on Windows.
+        _dir = Path.Combine(Path.GetTempPath(), $"bevel-feat-{Guid.NewGuid():N}").Replace('\\', '/');
+        _sub = Path.Combine(_dir, "sub").Replace('\\', '/');
         Directory.CreateDirectory(_sub);
         File.WriteAllText(Path.Combine(_dir, "apple.txt"), "a");
         File.WriteAllText(Path.Combine(_dir, "banana.txt"), "b");

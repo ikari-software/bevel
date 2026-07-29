@@ -178,6 +178,11 @@ jobs:
     name: Sign + notarize (macOS)
     runs-on: macos-latest
     needs: [publish, swift]
+    # Signing + notarization is a RELEASE step, not a per-push one (notarytool submits to Apple and
+    # waits). Only run it for v* tags — the dedicated release-macos.yml lane owns real releases
+    # (bevel-9po). On ordinary pushes/PRs this job is skipped, so an incomplete/placeholder org-level
+    # signing secret can't turn every CI run red.
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 

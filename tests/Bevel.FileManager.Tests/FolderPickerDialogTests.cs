@@ -25,7 +25,8 @@ public sealed class FolderPickerDialogTests : IDisposable
 
     public FolderPickerDialogTests()
     {
-        _dir = Path.Combine(Path.GetTempPath(), $"bevel-folderpicker-{Guid.NewGuid():N}");
+        // Canonical '/' form (what VfsPath.Value always is); '/' is a valid separator for .NET file I/O on Windows.
+        _dir = Path.Combine(Path.GetTempPath(), $"bevel-folderpicker-{Guid.NewGuid():N}").Replace('\\', '/');
         Directory.CreateDirectory(Path.Combine(_dir, "SubFolder"));
         File.WriteAllText(Path.Combine(_dir, "note.txt"), "not a folder");
     }
@@ -104,7 +105,7 @@ public sealed class FolderPickerDialogTests : IDisposable
         Assert.True(dialog.Ok.IsEnabled);
         var confirmed = dialog.ConfirmSelection();
         Assert.NotNull(confirmed);
-        Assert.Equal(Path.Combine(_dir, "SubFolder"), confirmed!.Value.Value);
+        Assert.Equal(Path.Combine(_dir, "SubFolder").Replace('\\', '/'), confirmed!.Value.Value);
         Assert.Equal("file", confirmed.Value.Scheme);
     }
 

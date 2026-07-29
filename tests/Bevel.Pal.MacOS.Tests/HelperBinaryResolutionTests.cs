@@ -11,9 +11,13 @@ namespace Bevel.Pal.MacOS.Tests;
 /// </summary>
 public class HelperBinaryResolutionTests
 {
-    private const string BaseDir = "/app/Contents/Resources";
-    // Path.GetFullPath("/app/Contents/Resources/../MacOS/BevelHelper").
-    private const string BundlePath = "/app/Contents/MacOS/BevelHelper";
+    // Rooted fixture paths built with Path APIs (not hardcoded '/'-strings) so the resolver's
+    // Path.GetFullPath/Combine round-trips identically on every OS — POSIX '/', Windows drive + '\'.
+    // These are probe fixtures for the injected existence check, never a real filesystem.
+    private static readonly string AppRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "bevel-fixture-app"));
+    private static readonly string BaseDir = Path.Combine(AppRoot, "Contents", "Resources");
+    // Exactly what ResolveHelperBinary computes from BaseDir, so the expectation can't drift from it.
+    private static readonly string BundlePath = Path.GetFullPath(Path.Combine(BaseDir, "..", "MacOS", "BevelHelper"));
 
     private static Func<string, bool> Exists(params string[] present)
     {
@@ -86,13 +90,13 @@ public class HelperBinaryResolutionTests
     [Fact]
     public void Finds_the_dev_build_output_by_walking_up_to_the_repo_root()
     {
-        const string repo = "/repo";
-        const string exeDir = "/repo/src/Bevel.App/bin";
-        const string devDebug = "/repo/native/helper-macos/.build/debug/BevelHelper";
+        var repo = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "bevel-fixture-repo"));
+        var exeDir = Path.Combine(repo, "src", "Bevel.App", "bin");
+        var devDebug = Path.Combine(repo, "native", "helper-macos", ".build", "debug", "BevelHelper");
 
         var path = HelperProcessHost.ResolveHelperBinary(
             envPath: null, exeDir, allowEnvOverride: false,
-            Exists($"{repo}/Bevel.sln", devDebug));
+            Exists(Path.Combine(repo, "Bevel.sln"), devDebug));
 
         Assert.Equal(devDebug, path);
     }

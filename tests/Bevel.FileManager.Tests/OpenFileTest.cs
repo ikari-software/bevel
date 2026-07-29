@@ -31,7 +31,7 @@ public class OpenFileTest
     {
         var dir = Path.Combine(Path.GetTempPath(), "bevel-open-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, "hello.txt");
+        var file = Path.Combine(dir, "hello.txt").Replace('\\', '/');   // VfsPath canonicalises to '/'; matches the opener's recorded path cross-platform
         File.WriteAllText(file, "x");
 
         var root = new VfsRoot();
@@ -61,7 +61,7 @@ public class OpenFileTest
     {
         var dir = Path.Combine(Path.GetTempPath(), "bevel-preview-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, "hello.txt");
+        var file = Path.Combine(dir, "hello.txt").Replace('\\', '/');   // VfsPath canonicalises to '/'; matches the opener's recorded path cross-platform
         File.WriteAllText(file, "x");
 
         var root = new VfsRoot();

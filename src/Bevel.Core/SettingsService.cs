@@ -131,9 +131,21 @@ public sealed class SettingsService : IDisposable
             var json = SerializeRaw();
             _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
 
-            // Passive export: keep a human-readable settings.json mirror (the DB is the source of
-            // truth; nothing reads this file at runtime — see class summary).
-            await File.WriteAllTextAsync(_configPath, json, ct).ConfigureAwait(false);
+            // Passive export: a human-readable settings.json mirror (the DB is the source of truth;
+            // nothing reads this at runtime). Write it ATOMICALLY via a temp file + replace: two
+            // processes' concurrent WriteAllText to the same path throw a sharing violation on Windows'
+            // exclusive locking. temp+replace makes each writer touch its own file; the replace is a
+            // fast atomic rename, and a lost race is harmless (the DB already holds the value).
+            var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
+                File.Move(tmp, _configPath, overwrite: true);
+            }
+            catch (IOException)
+            {
+                try { File.Delete(tmp); } catch { /* leave nothing behind */ }
+            }
         }
         finally
         {
