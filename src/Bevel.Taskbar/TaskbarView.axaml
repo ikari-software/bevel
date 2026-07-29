@@ -65,6 +65,12 @@
                 IsHitTestVisible="False"
                 Background="{DynamicResource Bevel.Brush.TaskbarBackground}" />
 
+        <!-- The bar's top edge: a single theme-tokened highlight line (NOT a 4-sided win2k window frame),
+             kept at full opacity so it still defines the bar when the fill is translucent. -->
+        <Border Grid.Column="0" Grid.ColumnSpan="3"
+                VerticalAlignment="Top" Height="1" IsHitTestVisible="False"
+                Background="{DynamicResource Bevel.Brush.TaskbarDividerLight}" />
+
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
         <Button x:Name="StartButton" Grid.Column="0"

@@ -67,6 +67,9 @@ public sealed class TaskbarWindow : BevelWindow
         // button-face colour" report). The taskbar is chromeless and draws its own band, so give it a
         // minimal template: a transparent content host plus only the classic raised top bevel. Now the
         // RootGrid tint composites straight over the transparent window and the desktop shows through.
+        // No ClassicBorderDecorator here: an AltRaised decorator draws a 4-sided win2k raised frame,
+        // which now that the fill is translucent reads as a window border around the bar. The taskbar's
+        // top edge is a theme concern (TaskbarView draws it via a token), not a window frame.
         Template = new FuncControlTemplate<TaskbarWindow>((parent, scope) =>
         {
             var presenter = new ContentPresenter
@@ -76,14 +79,7 @@ public sealed class TaskbarWindow : BevelWindow
                 [!ContentPresenter.ContentTemplateProperty] = parent[!ContentControl.ContentTemplateProperty],
             };
             presenter.RegisterInNameScope(scope);
-            // Classic raised top edge (the taskbar's only chrome) — drawn OVER the content, transparent interior.
-            var bevel = new ClassicBorderDecorator
-            {
-                BorderStyle = ClassicBorderStyle.AltRaised,
-                BorderThickness = new Thickness(2),
-                IsHitTestVisible = false,
-            };
-            return new Panel { Children = { presenter, bevel } };
+            return presenter;
         });
 
         // The ClassicWindow theme sets MinHeight=50; without overriding it the taskbar
