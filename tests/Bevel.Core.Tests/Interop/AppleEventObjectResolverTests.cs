@@ -48,14 +48,14 @@ public sealed class AppleEventObjectResolverTests : IDisposable
     public async Task Folder_by_name_of_home()
     {
         var r = await Resolve(new ElementByName(AeClass.Folder, "Documents", new PropertySpecifier("home")));
-        Assert.Equal(Path.Combine(_home, "Documents"), Assert.Single(r).Value);
+        Assert.Equal(Path.Combine(_home, "Documents").Replace('\\', '/'), Assert.Single(r).Value);
     }
 
     [Fact]
     public async Task Null_container_defaults_to_home()
     {
         var r = await Resolve(new ElementByName(AeClass.File, "a.txt", Container: null));
-        Assert.Equal(Path.Combine(_home, "a.txt"), Assert.Single(r).Value);
+        Assert.Equal(Path.Combine(_home, "a.txt").Replace('\\', '/'), Assert.Single(r).Value);
     }
 
     [Fact]
