@@ -258,6 +258,14 @@
                 <GradientStop Offset="0.5" Color="#ECE9D8" />
                 <GradientStop Offset="1"   Color="#DCD7C3" />
             </LinearGradientBrush>
+            <!-- Horizontal scrollbar thumb: the SAME gloss, rotated 90° — it runs top→bottom so the
+                 highlight sits across the short edge of a wide thumb (a left→right gradient would streak
+                 along its length). -->
+            <LinearGradientBrush x:Key="Luna.Brush.ScrollThumbH" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0"   Color="#FBFBF7" />
+                <GradientStop Offset="0.5" Color="#ECE9D8" />
+                <GradientStop Offset="1"   Color="#DCD7C3" />
+            </LinearGradientBrush>
             <!-- XP tab pages are the flat beige window face (NOT a gradient) — matches the group-box header
                  patch and the window body so the section labels' break in the frame reads seamlessly. -->
             <SolidColorBrush x:Key="Luna.Brush.TabPanel" Color="#ECE9D8" />
@@ -663,6 +671,24 @@
                 </Setter>
             </ControlTheme>
 
+            <!-- Horizontal counterpart: the top→bottom gloss and a HORIZONTAL row of grip dots, so a
+                 wide thumb reads the same as the (great-looking) vertical one, just rotated 90°. -->
+            <ControlTheme x:Key="Luna.Theme.ScrollThumbH" TargetType="Thumb">
+                <Setter Property="Template">
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="{DynamicResource Luna.Brush.ScrollThumbH}"
+                                BorderBrush="{DynamicResource Luna.Brush.ButtonBorder}"
+                                BorderThickness="1" CornerRadius="3">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="3">
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                                <Ellipse Width="2.5" Height="2.5" Fill="{DynamicResource Luna.Brush.Grip}" />
+                            </StackPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+            </ControlTheme>
+
             <!-- Top-level menu-bar item (before Menu) -->
             <ControlTheme x:Key="Luna.Theme.TopLevelMenuItem" TargetType="MenuItem">
                 <Setter Property="Background" Value="Transparent" />
@@ -916,7 +942,7 @@
                                         <RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Luna.Theme.ScrollPageButton}" />
                                     </Track.IncreaseButton>
                                     <Track.Thumb>
-                                        <Thumb Theme="{StaticResource Luna.Theme.ScrollThumb}" />
+                                        <Thumb Theme="{StaticResource Luna.Theme.ScrollThumbH}" />
                                     </Track.Thumb>
                                 </Track>
                                 <RepeatButton Name="PART_LineDownButton" Grid.Column="2"
