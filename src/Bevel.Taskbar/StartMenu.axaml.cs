@@ -271,7 +271,8 @@ public partial class StartMenu : UserControl
         // Control Panel + Taskbar open Bevel Settings; Network/Printers launch the matching macOS
         // settings pane; Search opens Explorer's Find or the browser. (Log Off / Shut Down are owned by
         // bevel-4vce — the shell-action semantics decision.)
-        AddLeaf(SettingsItem, "Control Panel", () => { Close(); _openSettings(); });
+        AddLeaf(SettingsItem, "Control Panel", () => { Close(); OpenSystemSettings(); });   // the OS's own settings
+        AddLeaf(SettingsItem, "Bevel Settings", () => { Close(); _openSettings(); });        // Bevel's own settings
         AddLeaf(SettingsItem, "Network and Dial-up Connections", () => { Close(); LaunchUrl("x-apple.systempreferences:com.apple.Network-Settings.extension"); });
         AddLeaf(SettingsItem, "Printers", () => { Close(); LaunchUrl("x-apple.systempreferences:com.apple.Print-Scan-Settings.extension"); });
         AddLeaf(SettingsItem, "Taskbar and Start Menu…", () => { Close(); _openSettings(); });
@@ -378,6 +379,21 @@ public partial class StartMenu : UserControl
         catch { /* nothing to open */ }
     }
 
+    /// <summary>Opens the OS's own settings — macOS System Settings — for the "Control Panel" entry.
+    /// (Bevel's own settings are a separate "Bevel Settings" entry via <see cref="_openSettings"/>.)</summary>
+    private static void OpenSystemSettings()
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("/usr/bin/open") { UseShellExecute = false };
+            psi.ArgumentList.Add("-b");
+            psi.ArgumentList.Add("com.apple.systempreferences");
+            System.Diagnostics.Process.Start(psi);
+        }
+        catch { /* System Settings unavailable */ }
+    }
+
     private void ShowHelp() => new AboutDialog().Show();
     private void ShowRun() => new RunDialog().Show();
 
@@ -414,7 +430,8 @@ public partial class StartMenu : UserControl
         "documents" => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
         _ => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
-    private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }
+    private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); OpenSystemSettings(); }   // Control Panel → OS settings
+    private void OnLunaBevelSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }   // Bevel Settings
     private void OnLunaHelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
     private void OnLunaSearchClick(object? sender, RoutedEventArgs e) { Close(); _openSearch(); }
     private void OnLunaRunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }

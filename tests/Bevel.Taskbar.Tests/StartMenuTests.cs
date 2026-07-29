@@ -31,15 +31,15 @@ public class StartMenuTests
         Assert.True(menu.FindControl<MenuItem>("HelpItem")!.IsVisible);
         Assert.True(menu.FindControl<MenuItem>("RunItem")!.IsVisible);
 
-        // Settings offers Control Panel + Network + Printers + Taskbar (all wired to real launches).
+        // Settings offers Control Panel (OS settings) + a SEPARATE Bevel Settings, then Network/Printers/Taskbar.
         var settings = menu.FindControl<MenuItem>("SettingsItem")!;
         var labels = settings.Items.OfType<MenuItem>().Select(m => (string?)m.Header).ToArray();
         Assert.Equal(
-            new[] { "Control Panel", "Network and Dial-up Connections", "Printers", "Taskbar and Start Menu…" },
+            new[] { "Control Panel", "Bevel Settings", "Network and Dial-up Connections", "Printers", "Taskbar and Start Menu…" },
             labels);
 
-        // Control Panel opens Bevel Settings.
-        settings.Items.OfType<MenuItem>().First(m => (string?)m.Header == "Control Panel")
+        // "Bevel Settings" opens Bevel's own settings; "Control Panel" opens the OS's (not Bevel's).
+        settings.Items.OfType<MenuItem>().First(m => (string?)m.Header == "Bevel Settings")
             .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.Equal(1, opened);
 

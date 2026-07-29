@@ -348,6 +348,17 @@
                                     <TextBlock Text="Control Panel" Classes="place" />
                                 </StackPanel>
                             </Button>
+                            <Button Classes="lunarow" Click="OnLunaBevelSettingsClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
+                                        <Panel>
+                                            <Path Fill="White" Stroke="#5A6472" StrokeThickness="1" Data="M5,7 H19 V17 H5 Z" />
+                                            <Path Fill="#2A6FD0" Data="M5,7 H19 V10 H5 Z" />
+                                        </Panel>
+                                    </Border>
+                                    <TextBlock Text="Bevel Settings" Classes="place" />
+                                </StackPanel>
+                            </Button>
                             <Button Classes="lunarow" Click="OnLunaHelpClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuHelpIcon}">
