@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bevel Flat — Whistler Watercolor swatches</title>
+<style>
+  :root{
+    --paper:#FBF7F1; --mist:#EDE7F2; --ink:#3A3550; --inksoft:#8A8598; --edge:#C9BFD6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:40px;max-width:1040px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  h1{font-weight:600;font-size:26px;margin:0 0 4px}
+  .sub{color:var(--inksoft);margin:0 0 32px}
+  h2{font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--inksoft);margin:40px 0 14px;border-bottom:1px solid var(--edge);padding-bottom:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+  .sw{border-radius:10px;overflow:hidden;border:1px solid var(--edge);background:#fff}
+  .chip{height:82px}
+  .meta{padding:9px 11px;font-size:12.5px;background:#fff}
+  .meta b{display:block;font-weight:600}
+  .meta code{color:var(--inksoft);font-size:11.5px;font-family:ui-monospace,Menlo,monospace}
+  .wash{border-radius:12px;border:1px solid var(--edge);overflow:hidden;margin-bottom:14px}
+  .wash .band{height:64px;display:flex;align-items:center;padding:0 16px;font-size:13px}
+  .wash .lbl{padding:8px 14px;background:#fff;font-size:12.5px;color:var(--inksoft)}
+  .wash .lbl b{color:var(--ink)}
+  .demo{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start}
+  /* mini window */
+  .win{width:300px;border:1px solid #B9C7D6;border-radius:10px 10px 4px 4px;overflow:hidden;
+    box-shadow:0 8px 26px #2a254010;background:var(--paper)}
+  .cap{height:30px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;color:var(--ink);
+    background:linear-gradient(#D6EEF7,#B4DEEE 30%,#9BD0E5 62%,#86C3DA);font-size:13px;position:relative}
+  .cap .ico{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,#FBEFC4,#F4C9CE)}
+  .cap .btns{margin-left:auto;display:flex;gap:5px}
+  .cbtn{width:20px;height:20px;border-radius:6px;background:#ffffff55;border:1px solid #ffffff66}
+  .cbtn.x{background:linear-gradient(#E39AA1,#F4C9CE);border-color:#d98d94}
+  .body{padding:16px}
+  .btn{display:inline-block;padding:6px 16px;border-radius:6px;border:1px solid #C7BBD8;
+    background:linear-gradient(#FCFAF6,#F3EFF6 50%,#E7DFF0);color:var(--ink);font-size:13px;margin:0 8px 8px 0}
+  .btn.def{border:2px solid #8FBFD8;padding:5px 15px}
+  .btn.hov{background:linear-gradient(#FFFDF3,#FBF1D6 50%,#F6E7C8);border-color:#E8C98F}
+  .menu{width:190px;border:1px solid #C9BFD6;border-radius:8px;overflow:hidden;background:var(--paper);
+    box-shadow:0 4px 16px #26000000;position:relative}
+  .menu .gut{position:absolute;left:0;top:0;bottom:0;width:24px;background:var(--mist)}
+  .mi{padding:5px 12px 5px 34px;font-size:13px;position:relative;z-index:1}
+  .mi.sel{background:linear-gradient(#BCE3F2,#A0D2E8);border-radius:3px;margin:0 3px}
+  .sep{height:1px;background:#E0D8EA;margin:4px 10px 4px 30px}
+  /* taskbar */
+  .tb{height:34px;border-radius:8px;display:flex;align-items:center;gap:8px;padding:0 8px;
+    background:linear-gradient(#CFEBF4,#BFE1EE 6%,#ADD6E8 50%,#BFE1EE 94%,#CFEBF4);border:1px solid #B9C7D6}
+  .start{padding:5px 16px;border-radius:14px;background:linear-gradient(#C7E7C4,#A6D6A8 50%,#8FC79A);
+    border:1px solid #86B98C;color:#2E4A34;font-weight:600;font-size:13px}
+  .task{padding:5px 14px;border-radius:6px;background:linear-gradient(#F6F2FA,#EAE3F2);border:1px solid #C9BFD6;font-size:12.5px}
+  .task.on{background:linear-gradient(#BCE3F2,#A0D2E8)}
+  .tray{margin-left:auto;padding:5px 12px;border-radius:6px;background:linear-gradient(#A9D6E8,#9BCDE2 50%,#A9D6E8);font-size:12.5px}
+  .prog{height:16px;border:1px solid #C9BFD6;border-radius:4px;background:#F4EFF8;overflow:hidden;width:200px;margin-top:4px}
+  .prog i{display:block;height:100%;width:62%;background:linear-gradient(90deg,#BFE6DC,#9AD6C4 50%,#86C7B4)}
+</style>
+</head>
+<body>
+  <h1>Bevel "Flat" — Whistler Watercolor</h1>
+  <p class="sub">Watercolor, designed in 2026 — matte pastel washes, soft rounded chrome, dark ink on light pigment. The third identity beside Win2000 (crisp classic) and Luna (glossy XP blue).</p>
+
+  <h2>Palette</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#FBF7F1"></div><div class="meta"><b>Paper</b><code>#FBF7F1</code> Window / menu area</div></div>
+    <div class="sw"><div class="chip" style="background:#EDE7F2"></div><div class="meta"><b>Mist</b><code>#EDE7F2</code> Chrome face</div></div>
+    <div class="sw"><div class="chip" style="background:#BFE0F0"></div><div class="meta"><b>Wash Sky</b><code>#BFE0F0</code> Caption/selection top</div></div>
+    <div class="sw"><div class="chip" style="background:#86C3DA"></div><div class="meta"><b>Wash Sea</b><code>#86C3DA</code> Wash base / tray</div></div>
+    <div class="sw"><div class="chip" style="background:#F4C9CE"></div><div class="meta"><b>Bloom</b><code>#F4C9CE</code> Coral accent</div></div>
+    <div class="sw"><div class="chip" style="background:#E39AA1"></div><div class="meta"><b>Petal</b><code>#E39AA1</code> Close / destructive</div></div>
+    <div class="sw"><div class="chip" style="background:#BFE3C4"></div><div class="meta"><b>Meadow</b><code>#BFE3C4</code> Start / positive</div></div>
+    <div class="sw"><div class="chip" style="background:#8FC79A"></div><div class="meta"><b>Meadow Deep</b><code>#8FC79A</code> Start base</div></div>
+    <div class="sw"><div class="chip" style="background:#FBEFC4"></div><div class="meta"><b>Butter</b><code>#FBEFC4</code> Hover bloom</div></div>
+    <div class="sw"><div class="chip" style="background:#D8C9EE"></div><div class="meta"><b>Lilac</b><code>#D8C9EE</code> Secondary wash</div></div>
+    <div class="sw"><div class="chip" style="background:#3A3550"></div><div class="meta" style="color:#fff;background:#3A3550"><b>Ink</b><code style="color:#c9c3d8">#3A3550</code> Text</div></div>
+    <div class="sw"><div class="chip" style="background:#8A8598"></div><div class="meta"><b>Ink Soft</b><code>#8A8598</code> Gray text</div></div>
+    <div class="sw"><div class="chip" style="background:#C9BFD6"></div><div class="meta"><b>Edge</b><code>#C9BFD6</code> Hairline borders</div></div>
+    <div class="sw"><div class="chip" style="background:#A6D8EC"></div><div class="meta"><b>Selection</b><code>#A6D8EC</code> Highlight (ink text)</div></div>
+    <div class="sw"><div class="chip" style="background:#CFE6E4"></div><div class="meta"><b>Desktop</b><code>#CFE6E4</code> Eucalyptus wash</div></div>
+  </div>
+
+  <h2>Signature washes</h2>
+  <div class="wash"><div class="band" style="background:linear-gradient(#D6EEF7,#B4DEEE 30%,#9BD0E5 62%,#86C3DA)">Caption — soft bloom, no gloss split</div><div class="lbl"><b>Caption active</b> #D6EEF7 → #B4DEEE → #9BD0E5 → #86C3DA (ink text)</div></div>
+  <div class="wash"><div class="band" style="background:linear-gradient(#CFEBF4,#BFE1EE 6%,#ADD6E8 50%,#BFE1EE 94%,#CFEBF4)">Taskbar — airy aqua, shallow concave</div><div class="lbl"><b>Taskbar</b> pale bright edges, wider soft middle (ink tray text)</div></div>
+  <div class="wash"><div class="band" style="background:linear-gradient(#C7E7C4,#A6D6A8 50%,#8FC79A);color:#2E4A34">Start — sage pebble bloom</div><div class="lbl"><b>Start</b> #C7E7C4 → #A6D6A8 → #8FC79A (moss-ink label)</div></div>
+  <div class="wash"><div class="band" style="background:linear-gradient(#FCFAF6,#F3EFF6 50%,#E7DFF0)">Button — matte paper→mist</div><div class="lbl"><b>Button face</b> #FCFAF6 → #F3EFF6 → #E7DFF0 · hover blooms to butter</div></div>
+
+  <h2>Chrome in context</h2>
+  <div class="demo">
+    <div class="win">
+      <div class="cap"><span class="ico"></span>Untitled — Bevel<span class="btns"><span class="cbtn"></span><span class="cbtn"></span><span class="cbtn x"></span></span></div>
+      <div class="body">
+        <span class="btn">Cancel</span><span class="btn def">OK</span><span class="btn hov">Hover</span>
+        <div class="prog"><i></i></div>
+      </div>
+    </div>
+    <div class="menu">
+      <div class="gut"></div>
+      <div class="mi">New</div>
+      <div class="mi sel">Open…</div>
+      <div class="mi">Save</div>
+      <div class="sep"></div>
+      <div class="mi">Exit</div>
+    </div>
+  </div>
+  <div class="tb" style="margin-top:22px">
+    <span class="start">Start</span>
+    <span class="task on">Editor</span>
+    <span class="task">Files</span>
+    <span class="tray">2:14 PM</span>
+  </div>
+</body>
+</html>
