@@ -18,7 +18,8 @@ namespace Bevel.Core.Tests.Interop;
 /// </summary>
 public sealed class AppleEventObjectResolverTests : IDisposable
 {
-    private readonly string _home = Directory.CreateTempSubdirectory("bevel-ae-home-").FullName;
+    // Canonical '/' form (what VfsPath.Value always is); '/' is a valid separator for .NET file I/O on Windows.
+    private readonly string _home = Directory.CreateTempSubdirectory("bevel-ae-home-").FullName.Replace('\\', '/');
     private readonly AppleEventObjectResolver _resolver;
 
     public AppleEventObjectResolverTests()

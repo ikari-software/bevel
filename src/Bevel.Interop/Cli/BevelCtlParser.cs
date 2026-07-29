@@ -122,7 +122,9 @@ public static class BevelCtlParser
     {
         if (s == "~") s = Home;
         else if (s.StartsWith("~/", StringComparison.Ordinal)) s = Path.Combine(Home, s[2..]);
-        return new VfsPath("file", Path.GetFullPath(s));
+        // Absolutize only RELATIVE inputs. Path.GetFullPath on an already-rooted path is a no-op on POSIX
+        // but prepends the current drive on Windows ('/dst' → 'D:\\dst'), mangling a caller's absolute path.
+        return new VfsPath("file", Path.IsPathRooted(s) ? s : Path.GetFullPath(s));
     }
 
     private static (ParsedCommand?, string?) Ok(ParsedCommand cmd) => (cmd, null);
