@@ -76,6 +76,9 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Publish self-contained
+        # bash on all runners: the \-continuations are POSIX; the Windows default (PowerShell) parses
+        # them as line breaks and errors. GitHub's windows-latest ships Git Bash, so this is portable.
+        shell: bash
         run: |
           dotnet publish src/Bevel.App/Bevel.App.csproj \
             --configuration Release \

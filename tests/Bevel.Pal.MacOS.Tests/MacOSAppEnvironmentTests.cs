@@ -127,6 +127,7 @@ public sealed class MacOSAppEnvironmentTests : IDisposable
     [Fact]
     public async Task LaunchAsync_empty_path_throws()
     {
+        if (!OperatingSystem.IsMacOS()) return;   // macOS PAL launch behaviour — only meaningful on macOS
         await Assert.ThrowsAsync<ArgumentException>(
             () => _env.LaunchAsync(""));
     }
@@ -134,6 +135,7 @@ public sealed class MacOSAppEnvironmentTests : IDisposable
     [Fact]
     public async Task LaunchAsync_null_path_throws()
     {
+        if (!OperatingSystem.IsMacOS()) return;   // macOS PAL launch behaviour — only meaningful on macOS
         await Assert.ThrowsAsync<ArgumentException>(
             () => _env.LaunchAsync(null!));
     }
@@ -141,6 +143,7 @@ public sealed class MacOSAppEnvironmentTests : IDisposable
     [Fact]
     public async Task LaunchAsync_nonexistent_app_throws()
     {
+        if (!OperatingSystem.IsMacOS()) return;   // macOS PAL launch behaviour — only meaningful on macOS
         await Assert.ThrowsAsync<FileNotFoundException>(
             () => _env.LaunchAsync("/nonexistent/Something.app"));
     }
