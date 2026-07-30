@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices   // AXIsProcessTrustedWithOptions + kAXTrustedCheckOptionPrompt (TCC prompt)
 import Foundation
 import GRPCCore
 import GRPCNIOTransportHTTP2
@@ -99,7 +100,25 @@ enum BevelHelper {
         // CLI process lacks — SCScreenshotManager otherwise aborts with CGS_REQUIRE_INIT. Bring up
         // NSApplication as a prohibited agent (headless: no Dock tile, no menu bar) to establish it.
         _ = NSApplication.shared
-        NSApp.setActivationPolicy(.prohibited)
+        // .accessory (was .prohibited): a prohibited agent can't present the TCC prompts below, so the
+        // helper never appears in the Accessibility / Screen Recording lists — forcing the user to add it
+        // by hand from inside the .app bundle. .accessory is still headless (no Dock tile, no Cmd-Tab, no
+        // menu bar) but may request permission. Still establishes the CGS connection ScreenCaptureKit needs.
+        NSApp.setActivationPolicy(.accessory)
+
+        // Register with TCC and PROMPT once, so a Finder-launched helper asks for — and shows up in —
+        // Accessibility (window control) and Screen Recording (live tray icons) on its own, instead of the
+        // user having to drag BevelHelper out of the bundle. Both self-gate: they only prompt when the
+        // grant is missing and are no-ops once granted. (From a terminal it "just works" only because TCC
+        // attributes the grant to the already-authorised terminal — Finder launches get neither for free.)
+        if !AXIsProcessTrusted() {
+            // The key is the CFString value of kAXTrustedCheckOptionPrompt; use the literal so Swift 6
+            // strict concurrency doesn't flag the global 'var' as shared mutable state.
+            _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        }
+        if !CGPreflightScreenCaptureAccess() {
+            _ = CGRequestScreenCaptureAccess()
+        }
 
         let watchdog = ReverseWatchdog(parentPID: args.parentPID)
         Task { await watchdog.run() }
