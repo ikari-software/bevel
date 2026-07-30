@@ -29,7 +29,14 @@ count=0
 while IFS= read -r -d '' f; do
 	[ "$f" = "$MAIN" ] && continue
 	file -b "$f" | grep -q "Mach-O" || continue
-	codesign --force --options runtime "${TS[@]}" --sign "$IDENTITY" "$f"
+	if [ "$(basename "$f")" = "BevelHelper" ]; then
+		# Pin the helper's identifier so its designated requirement (identifier + Team) is STABLE across
+		# releases — TCC keys the Accessibility / Screen Recording grants on the DR, so a stable identifier
+		# means the user grants BevelHelper once and every later release inherits it (matches dev-sign.sh).
+		codesign --force --options runtime "${TS[@]}" --identifier pl.ikari.bevel.helper --sign "$IDENTITY" "$f"
+	else
+		codesign --force --options runtime "${TS[@]}" --sign "$IDENTITY" "$f"
+	fi
 	count=$((count + 1))
 done < <(find "$APP/Contents/MacOS" -type f -print0)
 echo "    signed $count nested Mach-O files"

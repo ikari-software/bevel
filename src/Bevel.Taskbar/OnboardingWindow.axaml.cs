@@ -93,6 +93,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
         ShowDesktopCheck.IsCheckedChanged += OnBehaviorChanged;
         GrantAccessibilityBtn.Click += OnGrantAccessibility;
+        GrantScreenRecBtn.Click += OnGrantScreenRecording;
 
         // OK / Cancel / Apply. Snapshot now (state is clean here — handlers just got wired, no changes yet).
         _baseline = _settings.Current.Clone();
@@ -206,8 +207,9 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         try
         {
-            var state = await _permissionBroker.GetStateAsync(ShellPermission.Accessibility);
-            Dispatcher.UIThread.Post(() => UpdatePermissionUI(state));
+            var ax = await _permissionBroker.GetStateAsync(ShellPermission.Accessibility);
+            var sr = await _permissionBroker.GetStateAsync(ShellPermission.ScreenRecording);
+            Dispatcher.UIThread.Post(() => { UpdatePermissionUI(ax); UpdateScreenRecUI(sr); });
         }
         catch
         {
@@ -216,29 +218,42 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     }
 
     private void UpdatePermissionUI(PermissionState state)
+        => ApplyPermUI(PermStatusDot, PermStatusGlyph, PermStatusText, GrantAccessibilityBtn, PermHint, state,
+            grantedHint: "Window management is enabled.",
+            deniedHint: "Grant Accessibility (to BevelHelper) in System Settings to enable window management. No restart required.");
+
+    private void UpdateScreenRecUI(PermissionState state)
+        => ApplyPermUI(ScreenRecStatusDot, ScreenRecStatusGlyph, ScreenRecStatusText, GrantScreenRecBtn, ScreenRecHint, state,
+            grantedHint: "Live window titles and tray icon mirroring are enabled.",
+            deniedHint: "Grant Screen Recording (to BevelHelper) for live window titles and tray icon mirroring. Takes effect after a relaunch.");
+
+    // Shared status renderer for the Accessibility + Screen Recording rows (dot colour + glyph + label +
+    // Grant button + hint), so both stay visually consistent.
+    private static void ApplyPermUI(Border dot, Avalonia.Controls.Shapes.Path glyph, TextBlock text, Button btn, TextBlock hint,
+        PermissionState state, string grantedHint, string deniedHint)
     {
         switch (state)
         {
             case PermissionState.Granted:
-                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#3FA23F"));
-                PermStatusGlyph.Data = Geometry.Parse("M0,3.5 L2.6,6 L7,0.5");   // check
-                PermStatusText.Text = "Granted";
-                GrantAccessibilityBtn.IsVisible = false;
-                PermHint.Text = "Window management is enabled.";
+                dot.Background = new SolidColorBrush(Color.Parse("#3FA23F"));
+                glyph.Data = Geometry.Parse("M0,3.5 L2.6,6 L7,0.5");   // check
+                text.Text = "Granted";
+                btn.IsVisible = false;
+                hint.Text = grantedHint;
                 break;
             case PermissionState.Denied:
-                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#E24A2E"));
-                PermStatusGlyph.Data = Geometry.Parse("M0,0 L6,6 M6,0 L0,6");     // cross
-                PermStatusText.Text = "Not Granted";
-                GrantAccessibilityBtn.IsVisible = true;
-                PermHint.Text = "Grant Accessibility in System Settings to enable window management. No restart required.";
+                dot.Background = new SolidColorBrush(Color.Parse("#E24A2E"));
+                glyph.Data = Geometry.Parse("M0,0 L6,6 M6,0 L0,6");     // cross
+                text.Text = "Not Granted";
+                btn.IsVisible = true;
+                hint.Text = deniedHint;
                 break;
             default:
-                PermStatusDot.Background = new SolidColorBrush(Color.Parse("#9AA0A6"));
-                PermStatusGlyph.Data = Geometry.Parse("M0,3 L7,3");                // dash
-                PermStatusText.Text = "Unknown";
-                GrantAccessibilityBtn.IsVisible = true;
-                PermHint.Text = "Checking permission status...";
+                dot.Background = new SolidColorBrush(Color.Parse("#9AA0A6"));
+                glyph.Data = Geometry.Parse("M0,3 L7,3");                // dash
+                text.Text = "Unknown";
+                btn.IsVisible = true;
+                hint.Text = "Checking permission status...";
                 break;
         }
     }
@@ -615,6 +630,19 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
             {
                 FileName = "open",
                 Arguments = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                UseShellExecute = true,
+            });
+        }
+    }
+
+    private void OnGrantScreenRecording(object? sender, RoutedEventArgs e)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
                 UseShellExecute = true,
             });
         }

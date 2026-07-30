@@ -41,6 +41,14 @@ mv "$APP/Contents/MacOS/Bevel.App" "$APP/Contents/MacOS/Bevel"
 # bevelctl ships alongside, on-PATH once the user symlinks it (see the cask/postinstall).
 cp "$OUT/publish-cli/bevelctl" "$APP/Contents/MacOS/bevelctl"
 
+# The Swift helper (window + tray enumeration via AX / CGWindowList / ScreenCaptureKit) → Contents/MacOS.
+# WITHOUT this the shipped app can't enumerate windows or the tray at all — ResolveHelperBinary finds no
+# BevelHelper, the helper never launches, and the taskbar stays empty regardless of TCC grants. It's a
+# distinct binary that needs its OWN Accessibility + Screen Recording grants, keyed to its signature.
+echo "==> Building + bundling BevelHelper ($CONFIG)"
+swift build --package-path "$ROOT/native/helper-macos" --configuration release
+cp "$ROOT/native/helper-macos/.build/release/BevelHelper" "$APP/Contents/MacOS/BevelHelper"
+
 # Info.plist (version-substituted) + the M4 scripting terminology + icon.
 sed -e "s/__VERSION__/$VERSION/g" -e "s/__BUILD__/$BUILD/g" \
 	"$PKG/Info.plist" > "$APP/Contents/Info.plist"
@@ -50,6 +58,7 @@ cp "$ROOT/src/Bevel.App/Bevel.sdef" "$APP/Contents/Resources/Bevel.sdef"
 echo "==> Validating bundle"
 plutil -lint "$APP/Contents/Info.plist"
 test -x "$APP/Contents/MacOS/Bevel"
+test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
 
 echo "==> Built $APP (unsigned). Next: sign-app.sh (Developer ID + notarytool profile 'bevel')."

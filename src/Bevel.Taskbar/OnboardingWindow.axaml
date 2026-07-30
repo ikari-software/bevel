@@ -45,6 +45,30 @@
                         </StackPanel>
                     </HeaderedContentControl>
 
+                    <HeaderedContentControl Header="Screen Recording Permission" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border x:Name="ScreenRecStatusDot" Width="15" Height="15" CornerRadius="3"
+                                        Background="#9AA0A6" Margin="0,1,0,0" VerticalAlignment="Center">
+                                    <Path x:Name="ScreenRecStatusGlyph" Stroke="White" StrokeThickness="1.8"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L7,3"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock x:Name="ScreenRecStatusText"
+                                           Text="Checking..."
+                                           FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button x:Name="GrantScreenRecBtn"
+                                    Content="Open Screen Recording Settings"
+                                    FontSize="11" Padding="8,4"
+                                    IsVisible="False" />
+                            <TextBlock x:Name="ScreenRecHint"
+                                       Text="Grant Screen Recording for live window titles and tray icon mirroring. Takes effect after a relaunch."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </HeaderedContentControl>
+
                     <HeaderedContentControl Header="Work-Area Strategy" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <TextBlock Text="How the taskbar handles the macOS Dock."
