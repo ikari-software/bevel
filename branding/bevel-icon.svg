@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A9BF0"/>
+      <stop offset="0.5" stop-color="#2E68C4"/>
+      <stop offset="1" stop-color="#14305E"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.38"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="0.52" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#E8F0FB"/>
+      <stop offset="1" stop-color="#B4C7E6"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#CFE7FF" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#2A5AA0" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#0C2148" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="ds" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#081633" flood-opacity="0.45"/>
+    </filter>
+    <path id="b" fill-rule="nonzero" d="
+      M352,292 L452,292 L452,732 L352,732 Z
+      M452,292 L556,292 A110,110 0 0 1 556,512 L452,512 Z
+      M452,512 L580,512 A110,110 0 0 1 580,732 L452,732 Z
+      M452,352 L452,452 L520,452 A50,50 0 0 0 520,352 Z
+      M452,572 L452,672 L544,672 A50,50 0 0 0 544,572 Z
+    "/>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#tile)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#gloss)"/>
+  <rect x="34" y="34" width="956" height="956" rx="200" fill="none" stroke="url(#frame)" stroke-width="6"/>
+
+  <g transform="translate(6,0)">
+    <use href="#b" fill="#08172F" opacity="0.45" filter="url(#ds)"/>
+    <use href="#b" fill="#3E6293" transform="translate(6,7)"/>
+    <use href="#b" fill="#FFFFFF" transform="translate(-6,-7)"/>
+    <use href="#b" fill="url(#bface)"/>
+  </g>
+</svg>
