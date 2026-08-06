@@ -34,6 +34,11 @@ while IFS= read -r -d '' f; do
 		# releases — TCC keys the Accessibility / Screen Recording grants on the DR, so a stable identifier
 		# means the user grants BevelHelper once and every later release inherits it (matches dev-sign.sh).
 		codesign --force --options runtime "${TS[@]}" --identifier pl.ikari.bevel.helper --sign "$IDENTITY" "$f"
+	elif file -b "$f" | grep -q "executable"; then
+		# Secondary executables (bevelctl) need the same entitlements as the main app: the
+		# Homebrew-SDK apphost links /opt/homebrew brotli, which library validation rejects
+		# under the hardened runtime without disable-library-validation.
+		codesign --force --options runtime "${TS[@]}" --entitlements "$ENT" --sign "$IDENTITY" "$f"
 	else
 		codesign --force --options runtime "${TS[@]}" --sign "$IDENTITY" "$f"
 	fi
