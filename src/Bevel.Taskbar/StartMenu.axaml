@@ -217,7 +217,8 @@
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
                                         <Viewbox Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                  Stretch="Uniform">
-                                            <Path Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8"
+                                            <!-- Bar from y6 (ring top) → bbox symmetric about the ring centre → Viewbox centres the ring (see Quit). -->
+                                            <Path Data="M11 6 V11 M7 8 A5 5 0 1 0 15 8"
                                                   Stroke="White" StrokeThickness="2" StrokeLineCap="Round" />
                                         </Viewbox>
                                     </Border>
@@ -412,10 +413,13 @@
                             <Button Classes="lunarow" Click="OnQuitClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
-                                        <!-- Quit = power symbol, the same glyph as the footer Turn Off, Viewbox-normalised to match Restart. -->
+                                        <!-- Quit = power symbol, same glyph as the footer Turn Off, Viewbox-normalised to match Restart.
+                                             The bar starts at y6 (the ring's top), so the geometry's bounding box is SYMMETRIC about the
+                                             ring centre (11,11): x[6,16], y[6,16]. The Viewbox then centres the ring on the button exactly,
+                                             at any scale — no magic nudge, no stroke-rounding guesswork. -->
                                         <Viewbox Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform">
                                             <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round"
-                                                  Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8" />
+                                                  Data="M11 6 V11 M7 8 A5 5 0 1 0 15 8" />
                                         </Viewbox>
                                     </Border>
                                     <TextBlock Text="Quit Bevel" Classes="place" />
