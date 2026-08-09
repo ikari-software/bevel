@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
@@ -13,49 +12,52 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// Dev-only: renders the Luna Start-menu session icons (Restart / Quit / Log Off / Turn Off) through the
-/// REAL Border+Viewbox+Path used in the menu, but at 10× logical size — so their glyph centering can be
-/// eyeballed crisply and faithfully (real Avalonia Viewbox measure, not an SVG replica). Set
-/// BEVEL_SESSION_ICONS_DIR to dump one PNG per icon.
+/// Dev-only: renders the Luna session icons at HIGH resolution (20×) in their real shapes, using the
+/// exact Border+Viewbox+Canvas+Path structure the Start menu uses. Each glyph is authored in ONE shared
+/// 24×24 grid (matched size, circle centred at 12,12) and rendered via a fixed 24-Canvas, so the grid maps
+/// to the button — same size for every glyph, circle centre on the button centre. Set BEVEL_SESSION_ICONS_DIR.
 /// </summary>
 public class RenderSessionIconsTest
 {
+    // (label, tile colour, tile px, corner radius px, grid path) — restart/quit are 24px squares, the
+    // footer log-off/turn-off are 22px circles; here at 20× (480 square, 440 circle) for crisp inspection.
+    private static readonly (string Label, string Color, double Tile, double Corner, string Data)[] Icons =
+    {
+        ("restart", "#E8A23C", 480, 80,  "M18,12 A6,6 0 1 1 12,6 M12,3.83 L15.58,6 L12,8.17"),
+        ("quit",    "#D94A2E", 480, 80,  "M12 4.8 V12 M7.2 8.4 A6 6 0 1 0 16.8 8.4"),
+        ("logoff",  "#E8A23C", 440, 220, "M13,6 L7,6 L7,18 L13,18 M10,12 L17,12 M14.5,9.5 L17,12 L14.5,14.5"),
+        ("turnoff", "#D94A2E", 440, 220, "M12 4.8 V12 M7.2 8.4 A6 6 0 1 0 16.8 8.4"),
+    };
+
     [AvaloniaFact]
-    public void Render_session_icons_10x()
+    public void Render_session_icons_hires()
     {
         var dir = Environment.GetEnvironmentVariable("BEVEL_SESSION_ICONS_DIR");
         if (string.IsNullOrEmpty(dir)) return; // opt-in
         Directory.CreateDirectory(dir);
 
-        // (label, tile colour, tile px, corner radius px, viewbox px, path data) — 10× the real icons.
-        var icons = new (string Label, string Color, double Tile, double Corner, double Vb, string Data)[]
-        {
-            ("restart", "#E8A23C", 240, 40,  140, "M12.7,8 A4.7,4.7 0 1 1 8,3.3 M8,1.6 L10.8,3.3 L8,5"),
-            ("quit",    "#D94A2E", 240, 40,  140, "M11 6 V11 M7 8 A5 5 0 1 0 15 8"),
-            ("logoff",  "#E8A23C", 220, 110, 130, "M10,4 L4,4 L4,16 L10,16 M7,10 L14,10 M11.5,7.5 L14,10 L11.5,12.5"),
-            ("turnoff", "#D94A2E", 220, 110, 130, "M11 6 V11 M7 8 A5 5 0 1 0 15 8"),
-        };
-
-        foreach (var ic in icons)
+        foreach (var (label, color, tile, corner, data) in Icons)
         {
             var path = new Avalonia.Controls.Shapes.Path
             {
-                Data = Geometry.Parse(ic.Data),
+                Data = Geometry.Parse(data),
                 Stroke = Brushes.White,
                 StrokeThickness = 2,
                 StrokeLineCap = PenLineCap.Round,
                 StrokeJoin = PenLineJoin.Round,
             };
+            var canvas = new Canvas { Width = 24, Height = 24 };
+            canvas.Children.Add(path);
             var vb = new Viewbox
             {
-                Width = ic.Vb, Height = ic.Vb, Stretch = Stretch.Uniform, Child = path,
+                Width = tile, Height = tile, Stretch = Stretch.Uniform, Child = canvas,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             };
             var border = new Border
             {
-                Width = ic.Tile, Height = ic.Tile,
-                CornerRadius = new CornerRadius(ic.Corner),
-                Background = new SolidColorBrush(Color.Parse(ic.Color)),
+                Width = tile, Height = tile,
+                CornerRadius = new CornerRadius(corner),
+                Background = new SolidColorBrush(Color.Parse(color)),
                 Child = vb,
             };
             var window = new Window
@@ -66,7 +68,7 @@ public class RenderSessionIconsTest
             };
             window.Show();
             Dispatcher.UIThread.RunJobs();
-            window.CaptureRenderedFrame()?.Save(System.IO.Path.Combine(dir, $"{ic.Label}.png"));
+            window.CaptureRenderedFrame()?.Save(System.IO.Path.Combine(dir, $"{label}.png"));
         }
     }
 }
