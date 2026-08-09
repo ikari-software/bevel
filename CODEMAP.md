@@ -41,6 +41,7 @@ For shared format rules, see `docs/code-maps/FORMAT.md`. Inventory: `docs/code-m
 - **Never block the Avalonia UI thread** — no `.Result`/`.Wait()`; do heavy work off-thread, marshal the cheap result back.
 - App pins `RequestedThemeVariant="Light"`; don't add variant/scope overrides (a Dark leak washes out popups).
 - A Popup only opens if its host is attached to a visual tree with a TopLevel — a VM-only `IsOpen=true` can pass a unit test while nothing ever shows (`avalonia-popup-needs-visual-tree`).
+- **Window-chrome geometry is token-driven**, not hand-tuned in the template: the Win2000 border bands (2px bevel · 2px sizing-frame face · 18px caption · 1px separator) come from `theme.json` metrics (`CaptionMargin`, `WindowContentInset`, `CornerRadius`) → `Tokens.axaml` / `LunaTokens.axaml` via `tools/ThemeGen`, and are **pixel-guarded** by `tests/Bevel.Taskbar.Tests/RenderWin2000BorderTest`. Vendored window template: `third_party/classic-avalonia/.../Styles/Window.axaml`; caption buttons: `.../Styles/CaptionButtons.axaml`.
 - Flat/Whistler is **spec-only** (`docs/design/flat/`) — no renderer yet; don't look for one.
 - Landing page `site/index.html` mirrors real UI (screenshots harvested from `Render*` tests). Refresh it when user-facing features land — see CLAUDE.md → Codemap & Landing Site.
 - Verification gap: the `check-codemaps` script referenced by `FORMAT.md` isn't wired in this repo yet — check path references by hand.
