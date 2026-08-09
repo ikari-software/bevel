@@ -15,7 +15,8 @@ namespace Classic.Avalonia.Theme;
 
 public class ClassicTheme : Styles
 {
-    public static readonly StyledProperty<bool> FontAliasingProperty = AvaloniaProperty.Register<ClassicTheme, bool>(nameof(FontAliasing), defaultValue: true);
+    // Bevel: default OFF — text is always antialiased (never-disable-AA rule). See ClassicTheme.axaml.
+    public static readonly StyledProperty<bool> FontAliasingProperty = AvaloniaProperty.Register<ClassicTheme, bool>(nameof(FontAliasing), defaultValue: false);
     public static ThemeVariant Standard { get; } = new("Standard", ThemeVariant.Light);
     public static ThemeVariant Classic { get; } = new("Classic", ThemeVariant.Light);
     public static ThemeVariant Brick { get; } = new("Brick", ThemeVariant.Light);

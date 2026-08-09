@@ -7,7 +7,10 @@
         xmlns:system="clr-namespace:System;assembly=System.Runtime">
   <Styles.Resources>
     <ResourceDictionary>
-      <system:Boolean x:Key="{x:Static common:SystemParameters.FontAliasingKey}">True</system:Boolean>
+      <!-- Bevel: text is ALWAYS antialiased. "Designed in 2026" + the never-disable-AA rule override
+           Classic's retro bitmap-font aliasing; fonts are vector precisely so they stay smooth at any
+           size. Geometry edge-crispness (window bevels) is a separate axis (RenderOptions.EdgeMode). -->
+      <system:Boolean x:Key="{x:Static common:SystemParameters.FontAliasingKey}">False</system:Boolean>
 
       <VisualBrush x:Key="DiagonalBrushLight" TileMode="Tile" SourceRect="0,0,2,2" DestinationRect="0,0,2,2">
         <VisualBrush.Visual>
