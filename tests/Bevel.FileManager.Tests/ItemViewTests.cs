@@ -167,6 +167,29 @@ public class ItemViewTests
     }
 
     [AvaloniaFact]
+    public void TypeAhead_selects_by_typed_text_and_cycles_on_repeat()
+    {
+        // bevel-p3v3: type-ahead now runs off TextInput through the shared TypeToFind service — so it selects
+        // forward (the old loop wrapped backwards) and repeating the same letter cycles (the old code searched
+        // "cc"). Rapid KeyTextInput calls stay inside the reset window, so the two 'c's are a cycle, not "cc".
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        var w = new Avalonia.Controls.Window { Content = view, Width = 400, Height = 300 };
+        w.Show();
+        view.Items = new[] { Node("apple.txt"), Node("cherry.txt"), Node("cranberry.txt"), Node("cucumber.txt") };
+        Dispatcher.UIThread.RunJobs();
+        view.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        w.KeyTextInput("c");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("cherry.txt", view.SelectedItems.Single().DisplayName);   // forward, not the backwards wrap
+
+        w.KeyTextInput("c");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("cranberry.txt", view.SelectedItems.Single().DisplayName); // repeat cycles to the next match
+    }
+
+    [AvaloniaFact]
     public void Column_width_is_shared_between_header_and_rows()
     {
         var view = new ItemView { ViewMode = ViewMode.Details };

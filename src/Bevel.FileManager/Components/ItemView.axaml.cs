@@ -100,9 +100,9 @@ public partial class ItemView : UserControl
     private ItemViewModel? _anchor;
     private int _lastClickIdx = -1;
 
-    private readonly Stopwatch _typeTimer = Stopwatch.StartNew();
-    private string _typeBuffer = "";
+    private readonly Stopwatch _typeClock = Stopwatch.StartNew();
     private const int TypeResetMs = 700;
+    private readonly Bevel.Core.Input.TypeToFind _typeToFind;
 
     private Point _marqueeOrigin;
     private bool _marqueeDragging;
@@ -139,6 +139,8 @@ public partial class ItemView : UserControl
         PointerMoved += OnBgPointerMoved;
         PointerReleased += OnBgPointerReleased;
         KeyDown += OnKeyDown;
+        TextInput += OnTextInput;   // type-ahead reads real characters (digits/accents), not Key decoding
+        _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(ContextRequestedEvent, OnContextRequested);
@@ -759,12 +761,22 @@ public partial class ItemView : UserControl
             case Key.Escape:
                 ClearSel(); RaiseSelection(); e.Handled = true; break;
             default:
-                // Skip type-ahead when a modifier is held so Ctrl+C/X/V (Copy/Cut/Paste,
-                // handled by the window) don't jump the selection instead.
-                if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Meta)
-                    && e.Key is >= Key.A and <= Key.Z) TypeAhead(e.Key);
-                break;
+                break;   // printable text (letters, digits, accents) is handled by OnTextInput, not Key decode
         }
+    }
+
+    /// <summary>Type-ahead: jump the selection to the item matching what the user types. Fed from real text
+    /// input through the shared <see cref="Bevel.Core.Input.TypeToFind"/> (prefix accumulation, single-char
+    /// cycling, forward wrap), so digits and accented characters work — the old Key-enum decode dropped both.
+    /// Reuses <see cref="MoveTo"/> so the match scrolls into view and the cursor advances (enabling cycling).
+    /// Text input only fires without Ctrl/Meta, so Ctrl+C/X/V never reach here.</summary>
+    void OnTextInput(object? _, TextInputEventArgs e)
+    {
+        var text = e.Text;
+        if (string.IsNullOrEmpty(text)) return;
+        if (text.Length == 1 && char.IsControl(text[0])) return;   // ignore Esc/Enter/Tab and friends
+        int idx = _typeToFind.Match(text, _viewModels, static vm => vm.DisplayName, _lastClickIdx);
+        if (idx >= 0) { MoveTo(idx, shift: false); e.Handled = true; }
     }
 
     void Navigate(Key key, bool shift)
@@ -830,32 +842,6 @@ public partial class ItemView : UserControl
         else if (y + rowH > off.Y + vpH) ItemsScroller.Offset = new Vector(off.X, y + rowH - vpH);
     }
 
-    // ── Type-ahead ───────────────────────────────────────────────────
-
-    void TypeAhead(Key key)
-    {
-        if (_typeTimer.ElapsedMilliseconds > TypeResetMs) _typeBuffer = "";
-        _typeTimer.Restart();
-        _typeBuffer += key switch
-        {
-            Key.A => 'a', Key.B => 'b', Key.C => 'c', Key.D => 'd', Key.E => 'e', Key.F => 'f', Key.G => 'g', Key.H => 'h',
-            Key.I => 'i', Key.J => 'j', Key.K => 'k', Key.L => 'l', Key.M => 'm', Key.N => 'n', Key.O => 'o', Key.P => 'p',
-            Key.Q => 'q', Key.R => 'r', Key.S => 's', Key.T => 't', Key.U => 'u', Key.V => 'v', Key.W => 'w', Key.X => 'x',
-            Key.Y => 'y', Key.Z => 'z',
-            Key.D0 or Key.NumPad0 => '0', Key.D1 or Key.NumPad1 => '1', Key.D2 or Key.NumPad2 => '2',
-            Key.D3 or Key.NumPad3 => '3', Key.D4 or Key.NumPad4 => '4', Key.D5 or Key.NumPad5 => '5',
-            Key.D6 or Key.NumPad6 => '6', Key.D7 or Key.NumPad7 => '7', Key.D8 or Key.NumPad8 => '8',
-            Key.D9 or Key.NumPad9 => '9', _ => (char)0,
-        };
-        if (_typeBuffer.Length > 0 && _typeBuffer[^1] == 0) return;
-        int start = (_lastClickIdx + 1) % Math.Max(1, _viewModels.Count);
-        for (int n = _viewModels.Count; n > 0; n--)
-        {
-            int i = (start + n) % _viewModels.Count;
-            if (_viewModels[i].DisplayName.StartsWith(_typeBuffer, StringComparison.OrdinalIgnoreCase))
-            { SelectOne(_viewModels[i]); return; }
-        }
-    }
 
     // ── Rename ────────────────────────────────────────────────────────
 
