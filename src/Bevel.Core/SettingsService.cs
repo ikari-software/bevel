@@ -309,6 +309,8 @@ public sealed class SettingsService : IDisposable
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
         SetOrPrune("hideKnownExtensions", _settings.HideKnownExtensions, d.HideKnownExtensions, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("explorerLeftPaneWidth", _settings.ExplorerLeftPaneWidth, d.ExplorerLeftPaneWidth, SettingsJsonContext.Default.Int32);
+        SetOrPrune("explorerFoldersOpen", _settings.ExplorerFoldersOpen, d.ExplorerFoldersOpen, SettingsJsonContext.Default.Boolean);
         SetOrPrune("defaultViewMode", _settings.DefaultViewMode, d.DefaultViewMode, SettingsJsonContext.Default.String);
         SetOrPrune("infoPaneStyle", _settings.InfoPaneStyle.ToString(), d.InfoPaneStyle.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("workAreaStrategy", _settings.WorkAreaStrategy.ToString(), d.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
@@ -418,6 +420,8 @@ public sealed class SettingsService : IDisposable
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
             HideKnownExtensions = GetBool("hideKnownExtensions") ?? false,
+            ExplorerLeftPaneWidth = GetInt("explorerLeftPaneWidth") ?? 200,
+            ExplorerFoldersOpen = GetBool("explorerFoldersOpen") ?? false,
             DefaultViewMode = GetString("defaultViewMode") ?? "LargeIcons",
             InfoPaneStyle = Enum.TryParse<InfoPaneStyle>(GetString("infoPaneStyle"), out var ips) ? ips : InfoPaneStyle.Auto,
             WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
@@ -526,6 +530,12 @@ public sealed class BevelSettings
 
     /// <summary>Visual style of the Explorer's left info pane (folder "webview").</summary>
     public InfoPaneStyle InfoPaneStyle { get; set; } = InfoPaneStyle.Auto;
+
+    /// <summary>Explorer left-pane width in px (drag the splitter to resize). Persisted so the pane keeps its size.</summary>
+    public int ExplorerLeftPaneWidth { get; set; } = 200;
+
+    /// <summary>Whether the Explorer left pane shows the Folders tree (true) instead of the info pane (false).</summary>
+    public bool ExplorerFoldersOpen { get; set; }
 
     /// <summary>M2: work-area strategy (how the taskbar coexists with the Dock).</summary>
     public WorkAreaStrategy WorkAreaStrategy { get; set; } = WorkAreaStrategy.Nudge;

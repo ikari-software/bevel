@@ -71,6 +71,22 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task Explorer_left_pane_width_and_folders_toggle_round_trip()
+    {
+        // bevel-xw12: the left pane's width (splitter) and Folders-vs-InfoPane toggle survive a reload.
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            await writer.UpdateAsync(s => { s.ExplorerLeftPaneWidth = 260; s.ExplorerFoldersOpen = true; });
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal(260, reader.Current.ExplorerLeftPaneWidth);
+        Assert.True(reader.Current.ExplorerFoldersOpen);
+    }
+
+    [Fact]
     public async Task Only_non_default_values_are_persisted_so_defaults_stay_live()
     {
         using (var w = new SettingsService(_dir))

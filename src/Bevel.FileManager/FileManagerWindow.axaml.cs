@@ -143,9 +143,24 @@ public partial class FileManagerWindow : BevelWindow
         SearchPane.SearchRequested += OnSearchRequested;
         SearchPane.CloseRequested += (_, _) => ToggleSearchPane();
         ExplorerPane.CloseClicked += (_, _) => ToggleFolders();
+
+        // Left-pane splitter (bevel-xw12): drag to resize the pane; the width is persisted.
+        LeftSplitter.PointerPressed += OnSplitterPressed;
+        LeftSplitter.PointerMoved += OnSplitterMoved;
+        LeftSplitter.PointerReleased += OnSplitterReleased;
     }
 
     bool _showTree;
+    int _leftPaneWidth = 200;
+    bool _draggingSplitter;
+    double _dragStartX;
+    int _dragStartWidth;
+    const int LeftPaneMinWidth = 120;
+    const int MinItemViewWidth = 200;   // px always kept for the item view when sizing the left pane
+    // The (hidden, ext) the current on-screen listing reflects; a settings fan-out re-lists ONLY when this
+    // changes — so a layout-only write (pane width, Folders toggle, info-pane style) never resets a sibling
+    // window's items/scroll/selection to a full reload. (bevel-xw12, Opus review)
+    (bool Hidden, bool Ext)? _lastListingInputs;
 
     private SearchService? _searchService;
     private CancellationTokenSource? _searchCts;
@@ -205,6 +220,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         _showTree = !_showTree;
         UpdateLeftColumn();
+        _ = _settings?.UpdateAsync(s => s.ExplorerFoldersOpen = _showTree);
     }
 
     /// <summary>Shows the folders tree, the info pane, or nothing (info style = Off), and collapses the
@@ -215,8 +231,39 @@ public partial class FileManagerWindow : BevelWindow
         InfoPane.IsVisible = !_showTree && !_infoPaneOff;
         ExplorerPane.IsVisible = _showTree;
         LeftSplitter.IsVisible = showLeft;
-        ContentGrid.ColumnDefinitions[0].Width = showLeft ? new GridLength(200) : new GridLength(0);
+        // Clamp a persisted width against the live window so a value saved in a wide window can't crush the
+        // item view in a narrower one. Bounds is 0 before the first layout — skip until it has been measured.
+        if (ContentGrid.Bounds.Width > 0)
+            _leftPaneWidth = System.Math.Clamp(_leftPaneWidth, LeftPaneMinWidth,
+                System.Math.Max(LeftPaneMinWidth, (int)ContentGrid.Bounds.Width - MinItemViewWidth));
+        ContentGrid.ColumnDefinitions[0].Width = showLeft ? new GridLength(_leftPaneWidth) : new GridLength(0);
         ContentGrid.ColumnDefinitions[1].Width = showLeft ? new GridLength(4) : new GridLength(0);
+    }
+
+    private void OnSplitterPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        _draggingSplitter = true;
+        _dragStartX = e.GetPosition(ContentGrid).X;
+        _dragStartWidth = _leftPaneWidth;
+        e.Pointer.Capture(LeftSplitter);
+    }
+
+    private void OnSplitterMoved(object? sender, Avalonia.Input.PointerEventArgs e)
+    {
+        if (!_draggingSplitter) return;
+        var delta = e.GetPosition(ContentGrid).X - _dragStartX;
+        // Keep a usable item view on the right, and never below the pane minimum.
+        var max = System.Math.Max(LeftPaneMinWidth, (int)ContentGrid.Bounds.Width - MinItemViewWidth);
+        _leftPaneWidth = System.Math.Clamp(_dragStartWidth + (int)delta, LeftPaneMinWidth, max);
+        ContentGrid.ColumnDefinitions[0].Width = new GridLength(_leftPaneWidth);
+    }
+
+    private void OnSplitterReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
+    {
+        if (!_draggingSplitter) return;
+        _draggingSplitter = false;
+        e.Pointer.Capture(null);
+        _ = _settings?.UpdateAsync(s => s.ExplorerLeftPaneWidth = _leftPaneWidth);
     }
 
     /// <summary>Auto → the info-pane style that matches the active theme (the XP Luna task-pane under Luna,
@@ -239,7 +286,18 @@ public partial class FileManagerWindow : BevelWindow
         // that App handler, e.g. in tests, still applies it). Idempotent.
         Components.ItemViewModel.HideKnownExtensions = _settings?.Current.HideKnownExtensions ?? false;
         UpdateLeftColumn();
-        ReloadWithCurrentOptions();
+
+        // Re-list ONLY when an input the listing actually depends on changed — the hidden-file filter and
+        // extension hiding (see ReloadWithCurrentOptions). Info-pane style and pure layout writes (left-pane
+        // width, Folders toggle) fan out through the SAME settings.Changed handler but must not drop a
+        // sibling window's items. (bevel-xw12, Opus review — also fixes the pre-existing "any change re-lists".)
+        var inputs = (_settings?.Current.ShowHiddenFiles ?? false,
+                      _settings?.Current.HideKnownExtensions ?? false);
+        if (_lastListingInputs != inputs)
+        {
+            _lastListingInputs = inputs;
+            ReloadWithCurrentOptions();
+        }
     }
 
     private void WireMenuBar()
@@ -451,6 +509,11 @@ public partial class FileManagerWindow : BevelWindow
     public void SetSettingsService(Core.SettingsService settings)
     {
         _settings = settings;
+        // Restore the persisted left-pane state (bevel-xw12): which pane is showing + its width.
+        _showTree = settings.Current.ExplorerFoldersOpen;
+        _leftPaneWidth = System.Math.Max(LeftPaneMinWidth, settings.Current.ExplorerLeftPaneWidth);
+        // The initial listing reflects these inputs, so a later layout-only fan-out is correctly a no-op.
+        _lastListingInputs = (settings.Current.ShowHiddenFiles, settings.Current.HideKnownExtensions);
         // Open with the persisted info-pane style + column layout (Folder Options). A fresh window has no
         // directory listed yet, so this only sets the style/visibility, not a reload.
         var style = ResolveInfoPaneStyle(settings.Current.InfoPaneStyle);
