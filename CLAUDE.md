@@ -118,6 +118,17 @@ set `ctx.Cancel` or children orphan.
 passive export). **Icons** render off-thread, cached, and are shared across processes via a
 memory-mapped BGRA pool (`MmfBgraPool`).
 
+## Codemap & Landing Site
+
+- **Codemap:** [`docs/codemap.md`](docs/codemap.md) maps the repo — projects, entry points, the native
+  helper, packaging. Keep it current when you add/move a project or subsystem.
+- **Landing page:** `site/index.html` is a self-contained page whose visuals are all **real renders**
+  harvested from the `Render*` tests (beads memory `site-real-screenshots`). **When a user-facing
+  feature, theme, colourway, or skin lands, update the page to match** — re-harvest the screenshot into
+  `site/shots/` rather than hand-drawing one, and keep the copy honest (no faked shots for things that
+  don't exist yet). Not published to GitHub Pages yet (public branding is gated on counsel, bead
+  `bevel-legal-branding`).
+
 ## Conventions & Patterns
 
 - **NEVER block the Avalonia UI thread** (non-negotiable). No `.Result`/`.Wait()`/`.GetAwaiter().GetResult()`
