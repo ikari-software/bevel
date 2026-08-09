@@ -24,8 +24,10 @@
     </Style>
     <Setter Property="Template">
       <ControlTemplate>
-        <Panel RenderOptions.EdgeMode="Aliased"
-               RenderOptions.BitmapInterpolationMode="None"
+        <!-- Bevel: NO forced EdgeMode=Aliased. Everything is vector + antialiased ("designed in 2026" /
+             never-disable-AA): AA is a no-op on Win2000's axis-aligned 1px bevels and smooths Luna's rounded
+             corners. (Font AA is the FontAliasingKey resource; per-skin bevel crispness is BevelBorder.) -->
+        <Panel RenderOptions.BitmapInterpolationMode="None"
                utils:FontUtils.FontAliasing="{DynamicResource {x:Static common:SystemParameters.FontAliasingKey}}">
           <Border Name="PART_TransparencyFallback"
                   IsHitTestVisible="False"
@@ -106,8 +108,10 @@
     <Setter Property="FontSize" Value="{DynamicResource FontSizeNormal}" />
     <Setter Property="Template">
       <ControlTemplate>
-        <Panel RenderOptions.EdgeMode="Aliased"
-               RenderOptions.BitmapInterpolationMode="None"
+        <!-- Bevel: NO forced EdgeMode=Aliased. Everything is vector + antialiased ("designed in 2026" /
+             never-disable-AA): AA is a no-op on Win2000's axis-aligned 1px bevels and smooths Luna's rounded
+             corners. (Font AA is the FontAliasingKey resource; per-skin bevel crispness is BevelBorder.) -->
+        <Panel RenderOptions.BitmapInterpolationMode="None"
                utils:FontUtils.FontAliasing="{DynamicResource {x:Static common:SystemParameters.FontAliasingKey}}">
           <Border Name="PART_TransparencyFallback"
                   IsHitTestVisible="False" />
