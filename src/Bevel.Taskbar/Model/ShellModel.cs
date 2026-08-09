@@ -362,10 +362,17 @@ public sealed class ShellModel : IDisposable
 
     /// <summary>Refreshes a surviving button in place. Revive first: if this exact id reappeared
     /// while its button was animating out, cancel the pending exit and keep the VM/container.</summary>
-    private static void ApplyUpdate(TaskItemViewModel vm, ForeignWindow w)
+    private void ApplyUpdate(TaskItemViewModel vm, ForeignWindow w)
     {
         vm.Revive();
         vm.Update(w);
+        // Retry a still-missing icon. A window first enumerated before its app icon was ready arrives
+        // with IconPng == null, so CreateItem's LoadWindowIcon no-op'd and the button was created blank —
+        // and nothing re-attempted it, leaving it icon-less for life (the intermittent "lost" icon).
+        // LoadWindowIcon no-ops on an empty PNG (never blanks a good icon) and is content-hash cached, so
+        // re-running it only while IconSource is null costs nothing until a later snapshot carries the icon.
+        if (vm.IconSource is null)
+            LoadWindowIcon(vm, w.IconPng);
     }
 
     /// <summary>

@@ -1,4 +1,8 @@
+using System.IO;
+using Avalonia;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
 using Xunit;
@@ -229,6 +233,50 @@ public sealed class ShellModelTests
         bool minimized = false,
         bool focused = false) =>
         new(new ForeignWindowId(id), title, "App", minimized, focused, default);
+
+    /// <summary>A small, real, decodable PNG (WriteableBitmap.Save uses the Skia encoder) so the icon
+    /// decode path in <c>LoadWindowIcon</c> runs for real.</summary>
+    private static byte[] IconPng()
+    {
+        var wb = new WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using var ms = new MemoryStream();
+        wb.Save(ms);
+        return ms.ToArray();
+    }
+
+    [AvaloniaFact]
+    public async Task Window_seen_before_its_icon_is_ready_picks_it_up_on_a_later_snapshot()
+    {
+        // Regression: the taskbar "sometimes loses a window's icon". A window first enumerated before
+        // its app icon is ready arrives with IconPng == null, so its button is created icon-less. Nothing
+        // re-attempted the load, so it stayed blank for the window's whole life. ApplyUpdate now retries
+        // while IconSource is null — and must NOT blank a good icon when a later snapshot lacks one.
+        var png = IconPng();
+        var manager = new StubWindowManager();
+        using var model = new ShellModel(manager, null, null);
+
+        var iconless = new ForeignWindow(new ForeignWindowId("w1"), "Doc", "App", false, false, default, IconPng: null);
+        manager.Live = [iconless];
+        model.Start();
+        manager.RaiseOpened(iconless);
+        Dispatcher.UIThread.RunJobs();
+
+        var item = Assert.Single(model.Windows);
+        Assert.Null(item.IconSource); // created blank — the icon wasn't ready that cycle
+
+        // A later snapshot carries the icon → the button must pick it up (was: blank forever).
+        var withIcon = new ForeignWindow(new ForeignWindowId("w1"), "Doc", "App", false, false, default, IconPng: png);
+        manager.Live = [withIcon];
+        manager.RaiseChanged(withIcon);
+        for (var i = 0; i < 100 && item.IconSource is null; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+        Assert.NotNull(item.IconSource);
+
+        // Safety half: a subsequent icon-less snapshot must NOT blank the good icon.
+        var loaded = item.IconSource;
+        manager.RaiseChanged(new ForeignWindow(new ForeignWindowId("w1"), "Doc", "App", false, false, default, IconPng: null));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Same(loaded, item.IconSource);
+    }
 
     [AvaloniaFact]
     public async Task MinimizeAll_minimizes_every_tracked_window()
