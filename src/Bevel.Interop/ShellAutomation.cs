@@ -17,12 +17,14 @@ public sealed class ShellAutomation : IShellAutomation
     private readonly VfsRoot _vfs;
     private readonly IShellSurface _surface;
     private readonly IKnownFolders _known;
+    private readonly IProgramSurface? _programs;
 
-    public ShellAutomation(VfsRoot vfs, IShellSurface surface, IKnownFolders? knownFolders = null)
+    public ShellAutomation(VfsRoot vfs, IShellSurface surface, IKnownFolders? knownFolders = null, IProgramSurface? programs = null)
     {
         _vfs = vfs;
         _surface = surface;
         _known = knownFolders ?? SystemKnownFolders.Instance;
+        _programs = programs;
     }
 
     // ── Window-coupled verbs (delegate to the live surface) ──────────────────────────────────
@@ -41,6 +43,9 @@ public sealed class ShellAutomation : IShellAutomation
 
     public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct)
         => _surface.SetAsync(target, prop, value, ct);
+
+    public Task LaunchAsync(string appId, CancellationToken ct)
+        => (_programs ?? throw new AutomationException("program launching is not available")).LaunchAsync(appId, ct);
 
     // ── Filesystem verbs (run against the VFS) ───────────────────────────────────────────────
 
@@ -114,6 +119,9 @@ public sealed class ShellAutomation : IShellAutomation
 
         if (query.HasFlag(AutomationQuery.Selection))
             snapshot = snapshot with { Selection = await _surface.QuerySelectionAsync(null, ct) };
+
+        if (query.HasFlag(AutomationQuery.Programs) && _programs is not null)
+            snapshot = snapshot with { Programs = await _programs.ListProgramsAsync(ct) };
 
         return snapshot;
     }

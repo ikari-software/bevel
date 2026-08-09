@@ -141,6 +141,7 @@ public static class CompositionRoot
         // the live file manager via FileManagerShellSurface; the filesystem verbs run on the VFS.
         services.AddSingleton<Bevel.Interop.IKnownFolders>(Bevel.Interop.SystemKnownFolders.Instance);
         services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
+        services.AddSingleton<Bevel.Interop.IProgramSurface, AppEnvironmentProgramSurface>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
         // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
         // run it through this router → the one IShellAutomation seam. The transports that feed it (the

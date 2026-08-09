@@ -163,6 +163,33 @@ public sealed class ShellAutomationTests : IDisposable
         public VfsPath Trash => new("file", Path.Combine(_home, ".Trash"));
     }
 
+    [Fact]
+    public async Task Launch_without_a_program_surface_reports_unavailable()
+        => await Assert.ThrowsAsync<AutomationException>(() => _auto.LaunchAsync("com.x", CancellationToken.None));
+
+    [Fact]
+    public async Task Launch_and_programs_query_go_through_the_program_surface()
+    {
+        var programs = new FakeProgramSurface();
+        var vfs = new VfsRoot();
+        vfs.Register(new LocalFsProvider(trashDirectory: _trash));
+        var auto = new ShellAutomation(vfs, _surface, new FakeKnownFolders(_work), programs);
+
+        await auto.LaunchAsync("com.apple.TextEdit", CancellationToken.None);
+        Assert.Equal("com.apple.TextEdit", programs.Launched);
+
+        var snap = await auto.QueryAsync(AutomationQuery.Programs, CancellationToken.None);
+        Assert.Equal(new[] { "com.a.One" }, snap.Programs.Select(p => p.Id));
+    }
+
+    private sealed class FakeProgramSurface : IProgramSurface
+    {
+        public string? Launched;
+        public Task<IReadOnlyList<ProgramInfo>> ListProgramsAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<ProgramInfo>>(new[] { new ProgramInfo("com.a.One", "One") });
+        public Task LaunchAsync(string appId, CancellationToken ct) { Launched = appId; return Task.CompletedTask; }
+    }
+
     private sealed class FakeSurface : IShellSurface
     {
         public bool RevealNewWindow;

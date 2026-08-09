@@ -44,8 +44,13 @@ public static class BevelUrlParser
                     return (null, "view= must be icons|list|details");
                 return (new ParsedCommand { Verb = BevelVerb.Open, Paths = new[] { UrlPath(openPath) }, View = BevelCtlParser.ParseView(view) }, null);
 
+            case "launch":
+                var appId = query.Single("app");
+                if (string.IsNullOrEmpty(appId)) return (null, "bevel://launch needs an app= parameter");
+                return (new ParsedCommand { Verb = BevelVerb.Launch, AppId = appId }, null);
+
             case "search" or "settings" or "theme":
-                return (null, $"bevel://{verb} is not wired to automation yet (M4 covers reveal/open).");
+                return (null, $"bevel://{verb} is not wired to automation yet (M4 covers reveal/open/launch).");
 
             default:
                 return (null, $"unknown bevel:// verb '{verb}'");

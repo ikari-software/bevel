@@ -48,6 +48,20 @@ public class BevelCtlParserTests
     public void Move_parses_with_to() => Assert.Equal("/dst", Ok("move", "/x", "--to", "/dst").Target!.Value.Value);
 
     [Fact]
+    public void Launch_parses_app_id()
+    {
+        var cmd = Ok("launch", "com.apple.TextEdit");
+        Assert.Equal(BevelVerb.Launch, cmd.Verb);
+        Assert.Equal("com.apple.TextEdit", cmd.AppId);
+    }
+
+    [Fact]
+    public void Launch_requires_one_app_id() => Assert.Contains("one application id", Err("launch"));
+
+    [Fact]
+    public void Query_programs_parses() => Assert.Equal(QueryKind.Programs, Ok("query", "programs").Query);
+
+    [Fact]
     public void Move_requires_to() => Assert.Contains("--to", Err("move", "/x"));
 
     [Fact]
@@ -117,6 +131,17 @@ public class BevelUrlParserTests
 
     [Fact]
     public void Reveal_without_path_errors() => Assert.Contains("needs a path", Err("bevel://reveal"));
+
+    [Fact]
+    public void Launch_parses_app_param()
+    {
+        var cmd = Ok("bevel://launch?app=com.apple.TextEdit");
+        Assert.Equal(BevelVerb.Launch, cmd.Verb);
+        Assert.Equal("com.apple.TextEdit", cmd.AppId);
+    }
+
+    [Fact]
+    public void Launch_without_app_errors() => Assert.Contains("app=", Err("bevel://launch"));
 
     [Fact]
     public void Settings_reports_not_wired() => Assert.Contains("not wired", Err("bevel://settings"));

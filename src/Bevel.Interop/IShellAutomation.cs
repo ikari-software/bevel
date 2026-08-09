@@ -25,6 +25,20 @@ public interface IShellAutomation
     Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct);
     Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct);
     Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct);
+    Task LaunchAsync(string appId, CancellationToken ct);
+}
+
+/// <summary>
+/// The installed-application list + launch the command model needs but cannot do from the VFS —
+/// the Start menu's program source. Kept a narrow seam (like <see cref="IShellSurface"/>) so the
+/// automation's <c>launch</c> verb and <c>programs</c> query are unit-tested with a fake, and the
+/// real implementation adapts the shell's <c>IAppEnvironment</c>. Null in DI ⇒ launching reports
+/// "not available" rather than crashing (e.g. in filesystem-only automation contexts).
+/// </summary>
+public interface IProgramSurface
+{
+    Task<IReadOnlyList<ProgramInfo>> ListProgramsAsync(CancellationToken ct);
+    Task LaunchAsync(string appId, CancellationToken ct);
 }
 
 /// <summary>

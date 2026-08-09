@@ -9,10 +9,10 @@ namespace Bevel.Interop.Cli;
 
 /// <summary>The verbs both surfaces expose that map onto <see cref="IShellAutomation"/>. (theme /
 /// register / permissions / doctor are separate subsystems, not automation verbs — parsed elsewhere.)</summary>
-public enum BevelVerb { Reveal, Open, Select, Mkdir, Delete, Duplicate, Move, Query }
+public enum BevelVerb { Reveal, Open, Select, Mkdir, Delete, Duplicate, Move, Query, Launch }
 
 /// <summary>What <c>query</c> asks for.</summary>
-public enum QueryKind { Windows, Selection, Version }
+public enum QueryKind { Windows, Selection, Version, Programs }
 
 /// <summary>A fully-parsed, surface-agnostic command ready for <see cref="AutomationCommandRouter"/>.</summary>
 public sealed record ParsedCommand
@@ -25,6 +25,7 @@ public sealed record ParsedCommand
     public bool Permanent { get; init; }        // delete --permanent
     public VfsPath? Target { get; init; }       // duplicate --to <dir>
     public QueryKind Query { get; init; }       // query <kind>
+    public string? AppId { get; init; }         // launch <appId>
 }
 
 /// <summary>A command's outcome: a process/URL exit code plus the text (or JSON) to print.</summary>

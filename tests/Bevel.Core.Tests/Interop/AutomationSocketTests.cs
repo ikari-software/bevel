@@ -92,5 +92,6 @@ public sealed class AutomationSocketTests
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
             => Task.FromResult(new BevelStateSnapshot { Version = "9.9" });
         public Task SetAsync(AutomationTarget t, AutomationProperty p, string v, CancellationToken ct) => Task.CompletedTask;
+        public Task LaunchAsync(string appId, CancellationToken ct) => Task.CompletedTask;
     }
 }

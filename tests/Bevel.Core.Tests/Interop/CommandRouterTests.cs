@@ -122,12 +122,49 @@ public class AutomationCommandRouterTests
         Assert.Contains("read-only", res.Output);
     }
 
+    [Fact]
+    public async Task Launch_calls_seam_and_reports()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Launch, AppId = "com.apple.TextEdit" });
+        Assert.Equal(ExitCodes.Ok, res.ExitCode);
+        Assert.Equal("launch:com.apple.TextEdit", Assert.Single(_auto.Calls));
+        Assert.Contains("launched com.apple.TextEdit", res.Output);
+    }
+
+    [Fact]
+    public async Task Launch_without_appid_is_bad_args_and_does_not_hit_the_seam()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Launch });
+        Assert.Equal(ExitCodes.BadArgs, res.ExitCode);
+        Assert.Empty(_auto.Calls);
+    }
+
+    [Fact]
+    public async Task Query_programs_lists_ids_and_names()
+    {
+        _auto.Programs = new[] { new ProgramInfo("com.a.One", "One"), new ProgramInfo("com.b.Two", "Two") };
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Programs });
+        Assert.Equal(ExitCodes.Ok, res.ExitCode);
+        Assert.Equal("query:Programs", Assert.Single(_auto.Calls));
+        Assert.Contains("com.a.One", res.Output);
+        Assert.Contains("Two", res.Output);
+    }
+
+    [Fact]
+    public async Task Query_programs_json_emits_id_array()
+    {
+        _auto.Programs = new[] { new ProgramInfo("com.a.One", "One") };
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Programs, Json = true });
+        Assert.Equal("{\"programs\":[\"com.a.One\"]}", res.Output);
+    }
+
     private sealed class RecordingAutomation : IShellAutomation
     {
         public readonly List<string> Calls = new();
         public bool Throw;
         public IReadOnlyList<WindowRef> Windows = Array.Empty<WindowRef>();
         public IReadOnlyList<VfsPath> Selection = Array.Empty<VfsPath>();
+        public IReadOnlyList<ProgramInfo> Programs = Array.Empty<ProgramInfo>();
 
         public Task<RevealResult> RevealAsync(IReadOnlyList<VfsPath> items, RevealOptions opts, CancellationToken ct)
         {
@@ -176,12 +213,18 @@ public class AutomationCommandRouterTests
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
         {
             Calls.Add($"query:{query}");
-            return Task.FromResult(new BevelStateSnapshot { Version = "9.9", Windows = Windows, Selection = Selection });
+            return Task.FromResult(new BevelStateSnapshot { Version = "9.9", Windows = Windows, Selection = Selection, Programs = Programs });
         }
 
         public Task SetAsync(AutomationTarget t, AutomationProperty p, string v, CancellationToken ct)
         {
             Calls.Add("set");
+            return Task.CompletedTask;
+        }
+
+        public Task LaunchAsync(string appId, CancellationToken ct)
+        {
+            Calls.Add($"launch:{appId}");
             return Task.CompletedTask;
         }
     }

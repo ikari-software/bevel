@@ -20,7 +20,12 @@ public enum ViewMode { Icons, List, Details }
 /// <summary>What <see cref="IShellAutomation.QueryAsync"/> should gather. Flags so one round-trip can
 /// fetch the application object, open windows, and the active selection together.</summary>
 [Flags]
-public enum AutomationQuery { None = 0, Application = 1, Windows = 2, Selection = 4 }
+public enum AutomationQuery { None = 0, Application = 1, Windows = 2, Selection = 4, Programs = 8 }
+
+/// <summary>A launchable installed application surfaced to automation: a stable id (bundle id or
+/// path) that <c>launch</c> accepts, plus its display name. Deliberately narrower than the shell's
+/// InstalledApp so the command model stays free of PAL types.</summary>
+public sealed record ProgramInfo(string Id, string Name);
 
 /// <summary>Settable window/view properties for <c>set</c> (08-os-interop.md §2.1.2 window class).</summary>
 public enum AutomationProperty { Selection, CurrentView, Bounds, ToolbarVisible, SidebarWidth }
@@ -51,6 +56,7 @@ public sealed record BevelStateSnapshot
     public VfsPath? Trash { get; init; }
     public IReadOnlyList<WindowRef> Windows { get; init; } = Array.Empty<WindowRef>();
     public IReadOnlyList<VfsPath> Selection { get; init; } = Array.Empty<VfsPath>();
+    public IReadOnlyList<ProgramInfo> Programs { get; init; } = Array.Empty<ProgramInfo>();
 }
 
 /// <summary>A command-model fault (read-only container, missing target, unsupported verb). The

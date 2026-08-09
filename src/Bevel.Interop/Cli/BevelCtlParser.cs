@@ -13,7 +13,7 @@ namespace Bevel.Interop.Cli;
 public static class BevelCtlParser
 {
     public const string Usage =
-        "usage: bevelctl <reveal|open|select|mkdir|delete|duplicate|query> ...\n" +
+        "usage: bevelctl <reveal|open|select|mkdir|delete|duplicate|move|launch|query> ...\n" +
         "  reveal <path>... [--new-window]\n" +
         "  open <path> [--view icons|list|details]\n" +
         "  select <path>...\n" +
@@ -21,7 +21,8 @@ public static class BevelCtlParser
         "  delete <path>... [--permanent]\n" +
         "  duplicate <path>... [--to <dir>]\n" +
         "  move <path>... --to <dir>\n" +
-        "  query <windows|selection|version> [--json]";
+        "  launch <app-id>\n" +
+        "  query <windows|selection|version|programs> [--json]";
 
     private static readonly string Home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
 
@@ -93,14 +94,19 @@ public static class BevelCtlParser
                 if (to is null) return Err("move needs a destination (--to <dir>)");
                 return Ok(new ParsedCommand { Verb = BevelVerb.Move, Paths = Paths(operands), Target = PathArg(to), Json = json });
 
+            case "launch":
+                if (operands.Count != 1) return Err("launch needs exactly one application id");
+                return Ok(new ParsedCommand { Verb = BevelVerb.Launch, AppId = operands[0], Json = json });
+
             case "query":
-                if (operands.Count != 1) return Err("query needs one of: windows|selection|version");
+                if (operands.Count != 1) return Err("query needs one of: windows|selection|version|programs");
                 return operands[0].ToLowerInvariant() switch
                 {
                     "windows" => Ok(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Windows, Json = json }),
                     "selection" => Ok(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Selection, Json = json }),
                     "version" => Ok(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Version, Json = json }),
-                    _ => Err("query target must be windows|selection|version"),
+                    "programs" => Ok(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Programs, Json = json }),
+                    _ => Err("query target must be windows|selection|version|programs"),
                 };
 
             default:

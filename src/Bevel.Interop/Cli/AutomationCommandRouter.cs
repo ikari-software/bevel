@@ -31,6 +31,7 @@ public sealed class AutomationCommandRouter
                 BevelVerb.Duplicate => await DuplicateAsync(cmd, ct),
                 BevelVerb.Move => await MoveAsync(cmd, ct),
                 BevelVerb.Query => await QueryAsync(cmd, ct),
+                BevelVerb.Launch => await LaunchAsync(cmd, ct),
                 _ => new CommandResult(ExitCodes.BadArgs, $"unhandled verb {cmd.Verb}"),
             };
         }
@@ -97,6 +98,14 @@ public sealed class AutomationCommandRouter
             : Ok(string.Join('\n', moved.Select(Display)));
     }
 
+    private async Task<CommandResult> LaunchAsync(ParsedCommand cmd, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(cmd.AppId))
+            return new CommandResult(ExitCodes.BadArgs, "launch needs an application id");
+        await _automation.LaunchAsync(cmd.AppId, ct);
+        return cmd.Json ? Ok($"{{\"launched\":{JsonStr(cmd.AppId)}}}") : Ok($"launched {cmd.AppId}");
+    }
+
     private async Task<CommandResult> QueryAsync(ParsedCommand cmd, CancellationToken ct)
     {
         return cmd.Query switch
@@ -104,8 +113,17 @@ public sealed class AutomationCommandRouter
             QueryKind.Version => await QueryVersion(cmd, ct),
             QueryKind.Windows => await QueryWindows(cmd, ct),
             QueryKind.Selection => await QuerySelection(cmd, ct),
+            QueryKind.Programs => await QueryPrograms(cmd, ct),
             _ => new CommandResult(ExitCodes.BadArgs, "unknown query"),
         };
+    }
+
+    private async Task<CommandResult> QueryPrograms(ParsedCommand cmd, CancellationToken ct)
+    {
+        var snap = await _automation.QueryAsync(AutomationQuery.Programs, ct);
+        return cmd.Json
+            ? Ok($"{{\"programs\":{JsonArray(snap.Programs.Select(p => p.Id))}}}")
+            : Ok(snap.Programs.Count == 0 ? "(no programs)" : string.Join('\n', snap.Programs.Select(p => $"{p.Id}\t{p.Name}")));
     }
 
     private async Task<CommandResult> QueryVersion(ParsedCommand cmd, CancellationToken ct)
