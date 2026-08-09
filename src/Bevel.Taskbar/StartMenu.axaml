@@ -398,9 +398,13 @@
                             <Button Classes="lunarow" Click="OnRestartClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">
-                                        <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              Data="M15.5,8.5 A5,5 0 1 1 11.5,6 M15.5,4 L15.5,8.5 L11,8.5" />
+                                        <!-- Restart = a clean circular arrow. The old path was an arc plus a boxy L "arrowhead"
+                                             (two perpendicular strokes) that read as a broken 'd'; this is a proper ~300° arc with a
+                                             triangular head. Viewbox-normalised like the footer icons so it sits centred at a matched weight. -->
+                                        <Viewbox Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform">
+                                            <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round"
+                                                  Data="M12.7,8 A4.7,4.7 0 1 1 8,3.3 M8,1.6 L10.8,3.3 L8,5" />
+                                        </Viewbox>
                                     </Border>
                                     <TextBlock Text="Restart Bevel" Classes="place" />
                                 </StackPanel>
@@ -408,9 +412,11 @@
                             <Button Classes="lunarow" Click="OnQuitClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuTurnOffIcon}">
-                                        <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round"
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              Data="M12,5 V11 M8.5,7.5 A5,5 0 1 0 15.5,7.5" />
+                                        <!-- Quit = power symbol, the same glyph as the footer Turn Off, Viewbox-normalised to match Restart. -->
+                                        <Viewbox Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform">
+                                            <Path Stroke="White" StrokeThickness="2" StrokeLineCap="Round"
+                                                  Data="M11 5 V11 M7 8 A5 5 0 1 0 15 8" />
+                                        </Viewbox>
                                     </Border>
                                     <TextBlock Text="Quit Bevel" Classes="place" />
                                 </StackPanel>
