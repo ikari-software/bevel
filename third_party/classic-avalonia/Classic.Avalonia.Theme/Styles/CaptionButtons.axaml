@@ -43,9 +43,11 @@
           <Button x:Name="PART_MinimizeButton"
                   Theme="{StaticResource SimpleCaptionButton}"
                   VerticalContentAlignment="Top"
-                  HorizontalContentAlignment="Left"
+                  HorizontalContentAlignment="Center"
                   Focusable="False"
                   AutomationProperties.Name="Minimize">
+            <!-- The minimize bar is narrow (6px); Left-aligned it sat in the left third while the wider
+                 maximize/close glyphs read centred. Centre it so all three glyphs are horizontally aligned. -->
             <Path Name="MinimizeButtonPath"
                   Data="M 1 7 L 7 7 L 7 9 L 1 9 z"
                   Margin="0,-1,0,0" />
