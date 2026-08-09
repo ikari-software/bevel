@@ -419,7 +419,7 @@ public sealed class SettingsService : IDisposable
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
             HideKnownExtensions = GetBool("hideKnownExtensions") ?? false,
             DefaultViewMode = GetString("defaultViewMode") ?? "LargeIcons",
-            InfoPaneStyle = Enum.TryParse<InfoPaneStyle>(GetString("infoPaneStyle"), out var ips) ? ips : InfoPaneStyle.Win2000,
+            InfoPaneStyle = Enum.TryParse<InfoPaneStyle>(GetString("infoPaneStyle"), out var ips) ? ips : InfoPaneStyle.Auto,
             WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
                 ? was : WorkAreaStrategy.Nudge,
             RunAtLogin = GetBool("runAtLogin") ?? false,
@@ -525,7 +525,7 @@ public sealed class BevelSettings
     public string DefaultViewMode { get; set; } = "LargeIcons";
 
     /// <summary>Visual style of the Explorer's left info pane (folder "webview").</summary>
-    public InfoPaneStyle InfoPaneStyle { get; set; } = InfoPaneStyle.Win2000;
+    public InfoPaneStyle InfoPaneStyle { get; set; } = InfoPaneStyle.Auto;
 
     /// <summary>M2: work-area strategy (how the taskbar coexists with the Dock).</summary>
     public WorkAreaStrategy WorkAreaStrategy { get; set; } = WorkAreaStrategy.Nudge;
@@ -670,6 +670,11 @@ public enum InfoPaneStyle
 
     /// <summary>XP Luna task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
     WinXP,
+
+    /// <summary>Match the active theme: the XP Luna task-pane under Luna, the Win2000 banner under Win2000.
+    /// The default — a fresh install shows the pane that fits whatever skin it boots in. Resolved to a
+    /// concrete style at apply time (never handed to the InfoPane control directly).</summary>
+    Auto,
 }
 
 /// <summary>bevel-cust.buttons: how an app's multiple windows collapse onto the taskbar. (Named

@@ -219,11 +219,19 @@ public partial class FileManagerWindow : BevelWindow
         ContentGrid.ColumnDefinitions[1].Width = showLeft ? new GridLength(4) : new GridLength(0);
     }
 
+    /// <summary>Auto → the info-pane style that matches the active theme (the XP Luna task-pane under Luna,
+    /// the Win2000 banner under Win2000); any concrete style passes through. Resolved here rather than in the
+    /// InfoPane control, so the control is only ever handed a real, renderable style.</summary>
+    private static Bevel.Core.InfoPaneStyle ResolveInfoPaneStyle(Bevel.Core.InfoPaneStyle style)
+        => style == Bevel.Core.InfoPaneStyle.Auto
+            ? (Bevel.UI.ThemeService.Current == "luna" ? Bevel.Core.InfoPaneStyle.WinXP : Bevel.Core.InfoPaneStyle.Win2000)
+            : style;
+
     /// <summary>Applies the current Folder Options to this window: the info-pane style + column visibility,
     /// and a fresh re-list (hidden files / extension hiding). Called on load and on live changes.</summary>
     public void ApplyFolderOptions()
     {
-        var style = _settings?.Current.InfoPaneStyle ?? Bevel.Core.InfoPaneStyle.Win2000;
+        var style = ResolveInfoPaneStyle(_settings?.Current.InfoPaneStyle ?? Bevel.Core.InfoPaneStyle.Auto);
         InfoPane.Style = style;
         _infoPaneOff = style == Bevel.Core.InfoPaneStyle.Off;
         // Set the app-wide extension flag HERE too, not only in App's settings.Changed handler — so the
@@ -445,7 +453,7 @@ public partial class FileManagerWindow : BevelWindow
         _settings = settings;
         // Open with the persisted info-pane style + column layout (Folder Options). A fresh window has no
         // directory listed yet, so this only sets the style/visibility, not a reload.
-        var style = settings.Current.InfoPaneStyle;
+        var style = ResolveInfoPaneStyle(settings.Current.InfoPaneStyle);
         InfoPane.Style = style;
         _infoPaneOff = style == Bevel.Core.InfoPaneStyle.Off;
         UpdateLeftColumn();

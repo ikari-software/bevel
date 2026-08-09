@@ -26,6 +26,7 @@ public partial class FolderOptionsWindow : UI.BevelWindow
 
     private static readonly (string Label, InfoPaneStyle Style)[] InfoStyles =
     {
+        ("Auto (match theme)", InfoPaneStyle.Auto),
         ("Windows 2000 (banner)", InfoPaneStyle.Win2000),
         ("Windows XP (task pane)", InfoPaneStyle.WinXP),
         ("Windows 9x (minimal)", InfoPaneStyle.Win9x),

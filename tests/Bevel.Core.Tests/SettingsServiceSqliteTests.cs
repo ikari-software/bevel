@@ -52,6 +52,25 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task InfoPaneStyle_Auto_default_survives_a_reload_despite_default_pruning()
+    {
+        // Regression (bevel-robr, Fable review): the default value is pruned from the blob because it equals
+        // the code default (now Auto), so the absent-key fallback in ApplyRaw must ALSO be Auto — otherwise
+        // Auto reads back as Win2000 and the "match the active theme" default (and any explicit Auto pick)
+        // silently reverts within one reload cycle.
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            Assert.Equal(InfoPaneStyle.Auto, writer.Current.InfoPaneStyle);          // code default
+            await writer.UpdateAsync(s => s.InfoPaneStyle = InfoPaneStyle.Auto);     // explicit pick → pruned
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal(InfoPaneStyle.Auto, reader.Current.InfoPaneStyle);              // must NOT revert to Win2000
+    }
+
+    [Fact]
     public async Task Only_non_default_values_are_persisted_so_defaults_stay_live()
     {
         using (var w = new SettingsService(_dir))
