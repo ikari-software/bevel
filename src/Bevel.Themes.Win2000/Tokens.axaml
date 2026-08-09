@@ -178,7 +178,8 @@
     <CornerRadius x:Key="Bevel.Metric.CornerRadius">0</CornerRadius>
     <Thickness x:Key="Bevel.Metric.ButtonPadding">6,1</Thickness>
     <Thickness x:Key="Bevel.Metric.WindowContentBorder">0</Thickness>
-    <Thickness x:Key="Bevel.Metric.WindowContentInset">4</Thickness>
+    <Thickness x:Key="Bevel.Metric.WindowContentInset">4,1,4,4</Thickness>
+    <Thickness x:Key="Bevel.Metric.CaptionMargin">4,4,4,0</Thickness>
     <Thickness x:Key="Bevel.Metric.CaptionPadding">2,0,2,0</Thickness>
 
     <!-- ── Fonts (families only; faces swap with the asset work) ──────────── -->

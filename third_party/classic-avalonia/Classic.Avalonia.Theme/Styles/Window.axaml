@@ -47,10 +47,11 @@
                  3D bevel is the frame). -->
             <DockPanel LastChildFill="True">
 
-              <!-- No bottom gap: the caption must meet the content frame so the side borders flow straight
-                   up into the title bar as one continuous frame (a 1px gap here reads as a transparent notch
-                   under a transparent window surface). -->
-              <utils:AutoAttachTitleBar DockPanel.Dock="Top" />
+              <!-- Bevel.Metric.CaptionMargin frames the caption. Win2000 = 4,4,4,0: 2px 3D bevel + 2px face
+                   above/beside the caption (matching the sizing frame on the sides), 0 bottom so it meets the
+                   content — the 1px caption→client separator comes from WindowContentInset.top=1. Luna = 0:
+                   the caption stays full-bleed so its rounded top corners are the window's corners (a967ec8). -->
+              <utils:AutoAttachTitleBar DockPanel.Dock="Top" Margin="{DynamicResource Bevel.Metric.CaptionMargin}" />
 
               <Border BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
                       BorderThickness="{DynamicResource Bevel.Metric.WindowContentBorder}"

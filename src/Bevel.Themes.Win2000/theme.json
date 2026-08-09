@@ -93,7 +93,8 @@
     "CornerRadius": { "cornerRadius": "0" },
     "ButtonPadding": { "thickness": "6,1" },
     "WindowContentBorder": { "thickness": "0" },
-    "WindowContentInset": { "thickness": "4" },
+    "WindowContentInset": { "thickness": "4,1,4,4" },
+    "CaptionMargin": { "thickness": "4,4,4,0" },
     "CaptionPadding": { "thickness": "2,0,2,0" }
   },
   "fonts": {

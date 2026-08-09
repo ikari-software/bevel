@@ -45,6 +45,7 @@ public sealed class ThemeTokenTests
                 case "MetricButtonPadding": Assert.IsType<Thickness>(value); break;
                 case "MetricWindowContentBorder": Assert.IsType<Thickness>(value); break;
                 case "MetricWindowContentInset": Assert.IsType<Thickness>(value); break;
+                case "MetricCaptionMargin": Assert.IsType<Thickness>(value); break;
                 case "MetricCaptionPadding": Assert.IsType<Thickness>(value); break;
                 case var n when n.StartsWith("Metric"): Assert.IsType<double>(value); break;
                 case "EdgeRendering": Assert.IsType<Classic.Avalonia.Theme.EdgeRendering>(value); break;

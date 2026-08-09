@@ -84,6 +84,9 @@
          is set to 0 in LunaTheme.axaml so this border is the whole frame; content sits flush inside it. -->
     <Thickness x:Key="Bevel.Metric.WindowContentBorder">3,0,3,3</Thickness>
     <Thickness x:Key="Bevel.Metric.WindowContentInset">0</Thickness>
+    <!-- Luna caption stays full-bleed — its rounded top corners ARE the window's corners (a967ec8). This 0
+         overrides the Win2000 base's 4,4,4,0 sizing-frame margin, so the Win2000 border fix doesn't leak in. -->
+    <Thickness x:Key="Bevel.Metric.CaptionMargin">0</Thickness>
     <!-- Roomier caption padding than the Classic 2px — the icon/title sit in from the rounded left corner
          and the buttons in from the right. Left inset derived from the Luna plate at its true 1.32x scale:
          the plate's frame->icon gap is 14 plate-px = ~10.6 logical px (NOT the ~6 an un-scaled eyeball gives). -->
