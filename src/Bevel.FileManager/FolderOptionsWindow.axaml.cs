@@ -17,6 +17,7 @@ public partial class FolderOptionsWindow : UI.BevelWindow
     // Display label ↔ persisted ViewMode name. Kept in sync with Components.ViewMode.
     private static readonly (string Label, string Mode)[] Views =
     {
+        ("Thumbnails", "Thumbnails"),
         ("Large Icons", "LargeIcons"),
         ("Small Icons", "SmallIcons"),
         ("List", "List"),
@@ -56,7 +57,9 @@ public partial class FolderOptionsWindow : UI.BevelWindow
     {
         for (var i = 0; i < Views.Length; i++)
             if (Views[i].Mode == mode) return i;
-        return 0;
+        // Unrecognised persisted mode (corrupt / older settings) falls back to Large Icons — the classic
+        // default — NOT whatever happens to sit at index 0 (Fable review, bevel-lwti).
+        return System.Array.FindIndex(Views, v => v.Mode == "LargeIcons");
     }
 
     private static int IndexOfInfoStyle(InfoPaneStyle style)
