@@ -69,8 +69,12 @@
                   HorizontalContentAlignment="Left"
                   Focusable="False"
                   AutomationProperties.Name="Close">
-            <Path Data="M 0 0 L 2 0 L 2 1 L 3 1 L 3 2 L 5 2 L 5 1 L 6 1 L 6 0 L 8 0 L 8 1 L 7 1 L 7 2 L 6 2 L 6 3 L 5 3 L 5 4 L 6 4 L 6 5 L 7 5 L 7 6 L 8 6 L 8 7 L 6 7 L 6 6 L 5 6 L 5 5 L 3 5 L 3 6 L 2 6 L 2 7 L 0 7 L 0 6 L 1 6 L 1 5 L 2 5 L 2 4 L 3 4 L 3 3 L 2 3 L 2 2 L 1 2 L 1 1 L 0 1 L 0 1 z"
-                  Margin="1,0,0,0" />
+            <!-- Clean vector X (crossed diagonals) — antialiases to a sharp, smooth glyph; replaces the old
+                 stepped ~8px pixel-art staircase (bevel-7uja). Filled, so it inherits the caption Path Fill. -->
+            <Viewbox Width="9" Height="9" Margin="1,-1,0,0">
+              <Path Stretch="Uniform"
+                    Data="M20 6.8 L17.2 4 12 9.2 6.8 4 4 6.8 9.2 12 4 17.2 6.8 20 12 14.8 17.2 20 20 17.2 14.8 12 z" />
+            </Viewbox>
           </Button>
         </StackPanel>
       </ControlTemplate>
