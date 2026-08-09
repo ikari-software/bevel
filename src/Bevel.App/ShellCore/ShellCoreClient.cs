@@ -143,9 +143,18 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
         }
     }
 
+    private int _disposed;
+
     public async ValueTask DisposeAsync()
     {
-        await _lifetime.CancelAsync().ConfigureAwait(false);
+        // Idempotent teardown. This is disposed by BOTH the DI container and the host-shutdown path, so a
+        // second pass used to call CancelAsync() on the already-disposed _lifetime CTS below — throwing an
+        // ObjectDisposedException that went UNHANDLED during shutdown and crashed the process on
+        // restart/quit (Program.Main line ~104), so the shell died mid-teardown and never came back.
+        // Guard so the second call is a clean no-op, and treat an already-disposed CTS as done.
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        try { await _lifetime.CancelAsync().ConfigureAwait(false); }
+        catch (ObjectDisposedException) { /* already cancelled/torn down elsewhere */ }
         try { await _supervisor.ConfigureAwait(false); }
         catch { /* supervisor faults on teardown are expected */ }
         _lifetime.Dispose();
