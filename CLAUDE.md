@@ -120,8 +120,11 @@ memory-mapped BGRA pool (`MmfBgraPool`).
 
 ## Codemap & Landing Site
 
-- **Codemap:** [`docs/codemap.md`](docs/codemap.md) maps the repo — projects, entry points, the native
-  helper, packaging. Keep it current when you add/move a project or subsystem.
+- **Codemap:** [`CODEMAP.md`](CODEMAP.md) is the repo navigation map (roles, boundaries, where theming /
+  settings / IPC / the helper live). Format rules + per-package convention: [`docs/code-maps/FORMAT.md`](docs/code-maps/FORMAT.md);
+  index: [`docs/code-maps/INVENTORY.md`](docs/code-maps/INVENTORY.md). These are *navigation maps, not architecture
+  docs* — spend lines where grep fails (ownership, sibling disambiguation, not-this trails, exact symbols).
+  Update per the map's own checklist when you change entrypoints, contracts, or sharp edges.
 - **Landing page:** `site/index.html` is a self-contained page whose visuals are all **real renders**
   harvested from the `Render*` tests (beads memory `site-real-screenshots`). **When a user-facing
   feature, theme, colourway, or skin lands, update the page to match** — re-harvest the screenshot into
