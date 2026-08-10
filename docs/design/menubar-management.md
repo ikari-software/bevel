@@ -150,10 +150,19 @@ Brainstorm + spikes for rendering menu-bar items *functionally* in Bevel's botto
   bar. Layout reflow never leaves the bar vertically, and `CGSMoveWindow` (the only API that could set an
   arbitrary y) no-ops cross-connection. C3 needs the second kind, so **true bottom-native menus are
   impossible** — the click uses reveal-at-top + native-bottom proxy instead.
-- **Capture-while-hidden WORKS.** `menubar-capture-poc.swift` captured a status item by window ID via
-  `SCContentFilter(desktopIndependentWindow:)` and got real pixels **cross-process** and while the item
-  was **off-screen (our item at x=-3491)** and **occluded (a third-party item under our expanded control
-  item)** — identical to the visible capture. This is the make-or-break for C, and it passed.
+- **Capture-while-hidden WORKS — but ONLY via the legacy CG API.** `menubar-capture-poc.swift` proved
+  the make-or-break, with a critical API caveat found the hard way:
+  - **ScreenCaptureKit** (`SCContentFilter(desktopIndependentWindow:)`) captures a window that is visible
+    or **occluded** (on a display, covered) — a third-party icon under our expanded control item captured
+    fine. But the instant a window is pushed **fully off every display** it fails with **`-3811`
+    "Failed to start stream"** — 0/16 attempts across 4 items. SCK needs the window on a display.
+  - Our hide pushes ~50 items **fully off-screen** (x≈-4000..-5000), so SCK is unusable for them.
+  - **Fix (Ice's method): `CGWindowListCreateImageFromArray`** reads the backing store by ID with no
+    stream/display dependency — it captured all 4 fully-off-screen third-party items (real icons, e.g. a
+    mouse-with-gear glyph). Ice's own comment: *"ScreenCaptureKit doesn't support capturing composite
+    images of offscreen menu bar items."* On **macOS 26** `CGWindowListCreateImage` is `unavailable` and
+    even Ice's protocol-conformance trick is now a hard compile error, so reach the C symbol via
+    **`dlsym`** (`@convention(c)` typealias). **F3 must use this path for hidden items, not SCK.**
 - **Tahoe ownership gotcha:** on macOS 26 *every* status item (ours + third-party) reports owner
   "Control Centre". Cannot filter/identify by owner PID/name — track window IDs + positions instead.
   (Also: `NSWindow.windowNumber` can be negative for status items — `CGWindowID(Int)` traps; identify by

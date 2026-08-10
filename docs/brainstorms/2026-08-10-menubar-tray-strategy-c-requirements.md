@@ -20,11 +20,14 @@ interacts with the real item.
 - **A — Hide / anchor (PROVEN live).** Expand an anchored control `NSStatusItem` to hide real items;
   narrow to reveal. Anchor = `statusItem.autosaveName` + the `NSStatusItem Preferred Position <name>`
   UserDefault (matches Ice). Without the anchor our control item flies off-screen; with it, it stays put.
-- **F3 — Live capture (capability PROVEN).** Capture each item's window **by ID** via
-  `SCContentFilter(desktopIndependentWindow:)`. Proven to return real pixels **cross-process** and while
-  the item is **off-screen or occluded**. Freshness = adaptive: baseline triggers (item add/remove/move,
-  Space change) + a high-rate `SCStream` burst while the tray is visible/hovered. Capture the whole
-  menu-bar region and crop per item (Ice's approach) — not per-item capture, which is today's bug.
+- **F3 — Live capture (capability PROVEN).** Capture each item's window **by ID**. **Critical API
+  finding:** ScreenCaptureKit works only while a window is on a display (visible/occluded) — it fails
+  with `-3811` the instant an item is pushed **fully off-screen** (which our hide does to ~50 items).
+  Hidden items must be captured with the **legacy `CGWindowListCreateImageFromArray`** (Ice's method),
+  reached via **`dlsym`** on macOS 26 (the symbol is `unavailable` and Ice's protocol trick no longer
+  compiles). Proven live: 4/4 fully-off-screen third-party items captured as real icons via the CG path,
+  0/4 via SCK. Freshness = adaptive: baseline triggers (add/remove/move, Space change) + higher-rate
+  refresh while the tray is visible/hovered.
 - **C2 — Reveal-at-top click (universal spine).** Click a tray icon → temporarily show the real item at
   the top (Ice temporary-show) and let its menu open there, with a designed "lift" motion so the jump
   reads as intentional. Works for every app.

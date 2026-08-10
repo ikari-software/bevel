@@ -43,27 +43,62 @@ func frame(of wid: CGWindowID) -> String {
     return "not-listed"
 }
 
+// CGWindowListCreateImage is `unavailable` on macOS 26 and even Ice's protocol trick is now a hard
+// error — but the C function CGWindowListCreateImageFromArray still exists in CoreGraphics. Reach it via
+// dlsym (bypasses the compile-time availability check). It reads the backing store by ID — works for
+// FULLY off-screen windows (where SCK returns -3811).
+typealias WLCIFA = @convention(c) (CGRect, CFArray, UInt32) -> Unmanaged<CGImage>?
+let _cgh = dlopen(nil, RTLD_NOW)
+let CGWindowListCreateImageFromArray = dlsym(_cgh, "CGWindowListCreateImageFromArray").map { unsafeBitCast($0, to: WLCIFA.self) }
+
+func captureLegacy(_ windowID: CGWindowID, to path: String) -> Bool {
+    guard let fn = CGWindowListCreateImageFromArray else { log("  symbol CGWindowListCreateImageFromArray NOT FOUND"); return false }
+    let ptr = UnsafeMutablePointer<UnsafeRawPointer?>.allocate(capacity: 1)
+    defer { ptr.deallocate() }
+    ptr[0] = UnsafeRawPointer(bitPattern: UInt(windowID))
+    guard let arr = CFArrayCreate(kCFAllocatorDefault, ptr, 1, nil) else { log("  CFArray fail"); return false }
+    let option = CGWindowImageOption([.boundsIgnoreFraming, .bestResolution]).rawValue
+    guard let img = fn(.null, arr, option)?.takeRetainedValue() else {
+        log("  LEGACY nil for wid=\(windowID)"); return false
+    }
+    guard let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return false }
+    try? png.write(to: URL(fileURLWithPath: path))
+    var opaque = 0
+    if let data = img.dataProvider?.data, let ptr2 = CFDataGetBytePtr(data) {
+        let n = CFDataGetLength(data); var i = 3
+        while i < n { if ptr2[i] > 12 { opaque += 1 }; i += 4 }
+    }
+    log("  LEGACY OK wid=\(windowID) -> \(path) (\(img.width)x\(img.height), ~\(opaque) non-transparent px)")
+    return opaque > 4
+}
+
 func captureByID(_ windowID: CGWindowID, to path: String) async -> Bool {
-    do {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        guard let win = content.windows.first(where: { $0.windowID == windowID }) else {
-            log("  window \(windowID) NOT in SCShareableContent — hidden windows may be excluded"); return false
+    for attempt in 1...4 {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            guard let win = content.windows.first(where: { $0.windowID == windowID }) else {
+                log("  window \(windowID) NOT in SCShareableContent — hidden windows may be excluded"); return false
+            }
+            let f = win.frame
+            let cfg = SCStreamConfiguration()
+            cfg.width = max(2, Int(f.width * 2)); cfg.height = max(2, Int(f.height * 2))
+            cfg.showsCursor = false; cfg.ignoreShadowsSingleWindow = true
+            let img = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: win), configuration: cfg)
+            guard let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { log("  png encode failed"); return false }
+            try png.write(to: URL(fileURLWithPath: path))
+            var opaque = 0
+            if let data = img.dataProvider?.data, let ptr = CFDataGetBytePtr(data) {
+                let n = CFDataGetLength(data); var i = 3
+                while i < n { if ptr[i] > 12 { opaque += 1 }; i += 4 }
+            }
+            log("  OK wid=\(windowID) attempt=\(attempt) scWinFrame=\(f) -> \(path) (\(img.width)x\(img.height), ~\(opaque) non-transparent px)")
+            return true
+        } catch {
+            log("  wid=\(windowID) attempt \(attempt) error: \((error as NSError).code) \(error.localizedDescription)")
+            try? await Task.sleep(nanoseconds: 450_000_000)
         }
-        let f = win.frame
-        let cfg = SCStreamConfiguration()
-        cfg.width = max(2, Int(f.width * 2)); cfg.height = max(2, Int(f.height * 2))
-        cfg.showsCursor = false; cfg.ignoreShadowsSingleWindow = true
-        let img = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: win), configuration: cfg)
-        guard let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { log("  png encode failed"); return false }
-        try png.write(to: URL(fileURLWithPath: path))
-        var opaque = 0
-        if let data = img.dataProvider?.data, let ptr = CFDataGetBytePtr(data) {
-            let n = CFDataGetLength(data); var i = 3
-            while i < n { if ptr[i] > 12 { opaque += 1 }; i += 4 }
-        }
-        log("  OK wid=\(windowID) scWinFrame=\(f) -> \(path) (\(img.width)x\(img.height), ~\(opaque) non-transparent px)")
-        return true
-    } catch { log("  capture error: \(error)"); return false }
+    }
+    return false
 }
 
 final class Del: NSObject, NSApplicationDelegate {
@@ -102,8 +137,28 @@ final class Del: NSObject, NSApplicationDelegate {
             log("--- capture WHILE HIDDEN (same wid) ---")
             _ = await captureByID(t.wid, to: "/tmp/cap-after.png")
 
+            // Close the combo: find a THIRD-PARTY item the hide pushed FULLY off-screen (x<0 or x>=screenW),
+            // not merely occluded, and capture it there. Our expanded control item is width ~5002 (>1000),
+            // so the w<1000 filter excludes it.
+            let screenW = NSScreen.main?.frame.width ?? 1728
+            let offscreen = statusWindows(onScreenOnly: false).filter { $0.w > 8 && $0.w < 1000 && ($0.x < -4 || $0.x >= screenW) }
+            log("fully off-screen third-party items after hide: \(offscreen.count)")
+            for w in offscreen.prefix(4) { log("  wid=\(w.wid) x=\(w.x) w=\(w.w)") }
+            if !offscreen.isEmpty {
+                var sck = 0, legacy = 0
+                for (i, off) in offscreen.prefix(4).enumerated() {
+                    log("--- FULLY OFF-SCREEN third-party (wid=\(off.wid) x=\(off.x)) ---")
+                    if await captureByID(off.wid, to: "/tmp/cap-off-sck-\(i).png") { sck += 1 }        // SCK (expect fail)
+                    if captureLegacy(off.wid, to: "/tmp/cap-offscreen-\(i).png") { legacy += 1 }        // Ice's CG API (expect OK)
+                }
+                let n = min(4, offscreen.count)
+                log("off-screen: SCK \(sck)/\(n), LEGACY(CGWindowListCreateImage) \(legacy)/\(n)")
+            } else {
+                log("none fully off-screen — Tahoe reflows third-party items to OCCLUDED on-screen instead (that combo already proven)")
+            }
+
             item.length = 40
-            log("DONE. Compare /tmp/cap-before.png vs /tmp/cap-after.png (and the px counts above).")
+            log("DONE. Compare cap-before / cap-after / cap-offscreen (+ the px counts above).")
         }
     }
 }
