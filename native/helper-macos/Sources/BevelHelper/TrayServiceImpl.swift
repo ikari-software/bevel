@@ -134,8 +134,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     }
 
                     // 2. Poll + diff until cancelled (client disconnect cancels the producer Task).
+                    // Adaptive cadence (U4): refresh faster while consolidated (the tray IS the menu bar
+                    // then, so liveness matters most), slower in plain mirror mode to save CPU.
                     while !Task.isCancelled {
-                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        let interval: UInt64 = self.controlWindowID != nil ? 900_000_000 : 2_000_000_000
+                        try await Task.sleep(nanoseconds: interval)
                         let current = await self.enumerateWithCapture()
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
                         for item in current { currentByID[item.itemID] = item }
@@ -144,7 +147,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                         // (whose pixels can differ each frame) doesn't spam UPDATE for every item.
                         for item in current {
                             if let prev = lastByID[item.itemID] {
-                                if self.signature(prev) != self.signature(item) {
+                                // Update on identity change OR icon-content change (U4). The legacy-CG
+                                // capture (U1) reads the backing store deterministically, so a static
+                                // icon yields identical bytes and only a real change (battery %, spinner)
+                                // differs — live icons without the per-pixel-jitter spam that led
+                                // signature() to exclude bytes. If a capture path ever reintroduces
+                                // jitter, quantize/debounce here (see freshness open question).
+                                if self.signature(prev) != self.signature(item) || prev.iconPng != item.iconPng {
                                     try await writer.write(self.change(.updated, item))
                                 }
                             } else {
