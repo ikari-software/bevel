@@ -57,40 +57,27 @@
         </Grid>
 
         <!-- ═══ Windows XP (Luna): blue watermark gradient + rounded task-pane group boxes ═══ -->
-        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <ScrollViewer.Background>
-                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                    <GradientStop Color="#6787D9" Offset="0.0" />
-                    <GradientStop Color="#5075CE" Offset="0.5" />
-                    <GradientStop Color="#4A6FC9" Offset="1.0" />
-                </LinearGradientBrush>
-            </ScrollViewer.Background>
+        <!-- Watermark + group-box tints bind to Luna variant tokens (re-hued per Blue/Silver/Black/Purple
+             by LunaVariantService) so the task pane matches the active colour, not fixed XP-blue (bevel-e544).
+             Fallback: these are Luna tokens; a WinXP info-pane deliberately chosen under Win2000 degrades. -->
+        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource Luna.Brush.InfoPaneWatermark}">
             <StackPanel Margin="8,10,8,10" Spacing="10">
                 <!-- Other Places group -->
-                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="#D6E3F5" BorderThickness="1">
+                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="{DynamicResource Luna.Brush.InfoPaneBorder}" BorderThickness="1">
                     <StackPanel>
-                        <Border CornerRadius="4,4,0,0" Padding="8,4">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                                    <GradientStop Color="#EBF2FD" Offset="0.0" />
-                                    <GradientStop Color="#C7D9F4" Offset="1.0" />
-                                </LinearGradientBrush>
-                            </Border.Background>
+                        <Border CornerRadius="4,4,0,0" Padding="8,4"
+                                Background="{DynamicResource Luna.Brush.InfoPaneHeader}">
                             <TextBlock Text="Other Places" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
                         </Border>
                         <StackPanel x:Name="XpLinksPanel" Margin="12,6,10,8" Spacing="4" />
                     </StackPanel>
                 </Border>
                 <!-- Details group -->
-                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="#D6E3F5" BorderThickness="1">
+                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="{DynamicResource Luna.Brush.InfoPaneBorder}" BorderThickness="1">
                     <StackPanel>
-                        <Border CornerRadius="4,4,0,0" Padding="8,4">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                                    <GradientStop Color="#EBF2FD" Offset="0.0" />
-                                    <GradientStop Color="#C7D9F4" Offset="1.0" />
-                                </LinearGradientBrush>
-                            </Border.Background>
+                        <Border CornerRadius="4,4,0,0" Padding="8,4"
+                                Background="{DynamicResource Luna.Brush.InfoPaneHeader}">
                             <TextBlock Text="Details" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
                         </Border>
                         <StackPanel Margin="12,6,10,8" Spacing="3">

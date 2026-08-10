@@ -35,7 +35,7 @@ internal enum GlossRole { Control, Chrome, Inert }
 
 /// <summary>One factory-generated surface: its reference (Blue + current-gloss) stops, whether the colour
 /// axis re-hues it, and its gloss role.</summary>
-internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false)
+internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false, bool LightLocked = false)
 {
     public static Surface Solid(string key, bool chromatic, string hex) =>
         new(key, chromatic, GlossRole.Inert, new[] { (0.0, hex) });
@@ -96,6 +96,15 @@ public static class LunaVariantService
         // the colour axis darkens (Purple/Black use LightMul<1), which turned it into a dark purple panel
         // with unreadable dark text. chromatic:false pins it to these pale stops.
         new("Luna.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
+
+        // Explorer info-pane (XP task pane), re-hued via the LightLocked path (see BuildBrush): hue +
+        // saturation from the variant, but only HALF the lightness change. Blue is unchanged; Purple tracks
+        // the caption's violet, Black darkens, Silver greys — all readable, not the muddy indigo full chrome
+        // darkening produced. Watermark = the reference medium tone; Header = light; Border = divider.
+        // (bevel-e544; per design guidance: hue close, operate on S+L.)
+        new("Luna.Brush.InfoPaneWatermark", true, GlossRole.Inert, new[]{ (0.0,"6787D9"),(0.5,"5075CE"),(1.0,"4A6FC9") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneHeader",    true, GlossRole.Inert, new[]{ (0.0,"EBF2FD"),(1.0,"C7D9F4") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneBorder",    true, GlossRole.Inert, new[]{ (0.0,"D6E3F5") }, LightLocked: true),
 
         // Glossy chrome controls (bead in Gloss/Hybrid, flattened under Matte)
         new("Luna.Brush.TaskButton", true, GlossRole.Control, new[]{
@@ -267,7 +276,15 @@ public static class LunaVariantService
     private static IBrush BuildBrush(Surface s, ColorXform xform, LunaGloss gloss)
     {
         // Re-hue first (chrome only), then let the gloss profile reshape the arrangement.
-        Color C(string hex) => s.Chromatic ? xform.Apply(Hex(hex)) : Hex(hex);
+        // LightLocked (info-pane tints): take the variant's HUE + SATURATION (Silver/Black desaturate to
+        // grey, Purple tracks the caption's violet) but only HALF the lightness change — the full chrome
+        // xform darkens light surfaces into mud, while fully locking lightness leaves Black too pale. The
+        // half-step darkens Black toward its theme and deepens Purple to a true violet, yet keeps every
+        // variant readable. Applied to the ORIGINAL reference tones, so Blue is unchanged (HueShift 0).
+        var tint = new ColorXform(xform.HueShift, xform.SatMul, (xform.LightMul + 1.0) / 2.0, 0);
+        Color C(string hex) => s.LightLocked ? tint.Apply(Hex(hex))
+                             : s.Chromatic ? xform.Apply(Hex(hex))
+                             : Hex(hex);
 
         if (s.IsSolid) return new SolidColorBrush(C(s.Stops[0].Hex));
 
