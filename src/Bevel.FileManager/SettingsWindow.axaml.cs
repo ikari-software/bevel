@@ -26,6 +26,7 @@ public partial class SettingsWindow : UI.BevelWindow
         var s = _settings.Current;
         ThemeCombo.SelectedIndex = IndexOfTheme(s.ThemeId);
         ShellEnabledCheck.IsChecked = s.ShellEnabled;
+        ConsolidateMenuBarCheck.IsChecked = s.TaskbarConsolidateMenuBar;
         ShowHiddenCheck.IsChecked = s.ShowHiddenFiles;
         CrispBevelsCheck.IsChecked = _settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false;
 
@@ -69,6 +70,7 @@ public partial class SettingsWindow : UI.BevelWindow
         {
             s.ThemeId = themeId;
             s.ShellEnabled = ShellEnabledCheck.IsChecked ?? true;
+            s.TaskbarConsolidateMenuBar = ConsolidateMenuBarCheck.IsChecked ?? false;
             s.ShowHiddenFiles = ShowHiddenCheck.IsChecked ?? false;
         }, CancellationToken.None);
 
