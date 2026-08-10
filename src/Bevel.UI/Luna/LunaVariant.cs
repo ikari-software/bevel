@@ -35,10 +35,10 @@ internal enum GlossRole { Control, Chrome, Inert }
 
 /// <summary>One factory-generated surface: its reference (Blue + current-gloss) stops, whether the colour
 /// axis re-hues it, and its gloss role.</summary>
-internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false, bool LightLocked = false)
+internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false, bool LightLocked = false, double MaxLight = 1.0)
 {
-    public static Surface Solid(string key, bool chromatic, string hex) =>
-        new(key, chromatic, GlossRole.Inert, new[] { (0.0, hex) });
+    public static Surface Solid(string key, bool chromatic, string hex, double maxLight = 1.0) =>
+        new(key, chromatic, GlossRole.Inert, new[] { (0.0, hex) }, MaxLight: maxLight);
     public bool IsSolid => Stops.Length == 1;
 }
 
@@ -138,7 +138,7 @@ public static class LunaVariantService
         Surface.Solid("Luna.Brush.TaskButtonBorder", true, "1C4D9C"),
         Surface.Solid("Luna.Brush.TaskButtonCheckedBorder", true, "2A5DB8"),
         Surface.Solid("Luna.Brush.CaptionButtonBorder", true, "0A3EA8"),
-        Surface.Solid("Luna.Brush.ButtonBorder", true, "7B9EBD"),
+        Surface.Solid("Luna.Brush.ButtonBorder", true, "7B9EBD", maxLight: 0.62),
         Surface.Solid("Luna.Brush.ButtonBorderDefault", true, "2C628B"),
         Surface.Solid("Luna.Brush.Arrow", true, "1B3A6B"),
         Surface.Solid("Luna.Brush.StartMenuBorder", true, "1857C9"),
@@ -282,9 +282,20 @@ public static class LunaVariantService
         // half-step darkens Black toward its theme and deepens Purple to a true violet, yet keeps every
         // variant readable. Applied to the ORIGINAL reference tones, so Blue is unchanged (HueShift 0).
         var tint = new ColorXform(xform.HueShift, xform.SatMul, (xform.LightMul + 1.0) / 2.0, 0);
-        Color C(string hex) => s.LightLocked ? tint.Apply(Hex(hex))
-                             : s.Chromatic ? xform.Apply(Hex(hex))
-                             : Hex(hex);
+        Color C(string hex)
+        {
+            var col = s.LightLocked ? tint.Apply(Hex(hex))
+                    : s.Chromatic ? xform.Apply(Hex(hex))
+                    : Hex(hex);
+            // Cap lightness (control edges): Silver's LightMul 1.4 washes borders to near the window grey,
+            // erasing the edge. Blue's border already sits at the cap, so only Silver is pulled back.
+            if (s.MaxLight < 1.0)
+            {
+                var hsl = ToHsl(col);
+                if (hsl.L > s.MaxLight) col = FromHsl(hsl.H, hsl.S, s.MaxLight, col.A);
+            }
+            return col;
+        }
 
         if (s.IsSolid) return new SolidColorBrush(C(s.Stops[0].Hex));
 
