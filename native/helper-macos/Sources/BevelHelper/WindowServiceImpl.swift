@@ -755,16 +755,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
         let icon = NSWorkspace.shared.icon(forFile: appPath)
 
-        // Render into a real 16x16 bitmap. NSImage.tiffRepresentation ignores the
-        // logical `size` and emits the icon's LARGEST native representation (often
-        // 512x512 → hundreds of KB). With one icon per window, that pushes the
-        // aggregated ListWindows reply past gRPC's 4 MB limit and every enumeration
-        // fails with ResourceExhausted. Drawing into a fixed 16x16 bitmap keeps each
-        // PNG ~1 KB — taskbar buttons never need more.
-        let target = NSSize(width: 16, height: 16)
+        // Render into a fixed 64x64 bitmap. NSImage.tiffRepresentation ignores the logical `size` and
+        // emits the icon's LARGEST native representation (often 512x512 → hundreds of KB); with one icon
+        // per window that pushes the aggregated ListWindows reply past gRPC's 4 MB limit → ResourceExhausted.
+        // 64x64 is the sweet spot: the taskbar button is 16pt = 32px on a 2x display (48px on 3x), so 64
+        // gives a crisp source with headroom (downscaled, never upscaled — 16px looked blocky on Retina),
+        // yet each PNG is only ~4-8 KB and icons are cached per bundle id, so the aggregate stays tiny.
+        let target = NSSize(width: 64, height: 64)
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
-            pixelsWide: 16, pixelsHigh: 16,
+            pixelsWide: 64, pixelsHigh: 64,
             bitsPerSample: 8, samplesPerPixel: 4,
             hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB,

@@ -156,7 +156,7 @@
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" Opacity="{Binding ContentOpacity}"
                                         IsHitTestVisible="False">
-                                <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
@@ -197,7 +197,7 @@
                                                 <Border Classes="flyoutrow" HorizontalAlignment="Stretch"
                                                         Padding="6,3" Tapped="OnGroupWindowTapped">
                                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                                        <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                                                VerticalAlignment="Center" />
                                                         <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                                                                    FontWeight="{Binding TitleWeight}"
@@ -212,7 +212,7 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" IsHitTestVisible="False">
-                                <Image Source="{Binding IconSource}" Width="16" Height="16"
+                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
@@ -292,7 +292,7 @@
                                                                     PointerPressed="OnStackFilePressed"
                                                                     PointerMoved="OnStackFileMoved">
                                                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                    <Image Source="{Binding IconSource}" Width="16" Height="16" />
+                                                                    <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16" />
                                                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                                                FontSize="11" TextTrimming="CharacterEllipsis" />
                                                                 </StackPanel>
@@ -348,7 +348,7 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                                        <Image Source="{Binding IconSource}"
+                                                        <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
                                                                Height="{Binding CellHeight}" Stretch="Uniform"
                                                                Margin="4" VerticalAlignment="Center"
                                                                ToolTip.Tip="{Binding Tooltip}"
@@ -373,7 +373,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                        <Image Source="{Binding IconSource}"
+                                        <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
                                                Height="{Binding CellHeight}" Stretch="Uniform" Margin="2,1"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
