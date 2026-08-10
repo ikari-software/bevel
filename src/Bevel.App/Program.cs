@@ -293,6 +293,25 @@ internal static class Program
 
         try
         {
+            // macOS packaged .app: relaunch through LaunchServices (`open -n`) so the new instance keeps
+            // the app's TCC identity. A raw re-exec (posix_spawn via nohup) is attributed to the spawning
+            // shell, not to pl.ikari.bevel, so a granted Accessibility/Screen-Recording stops applying
+            // after a restart — the tray dies and it re-prompts. `open` launches it as a real app.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && TryGetAppBundle(processPath) is { } bundle)
+            {
+                var open = new ProcessStartInfo { FileName = "/usr/bin/open", UseShellExecute = false };
+                open.ArgumentList.Add("-n");        // new instance even though one is (briefly) still exiting
+                open.ArgumentList.Add(bundle);
+                if (args.Count > 0)
+                {
+                    open.ArgumentList.Add("--args");
+                    foreach (var a in args) open.ArgumentList.Add(a);
+                }
+                RestartDiag.Log($"Relaunch: LaunchServices `open -n {bundle}` (preserves TCC identity)");
+                Process.Start(open);
+                return;
+            }
+
             var entryAssemblyPath = EntryAssemblyLocation();
             var startInfo = CreateRestartStartInfo(processPath, entryAssemblyPath, args);
             startInfo.WorkingDirectory = !string.IsNullOrEmpty(entryAssemblyPath)
@@ -380,6 +399,17 @@ internal static class Program
             startInfo.ArgumentList.Add(arg);
 
         return startInfo;
+    }
+
+    /// <summary>If <paramref name="processPath"/> lives inside a macOS .app bundle
+    /// (…/Foo.app/Contents/MacOS/Foo), returns the bundle path (…/Foo.app); otherwise null (e.g. a dev
+    /// <c>dotnet run</c>). Used so a restart of the packaged app relaunches via LaunchServices and keeps
+    /// its TCC grants, instead of a raw re-exec that loses them.</summary>
+    private static string? TryGetAppBundle(string processPath)
+    {
+        const string marker = ".app/Contents/MacOS/";
+        var idx = processPath.IndexOf(marker, StringComparison.Ordinal);
+        return idx >= 0 ? processPath[..(idx + ".app".Length)] : null;
     }
 
     /// <summary>
