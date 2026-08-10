@@ -24,14 +24,22 @@ final class PocDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("applicationDidFinishLaunching — creating status item")
-        item = NSStatusBar.system.statusItem(withLength: 80)
-        if let b = item.button {
-            b.title = "◀BEVEL"
-        } else {
-            log("WARNING: item.button was nil")
+
+        // THE CORRECTION (read from Ice, not guessed): anchor the item with autosaveName +
+        // preferredPosition so macOS restores its slot after every length change. Without this our
+        // item flew to x=-5056. Ice's StatusItemDefaults key format: "NSStatusItem Preferred Position
+        // <autosaveName>", a CGFloat in UserDefaults.standard, seeded BEFORE the item is created.
+        let autosaveName = "BevelPocItem"
+        let posKey = "NSStatusItem Preferred Position \(autosaveName)"
+        if UserDefaults.standard.object(forKey: posKey) == nil {
+            UserDefaults.standard.set(CGFloat(0), forKey: posKey)   // 0 = Ice's anchor for its main icon
         }
+        item = NSStatusBar.system.statusItem(withLength: 80)
+        item.autosaveName = autosaveName
+        if item.button == nil { log("WARNING: item.button was nil") }
+        item.button?.title = "◀BEVEL"
         item.button?.image = NSImage(systemSymbolName: "chevron.left.2", accessibilityDescription: "Bevel")
-        log("status item created; length=\(item.length) visible=\(item.isVisible)")
+        log("status item created; length=\(item.length) visible=\(item.isVisible) autosave=\(autosaveName)")
 
         // DECISIVE DIAGNOSTIC: where did macOS actually place our item's window?
         func reportPlacement(_ tag: String) {

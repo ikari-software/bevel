@@ -24,25 +24,47 @@ enumeration + click primitives, so we're well-positioned.
   point + `AXUIElementPerformAction`) already clicks a status item via AX.
 - A deny-list and a live/limited-mode self-test already exist.
 
-## How Ice does it (teardown)
+## How Ice does it (teardown — read from `jordanbaird/Ice` source, not memory)
 
-Ice does **not** move other apps' items directly (macOS exposes no public "set status-item position").
-Instead:
+Ice offers **two** strategies, chosen by the `useIceBar` setting:
 
-1. **Own control items.** Ice creates its *own* `NSStatusItem`s that act as **section dividers**:
-   `visible | hidden | always-hidden`. These are the only items Ice can freely reposition/resize.
-2. **Collapse by expansion.** macOS lays status items out **right-to-left**. To hide a section, Ice
-   sets its divider item's `length` to a large value (autosize) so the divider **occupies the space
-   and pushes the items to its left off the visible bar** (off the left edge / under the notch). The
-   items still exist — they're just positioned off-screen.
-3. **Reveal.** Clicking the control item (or a hotkey / hover) collapses the divider back to a small
-   length, letting the hidden items slide back into view. Ice also supports auto-rehide on timeout.
-4. **Ordering.** Items are ordered by their status-item position; a user drags items across the
-   divider (⌘-drag) to choose which are hidden. Ice reads live positions via CGWindowList (as we do)
-   to know what's where and whether a section is currently visible.
+### Strategy A — expand a control item to push items off (`ControlItem.swift`, `MenuBarSection.swift`)
 
-Key insight: **the whole trick is one wide status item we own** + reading positions. No private API is
-strictly required for the basic hide; AX is used for richer features (clicking hidden items, identity).
+1. **Own control items as section dividers.** Ice creates three `NSStatusItem`s — `iceIcon` (the
+   visible, clickable one), `hidden`, and `alwaysHidden` (`ControlItem.Identifier`). Each is created
+   `withLength: 0`; Ice removes the internal min-width auto-layout constraint so a divider can be
+   present-but-invisible (needed to delimit which real items belong to which section). *Comment in the
+   source flags this as fragile across macOS releases.*
+2. **Anchor via `autosaveName` + `preferredPosition`.** Each control item sets
+   `statusItem.autosaveName` and seeds `StatusItemDefaults[.preferredPosition, autosaveName]`
+   (iceIcon → 0, hidden → 1). This is the private per-status-item position store macOS itself uses;
+   it's what keeps the control items at stable, predictable slots. **This is the piece our PoC lacked
+   — with no `autosaveName`/`preferredPosition`, macOS parked our item at x=−5056.** `deinit` even
+   caches and restores `preferredPosition`, because removing a status item wipes it.
+3. **Hide = expand.** `updateStatusItem(with:)` sets the length: the `visible` section's item is always
+   `Lengths.standard` (`NSStatusItem.variableLength`); a `hidden`/`alwaysHidden` item is
+   `Lengths.expanded` (**`10_000`**) when `state == .hideItems`, `.standard` when `.showItems`.
+   The expanded (10 000pt, clamped to the bar) divider occupies the space and pushes the items to its
+   left off-screen — exactly the frame behaviour our PoC observed.
+4. **Reveal / rehide.** `MenuBarSection.show()/hide()` flips every section's `controlItem.state`;
+   `startRehideChecks()` drives auto-rehide (timer / mouse monitor). Show-on-hover is also supported.
+
+### Strategy B — the "Ice Bar" (`UI/IceBar/IceBar.swift`)
+
+When `useIceBar` is on, Ice does **not** fight the menu-bar layout. `show()` opens a **separate floating
+panel** that renders the hidden items, and leaves the real items collapsed. This dodges the notch and
+positioning problems wholesale — at the cost of the hidden items living in a panel, not the real bar.
+
+### Also: spacing (`MenuBarItemSpacingManager.swift`)
+
+A separate feature: Ice changes global item spacing by writing the `NSStatusItemSpacing` /
+`NSStatusItemSelectionPadding` UserDefaults and **relaunching the affected apps** (it force-terminates
+and restarts them). Not part of hide/reveal, but shows Ice reaches for UserDefaults + relaunch, not AX
+dragging, to reorder/space real items.
+
+**Corrected key insight:** the expand-to-10 000 trick is real (our PoC matched it), but the thing that
+makes it *usable* is `autosaveName` + `preferredPosition`, not hand-rolled coordinate/notch math. And
+there's a legitimate alternative (Ice Bar) that avoids menu-bar positioning entirely.
 
 ## Proposed Bevel design
 
@@ -75,9 +97,16 @@ the real work is control-item positioning.**
   `(-5056, 1054, 82, 30)` — ~5000px off-screen left, so *our own* control item is invisible/unclickable.
   This is the crux Ice solves: anchor the control item at a stable, visible slot and drive hide/reveal
   from there, rather than trusting the layout engine after a width change.
+- **Anchoring fixes it — CONFIRMED LIVE.** Seeding `UserDefaults.standard["NSStatusItem Preferred
+  Position BevelPocItem"] = 0` before creating the item and setting `statusItem.autosaveName` keeps the
+  control item on-screen and stable through the length toggle. Observed live: the `◀BEVEL` item is
+  visible in narrow state, and expanding to 10 000 hides the crowd to its left while the control item
+  stays put. **The full hide/reveal round-trip works.**
 
-**Verdict:** feasible. Build it in the Bevel `.app` (has bundle identity, a run loop, and TCC grants),
-port Ice's `ControlItem` positioning + notch handling; the raw hide primitive is proven.
+**Verdict:** feasible. Build it in the Bevel `.app` (has bundle identity, a run loop, and TCC grants).
+The hide primitive is proven; the fix for our off-screen control item is `autosaveName` +
+`StatusItemDefaults[.preferredPosition]` (per the Ice teardown above), **not** custom geometry. Decide
+up front between Strategy A (expand-to-hide on the real bar) and Strategy B (Ice Bar floating panel).
 
 ## Risks / open questions
 
