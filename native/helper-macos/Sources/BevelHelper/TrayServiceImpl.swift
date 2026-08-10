@@ -87,6 +87,28 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// without a main-actor hop. Set by the SetConsolidation handler after (un)hiding (U3).
     nonisolated(unsafe) var controlWindowID: CGWindowID?
 
+    /// Reveal-at-top click (U6/C2). When consolidated the target may be hidden off-screen, where
+    /// `forwardClick`'s on-screen lookup can't find it. Temporarily collapse the control item to bring
+    /// the items back onto the bar, forward the click there (the owning app's menu opens at the TOP,
+    /// mirroring Ice — true bottom-native is impossible, C3 is dead), then rehide on a timer.
+    /// Menu-dismiss-based rehide is the polish (see the plan's open questions).
+    func forwardClickWithReveal(
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) async -> Bool {
+        let wasHiding = await MainActor.run { self.controlItem?.isHidingItems ?? false }
+        if wasHiding {
+            await MainActor.run { self.controlItem?.setHidden(false) }
+            try? await Task.sleep(nanoseconds: 250_000_000)   // let the bar reflow items back on-screen
+        }
+        let delivered = self.forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+        if wasHiding {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)   // leave time to use the menu, then rehide
+                await MainActor.run { self?.controlItem?.setHidden(true) }
+            }
+        }
+        return delivered
+    }
+
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         let serviceName = "bevel.helper.v1.TrayService"
 
@@ -182,7 +204,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ForwardClickReply()
-                reply.delivered = self.forwardClick(
+                reply.delivered = await self.forwardClickWithReveal(
                     itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
