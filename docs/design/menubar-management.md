@@ -129,7 +129,26 @@ up front between Strategy A (expand-to-hide on the real bar) and Strategy B (Ice
 5. Retire the SCK per-item capture; keep enumeration.
 6. Reveal polish: hotkey, auto-rehide, drag-to-reorder.
 
+## Strategy C spikes (2026-08-10) — live functional tray
+
+Brainstorm + spikes for rendering menu-bar items *functionally* in Bevel's bottom tray (see
+`docs/brainstorms/2026-08-10-menubar-tray-strategy-c-requirements.md`). Proven live on macOS 26.5:
+
+- **C3 (move the real item to the bottom via private CGS) is DEAD.** `menubar-c3-move-poc.swift` called
+  `CGSMoveWindow` on third-party status-item windows: moved nothing. The WindowServer ignores
+  cross-connection window moves; Ice links private CGS but never moves windows (reorders via synthetic
+  drags, horizontal-only). So true bottom-native menus are impossible — the click uses reveal-at-top +
+  native-bottom proxy instead.
+- **Capture-while-hidden WORKS.** `menubar-capture-poc.swift` captured a status item by window ID via
+  `SCContentFilter(desktopIndependentWindow:)` and got real pixels **cross-process** and while the item
+  was **off-screen (our item at x=-3491)** and **occluded (a third-party item under our expanded control
+  item)** — identical to the visible capture. This is the make-or-break for C, and it passed.
+- **Tahoe ownership gotcha:** on macOS 26 *every* status item (ours + third-party) reports owner
+  "Control Centre". Cannot filter/identify by owner PID/name — track window IDs + positions instead.
+  (Also: `NSWindow.windowNumber` can be negative for status items — `CGWindowID(Int)` traps; identify by
+  frame x.)
+
 ## References
 
-- Ice — `jordanbaird/Ice` (MIT). Study its `ControlItem`, `MenuBarSection`, and the length/position
-  handling for collapse + notch.
+- Ice — `jordanbaird/Ice` (MIT). Study its `ControlItem`, `MenuBarSection`, `MenuBarItemImageCache`
+  (whole-region capture + crop), and the length/position handling for collapse + notch.
