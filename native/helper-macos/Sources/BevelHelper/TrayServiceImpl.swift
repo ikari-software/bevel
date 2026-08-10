@@ -380,18 +380,18 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.
         guard isLiveMirroringEnabled, CGPreflightScreenCaptureAccess() else { return items }
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true) else {
-            return items
-        }
-        var byWindowID: [CGWindowID: SCWindow] = [:]
-        for win in content.windows { byWindowID[win.windowID] = win }
 
+        // Capture each item's window by ID via the legacy CG path (U1/KTD1). Unlike ScreenCaptureKit
+        // (which returns -3811 once a window leaves every display), this reads the backing store
+        // directly, so items hidden off-screen by Strategy A still capture their real glyph instead of
+        // falling back to the limited-mode app icon. Keyed on the windowNumber half of item_id — no
+        // on-screen SCShareableContent gate.
         for i in items.indices {
             let parts = items[i].itemID.split(separator: ":")
             guard parts.count == 2, let num = UInt32(parts[1]),
-                  let scWin = byWindowID[CGWindowID(num)] else { continue }
-            if let png = await captureWindow(scWin), !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
+                  let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+            let png = pngFromCGImage(cgImage)
+            if !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
             }
