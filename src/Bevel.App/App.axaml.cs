@@ -61,8 +61,24 @@ public partial class App : Application
     public static void RequestRestart()
     {
         if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.RestartAll))
+        {
+            RestartDiag.Log("RequestRestart: launcher-control send=true → launcher restarts children in-place");
             return;
+        }
 
+        // The send didn't land. A launcher-SUPERVISED child must NOT re-exec itself — that spawns an
+        // orphan standalone process (e.g. a taskbar with no core → localhost:80 gRPC failures) that races
+        // the launcher's own respawn, which is exactly the intermittent "restart crashed" (bevel-1fvn).
+        // Just exit; the launcher's crash-monitor brings us back on the current binary. Only a TRULY
+        // standalone process (no launcher) does the in-place re-exec.
+        if (Supervision.LauncherControl.IsSupervised)
+        {
+            RestartDiag.Log("RequestRestart: supervised but send failed → exit only (launcher monitor respawns); NO standalone re-exec");
+            RequestExit();
+            return;
+        }
+
+        RestartDiag.Log("RequestRestart: standalone (no launcher) → in-place re-exec after host stop");
         Interlocked.Exchange(ref _restartRequested, 1);
         RequestExit();
     }

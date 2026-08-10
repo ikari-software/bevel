@@ -21,6 +21,7 @@ internal static class Program
         // Stash the role for App.OnFrameworkInitializationCompleted (same process, set before the
         // lifetime starts — mirrors App.Services). Restart replays argv verbatim, so --role survives.
         App.Role = role;
+        RestartDiag.Log($"boot: role={role} pal={pal}");
 
         // The launcher supervises OTHER processes and hosts no PAL/DI/UI of its own — branch before the
         // host is even built so it never constructs platform services.
@@ -97,6 +98,7 @@ internal static class Program
 
         if (App.RestartRequested)
         {
+            RestartDiag.Log("Program: RestartRequested flag set → in-place re-exec after host stop");
             // Let the old helper socket and NSWindows tear down before the child connects.
             Thread.Sleep(400);
             Relaunch(args);
@@ -203,7 +205,10 @@ internal static class Program
                 switch ((LauncherControl.Command)payload.Span[0])
                 {
                     case LauncherControl.Command.RestartAll:
-                        await supervisor.RestartAllAsync(ct).ConfigureAwait(false); break;
+                        RestartDiag.Log("launcher: received RestartAll → supervisor.RestartAllAsync");
+                        await supervisor.RestartAllAsync(ct).ConfigureAwait(false);
+                        RestartDiag.Log("launcher: RestartAllAsync completed (children respawned in-place)");
+                        break;
                     case LauncherControl.Command.RestartCore:
                         await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;
                     case LauncherControl.Command.Quit:
@@ -297,13 +302,14 @@ internal static class Program
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 startInfo = CreateDetachedMacOSStartInfo(startInfo);
 
-            Process.Start(startInfo);
+            RestartDiag.Log($"Relaunch: exec FileName={startInfo.FileName} args=[{string.Join(' ', startInfo.ArgumentList)}] cwd={startInfo.WorkingDirectory}");
+            var child = Process.Start(startInfo);
+            RestartDiag.Log($"Relaunch: Process.Start returned pid={(child?.Id.ToString() ?? "null")}");
         }
         catch (Exception ex)
         {
-            var logPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
-            File.AppendAllText(logPath, $"[{DateTimeOffset.Now:u}] Bevel restart failed: {ex}\n");
-            Console.Error.WriteLine($"Bevel restart failed: {ex.Message} (see {logPath})");
+            RestartDiag.Log($"Relaunch FAILED: {ex}");
+            Console.Error.WriteLine($"Bevel restart failed: {ex.Message} (see {Path.Combine(Path.GetTempPath(), "bevel-restart.log")})");
         }
     }
 
