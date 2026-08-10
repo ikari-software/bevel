@@ -83,6 +83,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
     nonisolated(unsafe) var controlItem: MenuBarControlItem?
 
+    /// Cached window ID of our control item so `enumerateTrayItems` (sync, off-main) can self-exclude it
+    /// without a main-actor hop. Set by the SetConsolidation handler after (un)hiding (U3).
+    nonisolated(unsafe) var controlWindowID: CGWindowID?
+
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         let serviceName = "bevel.helper.v1.TrayService"
 
@@ -187,7 +191,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
                 let enabled = req.message.enabled
-                await MainActor.run { self.controlItem?.setHidden(enabled) }
+                await MainActor.run {
+                    self.controlItem?.setHidden(enabled)
+                    self.controlWindowID = self.controlItem?.currentWindowID
+                }
                 var reply = Bevel_Helper_V1_SetConsolidationReply()
                 reply.applied = true
                 return StreamingServerResponse(single: ServerResponse(message: reply))
@@ -348,6 +355,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                   rect.width >= 8, rect.width <= 400 else { continue }
 
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
+            // Self-exclusion (U3): never mirror Bevel's own control item. On macOS 26 it's owned by the
+            // Control Centre process, so the own-PID filter above can't catch it — exclude by window ID.
+            if let ctrl = controlWindowID, windowNumber == Int(ctrl) { continue }
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
 
