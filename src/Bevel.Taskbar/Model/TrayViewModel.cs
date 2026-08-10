@@ -23,6 +23,12 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
+    /// <summary>Strategy C (bevel-7hf4): consolidate the real macOS menu bar into this tray (hide the
+    /// real items) or reveal it. Drives the helper's control item via the tray host; fire-and-forget
+    /// (failures are logged host-side, bounded by a deadline).</summary>
+    public void SetConsolidated(bool consolidated)
+        => _ = _tray?.SetNativeTrayHiddenAsync(consolidated);
+
     /// <summary>Default inline tray-icon count before overflow (bevel-m3.4); user-overridable
     /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
     public const int DefaultVisibleCap = 8;

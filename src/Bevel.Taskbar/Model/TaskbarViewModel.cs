@@ -19,7 +19,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 {
     private readonly IShellConnectionStatus? _connection;
     private readonly TaskbarItemsProjector _projector;
+    private readonly SettingsService? _settings;
     private bool _isDisconnected;
+    private bool _consolidated;
 
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
     /// as always connected). Drives the tray disconnected indicator.</param>
@@ -40,6 +42,15 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         {
             _isDisconnected = !connection.IsConnected;
             connection.ConnectionChanged += OnConnectionChanged;
+        }
+
+        // Strategy C (bevel-7hf4): drive menu-bar consolidation from settings — apply the current value
+        // and re-apply whenever settings change (the 750ms poll raises Changed).
+        _settings = settings;
+        if (settings is not null)
+        {
+            ApplyConsolidation(settings.Current.TaskbarConsolidateMenuBar);
+            settings.Changed += OnSettingsChanged;
         }
     }
 
@@ -83,10 +94,24 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         Dispatcher.UIThread.Post(() => IsDisconnected = !connected);
     }
 
+    private void OnSettingsChanged()
+        => ApplyConsolidation(_settings?.Current.TaskbarConsolidateMenuBar ?? false);
+
+    /// <summary>Applies the consolidation setting via the tray host, skipping redundant RPCs when the
+    /// state is unchanged (Changed can fire for unrelated setting edits).</summary>
+    private void ApplyConsolidation(bool consolidated)
+    {
+        if (consolidated == _consolidated) return;
+        _consolidated = consolidated;
+        Tray.SetConsolidated(consolidated);
+    }
+
     public void Dispose()
     {
         if (_connection is not null)
             _connection.ConnectionChanged -= OnConnectionChanged;
+        if (_settings is not null)
+            _settings.Changed -= OnSettingsChanged;
         _projector.Dispose();
         Tray.Dispose();
         Stacks.Dispose();
