@@ -127,20 +127,43 @@ enum BevelHelper {
         let windowService = WindowServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
         let trayService = TrayServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
 
-        do {
-            let server = GRPCServer(
-                transport: .http2NIOPosix(
-                    address: .unixDomainSocket(path: args.socketPath),
-                    transportSecurity: .plaintext
-                ),
-                services: [supervision, windowService, trayService]
-            )
+        let server = GRPCServer(
+            transport: .http2NIOPosix(
+                address: .unixDomainSocket(path: args.socketPath),
+                transportSecurity: .plaintext
+            ),
+            services: [supervision, windowService, trayService]
+        )
 
-            fputs("BevelHelper v\(version) ready on \(args.socketPath)\n", stderr)
-            try await server.serve()
-        } catch {
-            fputs("BevelHelper: error: \(error)\n", stderr)
-            throw error
+        // Serve on a DETACHED task so the MAIN thread is free to run AppKit (U2/KTD2). A control
+        // NSStatusItem (Strategy A) and status-item events need a pumped AppKit run loop; the helper
+        // previously blocked main on `server.serve()` with no run loop. Detached (not a plain `Task`,
+        // which would inherit the main actor and be starved once `NSApp.run()` blocks it); NIO does the
+        // actual serving on its own event-loop threads, so serving behaviour is unchanged.
+        Task.detached {
+            do {
+                fputs("BevelHelper v\(version) ready on \(args.socketPath)\n", stderr)
+                try await server.serve()
+                fputs("BevelHelper: server stopped\n", stderr)
+                Foundation.exit(0)
+            } catch {
+                fputs("BevelHelper: error: \(error)\n", stderr)
+                Foundation.exit(1)
+            }
         }
+
+        // Run AppKit on the main thread. The control item is created but NOT installed until
+        // consolidation is enabled (U5), so the menu bar is untouched by default. `NSApp.run()` never
+        // returns; socket cleanup happens via the atexit hook, not the (now-unreached) defer.
+        let controlItem = MenuBarControlItem()
+        gControlItem = controlItem
+        let delegate = HelperAppDelegate(controlItem: controlItem)
+        gAppDelegate = delegate
+        NSApp.delegate = delegate
+        NSApp.run()
     }
 }
+
+// Retained for the process lifetime: NSApp.delegate is weak, and the control item must outlive main().
+@MainActor private var gControlItem: MenuBarControlItem?
+@MainActor private var gAppDelegate: HelperAppDelegate?
