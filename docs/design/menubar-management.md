@@ -134,11 +134,15 @@ up front between Strategy A (expand-to-hide on the real bar) and Strategy B (Ice
 Brainstorm + spikes for rendering menu-bar items *functionally* in Bevel's bottom tray (see
 `docs/brainstorms/2026-08-10-menubar-tray-strategy-c-requirements.md`). Proven live on macOS 26.5:
 
-- **C3 (move the real item to the bottom via private CGS) is DEAD.** `menubar-c3-move-poc.swift` called
-  `CGSMoveWindow` on third-party status-item windows: moved nothing. The WindowServer ignores
-  cross-connection window moves; Ice links private CGS but never moves windows (reorders via synthetic
-  drags, horizontal-only). So true bottom-native menus are impossible — the click uses reveal-at-top +
-  native-bottom proxy instead.
+- **C3 (move the real item to the bottom via private CGS) is DEAD — rigorously.** `menubar-c3-retry-poc.swift`
+  adds a **positive control**: our own plain `NSWindow` moves via `CGSMoveWindow` (`err=0`, frame
+  300→700) — so the API and binding are correct. A third-party status window (wid 59457, owner "Control
+  Centre") returns `err=0` from **both** `CGSMoveWindow` and `SLSMoveWindow` yet the frame is unchanged:
+  the WindowServer **accepts the call and silently no-ops** it. That's the signature of a cross-connection
+  restriction — you can move windows your connection owns, not another connection's (on macOS 26 all
+  status items are owned by the Control Centre connection). Ice corroborates: it links private CGS but
+  never moves windows (reorders via synthetic drags, horizontal-only). **True bottom-native menus are
+  impossible** — the click uses reveal-at-top + native-bottom proxy instead.
 - **Capture-while-hidden WORKS.** `menubar-capture-poc.swift` captured a status item by window ID via
   `SCContentFilter(desktopIndependentWindow:)` and got real pixels **cross-process** and while the item
   was **off-screen (our item at x=-3491)** and **occluded (a third-party item under our expanded control
