@@ -58,6 +58,27 @@ strictly required for the basic hide; AX is used for richer features (clicking h
 - **Retire the SCK capture-mirror** (bevel-voqo) once hide/reveal works — it becomes redundant and it's
   the source of the placeholder wall. (Keep the CGWindowList enumeration; drop the per-item capture.)
 
+## Empirical findings (PoC — `native/helper-macos/menubar-hide-poc.swift`)
+
+Validated live on macOS 26.5, 1728px display, a crowded menu bar. Conclusion: **the mechanism works;
+the real work is control-item positioning.**
+
+- **A bundle is mandatory.** A bare compiled executable creates *no* menu-bar item — `NSStatusBar` has
+  nothing to attach to without LaunchServices identity. Wrapped in a minimal `.app` (Info.plist +
+  `LSUIElement`, ad-hoc signed) the item registers.
+- **Create it in `applicationDidFinishLaunching`.** Building the `NSStatusItem` before `app.run()`
+  silently no-ops; the status bar isn't ready until launch completes. Needs an `NSApplicationDelegate`.
+- **A wide item hides its left neighbours — confirmed.** At `length = 10_000` the item's window is
+  `(-136, 1054, 5002, 30)`: it spans the whole visible bar (0–1728) and overflows both edges, pushing
+  every item to its left off-screen-left. This is the Ice hide, working.
+- **Naive length-toggle mis-parks the control item.** Back at `length = 80` the item's window lands at
+  `(-5056, 1054, 82, 30)` — ~5000px off-screen left, so *our own* control item is invisible/unclickable.
+  This is the crux Ice solves: anchor the control item at a stable, visible slot and drive hide/reveal
+  from there, rather than trusting the layout engine after a width change.
+
+**Verdict:** feasible. Build it in the Bevel `.app` (has bundle identity, a run loop, and TCC grants),
+port Ice's `ControlItem` positioning + notch handling; the raw hide primitive is proven.
+
 ## Risks / open questions
 
 - **macOS version fragility + the notch.** Off-screen-left math must account for the notch and
