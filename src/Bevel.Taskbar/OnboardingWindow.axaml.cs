@@ -89,6 +89,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         FontFamilyCombo.SelectionChanged += OnFontFamilyChanged;
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
+        ConsolidateCheck.IsCheckedChanged += OnConsolidateChanged;
         LockCheck.IsCheckedChanged += OnBehaviorChanged;
         AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
         ShowDesktopCheck.IsCheckedChanged += OnBehaviorChanged;
@@ -177,6 +178,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         OpacityValue.Text = $"{s.TaskbarOpacity} %";
         BgColorBox.Text = s.TaskbarBackgroundColor;
 
+        ConsolidateCheck.IsChecked = s.TaskbarConsolidateMenuBar;
         TrayCapSlider.Value = s.TaskbarTrayOverflowCap;
         TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} / row";
         TrayIconSizeSlider.Value = s.TaskbarTrayIconSize;
@@ -589,6 +591,14 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
             s.TaskbarOpacity = opacity;
             s.TaskbarBackgroundColor = color;
         });
+    }
+
+    private async void OnConsolidateChanged(object? sender, RoutedEventArgs e)
+    {
+        var on = ConsolidateCheck.IsChecked ?? false;
+        if (_settings.Current.TaskbarConsolidateMenuBar == on) return;
+        // Persist; TaskbarViewModel's settings subscription drives the actual hide/reveal (U8).
+        await PersistAndApply(s => s.TaskbarConsolidateMenuBar = on);
     }
 
     private void OnTraySliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)

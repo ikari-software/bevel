@@ -371,6 +371,13 @@
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TrayIconSizeValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
+
+                            <CheckBox x:Name="ConsolidateCheck"
+                                      Content="Consolidate the menu bar into the tray"
+                                      Margin="0,10,0,0" />
+                            <TextBlock Text="Hides the macOS menu-bar icons and shows them here as live icons. Click one to reveal its menu at the top of the screen."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
                     </HeaderedContentControl>
                 </StackPanel>

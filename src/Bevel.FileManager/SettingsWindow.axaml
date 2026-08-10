@@ -29,11 +29,6 @@
                               IsChecked="True" />
                     <TextBlock Text="Disabling hides the desktop and taskbar. File manager windows remain available."
                                FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
-                    <Separator Margin="0,8" />
-                    <CheckBox x:Name="ConsolidateMenuBarCheck"
-                              Content="Consolidate the menu bar into the tray" />
-                    <TextBlock Text="Hides the macOS menu-bar icons and shows them as live icons in Bevel's taskbar tray. Click one to reveal its menu."
-                               FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
             </TabItem>
             <TabItem Header="View">
