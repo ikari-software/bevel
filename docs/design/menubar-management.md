@@ -141,7 +141,14 @@ Brainstorm + spikes for rendering menu-bar items *functionally* in Bevel's botto
   the WindowServer **accepts the call and silently no-ops** it. That's the signature of a cross-connection
   restriction — you can move windows your connection owns, not another connection's (on macOS 26 all
   status items are owned by the Control Centre connection). Ice corroborates: it links private CGS but
-  never moves windows (reorders via synthetic drags, horizontal-only). **True bottom-native menus are
+  never moves windows (reorders via synthetic drags, horizontal-only).
+
+  **Two kinds of "move" — don't conflate them.** Status items DO move *horizontally* via the menu-bar
+  layout engine: when our control item expands, neighbours reflow along the bar (observed live: a target
+  slid x 585→1511, `y` stayed 0). That is real and is exactly how the hide works. What is impossible is
+  *arbitrary* repositioning — changing an item's `y` to put it at the **bottom** of the screen, off the
+  bar. Layout reflow never leaves the bar vertically, and `CGSMoveWindow` (the only API that could set an
+  arbitrary y) no-ops cross-connection. C3 needs the second kind, so **true bottom-native menus are
   impossible** — the click uses reveal-at-top + native-bottom proxy instead.
 - **Capture-while-hidden WORKS.** `menubar-capture-poc.swift` captured a status item by window ID via
   `SCContentFilter(desktopIndependentWindow:)` and got real pixels **cross-process** and while the item
