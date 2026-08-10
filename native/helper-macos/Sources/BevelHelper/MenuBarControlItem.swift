@@ -46,6 +46,14 @@ final class MenuBarControlItem {
         applyLength()
     }
 
+    /// The control item's own window ID, so the tray enumerator can self-exclude it (U3). On macOS 26
+    /// our item is owned by the Control Centre process, so the enumerator's own-PID filter won't catch
+    /// it — it must be excluded by window ID. Nil when not installed or the number isn't a valid ID.
+    var currentWindowID: CGWindowID? {
+        guard let n = item?.button?.window?.windowNumber, n > 0 else { return nil }
+        return CGWindowID(n)
+    }
+
     private func applyLength() {
         item?.length = isHidingItems ? Self.expandedLength : NSStatusItem.variableLength
     }

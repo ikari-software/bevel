@@ -71,10 +71,25 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         }
     }
 
-    /// <summary>Native-strip hiding is menu-bar reclaim (spec §5.4) — feature-flagged, arrives in
-    /// M3-F. Until then this is a no-op so callers don't fault.</summary>
-    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
-        => Task.CompletedTask;
+    /// <summary>Menu-bar consolidation (Strategy C, bevel-7hf4): hide the real status items into Bevel's
+    /// tray (control-item expansion) or reveal them. Drives the helper's SetConsolidation RPC. Bounded by
+    /// a 3s deadline so a wedged helper can't hang the settings-apply path.</summary>
+    public async Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
+    {
+        if (_disposed) return;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            var tray = GetTrayClient();
+            await tray.SetConsolidationAsync(new SetConsolidationRequest { Enabled = hidden },
+                headers: AuthHeader(), cancellationToken: cts.Token);
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded)
+        {
+            _logger.LogWarning("SetConsolidation failed: {Message}", ex.Message);
+        }
+    }
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
         CancellationToken ct = default)

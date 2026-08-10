@@ -79,6 +79,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - RPC registration
 
+    /// The menu-bar control item (Strategy A), set once at startup by main(). Reached from the
+    /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
+    nonisolated(unsafe) var controlItem: MenuBarControlItem?
+
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         let serviceName = "bevel.helper.v1.TrayService"
 
@@ -167,6 +171,25 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 var reply = Bevel_Helper_V1_ForwardClickReply()
                 reply.delivered = self.forwardClick(
                     itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
+        // ── SetConsolidation ─────────────────────────────────────────────
+        // Hide (enabled) or reveal (disabled) the real status items via the control item (Strategy A).
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "SetConsolidation"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_SetConsolidationRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_SetConsolidationReply>(),
+            handler: { [weak self] request, context in
+                guard let self else { throw RPCError(code: .internalError, message: "TrayService deallocated") }
+                try AuthInterceptor.authenticate(
+                    request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
+                let req = try await ServerRequest(stream: request)
+                let enabled = req.message.enabled
+                await MainActor.run { self.controlItem?.setHidden(enabled) }
+                var reply = Bevel_Helper_V1_SetConsolidationReply()
+                reply.applied = true
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )

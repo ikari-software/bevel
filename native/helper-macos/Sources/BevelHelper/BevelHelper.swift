@@ -157,6 +157,7 @@ enum BevelHelper {
         // returns; socket cleanup happens via the atexit hook, not the (now-unreached) defer.
         let controlItem = MenuBarControlItem()
         gControlItem = controlItem
+        trayService.controlItem = controlItem   // U5: SetConsolidation + U3 self-exclusion reach it here
         let delegate = HelperAppDelegate(controlItem: controlItem)
         gAppDelegate = delegate
         NSApp.delegate = delegate

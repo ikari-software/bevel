@@ -71,6 +71,10 @@ service TrayService {
   // Forward a click to the real status item (spec §5.5): the helper synthesizes a CGEvent at the
   // item's on-screen coordinates so the owning app reveals its menu/popover. Needs Accessibility.
   rpc ForwardClick(ForwardClickRequest) returns (ForwardClickReply);
+
+  // Turn menu-bar consolidation on/off (Strategy C): enabled=true installs + expands the control item
+  // to hide the real status items; enabled=false reveals them. Off is today's mirror behaviour.
+  rpc SetConsolidation(SetConsolidationRequest) returns (SetConsolidationReply);
 }
 
 message ForwardClickRequest {
@@ -128,6 +132,16 @@ message ListTrayItemsReply {
 }
 
 message TrayChangesRequest {}
+
+// SetConsolidation toggles Strategy C: hide the real menu bar into Bevel's tray, or reveal it.
+message SetConsolidationRequest {
+  bool enabled = 1;
+}
+
+message SetConsolidationReply {
+  // True once the control item's hidden state matches the request.
+  bool applied = 1;
+}
 
 // ── Common messages ──────────────────────────────────────────────────────────
 
