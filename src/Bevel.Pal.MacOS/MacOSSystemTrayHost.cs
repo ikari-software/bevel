@@ -74,21 +74,16 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     /// <summary>Menu-bar consolidation (Strategy C, bevel-7hf4): hide the real status items into Bevel's
     /// tray (control-item expansion) or reveal them. Drives the helper's SetConsolidation RPC. Bounded by
     /// a 3s deadline so a wedged helper can't hang the settings-apply path.</summary>
-    public async Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
+    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
     {
-        if (_disposed) return;
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
-        try
-        {
-            var tray = GetTrayClient();
-            await tray.SetConsolidationAsync(new SetConsolidationRequest { Enabled = hidden },
-                headers: AuthHeader(), cancellationToken: cts.Token);
-        }
-        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded)
-        {
-            _logger.LogWarning("SetConsolidation failed: {Message}", ex.Message);
-        }
+        if (_disposed) return Task.CompletedTask;
+        // Strategy C (bevel-7hf4): the control item lives in THIS app process, which has a real
+        // NSApplication run loop — NOT the gRPC helper, whose hand-rolled run loop deadlocks the
+        // status-bar IPC. Driven via ObjC interop on the AppKit main thread; the settings-apply callers
+        // are on the UI thread. No helper round-trip for the hide.
+        try { MacMenuBarControl.SetHidden(hidden); }
+        catch (Exception ex) { _logger.LogWarning("consolidation apply failed: {Message}", ex.Message); }
+        return Task.CompletedTask;
     }
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,

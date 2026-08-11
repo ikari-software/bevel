@@ -82,6 +82,24 @@ internal static class AppKitInterop
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
     public static extern nint SendNInt(IntPtr receiver, IntPtr selector);
 
+    /// <summary>objc_msgSend with a void return and one object arg (e.g. <c>setAutosaveName:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
+
+    /// <summary>objc_msgSend with one CGFloat (double) arg returning an object (e.g. <c>statusItemWithLength:</c>).
+    /// On arm64 the double is passed in a float register (v0) per AAPCS.</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern IntPtr SendIntPtr_Double(IntPtr receiver, IntPtr selector, double arg1);
+
+    /// <summary>objc_msgSend with a void return and one CGFloat (double) arg (e.g. <c>setLength:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_Double(IntPtr receiver, IntPtr selector, double arg1);
+
+    /// <summary>objc_msgSend with a void return, one CGFloat (double) arg and one object arg
+    /// (e.g. <c>setDouble:forKey:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_Double_IntPtr(IntPtr receiver, IntPtr selector, double arg1, IntPtr arg2);
+
     // ------------------------------------------------------------------
     //  Selector cache
     // ------------------------------------------------------------------

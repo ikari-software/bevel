@@ -83,10 +83,6 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
     nonisolated(unsafe) var controlItem: MenuBarControlItem?
 
-    /// Cached window ID of our control item so `enumerateTrayItems` (sync, off-main) can self-exclude it
-    /// without a main-actor hop. Set by the SetConsolidation handler after (un)hiding (U3).
-    nonisolated(unsafe) var controlWindowID: CGWindowID?
-
     /// Reveal-at-top click (U6/C2). When consolidated the target may be hidden off-screen, where
     /// `forwardClick`'s on-screen lookup can't find it. Temporarily collapse the control item to bring
     /// the items back onto the bar, forward the click there (the owning app's menu opens at the TOP,
@@ -94,16 +90,16 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Menu-dismiss-based rehide is the polish (see the plan's open questions).
     func forwardClickWithReveal(
         itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) async -> Bool {
-        let wasHiding = await MainActor.run { self.controlItem?.isHidingItems ?? false }
+        let wasHiding = self.controlItem?.isHidingItems ?? false
         if wasHiding {
-            await MainActor.run { self.controlItem?.setHidden(false) }
-            try? await Task.sleep(nanoseconds: 250_000_000)   // let the bar reflow items back on-screen
+            self.controlItem?.requestHidden(false)
+            try? await Task.sleep(nanoseconds: 400_000_000)   // let the timer apply + the bar reflow items back
         }
         let delivered = self.forwardClick(itemID: itemID, button: button, modifiers: modifiers)
         if wasHiding {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 5_000_000_000)   // leave time to use the menu, then rehide
-                await MainActor.run { self?.controlItem?.setHidden(true) }
+                self?.controlItem?.requestHidden(true)
             }
         }
         return delivered
@@ -159,7 +155,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     // Adaptive cadence (U4): refresh faster while consolidated (the tray IS the menu bar
                     // then, so liveness matters most), slower in plain mirror mode to save CPU.
                     while !Task.isCancelled {
-                        let interval: UInt64 = self.controlWindowID != nil ? 900_000_000 : 2_000_000_000
+                        let interval: UInt64 = (self.controlItem?.isHidingItems ?? false) ? 900_000_000 : 2_000_000_000
                         try await Task.sleep(nanoseconds: interval)
                         let current = await self.enumerateWithCapture()
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
@@ -222,10 +218,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
                 let enabled = req.message.enabled
-                await MainActor.run {
-                    self.controlItem?.setHidden(enabled)
-                    self.controlWindowID = self.controlItem?.currentWindowID
-                }
+                consolidationLog("SetConsolidation RPC received enabled=\(enabled) controlItem=\(self.controlItem != nil)")
+                // Non-blocking: set the flag; the control item's main-run-loop timer applies it. Never
+                // hop to the main thread from here (that deadlocks in the status-bar IPC). Reply at once.
+                self.controlItem?.requestHidden(enabled)
                 var reply = Bevel_Helper_V1_SetConsolidationReply()
                 reply.applied = true
                 return StreamingServerResponse(single: ServerResponse(message: reply))
@@ -369,8 +365,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func enumerateTrayItems() -> [Bevel_Helper_V1_TrayItem] {
         if subsystemDisabled { return [] }   // hard feature flag (§10.1)
         let ownPID = getpid()
+        // Include OFF-SCREEN windows: Strategy A hides the real items by pushing them off-screen (the
+        // app-side control item expands), and the tray must still show them. The layer/band/size filters
+        // below keep this to menu-bar items; U1's legacy CG capture reads their icons even while hidden.
         guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            [.excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
             return []
         }
 
@@ -388,9 +387,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
             // Self-exclusion (U3): never mirror Bevel's own control item. On macOS 26 it's owned by the
             // Control Centre process, so the own-PID filter above can't catch it — exclude by window ID.
-            if let ctrl = controlWindowID, windowNumber == Int(ctrl) { continue }
+            if let ctrl = controlItem?.cachedWindowID, windowNumber == Int(ctrl) { continue }
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
+            // Exclude Bevel's own app-side control item so we never mirror ourselves (its ◂◂ marker title).
+            if windowName.contains("◂") { continue }
 
             // Denylist (§5, bevel-m3.4): drop items we should not mirror — iStat Menus (live graphs
             // that belong in the native bar; the spec's canonical example), Control Center's own

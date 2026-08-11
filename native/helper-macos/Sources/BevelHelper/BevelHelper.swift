@@ -67,7 +67,13 @@ enum BevelHelper {
         return CLIArguments(socketPath: socketPath, token: token, parentPID: parentPID)
     }
 
-    static func main() async throws {
+    // Synchronous main-actor entry (was `async throws`). An `async` main runs under the Swift
+    // concurrency runtime's own main-thread drain, and calling NSApp.run() inside it does NOT drain the
+    // libdispatch main queue — so `DispatchQueue.main.async`/`MainActor.run` hops never execute and the
+    // control item never moves (proven live). A synchronous @MainActor main lets NSApp.run() own the
+    // main thread the standard AppKit way, which drains the main queue (bevel-7hf4).
+    @MainActor
+    static func main() throws {
         let args: CLIArguments
         do {
             args = try parseArguments()
