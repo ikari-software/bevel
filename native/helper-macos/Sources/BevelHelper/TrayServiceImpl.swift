@@ -433,6 +433,29 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return sorted
     }
 
+    /// TEMP geometry probe (bevel-7hf4): when /tmp/bevel-geo exists, dump every menu-bar status window
+    /// (ON + OFF screen) with its x/width and on-screen flag, so we can see where hidden items sit and
+    /// whether there's a slot next to the control item that stays visible after re-hide. Removed once the
+    /// single-item reveal geometry is settled.
+    private func dumpGeometry() {
+        guard FileManager.default.fileExists(atPath: "/tmp/bevel-geo") else { return }
+        guard let wins = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return }
+        var rows: [(Double, String)] = []
+        for w in wins {
+            guard (w[kCGWindowLayer as String] as? Int) == statusWindowLayer,
+                  let bd = w[kCGWindowBounds as String] as? [String: Any],
+                  let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 else { continue }
+            let owner = (w[kCGWindowOwnerName as String] as? String) ?? "?"
+            let name = (w[kCGWindowName as String] as? String) ?? ""
+            let on = (w[kCGWindowIsOnscreen as String] as? Bool) ?? false
+            rows.append((r.origin.x, String(format: "on=%@ x=%5.0f w=%3.0f  %@ '%@'", on ? "Y" : "n",
+                                             r.origin.x, r.width, owner, name)))
+        }
+        let text = rows.sorted { $0.0 < $1.0 }.map { $0.1 }.joined(separator: "\n")
+        try? text.write(toFile: "/tmp/bevel-geo.log", atomically: true, encoding: .utf8)
+    }
+
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
@@ -441,6 +464,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
+        dumpGeometry()   // TEMP (bevel-7hf4): geometry probe for single-item reveal; self-gated by /tmp/bevel-geo
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.

@@ -100,6 +100,41 @@ internal static class AppKitInterop
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_Double_IntPtr(IntPtr receiver, IntPtr selector, double arg1, IntPtr arg2);
 
+    // ── Window/panel creation + geometry (MacMenuBarOverlay, bevel-7hf4) ──
+    // NSRect is a 4-double HFA: on ARM64 it is passed IN v0–v3 (and returned in v0–v3), so a fixed
+    // objc_msgSend signature carries it correctly — no _stret. Integer/BOOL args follow in x2… as usual.
+
+    /// <summary>objc_msgSend for <c>initWithContentRect:styleMask:backing:defer:</c> — returns the
+    /// initialized NSPanel/NSWindow. NSRect in v0–v3, the two NSUIntegers in x2/x3, the BOOL in w4.</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern IntPtr SendIntPtr_NSRect_NUInt_NUInt_Bool(
+        IntPtr receiver, IntPtr selector, NSRect rect, nuint styleMask, nuint backing,
+        [MarshalAs(UnmanagedType.I1)] bool deferCreation);
+
+    /// <summary>objc_msgSend for <c>setFrame:display:</c> (void; NSRect + BOOL).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_NSRect_Bool(
+        IntPtr receiver, IntPtr selector, NSRect rect, [MarshalAs(UnmanagedType.I1)] bool display);
+
+    /// <summary>objc_msgSend with one NSInteger arg (e.g. <c>setLevel:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_NInt(IntPtr receiver, IntPtr selector, nint arg1);
+
+    /// <summary>objc_msgSend with one NSUInteger arg (e.g. <c>setCollectionBehavior:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_NUInt(IntPtr receiver, IntPtr selector, nuint arg1);
+
+    /// <summary>objc_msgSend with one ObjC BOOL arg (1 byte on ARM64 — hence I1; e.g. <c>setOpaque:</c>,
+    /// <c>setHasShadow:</c>, <c>setIgnoresMouseEvents:</c>, <c>setReleasedWhenClosed:</c>).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern void SendVoid_Bool(IntPtr receiver, IntPtr selector,
+        [MarshalAs(UnmanagedType.I1)] bool arg1);
+
+    /// <summary>objc_msgSend returning a CGFloat (double) — e.g. <c>[NSStatusBar thickness]</c>.
+    /// On ARM64 the double comes back in d0; plain objc_msgSend (no _fpret).</summary>
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    public static extern double SendDouble(IntPtr receiver, IntPtr selector);
+
     // ------------------------------------------------------------------
     //  Selector cache
     // ------------------------------------------------------------------
@@ -375,8 +410,19 @@ internal static class AppKitInterop
         public double X, Y, Width, Height;
     }
 
+    /// <summary>NSEdgeInsets: 4 doubles (top, left, bottom, right). Like <see cref="NSRect"/> a 4-double
+    /// HFA — returned in v0–v3 by plain objc_msgSend on ARM64.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NSEdgeInsets
+    {
+        public double Top, Left, Bottom, Right;
+    }
+
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
     private static extern NSRect SendNSRect(IntPtr receiver, IntPtr selector);
+
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern NSEdgeInsets SendNSEdgeInsets(IntPtr receiver, IntPtr selector);
 
     /// <summary>Returns [NSScreen screens] as an NSArray.</summary>
     public static IntPtr NSScreenScreens()
@@ -400,5 +446,18 @@ internal static class AppKitInterop
         if (screen == IntPtr.Zero) return (0, 0, 0, 0);
         var r = SendNSRect(screen, Sel("visibleFrame"));
         return ((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height);
+    }
+
+    /// <summary>The menu-bar strip height in points for the given screen: the notch/safe-area top inset
+    /// when notched (<c>[screen safeAreaInsets].top</c> > 0), else <c>[[NSStatusBar systemStatusBar] thickness]</c>.
+    /// Matches the PoC's height derivation. Returns 0 if AppKit/screen is unavailable.</summary>
+    public static double MenuBarHeight(IntPtr screen)
+    {
+        if (screen == IntPtr.Zero) return 0;
+        var insets = SendNSEdgeInsets(screen, Sel("safeAreaInsets"));
+        if (insets.Top > 0) return insets.Top;
+        var statusBar = SendIntPtr(GetClass("NSStatusBar"), Sel("systemStatusBar"));
+        if (statusBar == IntPtr.Zero) return 0;
+        return SendDouble(statusBar, Sel("thickness"));
     }
 }
