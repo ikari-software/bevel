@@ -687,6 +687,9 @@ public enum InfoPaneStyle
     /// <summary>XP Luna task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
     WinXP,
 
+    /// <summary>Vista/Windows 7-inspired navigation pane: favorites, places, and contextual details.</summary>
+    Modern,
+
     /// <summary>Match the active theme: the XP Luna task-pane under Luna, the Win2000 banner under Win2000.
     /// The default — a fresh install shows the pane that fits whatever skin it boots in. Resolved to a
     /// concrete style at apply time (never handed to the InfoPane control directly).</summary>

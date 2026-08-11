@@ -921,6 +921,9 @@ public partial class FileManagerWindow : BevelWindow
             _ => "Displays the files and folders in this location.",
         };
         InfoPane.ObjectCount = $"{count} object(s)";
+        InfoPane.ClearTasks();
+        InfoPane.AddTask("Make a new folder", () => _ = NewFolderAsync());
+        InfoPane.AddTask("View folder properties", ShowProperties);
         InfoPane.ClearLinks();
         InfoPane.AddLink("My Documents", () => NavigateTo(HomePath));
         InfoPane.AddLink("My Computer", () => NavigateTo(VfsPath.Root("computer")));
@@ -950,10 +953,17 @@ public partial class FileManagerWindow : BevelWindow
             if (!vm.IsFolder && vm.Size is not null) lines.Add($"Size: {vm.SizeDisplay}");
             if (!string.IsNullOrEmpty(vm.ModifiedDisplay)) lines.Add($"Modified: {vm.ModifiedDisplay}");
             InfoPane.Description = string.Join("\n", lines);
+            InfoPane.ClearTasks();
+            InfoPane.AddTask("Rename this item", ItemView.BeginRenameSelected);
+            InfoPane.AddTask("Delete this item", () => _ = DeleteSelectionAsync(toTrash: true));
+            InfoPane.AddTask("View item properties", ShowProperties);
             return;
         }
         InfoPane.Title = $"{sel.Count} items";
         InfoPane.Description = "Multiple items selected";
+        InfoPane.ClearTasks();
+        InfoPane.AddTask("Delete selected items", () => _ = DeleteSelectionAsync(toTrash: true));
+        InfoPane.AddTask("View item properties", ShowProperties);
     }
 
     private void SetView(ViewMode mode)

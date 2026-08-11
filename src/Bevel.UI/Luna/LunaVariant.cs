@@ -51,6 +51,10 @@ internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (doub
 /// </summary>
 public static class LunaVariantService
 {
+    /// <summary>Raised after the application-level Luna brush set is replaced or cleared. Surfaces that
+    /// provide their own non-Luna fallback resources use this to refresh aliases without polling.</summary>
+    public static event Action? Changed;
+
     public static readonly IReadOnlyList<(string Id, string Display)> Colors = new[]
     {
         ("Blue", "Luna Blue"), ("Silver", "Silver"), ("Black", "Black"), ("Purple", "Purple"),
@@ -97,14 +101,17 @@ public static class LunaVariantService
         // with unreadable dark text. chromatic:false pins it to these pale stops.
         new("Luna.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
 
-        // Explorer info-pane (XP task pane), re-hued via the LightLocked path (see BuildBrush): hue +
-        // saturation from the variant, but only HALF the lightness change. Blue is unchanged; Purple tracks
-        // the caption's violet, Black darkens, Silver greys — all readable, not the muddy indigo full chrome
-        // darkening produced. Watermark = the reference medium tone; Header = light; Border = divider.
-        // (bevel-e544; per design guidance: hue close, operate on S+L.)
+        // Explorer info-pane (XP task pane), derived through per-role transforms (see TransformInfoPane).
+        // Blue is the semantic source; each variant independently tunes surfaces, borders, text, links and
+        // arrows so the hierarchy survives Silver/Black/Purple instead of inheriting the harsher chrome math.
         new("Luna.Brush.InfoPaneWatermark", true, GlossRole.Inert, new[]{ (0.0,"6787D9"),(0.5,"5075CE"),(1.0,"4A6FC9") }, LightLocked: true),
         new("Luna.Brush.InfoPaneHeader",    true, GlossRole.Inert, new[]{ (0.0,"EBF2FD"),(1.0,"C7D9F4") }, LightLocked: true),
         new("Luna.Brush.InfoPaneBorder",    true, GlossRole.Inert, new[]{ (0.0,"D6E3F5") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneHeadingText", true, GlossRole.Inert, new[]{ (0.0,"24437A") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneBodyText",    true, GlossRole.Inert, new[]{ (0.0,"3F5278") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneLinkText",    true, GlossRole.Inert, new[]{ (0.0,"1B3E86") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneArrow",       true, GlossRole.Inert, new[]{ (0.0,"315F9D") }, LightLocked: true),
+        new("Luna.Brush.InfoPaneMutedText",   true, GlossRole.Inert, new[]{ (0.0,"68799A") }, LightLocked: true),
 
         // Glossy chrome controls (bead in Gloss/Hybrid, flattened under Matte)
         new("Luna.Brush.TaskButton", true, GlossRole.Control, new[]{
@@ -199,7 +206,7 @@ public static class LunaVariantService
 
         foreach (var s in Surfaces)
         {
-            res[s.Key] = BuildBrush(s, xform, g);
+            res[s.Key] = BuildBrush(s, xform, g, variant);
             _injected.Add(s.Key);
         }
         foreach (var (key, hex) in ColorTokens)
@@ -245,6 +252,7 @@ public static class LunaVariantService
 
         _appliedColor = color;
         _appliedGloss = gloss;
+        Changed?.Invoke();
     }
 
     /// <summary>Vertical white-alpha sheen overlay from the given (alpha, offset) stops.</summary>
@@ -271,22 +279,18 @@ public static class LunaVariantService
         _injected.Clear();
         _appliedColor = DefaultColor;
         _appliedGloss = DefaultGloss;
+        Changed?.Invoke();
     }
 
-    private static IBrush BuildBrush(Surface s, ColorXform xform, LunaGloss gloss)
+    private static IBrush BuildBrush(Surface s, ColorXform xform, LunaGloss gloss, LunaColorVariant variant)
     {
         // Re-hue first (chrome only), then let the gloss profile reshape the arrangement.
-        // LightLocked (info-pane tints): take the variant's HUE + SATURATION (Silver/Black desaturate to
-        // grey, Purple tracks the caption's violet) but only HALF the lightness change — the full chrome
-        // xform darkens light surfaces into mud, while fully locking lightness leaves Black too pale. The
-        // half-step darkens Black toward its theme and deepens Purple to a true violet, yet keeps every
-        // variant readable. Applied to the ORIGINAL reference tones, so Blue is unchanged (HueShift 0).
-        var tint = new ColorXform(xform.HueShift, xform.SatMul, (xform.LightMul + 1.0) / 2.0, 0);
         Color C(string hex)
         {
-            var col = s.LightLocked ? tint.Apply(Hex(hex))
-                    : s.Chromatic ? xform.Apply(Hex(hex))
-                    : Hex(hex);
+            var reference = Hex(hex);
+            var col = s.LightLocked ? TransformInfoPane(reference, variant, s.Key)
+                    : s.Chromatic ? xform.Apply(reference)
+                    : reference;
             // Cap lightness (control edges): Silver's LightMul 1.4 washes borders to near the window grey,
             // erasing the edge. Blue's border already sits at the cap, so only Silver is pulled back.
             if (s.MaxLight < 1.0)
@@ -332,6 +336,69 @@ public static class LunaVariantService
                                     : new RelativePoint(0, 1, RelativeUnit.Relative),
             GradientStops = new GradientStops().Also(stops),
         };
+    }
+
+    private enum InfoPaneTone { Watermark, Header, Border, Heading, Body, Link, Arrow, Muted }
+
+    /// <summary>Derives each XP task-pane semantic role from the Blue source palette. One universal chrome
+    /// transform was not sufficient: Silver/Black need restrained surfaces but recognizable blue actions,
+    /// while Purple needs a quieter watermark than its caption. These are transformations, not alternate
+    /// palettes, so Blue remains the only set of stored role colours.</summary>
+    private static Color TransformInfoPane(Color reference, LunaColorVariant variant, string resourceKey)
+    {
+        if (variant == LunaColorVariant.Blue) return reference;
+
+        var tone = resourceKey switch
+        {
+            "Luna.Brush.InfoPaneWatermark" => InfoPaneTone.Watermark,
+            "Luna.Brush.InfoPaneHeader" => InfoPaneTone.Header,
+            "Luna.Brush.InfoPaneBorder" => InfoPaneTone.Border,
+            "Luna.Brush.InfoPaneHeadingText" => InfoPaneTone.Heading,
+            "Luna.Brush.InfoPaneBodyText" => InfoPaneTone.Body,
+            "Luna.Brush.InfoPaneLinkText" => InfoPaneTone.Link,
+            "Luna.Brush.InfoPaneArrow" => InfoPaneTone.Arrow,
+            _ => InfoPaneTone.Muted,
+        };
+        // Hue is a separate axis: today it comes from the selected variant; a free accent picker can feed
+        // the same base rotation later without replacing any semantic-role source colours.
+        var baseHueShift = variant switch
+        {
+            LunaColorVariant.Silver => -6.0,
+            LunaColorVariant.Black => -4.0,
+            LunaColorVariant.Purple => 46.0,
+            _ => 0.0,
+        };
+        var (roleHueOffset, saturationScale, lightnessShift) = (variant, tone) switch
+        {
+            (LunaColorVariant.Silver, InfoPaneTone.Watermark) => (0.0, 0.30, 0.10),
+            (LunaColorVariant.Silver, InfoPaneTone.Header) => (0.0, 0.25, 0.02),
+            (LunaColorVariant.Silver, InfoPaneTone.Border) => (0.0, 0.25, -0.06),
+            (LunaColorVariant.Silver, InfoPaneTone.Heading) => (2.0, 0.50, -0.03),
+            (LunaColorVariant.Silver, InfoPaneTone.Body) => (1.0, 0.55, 0.01),
+            (LunaColorVariant.Silver, InfoPaneTone.Link) => (1.0, 0.80, 0.02),
+            (LunaColorVariant.Silver, InfoPaneTone.Arrow) => (1.0, 0.72, 0.03),
+            (LunaColorVariant.Silver, InfoPaneTone.Muted) => (2.0, 0.55, -0.01),
+
+            (LunaColorVariant.Black, InfoPaneTone.Watermark) => (0.0, 0.25, -0.10),
+            (LunaColorVariant.Black, InfoPaneTone.Header) => (0.0, 0.30, -0.04),
+            (LunaColorVariant.Black, InfoPaneTone.Border) => (0.0, 0.30, -0.08),
+            (LunaColorVariant.Black, InfoPaneTone.Heading) => (2.0, 0.62, -0.05),
+            (LunaColorVariant.Black, InfoPaneTone.Body) => (2.0, 0.55, 0.00),
+            (LunaColorVariant.Black, InfoPaneTone.Link) => (0.0, 0.78, 0.07),
+            (LunaColorVariant.Black, InfoPaneTone.Arrow) => (0.0, 0.70, 0.03),
+            (LunaColorVariant.Black, InfoPaneTone.Muted) => (2.0, 0.65, -0.03),
+
+            (LunaColorVariant.Purple, InfoPaneTone.Watermark) => (0.0, 0.72, 0.00),
+            (LunaColorVariant.Purple, InfoPaneTone.Header) => (0.0, 0.62, -0.01),
+            (LunaColorVariant.Purple, InfoPaneTone.Border) => (0.0, 0.60, -0.05),
+            (LunaColorVariant.Purple, InfoPaneTone.Heading) => (8.0, 0.65, -0.01),
+            (LunaColorVariant.Purple, InfoPaneTone.Body) => (2.0, 0.65, 0.01),
+            (LunaColorVariant.Purple, InfoPaneTone.Link) => (-2.0, 0.64, 0.06),
+            (LunaColorVariant.Purple, InfoPaneTone.Arrow) => (0.0, 0.72, 0.04),
+            (LunaColorVariant.Purple, InfoPaneTone.Muted) => (4.0, 0.65, -0.03),
+            _ => (0.0, 1.0, 0.0),
+        };
+        return Transform(reference, baseHueShift + roleHueOffset, saturationScale, 1.0, lightnessShift);
     }
 
     // The reference (stored) arrangement: Control surfaces are glossy, Chrome surfaces are matte.

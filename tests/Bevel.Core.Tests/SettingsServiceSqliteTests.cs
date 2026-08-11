@@ -71,6 +71,20 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task InfoPaneStyle_Modern_round_trips_across_instances()
+    {
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            await writer.UpdateAsync(s => s.InfoPaneStyle = InfoPaneStyle.Modern);
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal(InfoPaneStyle.Modern, reader.Current.InfoPaneStyle);
+    }
+
+    [Fact]
     public async Task Explorer_left_pane_width_and_folders_toggle_round_trip()
     {
         // bevel-xw12: the left pane's width (splitter) and Folders-vs-InfoPane toggle survive a reload.

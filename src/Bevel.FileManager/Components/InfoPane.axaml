@@ -3,94 +3,356 @@
              x:Class="Bevel.FileManager.Components.InfoPane"
              Focusable="False">
 
-    <!-- Left info pane, selectable style (Folder Options). Exactly one view is visible at a time; the
-         code-behind pushes the shared data (folder name, description, links, count) to the active one.
-         All art is native vector — no web engine. -->
-    <Panel>
+    <UserControl.Resources>
+        <!-- Preset-local semantic brushes keep an explicitly selected era coherent even when another
+             application theme is active. Code-behind replaces the XP trio with the current Luna variant
+             when those resources exist. -->
+        <LinearGradientBrush x:Key="InfoPane.Xp.Watermark" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#6B8FDB" Offset="0" />
+            <GradientStop Color="#5075CE" Offset="0.52" />
+            <GradientStop Color="#4A6FC9" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="InfoPane.Xp.Header" StartPoint="0%,0%" EndPoint="100%,0%">
+            <GradientStop Color="#FFFFFF" Offset="0" />
+            <GradientStop Color="#DCE8F8" Offset="1" />
+        </LinearGradientBrush>
+        <SolidColorBrush x:Key="InfoPane.Xp.Border" Color="#B7C9E5" />
+        <SolidColorBrush x:Key="InfoPane.Xp.HeadingText" Color="#24437A" />
+        <SolidColorBrush x:Key="InfoPane.Xp.BodyText" Color="#3F5278" />
+        <SolidColorBrush x:Key="InfoPane.Xp.LinkText" Color="#1B3E86" />
+        <SolidColorBrush x:Key="InfoPane.Xp.Arrow" Color="#315F9D" />
+        <SolidColorBrush x:Key="InfoPane.Xp.MutedText" Color="#68799A" />
 
-        <!-- ═══ Windows 2000: sky-gradient banner + vector computer + yellow info box ═══ -->
-        <Grid x:Name="Win2000View" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
-              Background="{DynamicResource Bevel.Brush.Window}">
-            <Border Grid.Row="0" Height="120" ClipToBounds="True">
-                <Panel>
-                    <Border>
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                                <GradientStop Color="#FFFFFF" Offset="0.0" />
-                                <GradientStop Color="#C8DDF0" Offset="0.4" />
-                                <GradientStop Color="#98C0E8" Offset="1.0" />
-                            </LinearGradientBrush>
-                        </Border.Background>
+        <SolidColorBrush x:Key="InfoPane.Modern.Background" Color="#F7F9FC" />
+        <SolidColorBrush x:Key="InfoPane.Modern.Divider" Color="#D5DBE4" />
+        <SolidColorBrush x:Key="InfoPane.Modern.Heading" Color="#36475B" />
+        <SolidColorBrush x:Key="InfoPane.Modern.Text" Color="#26384B" />
+        <SolidColorBrush x:Key="InfoPane.Modern.SecondaryText" Color="#5A6978" />
+        <SolidColorBrush x:Key="InfoPane.Modern.MutedText" Color="#7A8794" />
+        <SolidColorBrush x:Key="InfoPane.Modern.DetailsSurface" Color="#EEF3F8" />
+        <SolidColorBrush x:Key="InfoPane.Modern.DetailsBorder" Color="#D3DCE7" />
+
+        <ControlTheme x:Key="InfoPane.Xp.ChevronButtonTheme" TargetType="ToggleButton">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="MinWidth" Value="16" />
+            <Setter Property="MinHeight" Value="16" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="FocusRing" Width="16" Height="16" CornerRadius="8"
+                            BorderThickness="1" BorderBrush="Transparent">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <Canvas Margin="12,8,0,0">
-                        <Rectangle Canvas.Left="18" Canvas.Top="6" Width="72" Height="54" RadiusX="3" RadiusY="3"
-                                   Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
-                        <Rectangle Canvas.Left="22" Canvas.Top="10" Width="64" Height="46" Fill="#003399" />
-                        <Rectangle Canvas.Left="22" Canvas.Top="10" Width="64" Height="30" Fill="#1A5FB4" />
-                        <Ellipse Canvas.Left="30" Canvas.Top="16" Width="20" Height="10" Fill="White" Opacity="0.9" />
-                        <Ellipse Canvas.Left="40" Canvas.Top="14" Width="18" Height="12" Fill="White" Opacity="0.85" />
-                        <Ellipse Canvas.Left="50" Canvas.Top="18" Width="14" Height="8" Fill="White" Opacity="0.8" />
-                        <Rectangle Canvas.Left="48" Canvas.Top="60" Width="12" Height="6" Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
-                        <Rectangle Canvas.Left="40" Canvas.Top="66" Width="28" Height="4" RadiusX="1" RadiusY="1" Fill="#D0D0D0" Stroke="#808080" StrokeThickness="1" />
-                        <Rectangle Canvas.Left="94" Canvas.Top="48" Width="24" Height="20" RadiusX="2" RadiusY="2" Fill="#E8E8E8" Stroke="#808080" StrokeThickness="1" />
-                        <Rectangle Canvas.Left="98" Canvas.Top="52" Width="16" Height="3" Fill="#808080" />
-                    </Canvas>
-                </Panel>
-            </Border>
-            <Border Grid.Row="0" VerticalAlignment="Bottom" Height="1" Background="#D0D0D0" />
-            <StackPanel Grid.Row="1" Margin="12,8,12,4">
-                <TextBlock x:Name="TitleLabel" FontSize="14" FontWeight="Bold" Foreground="#003399" TextWrapping="Wrap" />
-            </StackPanel>
-            <TextBlock Grid.Row="2" x:Name="InstructionLabel" Margin="12,0,12,8" FontSize="11" Foreground="#000000"
-                       Text="Select an item to view its description." TextWrapping="Wrap" />
-            <Border Grid.Row="3" Margin="14,0,14,8" Padding="6,4" Background="#FFFFE1" BorderBrush="#D0C080"
-                    BorderThickness="1" CornerRadius="1">
-                <TextBlock x:Name="DescriptionLabel" FontSize="11" Foreground="#000000" TextWrapping="Wrap" />
-            </Border>
-            <StackPanel Grid.Row="4" VerticalAlignment="Bottom">
-                <Border Height="1" Background="#D0D0D0" Margin="12,4,12,0" />
-                <StackPanel x:Name="SeeAlsoPanel" Margin="14,8,12,4" Spacing="0" />
-            </StackPanel>
-            <Border Grid.Row="5" Background="Transparent" BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Padding="12,3">
-                <TextBlock x:Name="ObjectCountLabel" FontSize="11" Foreground="#000000" />
-            </Border>
-        </Grid>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:focus-visible /template/ Border#FocusRing">
+                <Setter Property="BorderBrush" Value="{DynamicResource InfoPane.Xp.Arrow}" />
+            </Style>
+            <Style Selector="^:pressed /template/ Border#FocusRing">
+                <Setter Property="Opacity" Value="0.72" />
+            </Style>
+        </ControlTheme>
+    </UserControl.Resources>
 
-        <!-- ═══ Windows XP (Luna): blue watermark gradient + rounded task-pane group boxes ═══ -->
-        <!-- Watermark + group-box tints bind to Luna variant tokens (re-hued per Blue/Silver/Black/Purple
-             by LunaVariantService) so the task pane matches the active colour, not fixed XP-blue (bevel-e544).
-             Fallback: these are Luna tokens; a WinXP info-pane deliberately chosen under Win2000 degrades. -->
-        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                      Background="{DynamicResource Luna.Brush.InfoPaneWatermark}">
-            <StackPanel Margin="8,10,8,10" Spacing="10">
-                <!-- Other Places group -->
-                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="{DynamicResource Luna.Brush.InfoPaneBorder}" BorderThickness="1">
+    <!-- Era presets share one data API, but intentionally do not share composition. Faithfulness here means
+         preserving each era's information architecture as well as its finish. Every mark is vector geometry,
+         a theme brush, or a gradient; there are no bitmap chrome assets. -->
+    <Panel>
+        <!-- Windows 2000 / Me Web View: a vector reconstruction of folder.htt's shallow wvleft banner.
+             The overlapping pastel squares and unframed context icon are the era's recurring signature;
+             title, blue rule, description and related links follow immediately below at the stock 200px
+             column proportions. -->
+        <ScrollViewer x:Name="Win2000View" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Background="{DynamicResource Bevel.Brush.Window}">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" MinHeight="368">
+                <Border Grid.Row="0" Height="52" ClipToBounds="True" Background="White">
+                    <Canvas Width="200" Height="52" HorizontalAlignment="Left">
+                        <!-- A smooth cyan atmosphere replaces the historical bitmap dither. Overlapping
+                             radial fields fade to clear white before their bounds, so the result reads as
+                             one sky-like smudge rather than a rectangle or a carpet of blue pixels. -->
+                        <Ellipse Canvas.Left="-15" Canvas.Top="-19" Width="112" Height="78">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush Center="50%,48%" GradientOrigin="42%,44%" RadiusX="50%" RadiusY="50%">
+                                    <GradientStop Color="#829DDEE7" Offset="0" />
+                                    <GradientStop Color="#526CCBD9" Offset="0.42" />
+                                    <GradientStop Color="#1F54C3D1" Offset="0.72" />
+                                    <GradientStop Color="#0054C3D1" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="38" Canvas.Top="-11" Width="91" Height="67">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush Center="44%,48%" GradientOrigin="36%,43%" RadiusX="50%" RadiusY="50%">
+                                    <GradientStop Color="#596CCDDC" Offset="0" />
+                                    <GradientStop Color="#315CC6D5" Offset="0.48" />
+                                    <GradientStop Color="#0054C3D1" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="17" Canvas.Top="14" Width="58" Height="43">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush Center="46%,58%" GradientOrigin="39%,54%" RadiusX="50%" RadiusY="50%">
+                                    <GradientStop Color="#68F2E49A" Offset="0" />
+                                    <GradientStop Color="#32F7EDB7" Offset="0.52" />
+                                    <GradientStop Color="#00F7EDB7" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="43" Canvas.Top="27" Width="72" Height="35">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush Center="36%,42%" GradientOrigin="31%,39%" RadiusX="50%" RadiusY="50%">
+                                    <GradientStop Color="#5CB4E3BD" Offset="0" />
+                                    <GradientStop Color="#2BCAEAD0" Offset="0.55" />
+                                    <GradientStop Color="#00CAEAD0" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Path Fill="#DFC441" Opacity="0.68"
+                              Data="M19,13h1v1h-1z M24,17h1v1h-1z M28,11h1v1h-1z M33,21h1v1h-1z M38,15h1v1h-1z
+                                    M43,24h1v1h-1z M47,18h1v1h-1z M52,28h1v1h-1z M57,21h1v1h-1z M62,31h1v1h-1z
+                                    M67,25h1v1h-1z M72,34h1v1h-1z M77,28h1v1h-1z M83,37h1v1h-1z M89,31h1v1h-1z
+                                    M26,30h1v1h-1z M32,35h1v1h-1z M39,29h1v1h-1z M45,39h1v1h-1z M53,34h1v1h-1z
+                                    M61,42h1v1h-1z M70,38h1v1h-1z M80,44h1v1h-1z M93,41h1v1h-1z" />
+                        <Path Fill="#55B96A" Opacity="0.64"
+                              Data="M48,31h1v1h-1z M53,36h1v1h-1z M58,30h1v1h-1z M63,40h1v1h-1z M68,34h1v1h-1z
+                                    M73,43h1v1h-1z M78,37h1v1h-1z M83,46h1v1h-1z M88,40h1v1h-1z M94,34h1v1h-1z
+                                    M99,43h1v1h-1z M105,38h1v1h-1z" />
+
+                        <!-- White is an active layer, not merely untouched background. These protected
+                             interior corners mask the shared atmosphere and fade away toward each frame's
+                             opening, preserving white pockets without turning the forms into opaque tiles. -->
+                        <Rectangle Canvas.Left="47" Canvas.Top="6" Width="24" Height="20">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0%,100%" EndPoint="100%,0%">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#F2FFFFFF" Offset="0.48" />
+                                    <GradientStop Color="#70B9E7EB" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+                        <Rectangle Canvas.Left="70" Canvas.Top="0" Width="13" Height="9">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0%,100%" EndPoint="100%,0%">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#E8FFFFFF" Offset="0.56" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+                        <Rectangle Canvas.Left="94" Canvas.Top="8" Width="21" Height="21">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="100%,0%" EndPoint="0%,100%">
+                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
+                                    <GradientStop Color="#F4FFFFFF" Offset="0.58" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+                        <!-- Interrupted edges share one optical weight; their hierarchy comes from colour,
+                             overlap and disappearance rather than five equally assertive complete boxes. -->
+                        <Path Data="M9,5 H31 V18 M2,13 V28 H17" Stroke="#E36F18" StrokeThickness="2.5" />
+                        <Rectangle Canvas.Left="45" Canvas.Top="4" Width="28" Height="24"
+                                   Fill="Transparent" Stroke="#54C3D1" StrokeThickness="2.5" />
+                        <Path Data="M68,5 V11 H85 V-4" Stroke="#55B96A" StrokeThickness="2.5" />
+                        <Path Data="M102,6 H117 V31 H92 V18" Stroke="#5D8FC0" StrokeThickness="2.5" />
+                        <!-- Drawn last among the abstract forms so its white interior remains at least 90%
+                             opaque wherever cyan overlaps; only the context icon may occlude it. -->
+                        <Rectangle Canvas.Left="31" Canvas.Top="11" Width="34" Height="34"
+                                   Fill="#FFFFFFFF" Stroke="#DFC441" StrokeThickness="2.5" />
+
+                        <!-- Context icon floats directly through the artwork: no tile, frame or backing. -->
+                        <Canvas Canvas.Left="11" Canvas.Top="9" Width="37" Height="33">
+                            <Path Data="M3,9 L12,9 L15,12 L33,12 L33,27 L3,27 Z"
+                                  Fill="#E2C76B" Stroke="#87732B" StrokeThickness="1" />
+                            <Path Data="M8,4 L28,4 L30,20 L10,21 Z" Fill="#FFFDF4" Stroke="#9AA5B0" StrokeThickness="1" />
+                            <Path Data="M11,9 L26,9 M11,12 L25,12" Stroke="#82A8C2" StrokeThickness="1" />
+                            <Path Data="M3,14 L34,14 L30,30 L6,30 Z"
+                                  Fill="#F0D778" Stroke="#87732B" StrokeThickness="1" />
+                        </Canvas>
+                    </Canvas>
+                </Border>
+                <StackPanel Grid.Row="1" Margin="0,-2,0,0" Spacing="0">
+                    <TextBlock x:Name="TitleLabel" Margin="12,0,0,0" FontFamily="Tahoma, sans-serif"
+                               FontSize="18" FontWeight="Bold" Foreground="#111111" TextWrapping="Wrap" />
+                    <Border Height="2" Background="#5794D7" />
+                </StackPanel>
+                <TextBlock Grid.Row="2" x:Name="InstructionLabel" Margin="12,16,12,4" FontFamily="Tahoma, sans-serif" FontSize="11"
+                           Text="Select an item to view its description." TextWrapping="Wrap" />
+                <Border Grid.Row="3" Margin="12,0,0,6" Padding="1,1" Background="#FFFFE1"
+                        BorderBrush="#D3D3D3" BorderThickness="1">
+                    <TextBlock x:Name="DescriptionLabel" FontFamily="Tahoma, sans-serif" FontSize="11" TextWrapping="Wrap" LineHeight="13" />
+                </Border>
+                <StackPanel Grid.Row="4" Margin="12,2,12,0" Spacing="2">
+                    <TextBlock Text="See also:" FontFamily="Tahoma, sans-serif" FontSize="11" Foreground="#202020" />
+                    <StackPanel x:Name="SeeAlsoPanel" Spacing="1" />
+                </StackPanel>
+                <!-- Object count already lives in FileManager's real status bar, as it did in Explorer. -->
+                <TextBlock Grid.Row="5" x:Name="ObjectCountLabel" IsVisible="False" />
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Windows XP Common Tasks: strong colored watermark, stacked collapsible-style cards,
+             pale gradient headers, tiny vector task arrows, and contextual Details last. -->
+        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource InfoPane.Xp.Watermark}">
+            <StackPanel Margin="8,9,8,12" Spacing="9">
+                <Border CornerRadius="6" Background="#F8FAFF" BorderBrush="{DynamicResource InfoPane.Xp.Border}" BorderThickness="1">
                     <StackPanel>
-                        <Border CornerRadius="4,4,0,0" Padding="8,4"
-                                Background="{DynamicResource Luna.Brush.InfoPaneHeader}">
-                            <TextBlock Text="Other Places" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
+                        <Border CornerRadius="5,5,0,0" Padding="9,5" Background="{DynamicResource InfoPane.Xp.Header}">
+                            <Grid ColumnDefinitions="*,16">
+                                <TextBlock Text="File and Folder Tasks" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource InfoPane.Xp.HeadingText}" />
+                                <ToggleButton Grid.Column="1" x:Name="XpTasksToggle" Classes="XpChevron"
+                                              Theme="{StaticResource InfoPane.Xp.ChevronButtonTheme}"
+                                              IsChecked="True" Click="OnXpTasksToggle"
+                                              AutomationProperties.Name="Collapse File and Folder Tasks"
+                                              ToolTip.Tip="Collapse File and Folder Tasks">
+                                    <Grid Width="16" Height="16">
+                                        <Ellipse Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Fill="#FFFFFF" Stroke="#9BB7DE" />
+                                        <Path x:Name="XpTasksChevron" Width="16" Height="16" Stretch="None"
+                                              Data="M4.5,9.75 L8,6.25 L11.5,9.75"
+                                              Stroke="{DynamicResource InfoPane.Xp.Arrow}" StrokeThickness="1.2"
+                                              RenderTransformOrigin="50%,50%" IsHitTestVisible="False">
+                                            <Path.RenderTransform>
+                                                <RotateTransform Angle="0">
+                                                    <RotateTransform.Transitions>
+                                                        <Transitions>
+                                                            <DoubleTransition Property="Angle" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                                                        </Transitions>
+                                                    </RotateTransform.Transitions>
+                                                </RotateTransform>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Grid>
+                                </ToggleButton>
+                            </Grid>
                         </Border>
-                        <StackPanel x:Name="XpLinksPanel" Margin="12,6,10,8" Spacing="4" />
+                        <StackPanel x:Name="XpTasksPanel" Margin="10,7,9,9" Spacing="5">
+                            <StackPanel.Transitions>
+                                <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.16" /></Transitions>
+                            </StackPanel.Transitions>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-                <!-- Details group -->
-                <Border CornerRadius="4" Background="#F5F8FD" BorderBrush="{DynamicResource Luna.Brush.InfoPaneBorder}" BorderThickness="1">
+                <Border CornerRadius="6" Background="#F8FAFF" BorderBrush="{DynamicResource InfoPane.Xp.Border}" BorderThickness="1">
                     <StackPanel>
-                        <Border CornerRadius="4,4,0,0" Padding="8,4"
-                                Background="{DynamicResource Luna.Brush.InfoPaneHeader}">
-                            <TextBlock Text="Details" FontWeight="Bold" FontSize="11" Foreground="#2A3F73" />
+                        <Border CornerRadius="5,5,0,0" Padding="9,5" Background="{DynamicResource InfoPane.Xp.Header}">
+                            <Grid ColumnDefinitions="*,16">
+                                <TextBlock Text="Other Places" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource InfoPane.Xp.HeadingText}" />
+                                <ToggleButton Grid.Column="1" x:Name="XpPlacesToggle" Classes="XpChevron"
+                                              Theme="{StaticResource InfoPane.Xp.ChevronButtonTheme}"
+                                              IsChecked="True" Click="OnXpPlacesToggle"
+                                              AutomationProperties.Name="Collapse Other Places"
+                                              ToolTip.Tip="Collapse Other Places">
+                                    <Grid Width="16" Height="16">
+                                        <Ellipse Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Fill="#FFFFFF" Stroke="#9BB7DE" />
+                                        <Path x:Name="XpPlacesChevron" Width="16" Height="16" Stretch="None"
+                                              Data="M4.5,9.75 L8,6.25 L11.5,9.75"
+                                              Stroke="{DynamicResource InfoPane.Xp.Arrow}" StrokeThickness="1.2"
+                                              RenderTransformOrigin="50%,50%" IsHitTestVisible="False">
+                                            <Path.RenderTransform>
+                                                <RotateTransform Angle="0">
+                                                    <RotateTransform.Transitions>
+                                                        <Transitions>
+                                                            <DoubleTransition Property="Angle" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                                                        </Transitions>
+                                                    </RotateTransform.Transitions>
+                                                </RotateTransform>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Grid>
+                                </ToggleButton>
+                            </Grid>
                         </Border>
-                        <StackPanel Margin="12,6,10,8" Spacing="3">
-                            <TextBlock x:Name="XpTitle" FontWeight="Bold" FontSize="12" Foreground="#20325C" TextWrapping="Wrap" />
-                            <TextBlock x:Name="XpDescription" FontSize="11" Foreground="#31456F" TextWrapping="Wrap" />
-                            <TextBlock x:Name="XpCount" FontSize="11" Foreground="#5A6E96" Margin="0,2,0,0" />
+                        <StackPanel x:Name="XpLinksPanel" Margin="10,7,9,9" Spacing="5">
+                            <StackPanel.Transitions>
+                                <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.16" /></Transitions>
+                            </StackPanel.Transitions>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <Border CornerRadius="6" Background="#F8FAFF" BorderBrush="{DynamicResource InfoPane.Xp.Border}" BorderThickness="1">
+                    <StackPanel>
+                        <Border CornerRadius="5,5,0,0" Padding="9,5" Background="{DynamicResource InfoPane.Xp.Header}">
+                            <Grid ColumnDefinitions="*,16">
+                                <TextBlock Text="Details" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource InfoPane.Xp.HeadingText}" />
+                                <ToggleButton Grid.Column="1" x:Name="XpDetailsToggle" Classes="XpChevron"
+                                              Theme="{StaticResource InfoPane.Xp.ChevronButtonTheme}"
+                                              IsChecked="True" Click="OnXpDetailsToggle"
+                                              AutomationProperties.Name="Collapse Details"
+                                              ToolTip.Tip="Collapse Details">
+                                    <Grid Width="16" Height="16">
+                                        <Ellipse Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Fill="#FFFFFF" Stroke="#9BB7DE" />
+                                        <Path x:Name="XpDetailsChevron" Width="16" Height="16" Stretch="None"
+                                              Data="M4.5,9.75 L8,6.25 L11.5,9.75"
+                                              Stroke="{DynamicResource InfoPane.Xp.Arrow}" StrokeThickness="1.2"
+                                              RenderTransformOrigin="50%,50%" IsHitTestVisible="False">
+                                            <Path.RenderTransform>
+                                                <RotateTransform Angle="0">
+                                                    <RotateTransform.Transitions>
+                                                        <Transitions>
+                                                            <DoubleTransition Property="Angle" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                                                        </Transitions>
+                                                    </RotateTransform.Transitions>
+                                                </RotateTransform>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Grid>
+                                </ToggleButton>
+                            </Grid>
+                        </Border>
+                        <StackPanel x:Name="XpDetailsPanel" Margin="10,8,10,10" Spacing="3">
+                            <StackPanel.Transitions>
+                                <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.16" /></Transitions>
+                            </StackPanel.Transitions>
+                            <TextBlock x:Name="XpTitle" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource InfoPane.Xp.HeadingText}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="XpDescription" FontSize="10.5" Foreground="{DynamicResource InfoPane.Xp.BodyText}" TextWrapping="Wrap" LineHeight="14" />
+                            <TextBlock x:Name="XpCount" FontSize="10" Foreground="{DynamicResource InfoPane.Xp.MutedText}" Margin="0,3,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ═══ Windows 9x: flat, minimal panel — no banner, plain system face ═══ -->
+        <!-- Vista / 7 Navigation: favorite places first, contextual commands second, and a compact details
+             footer. Every visible row is backed by a real callback; there are no decorative dead targets. -->
+        <Grid x:Name="ModernView" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto"
+              Background="{DynamicResource InfoPane.Modern.Background}">
+            <Border Grid.Row="0" Padding="11,9,8,6" BorderBrush="{DynamicResource InfoPane.Modern.Divider}" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Favorite Links" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource InfoPane.Modern.Heading}" />
+                    <Path Grid.Column="1" Data="M1,6 L5,2 L9,6" Stroke="{DynamicResource InfoPane.Modern.SecondaryText}" StrokeThickness="1.2" />
+                </Grid>
+            </Border>
+            <StackPanel Grid.Row="1" x:Name="ModernLinksPanel" Margin="6,5,6,8" Spacing="1" />
+            <StackPanel Grid.Row="2">
+                <Border Height="1" Background="{DynamicResource InfoPane.Modern.Divider}" Margin="8,0" />
+                <TextBlock Text="Commands" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource InfoPane.Modern.Heading}" Margin="11,8,8,4" />
+                <StackPanel x:Name="ModernTasksPanel" Margin="6,0,6,0" Spacing="1" />
+            </StackPanel>
+            <Border Grid.Row="3" Margin="8" Padding="8" CornerRadius="3"
+                    Background="{DynamicResource InfoPane.Modern.DetailsSurface}"
+                    BorderBrush="{DynamicResource InfoPane.Modern.DetailsBorder}" BorderThickness="1">
+                <StackPanel Spacing="2">
+                    <TextBlock x:Name="ModernTitle" FontWeight="SemiBold" FontSize="11"
+                               Foreground="{DynamicResource InfoPane.Modern.Text}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ModernDescription" FontSize="10"
+                               Foreground="{DynamicResource InfoPane.Modern.SecondaryText}" TextWrapping="Wrap" MaxHeight="44" />
+                    <TextBlock x:Name="ModernCount" FontSize="10" Foreground="{DynamicResource InfoPane.Modern.MutedText}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Windows 95 / NT4: intentionally no Web View furniture. It remains useful as the austere,
+             low-distraction metadata preset rather than pretending to be a navigation sidebar. -->
         <Border x:Name="Win9xView" IsVisible="False" Background="{DynamicResource Bevel.Brush.ButtonFace}">
             <StackPanel Margin="10,12,10,10" Spacing="6">
                 <TextBlock x:Name="Win9xTitle" FontWeight="Bold" FontSize="12"
@@ -101,6 +363,5 @@
                 <TextBlock x:Name="Win9xCount" FontSize="11" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
             </StackPanel>
         </Border>
-
     </Panel>
 </UserControl>
