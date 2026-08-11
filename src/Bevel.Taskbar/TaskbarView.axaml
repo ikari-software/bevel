@@ -349,7 +349,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
                                                         <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
-                                                               Height="{Binding CellHeight}" Stretch="Uniform"
+                                                               Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform"
                                                                Margin="4" VerticalAlignment="Center"
                                                                ToolTip.Tip="{Binding Tooltip}"
                                                                PointerPressed="OnTrayIconPressed" />
@@ -373,8 +373,11 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
+                                        <!-- NATIVE mac size (bevel-7hf4): render at the item's true on-screen
+                                             size (IconW×IconH, points) — no rescale. TrayRowsPanel bounds the
+                                             footprint (16 box-widths/row); it never resizes the icon. -->
                                         <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
-                                               Height="{Binding CellHeight}" Stretch="Uniform" Margin="2,1"
+                                               Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform" Margin="1,0"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
                                                PointerPressed="OnTrayIconPressed" />
                                     </DataTemplate>

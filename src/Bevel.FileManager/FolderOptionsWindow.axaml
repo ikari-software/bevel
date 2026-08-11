@@ -36,9 +36,9 @@
 
             <TabItem Header="Info Panel">
                 <StackPanel Spacing="10" Margin="8">
-                    <TextBlock Text="Left info panel style" FontWeight="SemiBold" FontSize="12" />
-                    <ComboBox x:Name="InfoPaneCombo" Width="220" HorizontalAlignment="Left" />
-                    <TextBlock Text="The folder info panel shown on the left. Rendered as native vector art (no web engine), themed to match."
+                    <TextBlock Text="Explorer sidebar era" FontWeight="SemiBold" FontSize="12" />
+                    <ComboBox x:Name="InfoPaneCombo" Width="250" HorizontalAlignment="Left" />
+                    <TextBlock Text="Choose the left-side design independently of the active theme. Each reconstruction uses scalable vector geometry and gradients—never bitmap chrome."
                                FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
             </TabItem>

@@ -79,6 +79,32 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - RPC registration
 
+    /// The menu-bar control item (Strategy A), set once at startup by main(). Reached from the
+    /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
+    nonisolated(unsafe) var controlItem: MenuBarControlItem?
+
+    /// Reveal-at-top click (U6/C2). When consolidated the target may be hidden off-screen, where
+    /// `forwardClick`'s on-screen lookup can't find it. Temporarily collapse the control item to bring
+    /// the items back onto the bar, forward the click there (the owning app's menu opens at the TOP,
+    /// mirroring Ice — true bottom-native is impossible, C3 is dead), then rehide on a timer.
+    /// Menu-dismiss-based rehide is the polish (see the plan's open questions).
+    func forwardClickWithReveal(
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) async -> Bool {
+        let wasHiding = self.controlItem?.isHidingItems ?? false
+        if wasHiding {
+            self.controlItem?.requestHidden(false)
+            try? await Task.sleep(nanoseconds: 400_000_000)   // let the timer apply + the bar reflow items back
+        }
+        let delivered = self.forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+        if wasHiding {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)   // leave time to use the menu, then rehide
+                self?.controlItem?.requestHidden(true)
+            }
+        }
+        return delivered
+    }
+
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
         let serviceName = "bevel.helper.v1.TrayService"
 
@@ -126,8 +152,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     }
 
                     // 2. Poll + diff until cancelled (client disconnect cancels the producer Task).
+                    // Adaptive cadence (U4): refresh faster while consolidated (the tray IS the menu bar
+                    // then, so liveness matters most), slower in plain mirror mode to save CPU.
                     while !Task.isCancelled {
-                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        let interval: UInt64 = (self.controlItem?.isHidingItems ?? false) ? 900_000_000 : 2_000_000_000
+                        try await Task.sleep(nanoseconds: interval)
                         let current = await self.enumerateWithCapture()
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
                         for item in current { currentByID[item.itemID] = item }
@@ -136,7 +165,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                         // (whose pixels can differ each frame) doesn't spam UPDATE for every item.
                         for item in current {
                             if let prev = lastByID[item.itemID] {
-                                if self.signature(prev) != self.signature(item) {
+                                // Update on identity change OR icon-content change (U4). The legacy-CG
+                                // capture (U1) reads the backing store deterministically, so a static
+                                // icon yields identical bytes and only a real change (battery %, spinner)
+                                // differs — live icons without the per-pixel-jitter spam that led
+                                // signature() to exclude bytes. If a capture path ever reintroduces
+                                // jitter, quantize/debounce here (see freshness open question).
+                                if self.signature(prev) != self.signature(item) || prev.iconPng != item.iconPng {
                                     try await writer.write(self.change(.updated, item))
                                 }
                             } else {
@@ -165,8 +200,30 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ForwardClickReply()
-                reply.delivered = self.forwardClick(
+                reply.delivered = await self.forwardClickWithReveal(
                     itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
+        // ── SetConsolidation ─────────────────────────────────────────────
+        // Hide (enabled) or reveal (disabled) the real status items via the control item (Strategy A).
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "SetConsolidation"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_SetConsolidationRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_SetConsolidationReply>(),
+            handler: { [weak self] request, context in
+                guard let self else { throw RPCError(code: .internalError, message: "TrayService deallocated") }
+                try AuthInterceptor.authenticate(
+                    request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
+                let req = try await ServerRequest(stream: request)
+                let enabled = req.message.enabled
+                consolidationLog("SetConsolidation RPC received enabled=\(enabled) controlItem=\(self.controlItem != nil)")
+                // Non-blocking: set the flag; the control item's main-run-loop timer applies it. Never
+                // hop to the main thread from here (that deadlocks in the status-bar IPC). Reply at once.
+                self.controlItem?.requestHidden(enabled)
+                var reply = Bevel_Helper_V1_SetConsolidationReply()
+                reply.applied = true
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -308,8 +365,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func enumerateTrayItems() -> [Bevel_Helper_V1_TrayItem] {
         if subsystemDisabled { return [] }   // hard feature flag (§10.1)
         let ownPID = getpid()
+        // Include OFF-SCREEN windows: Strategy A hides the real items by pushing them off-screen (the
+        // app-side control item expands), and the tray must still show them. The layer/band/size filters
+        // below keep this to menu-bar items; U1's legacy CG capture reads their icons even while hidden.
         guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            [.excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
             return []
         }
 
@@ -325,8 +385,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                   rect.width >= 8, rect.width <= 400 else { continue }
 
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
+            // Self-exclusion (U3): never mirror Bevel's own control item. On macOS 26 it's owned by the
+            // Control Centre process, so the own-PID filter above can't catch it — exclude by window ID.
+            if let ctrl = controlItem?.cachedWindowID, windowNumber == Int(ctrl) { continue }
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
+            // Exclude Bevel's own app-side control item so we never mirror ourselves (its ◂◂ marker title).
+            if windowName.contains("◂") { continue }
 
             // Denylist (§5, bevel-m3.4): drop items we should not mirror — iStat Menus (live graphs
             // that belong in the native bar; the spec's canonical example), Control Center's own
@@ -368,6 +433,29 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return sorted
     }
 
+    /// TEMP geometry probe (bevel-7hf4): when /tmp/bevel-geo exists, dump every menu-bar status window
+    /// (ON + OFF screen) with its x/width and on-screen flag, so we can see where hidden items sit and
+    /// whether there's a slot next to the control item that stays visible after re-hide. Removed once the
+    /// single-item reveal geometry is settled.
+    private func dumpGeometry() {
+        guard FileManager.default.fileExists(atPath: "/tmp/bevel-geo") else { return }
+        guard let wins = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return }
+        var rows: [(Double, String)] = []
+        for w in wins {
+            guard (w[kCGWindowLayer as String] as? Int) == statusWindowLayer,
+                  let bd = w[kCGWindowBounds as String] as? [String: Any],
+                  let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 else { continue }
+            let owner = (w[kCGWindowOwnerName as String] as? String) ?? "?"
+            let name = (w[kCGWindowName as String] as? String) ?? ""
+            let on = (w[kCGWindowIsOnscreen as String] as? Bool) ?? false
+            rows.append((r.origin.x, String(format: "on=%@ x=%5.0f w=%3.0f  %@ '%@'", on ? "Y" : "n",
+                                             r.origin.x, r.width, owner, name)))
+        }
+        let text = rows.sorted { $0.0 < $1.0 }.map { $0.1 }.joined(separator: "\n")
+        try? text.write(toFile: "/tmp/bevel-geo.log", atomically: true, encoding: .utf8)
+    }
+
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
@@ -376,22 +464,23 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
+        dumpGeometry()   // TEMP (bevel-7hf4): geometry probe for single-item reveal; self-gated by /tmp/bevel-geo
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.
         guard isLiveMirroringEnabled, CGPreflightScreenCaptureAccess() else { return items }
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true) else {
-            return items
-        }
-        var byWindowID: [CGWindowID: SCWindow] = [:]
-        for win in content.windows { byWindowID[win.windowID] = win }
 
+        // Capture each item's window by ID via the legacy CG path (U1/KTD1). Unlike ScreenCaptureKit
+        // (which returns -3811 once a window leaves every display), this reads the backing store
+        // directly, so items hidden off-screen by Strategy A still capture their real glyph instead of
+        // falling back to the limited-mode app icon. Keyed on the windowNumber half of item_id — no
+        // on-screen SCShareableContent gate.
         for i in items.indices {
             let parts = items[i].itemID.split(separator: ":")
             guard parts.count == 2, let num = UInt32(parts[1]),
-                  let scWin = byWindowID[CGWindowID(num)] else { continue }
-            if let png = await captureWindow(scWin), !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
+                  let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+            let png = pngFromCGImage(cgImage)
+            if !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
             }
@@ -418,42 +507,16 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
-    /// Downscales a captured CGImage to a PNG normalized to a fixed HEIGHT with WIDTH proportional to the
-    /// glyph. A menu-bar status item can be much wider than tall (text like "exo", segmented widgets);
-    /// rendering into a fixed 16×16 square capped those at 16px wide — narrower than the real bar. Trimming
-    /// the transparent padding then fitting to height keeps the item's TRUE width. Height is 2× the 16px
-    /// display for a crisp downscale; width is clamped so a runaway capture can't emit a huge strip.
+    /// Encodes a captured status-item window at its NATIVE resolution — NO rescale, NO fit-to-box. The
+    /// tray renders each mirrored item at its true macOS size (from the item's on-screen `bounds`, in
+    /// points), so a mac icon stays exactly mac-sized — a FAITHFUL slice of the menu bar (bevel-7hf4).
+    /// Any scaling here reintroduces the per-item size drift that made the tray look shrunk/flattened; the
+    /// only sizing lives in the taskbar (display at bounds size) and the box grid (footprint, never size).
+    /// Blank-frame guard only: a fully-transparent/unreadable capture emits nothing so the caller keeps the
+    /// limited-mode icon (review: adversarial). The retina pixels downscale crisply to the point-size box.
     private func pngFromCGImage(_ cgImage: CGImage) -> Data {
-        let fullW = CGFloat(cgImage.width), fullH = CGFloat(cgImage.height)
-        // Use trim ONLY as the blank-frame guard: a nil trim means the capture is fully transparent (or
-        // unreadable), so emit nothing and let the caller keep the limited-mode icon (review: adversarial).
-        guard trimTransparent(cgImage) != nil, fullW > 0, fullH > 0 else { return Data() }
-
-        // Do NOT trim for sizing. The captured status-item window IS a uniform menu-bar CELL (every item's
-        // window is ~30px tall), with its glyph/text positioned + padded within it exactly as macOS draws
-        // it. Trimming deleted that padding and inflated short text ("exo") to full height. Scale the WHOLE
-        // cell uniformly to the tray box, so every item keeps its true menu-bar proportion — icons large,
-        // text small with the padding the bar keeps — a faithful shrink of the real menu bar.
-        let L = Self.trayGlyphLayout(gw: fullW, gh: fullH, fullH: fullH)
-        let canvasW = L.canvasW, canvasH = L.canvasH
-
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: canvasW, pixelsHigh: canvasH,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
-            return Data()
-        }
-        rep.size = NSSize(width: canvasW, height: canvasH)
-        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return Data() }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = ctx
-        ctx.imageInterpolation = .high
-        // Draw the whole captured cell into the canvas (uniform scale — canvas aspect == window aspect).
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: fullW, height: fullH))
-        image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(canvasW), height: CGFloat(canvasH)),
-                   from: .zero, operation: .copy, fraction: 1.0)
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:]) ?? Data()
+        guard cgImage.width > 0, cgImage.height > 0, trimTransparent(cgImage) != nil else { return Data() }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
     }
 
     /// Output layout for a trimmed tray glyph — the sizing math, PURE so it can be regression-tested

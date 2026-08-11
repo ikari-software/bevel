@@ -337,6 +337,7 @@ public sealed class SettingsService : IDisposable
         SetOrPrune("taskbarOpacity", _settings.TaskbarOpacity, d.TaskbarOpacity, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarTrayOverflowCap", _settings.TaskbarTrayOverflowCap, d.TaskbarTrayOverflowCap, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarTrayIconSize", _settings.TaskbarTrayIconSize, d.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarConsolidateMenuBar", _settings.TaskbarConsolidateMenuBar, d.TaskbarConsolidateMenuBar, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarShowDesktopButton", _settings.TaskbarShowDesktopButton, d.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
@@ -457,6 +458,7 @@ public sealed class SettingsService : IDisposable
             TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
             TaskbarTrayOverflowCap = GetInt("taskbarTrayOverflowCap") ?? 8,
             TaskbarTrayIconSize = GetInt("taskbarTrayIconSize") ?? 16,
+            TaskbarConsolidateMenuBar = GetBool("taskbarConsolidateMenuBar") ?? false,
             TaskbarLocked = GetBool("taskbarLocked") ?? false,
             TaskbarAlwaysOnTop = GetBool("taskbarAlwaysOnTop") ?? true,
             TaskbarShowDesktopButton = GetBool("taskbarShowDesktopButton") ?? false,
@@ -632,6 +634,10 @@ public sealed class BevelSettings
     /// <summary>Displayed size (px) of each mirrored tray icon. Default 16 (classic).</summary>
     public int TaskbarTrayIconSize { get; set; } = 16;
 
+    /// <summary>Strategy C (bevel-7hf4): hide the real macOS menu bar and consolidate its items into
+    /// Bevel's tray. Off (default) keeps today's mirror behaviour.</summary>
+    public bool TaskbarConsolidateMenuBar { get; set; }
+
     // ── Behavior (bevel-cust.behavior) ──────────────────────────────────────────────────────────
 
     /// <summary>Locked taskbar can't be resized (the row-resize gripper is hidden), Win-style.</summary>
@@ -680,6 +686,9 @@ public enum InfoPaneStyle
 
     /// <summary>XP Luna task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
     WinXP,
+
+    /// <summary>Vista/Windows 7-inspired navigation pane: favorites, places, and contextual details.</summary>
+    Modern,
 
     /// <summary>Match the active theme: the XP Luna task-pane under Luna, the Win2000 banner under Win2000.
     /// The default — a fresh install shows the pane that fits whatever skin it boots in. Resolved to a

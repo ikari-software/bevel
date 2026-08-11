@@ -66,7 +66,11 @@ public static class TrayIconTint
 
         double fill = (double)opaque / total;
         double colourFrac = opaque == 0 ? 1 : (double)coloured / opaque;
-        bool isTemplate = opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
+        // Disabled per user preference (bevel-7hf4): show every icon in its REAL captured appearance
+        // rather than flattening monochrome glyphs to a single theme ink — they lose their distinct look.
+        // The analysis above is kept behind this flag for a future opt-in "theme tray icons" setting.
+        const bool TintTemplateIcons = false;
+        bool isTemplate = TintTemplateIcons && opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
         if (!isTemplate) return new Result(src, false);
 
         // Recolour: RGB <- ink, A <- source alpha (premultiplied). The glyph SHAPE lives in the alpha.

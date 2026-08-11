@@ -23,9 +23,24 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
-    /// <summary>Default inline tray-icon count before overflow (bevel-m3.4); user-overridable
-    /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
+    /// <summary>Strategy C (bevel-7hf4): consolidate the real macOS menu bar into this tray (hide the
+    /// real items) or reveal it. Drives the helper's control item via the tray host; fire-and-forget
+    /// (failures are logged host-side, bounded by a deadline).</summary>
+    public void SetConsolidated(bool consolidated)
+    {
+        _consolidated = consolidated;
+        _ = _tray?.SetNativeTrayHiddenAsync(consolidated);
+    }
+
+    private bool _consolidated;
+
+    /// <summary>Default per-row overflow budget in BOX-WIDTHS (bevel-cust.tray): the tray shows up to this
+    /// many box-slots of icons per taskbar row before the rest move under the overflow chevron.</summary>
     public const int DefaultVisibleCap = 8;
+
+    /// <summary>One box-slot's width in points — the unit the overflow budget counts. A single native
+    /// menu-bar icon is ~one box; a wide strip (iStat) spans several (<see cref="TrayItemViewModel.BoxSpan"/>).</summary>
+    public const double BoxWidth = 24;
 
     // Tray tuning bounds (bevel-cust.tray). Keep in sync with OnboardingWindow.axaml's TrayCapSlider /
     // TrayIconSizeSlider Minimum/Maximum — the domain clamp and the UI slider must not drift apart.
@@ -55,9 +70,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// rows — robust to per-icon pixel heights, unlike a height-driven WrapPanel.</summary>
     public int Rows { get => _rows; private set => SetProperty(ref _rows, value); }
 
-    /// <summary>Effective inline capacity = the PER-ROW cap × the taskbar row count — a taller bar shows
-    /// proportionally more icons before the overflow chevron.</summary>
-    private int EffectiveCap => Math.Max(1, VisibleCap * Math.Max(1, _rows));
+    /// <summary>Total inline capacity in BOX-WIDTHS = the per-row box budget × the taskbar row count — a
+    /// taller bar shows proportionally more before the overflow chevron.</summary>
+    private int BoxBudget => Math.Max(1, VisibleCap * Math.Max(1, _rows));
 
     /// <summary>Track the taskbar row count (bevel-m3). Reslices when it changes.</summary>
     public void SetRows(int rows)
@@ -72,7 +87,8 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public void Configure(int overflowCap, int iconSize)
     {
         _iconSize = Math.Clamp(iconSize, MinIconSize, MaxIconSize);
-        foreach (var it in Items) it.IconSize = _iconSize;
+        var scale = _iconSize / 16.0;   // 16 == Native (1.0×); the slider scales native size uniformly
+        foreach (var it in Items) it.SetScale(scale);
         VisibleCap = Math.Clamp(overflowCap, MinOverflowCap, MaxOverflowCap);
         Reslice();
     }
@@ -101,6 +117,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public async Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
     {
         PromoteToVisible(id);
+        // Reveal-on-click (C2): with overlay-hide (bevel-7hf4) landed, the real items are never moved —
+        // they stay on-screen under the level-26 cover, so this click AX-presses their live coordinates
+        // directly and the resulting system menu pops above the overlay. No collapse/reveal/rehide dance.
         return await (_tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false));
     }
 
@@ -111,9 +130,11 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         var index = -1;
         for (var i = 0; i < Items.Count; i++)
             if (Items[i].Id.Equals(id)) { index = i; break; }
-        if (index >= EffectiveCap)
+        // If the used item isn't currently inline (it's under the overflow flyout), hoist it to the front
+        // so it earns an inline slot — a light LRU that keeps an item you actually use reachable.
+        if (index > 0 && !VisibleItems.Any(v => v.Id.Equals(id)))
         {
-            Items.Move(index, EffectiveCap - 1);
+            Items.Move(index, 0);
             Reslice();
         }
     }
@@ -149,8 +170,11 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(item.Id));
         if (existing is not null) { existing.Update(item); return; } // in-place update — no reslice needed
-        Items.Add(new TrayItemViewModel(item) { IconSize = _iconSize, Ink = _ink });
+        var vm = new TrayItemViewModel(item) { Ink = _ink };
+        vm.SetScale(_iconSize / 16.0);
+        Items.Add(vm);
         Reslice();
+        RepokeConsolidation();
     }
 
     private void Remove(TrayItemId id)
@@ -159,15 +183,38 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         if (existing is null) return;
         Items.Remove(existing);
         Reslice();
+        RepokeConsolidation();
+    }
+
+    /// <summary>Menu-bar reflow (bevel-7hf4, overlay-hide risk 5): adding/removing a real status item
+    /// shifts its neighbours by its full width, moving the covered span. Re-apply the hide so the host
+    /// recomputes the cover frame from its fresh bounds cache. Cheap: the overlay no-ops unless the frame
+    /// actually changed, so the frame-diff is its own debounce. Runs on the UI thread (callers already Post).</summary>
+    private void RepokeConsolidation()
+    {
+        if (_consolidated) _ = _tray?.SetNativeTrayHiddenAsync(true);
     }
 
     /// <summary>Reconciles <see cref="VisibleItems"/> / <see cref="OverflowItems"/> to the first-N /
     /// rest of <see cref="Items"/> in place (shared VM instances, so bindings/icons survive).</summary>
     private void Reslice()
     {
-        SyncTo(VisibleItems, Items.Take(EffectiveCap));
-        SyncTo(OverflowItems, Items.Skip(EffectiveCap));
-        HasOverflow = Items.Count > EffectiveCap;
+        // Fill the inline strip GREEDILY by BOX-WIDTH budget: add each item whose box-span fits the
+        // REMAINING budget, and skip (overflow) any too wide to fit — so one very wide item (e.g. a 269pt
+        // combined strip = 12 boxes) drops to the flyout instead of truncating every item after it.
+        var budget = BoxBudget;
+        var vis = new List<TrayItemViewModel>();
+        var over = new List<TrayItemViewModel>();
+        var used = 0;
+        foreach (var it in Items)
+        {
+            var span = it.BoxSpan;
+            if (used + span <= budget) { vis.Add(it); used += span; }
+            else over.Add(it);
+        }
+        SyncTo(VisibleItems, vis);
+        SyncTo(OverflowItems, over);
+        HasOverflow = over.Count > 0;
         HasAnyItems = Items.Count > 0;
     }
 
@@ -219,24 +266,42 @@ public sealed class TrayItemViewModel : ObservableObject
     /// (theme/variant switch) re-tints in place.</summary>
     public Color Ink { get => _ink; set { if (_ink != value) { _ink = value; Retint(); } } }
 
-    private double _iconSize = 16;
-    /// <summary>Target icon-content edge length (px), driven by the tray icon-size setting (bevel-cust.tray).</summary>
-    public double IconSize
-    {
-        get => _iconSize;
-        set { if (SetProperty(ref _iconSize, value)) OnPropertyChanged(nameof(CellHeight)); }
-    }
+    // NATIVE size + a single tray-wide uniform SCALE (bevel-7hf4). The mirrored icon renders at its true
+    // macOS on-screen size (from bounds, points) × the scale — default 1.0 = "Native", so a mac icon stays
+    // mac-sized. The scale is uniform across every item, so it never reintroduces per-item size drift.
+    private double _nativeW = 24, _nativeH = 22, _scale = 1.0;
 
-    /// <summary>Height the tray Image is rendered at. The captured PNG is the whole menu-bar CELL (the
-    /// glyph/text padded inside it, as the bar draws it — see TrayServiceImpl.pngFromCGImage), so it must
-    /// render TALLER than the icon content: a typical glyph is ~0.6 of its cell, so rendering at ~1.7×
-    /// IconSize lands the icon content at IconSize (matching the macOS menu bar) while text stays small
-    /// with its padding. Clamped to the taskbar height so it can't overflow the bar.</summary>
-    public double CellHeight => Math.Min(30.0, _iconSize * 1.7);
+    /// <summary>Rendered size (points) = native on-screen size × the tray scale.</summary>
+    public double IconW => _nativeW * _scale;
+    public double IconH => _nativeH * _scale;
+
+    /// <summary>How many box-slots this item spans in the overflow budget — its NATIVE width in
+    /// <see cref="TrayViewModel.BoxWidth"/> units (scale-independent, so the "N boxes/row" cap is stable
+    /// at any display scale). A wide strip (iStat) counts as several boxes; every item is at least 1.</summary>
+    public int BoxSpan => Math.Max(1, (int)Math.Ceiling(_nativeW / TrayViewModel.BoxWidth));
+
+    /// <summary>Sets the tray-wide uniform display scale (1.0 = native size).</summary>
+    public void SetScale(double scale)
+    {
+        scale = scale <= 0 ? 1.0 : scale;
+        if (Math.Abs(_scale - scale) < 0.001) return;
+        _scale = scale;
+        OnPropertyChanged(nameof(IconW));
+        OnPropertyChanged(nameof(IconH));
+    }
 
     public void Update(TrayItem item)
     {
         Tooltip = string.IsNullOrEmpty(item.Tooltip) ? (item.OwnerName ?? "") : item.Tooltip;
+        // Native size: the item's true on-screen size (bounds are integer points).
+        if (item.Bounds is { } b && b.Width >= 1 && b.Height >= 1)
+        {
+            _nativeW = b.Width;
+            _nativeH = b.Height;
+            OnPropertyChanged(nameof(IconW));
+            OnPropertyChanged(nameof(IconH));
+            OnPropertyChanged(nameof(BoxSpan));
+        }
         _png = item.IconPng;
         Retint();
     }

@@ -170,6 +170,8 @@ public partial class TaskbarView : UserControl
         _opacity = s.TaskbarOpacity;
         ApplyAppearance(_fontSize, _bgColor, _opacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
+        _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
+
         _locked = s.TaskbarLocked;
         ResizeGrip.IsVisible = !_locked;
         LockMenuItem.IsChecked = _locked;   // reflect lock state as the context-menu check mark
