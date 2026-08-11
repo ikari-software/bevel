@@ -361,7 +361,7 @@
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TrayCapValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
-                            <TextBlock Text="Icons per taskbar ROW shown inline before the rest move under the overflow chevron — a 2-row bar shows twice as many."
+                            <TextBlock Text="Box-widths per taskbar ROW shown inline before the rest move under the overflow chevron (a wide item like the iStat strip spans several boxes) — a 2-row bar shows twice as many."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
@@ -371,6 +371,9 @@
                                         Width="150" VerticalAlignment="Center" />
                                 <TextBlock x:Name="TrayIconSizeValue" FontSize="11" VerticalAlignment="Center" Width="56" />
                             </StackPanel>
+                            <TextBlock Text="Mirrored icons render at their true macOS size (Native). Move the slider to scale every icon uniformly — Native keeps them pixel-faithful to the menu bar."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <CheckBox x:Name="ConsolidateCheck"
                                       Content="Consolidate the menu bar into the tray"

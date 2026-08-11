@@ -119,7 +119,9 @@ public class TrayViewModelTests
 
         Assert.Equal(3, vm.VisibleItems.Count);
         Assert.Equal(7, vm.OverflowItems.Count);
-        Assert.All(vm.VisibleItems, i => Assert.Equal(24, i.IconSize));
+        // Icon size is a uniform scale of the NATIVE size (16 == native): iconSize 24 → 1.5× → a bounds-less
+        // test item (native 24pt) renders at 36pt. Uniform, so no per-item drift.
+        Assert.All(vm.VisibleItems, i => Assert.Equal(36, i.IconW));
     }
 
     private sealed class StubTray : ISystemTrayHost

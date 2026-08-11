@@ -180,9 +180,9 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         ConsolidateCheck.IsChecked = s.TaskbarConsolidateMenuBar;
         TrayCapSlider.Value = s.TaskbarTrayOverflowCap;
-        TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} / row";
+        TrayCapValue.Text = $"{s.TaskbarTrayOverflowCap} boxes / row";
         TrayIconSizeSlider.Value = s.TaskbarTrayIconSize;
-        TrayIconSizeValue.Text = $"{s.TaskbarTrayIconSize} px";
+        TrayIconSizeValue.Text = TrayScaleLabel(s.TaskbarTrayIconSize);
 
         LockCheck.IsChecked = s.TaskbarLocked;
         AlwaysOnTopCheck.IsChecked = s.TaskbarAlwaysOnTop;
@@ -603,10 +603,14 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
     private void OnTraySliderChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        TrayCapValue.Text = $"{(int)Math.Round(TrayCapSlider.Value)} / row";
-        TrayIconSizeValue.Text = $"{(int)Math.Round(TrayIconSizeSlider.Value)} px";
+        TrayCapValue.Text = $"{(int)Math.Round(TrayCapSlider.Value)} boxes / row";
+        TrayIconSizeValue.Text = TrayScaleLabel((int)Math.Round(TrayIconSizeSlider.Value));
         PersistTray();
     }
+
+    /// <summary>The tray icon-size slider scales the NATIVE macOS size uniformly; 16 == native (bevel-7hf4).
+    /// Show "Native" at the baseline so the safe default reads clearly, a ×multiplier otherwise.</summary>
+    private static string TrayScaleLabel(int size) => size == 16 ? "Native" : $"{size / 16.0:0.##}×";
 
     private async void PersistTray()
     {

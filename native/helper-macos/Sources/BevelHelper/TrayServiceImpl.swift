@@ -483,42 +483,16 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
-    /// Downscales a captured CGImage to a PNG normalized to a fixed HEIGHT with WIDTH proportional to the
-    /// glyph. A menu-bar status item can be much wider than tall (text like "exo", segmented widgets);
-    /// rendering into a fixed 16×16 square capped those at 16px wide — narrower than the real bar. Trimming
-    /// the transparent padding then fitting to height keeps the item's TRUE width. Height is 2× the 16px
-    /// display for a crisp downscale; width is clamped so a runaway capture can't emit a huge strip.
+    /// Encodes a captured status-item window at its NATIVE resolution — NO rescale, NO fit-to-box. The
+    /// tray renders each mirrored item at its true macOS size (from the item's on-screen `bounds`, in
+    /// points), so a mac icon stays exactly mac-sized — a FAITHFUL slice of the menu bar (bevel-7hf4).
+    /// Any scaling here reintroduces the per-item size drift that made the tray look shrunk/flattened; the
+    /// only sizing lives in the taskbar (display at bounds size) and the box grid (footprint, never size).
+    /// Blank-frame guard only: a fully-transparent/unreadable capture emits nothing so the caller keeps the
+    /// limited-mode icon (review: adversarial). The retina pixels downscale crisply to the point-size box.
     private func pngFromCGImage(_ cgImage: CGImage) -> Data {
-        let fullW = CGFloat(cgImage.width), fullH = CGFloat(cgImage.height)
-        // Use trim ONLY as the blank-frame guard: a nil trim means the capture is fully transparent (or
-        // unreadable), so emit nothing and let the caller keep the limited-mode icon (review: adversarial).
-        guard trimTransparent(cgImage) != nil, fullW > 0, fullH > 0 else { return Data() }
-
-        // Do NOT trim for sizing. The captured status-item window IS a uniform menu-bar CELL (every item's
-        // window is ~30px tall), with its glyph/text positioned + padded within it exactly as macOS draws
-        // it. Trimming deleted that padding and inflated short text ("exo") to full height. Scale the WHOLE
-        // cell uniformly to the tray box, so every item keeps its true menu-bar proportion — icons large,
-        // text small with the padding the bar keeps — a faithful shrink of the real menu bar.
-        let L = Self.trayGlyphLayout(gw: fullW, gh: fullH, fullH: fullH)
-        let canvasW = L.canvasW, canvasH = L.canvasH
-
-        guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: canvasW, pixelsHigh: canvasH,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
-            return Data()
-        }
-        rep.size = NSSize(width: canvasW, height: canvasH)
-        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return Data() }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = ctx
-        ctx.imageInterpolation = .high
-        // Draw the whole captured cell into the canvas (uniform scale — canvas aspect == window aspect).
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: fullW, height: fullH))
-        image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(canvasW), height: CGFloat(canvasH)),
-                   from: .zero, operation: .copy, fraction: 1.0)
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:]) ?? Data()
+        guard cgImage.width > 0, cgImage.height > 0, trimTransparent(cgImage) != nil else { return Data() }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
     }
 
     /// Output layout for a trimmed tray glyph — the sizing math, PURE so it can be regression-tested
