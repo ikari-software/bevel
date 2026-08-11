@@ -27,7 +27,12 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// real items) or reveal it. Drives the helper's control item via the tray host; fire-and-forget
     /// (failures are logged host-side, bounded by a deadline).</summary>
     public void SetConsolidated(bool consolidated)
-        => _ = _tray?.SetNativeTrayHiddenAsync(consolidated);
+    {
+        _consolidated = consolidated;
+        _ = _tray?.SetNativeTrayHiddenAsync(consolidated);
+    }
+
+    private bool _consolidated;
 
     /// <summary>Default inline tray-icon count before overflow (bevel-m3.4); user-overridable
     /// live via <see cref="VisibleCap"/> / <see cref="Configure"/> (bevel-cust.tray).</summary>
@@ -107,6 +112,9 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public async Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
     {
         PromoteToVisible(id);
+        // Reveal-on-click (C2) is deferred pending the overlay-hide decision (bevel-7hf4): the current
+        // push-off-screen hide can only reveal ALL items at once, and single-item reveal needs Ice-style
+        // synthetic-drag. If overlay-hide lands, items stay on-screen and this click lands directly.
         return await (_tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false));
     }
 
