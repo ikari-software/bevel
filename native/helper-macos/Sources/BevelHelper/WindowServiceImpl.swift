@@ -35,7 +35,7 @@ private func axObserverCallback(
 
 // MARK: - AXNotification → WindowChange.Kind helper
 
-private func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_V1_WindowChange.Kind? {
+func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_V1_WindowChange.Kind? {
     switch notification {
     case kAXFocusedWindowChangedNotification: return .focused
     case kAXTitleChangedNotification:         return .titleChanged
@@ -47,6 +47,16 @@ private func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_
     case kAXUIElementDestroyedNotification:   return .closed
     default: return nil
     }
+}
+
+// MARK: - Geometry sanitizer
+
+/// Clamp a foreign-process-supplied CGFloat to Int32. A plain `Int32(...)` cast TRAPS on NaN,
+/// infinity, or out-of-range values — and window geometry here comes from other apps' AX servers
+/// and CGWindowList entries, so one hostile/buggy app reporting absurd geometry would crash-loop
+/// the helper (review: adversarial, validated).
+private func clampToInt32(_ v: CGFloat) -> Int32 {
+    v.isFinite ? Int32(clamping: Int64(v.rounded())) : 0
 }
 
 // MARK: - WindowServiceImpl
@@ -509,10 +519,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         if let bounds = entry[kCGWindowBounds as String] as? NSDictionary {
             var rect = Bevel_Helper_V1_PixelRect()
-            rect.x = Int32((bounds["X"] as? CGFloat) ?? 0)
-            rect.y = Int32((bounds["Y"] as? CGFloat) ?? 0)
-            rect.width = Int32((bounds["Width"] as? CGFloat) ?? 0)
-            rect.height = Int32((bounds["Height"] as? CGFloat) ?? 0)
+            rect.x = clampToInt32((bounds["X"] as? CGFloat) ?? 0)
+            rect.y = clampToInt32((bounds["Y"] as? CGFloat) ?? 0)
+            rect.width = clampToInt32((bounds["Width"] as? CGFloat) ?? 0)
+            rect.height = clampToInt32((bounds["Height"] as? CGFloat) ?? 0)
             win.frame = rect
         }
 
@@ -906,6 +916,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // can fail for one tick while the window is still the real foreground surface.
         var focused: CFTypeRef?
         let axApp = AXUIElementCreateApplication(pid)
+        // R18 convention: bound the AX round-trip — this runs per window per 500ms reconcile tick,
+        // and without the cap a beachballing frontmost app stalls each query for the default AX
+        // timeout (~6s), freezing the poll (review: correctness+adversarial, validated).
+        _ = _AXUIElementSetMessagingTimeout(axApp, 1.0)
         let result = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused)
         guard result == .success, let focusedElem = focused else { return false }
         // A misbehaving app's AX server can return an unexpected CFType here; verify the
@@ -969,7 +983,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Distinguish `.invalidUIElement` from `.cannotComplete` — the former
     /// means the window no longer exists, the latter is a transient failure.
-    private func axErrorToRPC(_ error: AXError, windowID: String) -> RPCError {
+    func axErrorToRPC(_ error: AXError, windowID: String) -> RPCError {
         switch error {
         case .invalidUIElement:
             return RPCError(code: .notFound, message: "Window \(windowID) no longer exists")
@@ -993,6 +1007,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 throw RPCError(code: .notFound, message: "app-presence target not running: \(bundle)")
             }
             let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
             AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             app.activate()
             return
@@ -1012,6 +1027,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // available for apps without a window AX element. kAXFrontmostAttribute is the
         // accessibility-native activation and works for most apps.
         let appElement = AXUIElementCreateApplication(pid)
+        _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
 
         // Belt-and-suspenders for apps whose app-level AX is ALSO restricted, so kAXFrontmostAttribute
@@ -1146,7 +1162,14 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     }
                     done.signal()
                 }
-                done.wait()
+                // BOUNDED wait: a subscriber that stalls without throwing (suspended client,
+                // exhausted HTTP/2 flow control) would otherwise park this serial-queue slot
+                // forever and wedge every future broadcast for every subscriber (review:
+                // reliability+adversarial, validated). A client that cannot drain one write in
+                // 5s is evicted like a dead one — the C# side resubscribes on stream loss.
+                if done.wait(timeout: .now() + 5) == .timedOut {
+                    self?.removeSubscriber(id)
+                }
             }
         }
     }
@@ -1318,6 +1341,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             dbg("event-drop cg=\(cgID) '\(win.appName)' reason=no-title")
             return nil
         }
+        // Mirror describe()'s shell-chrome gate too (review: maintainability, validated — this
+        // path lacked it, the third recurrence of the two-paths-drift bug class): without it a
+        // shell chrome window can flash as a phantom button until the snapshot prunes it.
+        if isShellChrome(pid: pid, title: win.title) {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=shell-chrome")
+            return nil
+        }
 
         var position: CFTypeRef?
         var size: CFTypeRef?
@@ -1329,17 +1359,25 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             if let posVal = position, CFGetTypeID(posVal) == AXValueGetTypeID() {
                 var pt = CGPoint.zero
                 AXValueGetValue(posVal as! AXValue, .cgPoint, &pt)
-                rect.x = Int32(pt.x)
-                rect.y = Int32(pt.y)
+                rect.x = clampToInt32(pt.x)
+                rect.y = clampToInt32(pt.y)
             }
             if let sizeVal = size, CFGetTypeID(sizeVal) == AXValueGetTypeID() {
                 var sz = CGSize.zero
                 AXValueGetValue(sizeVal as! AXValue, .cgSize, &sz)
-                rect.width = Int32(sz.width)
-                rect.height = Int32(sz.height)
+                rect.width = clampToInt32(sz.width)
+                rect.height = clampToInt32(sz.height)
             }
         }
         win.frame = rect
+
+        // Mirror describe()'s transient gate (same review finding), now that the frame is known:
+        // the shell's own tooltip/menu popups must never become taskbar buttons via the fast path.
+        if isBevelTransient(pid: pid, cgID: cgID, axMap: [cgID: element], isMinimized: false,
+                            frameWidth: Int(rect.width), frameHeight: Int(rect.height)) {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=bevel-transient")
+            return nil
+        }
 
         return win
     }

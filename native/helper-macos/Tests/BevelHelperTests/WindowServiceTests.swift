@@ -265,15 +265,25 @@ final class WindowServiceTests: XCTestCase {
     // MARK: - AXNotification mapping
 
     func testAXNotificationToChangeKindMapsCorrectly() {
-        // We test the internal mapping indirectly by checking that
-        // known notifications produce valid change kinds.
-        // The mapping is tested via the implementation's enqueueAXEvent path.
-        // This test validates the enum values exist.
-        let kinds: [Bevel_Helper_V1_WindowChange.Kind] = [
-            .snapshot, .opened, .closed, .focused,
-            .titleChanged, .minimized, .deminimized, .moved
-        ]
-        XCTAssertEqual(kinds.count, 8, "All 8 WindowChange kinds should be defined")
+        // Direct assertions on the real mapping — the previous version of this test only counted
+        // enum cases and could never fail (review: testing, direct-verified).
+        XCTAssertEqual(axNotificationToChangeKind(kAXFocusedWindowChangedNotification), .focused)
+        XCTAssertEqual(axNotificationToChangeKind(kAXTitleChangedNotification), .titleChanged)
+        XCTAssertEqual(axNotificationToChangeKind(kAXWindowMiniaturizedNotification), .minimized)
+        XCTAssertEqual(axNotificationToChangeKind(kAXWindowDeminiaturizedNotification), .deminimized)
+        XCTAssertEqual(axNotificationToChangeKind(kAXMovedNotification), .moved)
+        XCTAssertEqual(axNotificationToChangeKind(kAXResizedNotification), .moved)
+        XCTAssertEqual(axNotificationToChangeKind(kAXWindowCreatedNotification), .opened)
+        XCTAssertEqual(axNotificationToChangeKind(kAXUIElementDestroyedNotification), .closed)
+        XCTAssertNil(axNotificationToChangeKind("AXSomethingWeNeverRegistered"))
+    }
+
+    func testAXErrorToRPCMapsErrorCodes() {
+        // Pins the not-found vs transient vs internal split the RPC surface promises.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertEqual(svc.axErrorToRPC(.invalidUIElement, windowID: "7").code, .notFound)
+        XCTAssertEqual(svc.axErrorToRPC(.cannotComplete, windowID: "7").code, .unavailable)
+        XCTAssertEqual(svc.axErrorToRPC(.apiDisabled, windowID: "7").code, .internalError)
     }
 
     // MARK: - Reconciliation poll
