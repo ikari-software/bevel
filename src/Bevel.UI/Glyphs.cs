@@ -387,8 +387,11 @@ public static class Glyphs
         for (var i = 0; i < 6; i++)
         {
             var x = 2.5 + i * 2.0;   // 6 holes, pitch 2, symmetric in the 2..14 strip
-            c.Children.Add(Vec($"M{x:0.##},4.35 h1 v1 h-1 Z", Brushes.White));   // top holes
-            c.Children.Add(Vec($"M{x:0.##},10.65 h1 v1 h-1 Z", Brushes.White));  // bottom holes
+            // Invariant, like every other computed path in this file: under a comma-decimal locale
+            // (pl_PL!) culture-sensitive interpolation emits "2,5" and PathMarkupParser throws on
+            // the UI thread — one video file in an Explorer folder crashed the whole shell.
+            c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},4.35 h1 v1 h-1 Z"), Brushes.White));   // top holes
+            c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},10.65 h1 v1 h-1 Z"), Brushes.White));  // bottom holes
         }
         c.Children.Add(Vec("M7.1,6.7 L9.8,8 L7.1,9.3 Z", Brushes.White));        // play (centred on 8,8)
     }
