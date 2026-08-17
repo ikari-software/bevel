@@ -689,13 +689,27 @@ public partial class TaskbarView : UserControl
             // very events a right-click races with — target app quitting, windows re-ordering). A
             // rebound container would show app B's menu with app A's tabs; a detached one would
             // ShowAt a control with no visual root. Both invalidate this click — drop it.
-            if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null) return;
+            if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
+            {
+                DisposeTabRows(tabs);
+                return;
+            }
 
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider) is { } menu)
             {
                 _openTaskMenu?.Hide();
                 _openTaskMenu = menu;
-                menu.Closed += (_, _) => { if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null; };
+                menu.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null;
+                    // Skia-backed favicon bitmaps are unmanaged memory the GC can't see — release
+                    // them with the menu (same pattern as the hover preview's bitmap swap).
+                    DisposeTabRows(tabs);
+                };
+            }
+            else
+            {
+                DisposeTabRows(tabs);
             }
         }
         catch (Exception ex)
@@ -710,7 +724,7 @@ public partial class TaskbarView : UserControl
         }
     }
 
-    private async Task<IReadOnlyList<Bevel.Pal.Abstractions.AppTab>?> PrefetchTabsAsync(object? dc)
+    private async Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>?> PrefetchTabsAsync(object? dc)
     {
         var bundleId = dc switch
         {
@@ -724,16 +738,36 @@ public partial class TaskbarView : UserControl
         {
             using var cts = new System.Threading.CancellationTokenSource(TabPrefetchBudget);
             var tabs = await _tabProvider.GetTabsAsync(bundleId!, cts.Token);
-            // An over-budget run is KILLED inside the provider and comes back as an empty list, not
-            // an exception — log every outcome so "0 tabs in ~budget ms" is readable as a timeout.
+            // Favicon PNGs decode into bitmaps OFF the UI thread (never-block rule) — Build then
+            // only composes ready Image sources. DecodeToWidth(16) keeps a 192px cache blob from
+            // decoding at full size for a 16px row. A blob that fails to decode is an icon-less row.
+            var rows = await Task.Run(() => tabs.Select(t =>
+            {
+                Avalonia.Media.Imaging.Bitmap? icon = null;
+                if (t.IconPng is { Length: > 0 } png)
+                {
+                    try { icon = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(new System.IO.MemoryStream(png), 16); }
+                    catch { /* malformed cache blob */ }
+                }
+                return new TaskButtonMenu.TabMenuRow(t, icon);
+            }).ToList());
+            // Enumeration over budget is killed in the provider (empty list); enrichment over
+            // budget is abandoned there (unenriched list). Neither throws — log every outcome so
+            // "0 tabs in ~budget ms" is readable as a timeout. Elapsed includes icon decode.
             TaskbarLog.Debug($"TABS prefetch {bundleId}: {tabs.Count} in {sw.ElapsedMilliseconds}ms");
-            return tabs;
+            return rows;
         }
         catch (Exception ex)
         {
             TaskbarLog.Debug($"TABS prefetch failed for {bundleId}: {ex.GetType().Name} after {sw.ElapsedMilliseconds}ms");
             return null;   // timeout / target app gone — the menu just opens without a Tabs section
         }
+    }
+
+    private static void DisposeTabRows(IReadOnlyList<TaskButtonMenu.TabMenuRow>? rows)
+    {
+        if (rows is null) return;
+        foreach (var row in rows) row.Icon?.Dispose();
     }
 
     /// <summary>How long a right-click may wait for the target app's tab list before the menu opens

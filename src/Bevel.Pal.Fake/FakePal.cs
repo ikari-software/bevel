@@ -69,10 +69,15 @@ public sealed class FakeTabProvider : ITabProvider
 {
     public const string TabApp = "fake.browser";
 
+    // A real (tiny) 16×16 PNG so the menu's favicon path renders in fake mode and headless tests
+    // can decode a genuine bitmap. Navy square, white border.
+    public static readonly byte[] FaviconPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHklEQVR4nGP4TyFgABPGM8nCowaMGjBqALUNoAQAAGo8TpsOEZTKAAAAAElFTkSuQmCC");
+
     private static readonly IReadOnlyList<AppTab> Tabs = new[]
     {
-        new AppTab(TabApp, "1", 1, "Welcome — Fake Browser", "https://example.test/welcome"),
-        new AppTab(TabApp, "1", 2, "Docs", "https://example.test/docs"),
+        new AppTab(TabApp, "1", 1, "Welcome — Fake Browser", "https://example.test/welcome", FaviconPng),
+        new AppTab(TabApp, "1", 2, "Docs", "https://example.test/docs", FaviconPng),
         new AppTab(TabApp, "2", 1, "Second Window Tab", "https://example.test/two"),
     };
 

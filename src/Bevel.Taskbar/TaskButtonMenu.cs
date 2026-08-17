@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
 
@@ -22,16 +23,27 @@ public static class TaskButtonMenu
     /// flyout so the caller can dismiss it on app-deactivation (the taskbar is a non-activating window, so
     /// popups don't light-dismiss on app switch — TaskbarView hides this from OnAppDeactivated), or null
     /// for an unrecognized context.</summary>
-    /// <summary>Tab rows shown before collapsing into a disabled "&#8230; N more" summary row — an
-    /// Arc-style sidebar holds hundreds of tabs and a menu must not.</summary>
-    private const int MaxTabRows = 25;
+    /// <summary>Height cap for the Tabs submenu — an Arc-style sidebar holds hundreds of tabs, so
+    /// past ~24 rows the list SCROLLS (the Classic submenu template's SimpleMenuScrollViewer with
+    /// its Win2000 repeat-arrow buttons engages as soon as content exceeds this).</summary>
+    private const double TabListMaxHeight = 480;
+
+    /// <summary>Sanity ceiling above the scroll cap: the Classic submenu panel is a plain
+    /// non-virtualizing StackPanel, so every row REALIZES when the submenu opens — hundreds of
+    /// MenuItems would turn the right-click into a visible hitch. Rows past this collapse into
+    /// the disabled "… N more" tail.</summary>
+    private const int MaxTabRows = 300;
 
     /// <summary>Upper bound on one tab activation against a foreign app (4 s mirrors the osascript
     /// child timeout; the AX path's walk observes the token cooperatively).</summary>
     private static readonly TimeSpan TabActivateBudget = TimeSpan.FromSeconds(4);
 
+    /// <summary>One prefetched tab plus its favicon, decoded OFF the UI thread by the caller —
+    /// Build runs on the UI thread and must only compose already-decoded bitmaps.</summary>
+    public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon);
+
     public static MenuFlyout? TryShow(
-        Control button, object? dc, IReadOnlyList<AppTab>? tabs = null, ITabProvider? tabProvider = null)
+        Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
@@ -46,7 +58,7 @@ public static class TaskButtonMenu
     public static bool Recognizes(object? dc) => dc is TaskGroupViewModel or TaskItemViewModel;
 
     // internal (not private) so headless tests can assert the built shape without ShowAt.
-    internal static MenuFlyout? Build(object? dc, IReadOnlyList<AppTab>? tabs, ITabProvider? tabProvider)
+    internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -77,12 +89,22 @@ public static class TaskButtonMenu
         if (tabs is { Count: > 0 } && tabProvider is not null)
         {
             var tabMenu = new MenuItem { Header = "_Tabs" };
-            foreach (var tab in tabs.Take(MaxTabRows))
+            // Cap the submenu height so a hundreds-of-tabs sidebar scrolls (bevel-l17f) instead of
+            // spanning the screen — the template's own menu scroll viewer takes it from there.
+            // NOT x.Nesting(): a Style added to Control.Styles has no parent style, and the `^`
+            // selector THROWS during template application — which the async click handler then
+            // swallows, so the whole menu silently never opens (caught in review, reproduced live).
+            tabMenu.Styles.Add(new Style(x => x.OfType<MenuItem>().Template().OfType<ScrollViewer>())
             {
-                var captured = tab;
+                Setters = { new Setter(Avalonia.Layout.Layoutable.MaxHeightProperty, TabListMaxHeight) },
+            });
+            foreach (var row in tabs.Take(MaxTabRows))
+            {
+                var captured = row.Tab;
                 tabMenu.Items.Add(new MenuItem
                 {
                     Header = EscapeHeader(Ellipsize(captured.Title)),
+                    Icon = row.Icon is { } fav ? new Image { Source = fav, Width = 16, Height = 16 } : null,
                     // Budgeted: activation walks a foreign app (AX tree / Apple Events) and a wedged
                     // target must cost a bounded threadpool wait, not an open-ended one.
                     Command = new AsyncRelayCommand(async () =>

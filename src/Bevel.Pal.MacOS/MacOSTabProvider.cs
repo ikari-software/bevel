@@ -61,11 +61,15 @@ public sealed class MacOSTabProvider : ITabProvider
         // Gecko (Zen/Firefox) has no AppleScript tab dictionary at all — that family enumerates
         // through the accessibility tree instead (bevel-osad, see GeckoTabEngine).
         if (GeckoTabEngine.Supports(bundleId))
-            return await GeckoTabEngine.GetTabsAsync(bundleId, ct).ConfigureAwait(false);
+        {
+            var geckoTabs = await GeckoTabEngine.GetTabsAsync(bundleId, ct).ConfigureAwait(false);
+            return await EnrichAsync(bundleId, geckoTabs, ct).ConfigureAwait(false);
+        }
         if (Apps.TryGetValue(bundleId, out var dialect))
         {
             var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
-            return Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
+            var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
+            return await EnrichAsync(bundleId, tabs, ct).ConfigureAwait(false);
         }
         return Array.Empty<AppTab>();
     }
@@ -89,6 +93,47 @@ public sealed class MacOSTabProvider : ITabProvider
         if (Apps.TryGetValue(tab.BundleId, out var dialect))
             await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex), ct)
                 .ConfigureAwait(false);
+    }
+
+    /// <summary>Post-enumeration enrichment (bevel-l17f): Gecko tabs first get their url by exact
+    /// title match against the profile's session store (the AX tree exposes none), then every tab
+    /// with a url gets its favicon from the browser's on-disk cache. File + SQLite work, so it runs
+    /// off-thread; wholly best-effort — the un-enriched list is always an acceptable result, and
+    /// that INCLUDES budget expiry: the caller's token both cancels the work cooperatively and,
+    /// via WaitAsync, abandons a wedged enrichment so the tabs still reach the menu bare. Without
+    /// this, a cold 68 MB Firefox favicon DB copy could hold the await far past the 1.5 s budget.</summary>
+    private static async Task<IReadOnlyList<AppTab>> EnrichAsync(
+        string bundleId, IReadOnlyList<AppTab> tabs, CancellationToken ct)
+    {
+        if (tabs.Count == 0 || ct.IsCancellationRequested) return tabs;
+        try
+        {
+            return await Task.Run(() =>
+            {
+                var enriched = tabs;
+                if (GeckoTabEngine.Supports(bundleId) && !ct.IsCancellationRequested)
+                {
+                    var urlByTitle = GeckoSessionStore.TitleToUrl(bundleId);
+                    if (urlByTitle.Count > 0)
+                    {
+                        var withUrls = new AppTab[enriched.Count];
+                        for (var i = 0; i < enriched.Count; i++)
+                        {
+                            var tab = enriched[i];
+                            withUrls[i] = tab.Url is null && urlByTitle.TryGetValue(tab.Title, out var url)
+                                ? tab with { Url = url }
+                                : tab;
+                        }
+                        enriched = withUrls;
+                    }
+                }
+                return TabFaviconStore.Enrich(bundleId, enriched, ct);
+            }).WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return tabs;   // over budget — bare tabs beat no tabs
+        }
     }
 
     // ── Script generation (internal for tests) ───────────────────────────────
