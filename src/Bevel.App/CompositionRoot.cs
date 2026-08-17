@@ -50,6 +50,7 @@ public static class CompositionRoot
         services.AddSingleton<IAudioPlayback, Pal.Fake.FakeAudioPlayback>();
         services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
         services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
+        services.AddSingleton<ITabProvider, Pal.Fake.FakeTabProvider>();
         return services;
     }
 
@@ -79,6 +80,9 @@ public static class CompositionRoot
         services.AddSingleton<IAudioPlayback, Pal.MacOS.MacOSAudioPlayback>();
         services.AddSingleton<IDockController, Pal.MacOS.MacOSDockController>();
         services.AddSingleton<IVolumeLabelSource, Pal.MacOS.MacOSVolumeLabelSource>();
+        // Tabs are enumerated by talking Apple Events to the target app — purely local (an osascript
+        // child), so like IFileOpener every role gets the direct implementation, no core proxy.
+        services.AddSingleton<ITabProvider, Pal.MacOS.MacOSTabProvider>();
 
         // Window management + app environment: the single-source-of-truth split. In a SPLIT taskbar
         // process these are shell-core CLIENTS (one UDS connection to the core, which owns the helper

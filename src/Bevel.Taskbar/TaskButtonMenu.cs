@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
 
@@ -21,14 +22,27 @@ public static class TaskButtonMenu
     /// flyout so the caller can dismiss it on app-deactivation (the taskbar is a non-activating window, so
     /// popups don't light-dismiss on app switch — TaskbarView hides this from OnAppDeactivated), or null
     /// for an unrecognized context.</summary>
-    public static MenuFlyout? TryShow(Control button)
+    /// <summary>Tab rows shown before collapsing into a disabled "&#8230; N more" summary row — an
+    /// Arc-style sidebar holds hundreds of tabs and a menu must not.</summary>
+    private const int MaxTabRows = 25;
+
+    public static MenuFlyout? TryShow(
+        Control button, object? dc, IReadOnlyList<AppTab>? tabs = null, ITabProvider? tabProvider = null)
     {
-        if (Build(button.DataContext) is not { } flyout) return null;
+        // dc is passed in (not re-read from button.DataContext): the caller captured it before an
+        // async tab prefetch and has verified the button still binds it — re-reading here would
+        // reopen the race the caller just closed.
+        if (Build(dc, tabs, tabProvider) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
 
-    private static MenuFlyout? Build(object? dc)
+    /// <summary>Whether <paramref name="dc"/> is a context this menu understands — lets the caller
+    /// decide (and mark the event handled) SYNCHRONOUSLY before any async tab prefetch.</summary>
+    public static bool Recognizes(object? dc) => dc is TaskGroupViewModel or TaskItemViewModel;
+
+    // internal (not private) so headless tests can assert the built shape without ShowAt.
+    internal static MenuFlyout? Build(object? dc, IReadOnlyList<AppTab>? tabs, ITabProvider? tabProvider)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -51,6 +65,26 @@ public static class TaskButtonMenu
                 windows.Items.Add(per);
             }
             items.Add(windows);
+            items.Add(new Separator());
+        }
+
+        // Tabs (bevel-a40b): prefetched by the caller BEFORE the flyout opens — an open MenuFlyout
+        // popup never repaints (see the Force Quit note below), so late-arriving rows would not show.
+        if (tabs is { Count: > 0 } && tabProvider is not null)
+        {
+            var tabMenu = new MenuItem { Header = "_Tabs" };
+            foreach (var tab in tabs.Take(MaxTabRows))
+            {
+                var captured = tab;
+                tabMenu.Items.Add(new MenuItem
+                {
+                    Header = EscapeHeader(Ellipsize(captured.Title)),
+                    Command = new AsyncRelayCommand(() => tabProvider.ActivateAsync(captured)),
+                });
+            }
+            if (tabs.Count > MaxTabRows)
+                tabMenu.Items.Add(new MenuItem { Header = $"… {tabs.Count - MaxTabRows} more", IsEnabled = false });
+            items.Add(tabMenu);
             items.Add(new Separator());
         }
 
@@ -101,4 +135,19 @@ public static class TaskButtonMenu
 
     private static WindowRow Row(TaskItemViewModel w) =>
         new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.CloseCommand);
+
+    /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
+    /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>
+    internal static string EscapeHeader(string title) => title.Replace("_", "__");
+
+    /// <summary>Single-line cap for foreign tab titles so one verbose page can't stretch the menu.
+    /// The cut backs off a high surrogate so an emoji-leading title never leaves half a pair
+    /// (a lone surrogate renders as a replacement glyph).</summary>
+    internal static string Ellipsize(string title, int max = 70)
+    {
+        if (title.Length <= max) return title;
+        var cut = max - 1;
+        if (char.IsHighSurrogate(title[cut - 1])) cut--;
+        return title[..cut].TrimEnd() + "…";
+    }
 }

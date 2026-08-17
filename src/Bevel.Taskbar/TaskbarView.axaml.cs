@@ -19,6 +19,7 @@ public partial class TaskbarView : UserControl
     private StartMenu? _startMenu;
     private IAppEnvironment? _appEnv;
     private IIconProvider? _iconProvider;
+    private ITabProvider? _tabProvider;
     private Action? _quit;
     private Action? _restart;
     private Action? _openSettings;
@@ -75,11 +76,13 @@ public partial class TaskbarView : UserControl
         Action? openSettings = null,
         Action? toggleLock = null,
         Action<Bevel.Core.Vfs.VfsPath>? openFolder = null,
-        Action? openSearch = null)
+        Action? openSearch = null,
+        ITabProvider? tabProvider = null)
     {
         // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
         _iconProvider = iconProvider;
+        _tabProvider = tabProvider;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
@@ -663,16 +666,82 @@ public partial class TaskbarView : UserControl
     /// Quit/Force-Quit — built in code so the Alt swap + nesting stay simple.</summary>
     private Avalonia.Controls.MenuFlyout? _openTaskMenu;
 
-    private void OnTaskButtonContextRequested(object? sender, ContextRequestedEventArgs e)
+    /// <summary>Serializes OnTaskButtonContextRequested: a second right-click landing inside the
+    /// prefetch window would otherwise open a second flyout and orphan the first's global monitor.</summary>
+    private bool _taskMenuOpenInFlight;
+
+    private async void OnTaskButtonContextRequested(object? sender, ContextRequestedEventArgs e)
     {
-        if (sender is not Control c) return;
-        if (TaskButtonMenu.TryShow(c) is { } menu)
+        if (sender is not Control c || !TaskButtonMenu.Recognizes(c.DataContext)) return;
+        e.Handled = true;   // decided synchronously — must precede the first await
+
+        if (_taskMenuOpenInFlight) return;
+        _taskMenuOpenInFlight = true;
+        try
         {
-            _openTaskMenu = menu;
-            menu.Closed += (_, _) => { if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null; };
-            e.Handled = true;
+            // Tab prefetch (bevel-a40b): an open MenuFlyout never repaints, so tabs must exist BEFORE
+            // TryShow. The await keeps the UI thread free; the budget caps how long the menu can lag
+            // behind the right-click when the target app answers slowly (no tabs beats a stalled menu).
+            var dc = c.DataContext;
+            var tabs = await PrefetchTabsAsync(dc);
+
+            // The projector mutates the strip in place during the await (remove/move/insert on the
+            // very events a right-click races with — target app quitting, windows re-ordering). A
+            // rebound container would show app B's menu with app A's tabs; a detached one would
+            // ShowAt a control with no visual root. Both invalidate this click — drop it.
+            if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null) return;
+
+            if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider) is { } menu)
+            {
+                _openTaskMenu?.Hide();
+                _openTaskMenu = menu;
+                menu.Closed += (_, _) => { if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null; };
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void has no other backstop — an escape here is an unhandled dispatcher
+            // exception, i.e. a dead taskbar over a context menu.
+            TaskbarLog.Debug($"TASKMENU open failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _taskMenuOpenInFlight = false;
         }
     }
+
+    private async Task<IReadOnlyList<Bevel.Pal.Abstractions.AppTab>?> PrefetchTabsAsync(object? dc)
+    {
+        var bundleId = dc switch
+        {
+            TaskGroupViewModel g => g.BundleId,
+            TaskItemViewModel t => t.BundleId,
+            _ => null,
+        };
+        if (_tabProvider is null || !_tabProvider.SupportsApp(bundleId)) return null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TabPrefetchBudget);
+            var tabs = await _tabProvider.GetTabsAsync(bundleId!, cts.Token);
+            // An over-budget run is KILLED inside the provider and comes back as an empty list, not
+            // an exception — log every outcome so "0 tabs in ~budget ms" is readable as a timeout.
+            TaskbarLog.Debug($"TABS prefetch {bundleId}: {tabs.Count} in {sw.ElapsedMilliseconds}ms");
+            return tabs;
+        }
+        catch (Exception ex)
+        {
+            TaskbarLog.Debug($"TABS prefetch failed for {bundleId}: {ex.GetType().Name} after {sw.ElapsedMilliseconds}ms");
+            return null;   // timeout / target app gone — the menu just opens without a Tabs section
+        }
+    }
+
+    /// <summary>How long a right-click may wait for the target app's tab list before the menu opens
+    /// without one. Sized to the slowest live measurement: a batched enumeration of Arc's ~100-tab
+    /// sidebar takes ~0.65 s of Apple Events alone (plus osascript spawn), so 700 ms starved it and
+    /// the menu permanently lost its Tabs section on big browsers. iTerm-sized apps answer in
+    /// 100–300 ms regardless.</summary>
+    private static readonly TimeSpan TabPrefetchBudget = TimeSpan.FromMilliseconds(1500);
 
     private void ApplyRowLayout()
     {

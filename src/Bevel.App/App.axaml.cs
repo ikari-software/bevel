@@ -268,7 +268,9 @@ public partial class App : Application
             // process in a split launch (the taskbar process has no explorer surface).
             openFolder: path => OpenExplorerAt(services, path),
             // Start ▸ Search → open a Bevel Explorer already in Find mode (bevel-x6pv).
-            openSearch: () => OpenExplorerSearch(services));
+            openSearch: () => OpenExplorerSearch(services),
+            // Tab enumeration for the task-button menu's Tabs section (bevel-a40b).
+            tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>());
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

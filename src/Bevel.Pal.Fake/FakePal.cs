@@ -21,6 +21,9 @@ public sealed class FakeWindowManager : IWindowManager
     {
         new ForeignWindow(new ForeignWindowId("w1"), "Untitled - Notepad", "fake.notepad", false, true, new PalRect(100, 100, 800, 600)),
         new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.explorer", false, false, new PalRect(200, 200, 1024, 768)),
+        // A window whose bundle id FakeTabProvider supports, so the Tabs submenu is reachable (and
+        // demoable) under --pal=fake — without it the tab feature only exists against real browsers.
+        new ForeignWindow(new ForeignWindowId("w3"), "Welcome — Fake Browser", FakeTabProvider.TabApp, false, false, new PalRect(300, 150, 1200, 800)),
     };
 
     public Capabilities Capabilities => FakeData.Caps;
@@ -58,6 +61,35 @@ public sealed class FakeSystemTrayHost : ISystemTrayHost
     public event EventHandler<TrayItem>? ItemAdded;
     public event EventHandler<TrayItem>? ItemRemoved;
     public event EventHandler<TrayItem>? ItemUpdated;
+}
+
+/// <summary>Scripted tabs for "fake.browser" (bevel-a40b); records the last activation so tests can
+/// assert the menu wired the command. Deterministic, no I/O.</summary>
+public sealed class FakeTabProvider : ITabProvider
+{
+    public const string TabApp = "fake.browser";
+
+    private static readonly IReadOnlyList<AppTab> Tabs = new[]
+    {
+        new AppTab(TabApp, "1", 1, "Welcome — Fake Browser", "https://example.test/welcome"),
+        new AppTab(TabApp, "1", 2, "Docs", "https://example.test/docs"),
+        new AppTab(TabApp, "2", 1, "Second Window Tab", "https://example.test/two"),
+    };
+
+    public Capabilities Capabilities => FakeData.Caps;
+
+    public AppTab? LastActivated { get; private set; }
+
+    public bool SupportsApp(string? bundleId) => bundleId == TabApp;
+
+    public ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
+        => ValueTask.FromResult(SupportsApp(bundleId) ? Tabs : Array.Empty<AppTab>());
+
+    public Task ActivateAsync(AppTab tab, CancellationToken ct = default)
+    {
+        LastActivated = tab;
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeDesktopEnvironment : IDesktopEnvironment
