@@ -107,8 +107,14 @@ public static partial class AppleEventInbound
             SendVoid_ptru32(reply, Sel("setParamDescriptor:forKeyword:"), desc, keyDirectObject);
     }
 
-    static IntPtr TextDesc(string s) =>
-        Send_ptr(AeDescClass, Sel("descriptorWithString:"), AppKitInterop.NSStringCreate(s));
+    static IntPtr TextDesc(string s)
+    {
+        // NSStringCreate returns a +1 OWNED string; descriptorWithString: doesn't take ownership,
+        // so it must be released or it leaks per reply (bevel-fo2 class). Mirror AppKitInterop.FileUrl.
+        var ns = AppKitInterop.NSStringCreate(s);
+        try { return Send_ptr(AeDescClass, Sel("descriptorWithString:"), ns); }
+        finally { if (ns != IntPtr.Zero) AppKitInterop.SendVoid(ns, Sel("release")); }
+    }
 
     static IntPtr PathListDesc(IReadOnlyList<string> paths)
     {

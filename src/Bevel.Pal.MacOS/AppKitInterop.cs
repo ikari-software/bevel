@@ -448,4 +448,13 @@ internal static class AppKitInterop
         if (statusBar == IntPtr.Zero) return 0;
         return SendDouble(statusBar, Sel("thickness"));
     }
+
+    // ------------------------------------------------------------------
+    //  Autorelease pool — for ObjC work on threadpool threads, which have
+    //  no ambient pool, so autoreleased objects would otherwise accumulate
+    //  until the thread dies (bevel-fo2 class). Push before, Pop in finally.
+    // ------------------------------------------------------------------
+
+    [DllImport("/usr/lib/libobjc.dylib")] public static extern IntPtr objc_autoreleasePoolPush();
+    [DllImport("/usr/lib/libobjc.dylib")] public static extern void objc_autoreleasePoolPop(IntPtr pool);
 }

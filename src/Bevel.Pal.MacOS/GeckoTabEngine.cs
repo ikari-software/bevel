@@ -50,10 +50,10 @@ internal static class GeckoTabEngine
         if (!OperatingSystem.IsMacOS()) return Array.Empty<AppTab>();
         // Threadpool threads have no ambient autorelease pool, and the NSRunningApplication calls
         // return autoreleased objects — drain them per call or they accumulate (bevel-fo2 class).
-        var pool = objc_autoreleasePoolPush();
+        var pool = AppKitInterop.objc_autoreleasePoolPush();
         try { return GetTabsCore(bundleId, ct); }
         catch (OperationCanceledException) { return Array.Empty<AppTab>(); }
-        finally { objc_autoreleasePoolPop(pool); }
+        finally { AppKitInterop.objc_autoreleasePoolPop(pool); }
     }
 
     private static IReadOnlyList<AppTab> GetTabsCore(string bundleId, CancellationToken ct)
@@ -89,10 +89,10 @@ internal static class GeckoTabEngine
     private static void Activate(AppTab tab, int windowRef, CancellationToken ct)
     {
         if (!OperatingSystem.IsMacOS()) return;
-        var pool = objc_autoreleasePoolPush();
+        var pool = AppKitInterop.objc_autoreleasePoolPush();
         try { ActivateCore(tab, windowRef, ct); }
         catch (OperationCanceledException) { /* budget expired — no press is the safe outcome */ }
-        finally { objc_autoreleasePoolPop(pool); }
+        finally { AppKitInterop.objc_autoreleasePoolPop(pool); }
     }
 
     private static void ActivateCore(AppTab tab, int windowRef, CancellationToken ct)
@@ -327,8 +327,6 @@ internal static class GeckoTabEngine
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool objc_msgSend_bool_nuint(IntPtr receiver, IntPtr selector, nuint arg1);
 
-    [DllImport("/usr/lib/libobjc.dylib")] private static extern IntPtr objc_autoreleasePoolPush();
-    [DllImport("/usr/lib/libobjc.dylib")] private static extern void objc_autoreleasePoolPop(IntPtr pool);
 
     private const string AppServices =
         "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";

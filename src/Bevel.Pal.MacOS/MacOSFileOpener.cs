@@ -22,7 +22,10 @@ public sealed class MacOSFileOpener : IFileOpener
 
         var psi = new ProcessStartInfo("/usr/bin/open") { UseShellExecute = false };
         psi.ArgumentList.Add(path);
-        Process.Start(psi);
+        // Guard the spawn like the sibling openers here (PreviewAsync/OpenWithAsync/RevealAsync):
+        // a Process.Start failure (open missing, sandbox refusal) must not escape a fire-and-forget
+        // "open a file" into an unhandled exception.
+        try { Process.Start(psi); } catch { /* open failed — nothing actionable for the caller */ }
         return Task.CompletedTask;
     }
 

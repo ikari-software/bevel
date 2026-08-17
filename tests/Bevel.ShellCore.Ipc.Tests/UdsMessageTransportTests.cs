@@ -259,4 +259,50 @@ public sealed class UdsMessageTransportTests
 
         Assert.Equal(new[] { "0-snapshot", "1-delta" }, order.ToArray());
     }
+
+    // Review (correctness): IsConnected must go false once the receive loop faults, not stay true
+    // forever. Drop the server and the client's connection state must flip.
+    [Fact]
+    public async Task IsConnected_GoesFalse_AfterServerDrop()
+    {
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = StartServer(path, nonce);
+
+        await using var client = new UdsMessageClient(path, nonce, "shell");
+        await client.ConnectAsync(Ct);
+        Assert.True(client.IsConnected);
+
+        await server.DisposeAsync();   // kills the client's receive loop
+        await WaitFor(() => !client.IsConnected);
+        Assert.False(client.IsConnected);
+    }
+
+    // Review (adversarial): a throwing BroadcastReceived handler must NOT tear down the connection —
+    // only genuine stream faults should. A second broadcast still arrives at a well-behaved handler.
+    [Fact]
+    public async Task ThrowingBroadcastHandler_DoesNotDropConnection()
+    {
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = StartServer(path, nonce);
+
+        await using var client = new UdsMessageClient(path, nonce, "shell");
+        var secondSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = true;
+        client.BroadcastReceived += b =>
+        {
+            if (first) { first = false; throw new InvalidOperationException("poison handler"); }
+            secondSeen.TrySetResult(b);
+        };
+        await client.ConnectAsync(Ct);
+        await WaitFor(() => server.ClientCount == 1);
+
+        server.Broadcast(Encoding.UTF8.GetBytes("boom"));   // handler throws, connection must survive
+        server.Broadcast(Encoding.UTF8.GetBytes("survived"));
+
+        var got = await secondSeen.Task.WaitAsync(Timeout);
+        Assert.Equal("survived", Encoding.UTF8.GetString(got));
+        Assert.True(client.IsConnected);
+    }
 }
