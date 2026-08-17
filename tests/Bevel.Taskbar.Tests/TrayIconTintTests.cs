@@ -11,8 +11,10 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// Adaptive tray-icon tinting (macOS template model): a sparse monochrome GLYPH is recoloured to the bar's
-/// ink; a COLOURED icon and a CELL-FILLING icon (its own background) are left untouched.
+/// Tray-icon tinting is currently OFF (bevel-7hf4): every mirrored menu-bar icon keeps its REAL captured
+/// colours, so Process never recolours — even a sparse monochrome template glyph passes through. The
+/// template analysis stays in TrayIconTint behind its flag for a future opt-in "theme tray icons" setting;
+/// when that flag returns, the first test flips back to asserting recolour-to-ink.
 /// </summary>
 public class TrayIconTintTests
 {
@@ -44,18 +46,19 @@ public class TrayIconTintTests
     private static bool InBlock(int x, int y, int lo, int hi) => x >= lo && x < hi && y >= lo && y < hi;
 
     [AvaloniaFact]
-    public void Sparse_monochrome_glyph_is_recoloured_to_ink()
+    public void Sparse_monochrome_glyph_keeps_captured_colour_while_tinting_is_off()
     {
-        // ~25% fill, pure white, transparent elsewhere → a template glyph.
+        // ~25% fill, pure white, transparent elsewhere → a template glyph, the strongest recolour
+        // candidate. With tinting disabled it must still pass through untouched.
         var png = Png((x, y) => InBlock(x, y, 4, 12) ? ((byte)255, (byte)255, (byte)255, (byte)255) : ((byte)0, (byte)0, (byte)0, (byte)0));
 
         var res = TrayIconTint.Process(png, Colors.Black);
         Assert.NotNull(res);
-        Assert.True(res!.Value.Recoloured);
+        Assert.False(res!.Value.Recoloured);
 
-        // A centre pixel should now be black (the ink), not white.
+        // A centre pixel stays the captured white, not the black ink.
         var px = ReadPixel(res.Value.Image, 8, 8);
-        Assert.True(px.R < 40 && px.G < 40 && px.B < 40, $"expected inked pixel, got {px}");
+        Assert.True(px.R > 215 && px.G > 215 && px.B > 215, $"expected captured white pixel, got {px}");
         Assert.True(px.A > 200, "glyph coverage should be preserved");
     }
 
