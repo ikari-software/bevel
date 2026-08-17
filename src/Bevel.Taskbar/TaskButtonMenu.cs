@@ -26,6 +26,10 @@ public static class TaskButtonMenu
     /// Arc-style sidebar holds hundreds of tabs and a menu must not.</summary>
     private const int MaxTabRows = 25;
 
+    /// <summary>Upper bound on one tab activation against a foreign app (4 s mirrors the osascript
+    /// child timeout; the AX path's walk observes the token cooperatively).</summary>
+    private static readonly TimeSpan TabActivateBudget = TimeSpan.FromSeconds(4);
+
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<AppTab>? tabs = null, ITabProvider? tabProvider = null)
     {
@@ -79,7 +83,13 @@ public static class TaskButtonMenu
                 tabMenu.Items.Add(new MenuItem
                 {
                     Header = EscapeHeader(Ellipsize(captured.Title)),
-                    Command = new AsyncRelayCommand(() => tabProvider.ActivateAsync(captured)),
+                    // Budgeted: activation walks a foreign app (AX tree / Apple Events) and a wedged
+                    // target must cost a bounded threadpool wait, not an open-ended one.
+                    Command = new AsyncRelayCommand(async () =>
+                    {
+                        using var cts = new System.Threading.CancellationTokenSource(TabActivateBudget);
+                        await tabProvider.ActivateAsync(captured, cts.Token);
+                    }),
                 });
             }
             if (tabs.Count > MaxTabRows)

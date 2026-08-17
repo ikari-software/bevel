@@ -20,14 +20,14 @@ public class MacOSTabProviderTests
     [InlineData("com.google.Chrome")]
     [InlineData("company.thebrowser.Browser")]   // Arc
     [InlineData("com.apple.Safari")]
+    [InlineData("org.mozilla.firefox")]          // Gecko family — served via AX (bevel-osad)
+    [InlineData("app.zen-browser.zen")]
     public void SupportsApp_knows_the_scriptable_apps(string bundleId) =>
         Assert.True(_provider.SupportsApp(bundleId));
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("org.mozilla.firefox")]          // no AppleScript tab dictionary — future provider
-    [InlineData("app.zen-browser.zen")]
     [InlineData("com.apple.finder")]
     public void SupportsApp_declines_everything_else(string? bundleId) =>
         Assert.False(_provider.SupportsApp(bundleId));
@@ -153,7 +153,7 @@ public class MacOSTabProviderTests
     [InlineData("com.google.Chrome", "-3", 1)]                   // negative ref parses but is refused
     [InlineData("com.google.Chrome", "1", 0)]                    // tab index below 1
     [InlineData("com.google.Chrome", "1", -1)]
-    [InlineData("org.mozilla.firefox", "1", 1)]                  // unsupported app never scripts
+    [InlineData("com.apple.finder", "1", 1)]                     // unsupported app never scripts
     public async Task Activate_refuses_invalid_refs(string bundleId, string windowRef, int tabIndex)
     {
         // Invalid refs never reach script generation (and thus osascript): ActivateAsync validates

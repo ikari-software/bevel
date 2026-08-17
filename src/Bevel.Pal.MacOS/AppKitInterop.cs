@@ -142,17 +142,12 @@ internal static class AppKitInterop
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "sel_registerName")]
     private static extern IntPtr sel_registerName(string name);
 
-    private static readonly Dictionary<string, IntPtr> _selectors = new();
+    // Concurrent: resolved from threadpool threads too (icon renders, the Gecko AX tab walk) — a
+    // plain Dictionary raced its buckets under concurrent insert.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IntPtr> _selectors = new();
 
     public static IntPtr Sel(string name)
-    {
-        if (!_selectors.TryGetValue(name, out var ptr))
-        {
-            ptr = sel_registerName(name);
-            _selectors[name] = ptr;
-        }
-        return ptr;
-    }
+        => _selectors.GetOrAdd(name, static n => sel_registerName(n));
 
     // ------------------------------------------------------------------
     //  objc_getClass
@@ -161,17 +156,10 @@ internal static class AppKitInterop
     [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_getClass")]
     private static extern IntPtr objc_getClass(string name);
 
-    private static readonly Dictionary<string, IntPtr> _classes = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IntPtr> _classes = new();
 
     public static IntPtr GetClass(string name)
-    {
-        if (!_classes.TryGetValue(name, out var ptr))
-        {
-            ptr = objc_getClass(name);
-            _classes[name] = ptr;
-        }
-        return ptr;
-    }
+        => _classes.GetOrAdd(name, static n => objc_getClass(n));
 
     // ------------------------------------------------------------------
     //  NSWorkspace

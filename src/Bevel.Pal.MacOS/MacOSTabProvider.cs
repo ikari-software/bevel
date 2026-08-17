@@ -5,9 +5,11 @@ using Bevel.Pal.Abstractions;
 namespace Bevel.Pal.MacOS;
 
 /// <summary>
-/// Apple Events tab provider (bevel-a40b): enumerates and activates tabs in the apps whose
-/// scripting dictionaries expose them — iTerm2, the Chromium family (Chrome/Arc/Edge/Brave/…) and
-/// Safari. Runs <c>/usr/bin/osascript</c> as a child process rather than in-proc OSAKit: the child
+/// Tab provider (bevel-a40b): enumerates and activates tabs in the apps whose scripting
+/// dictionaries expose them — iTerm2, the Chromium family (Chrome/Arc/Edge/Brave/…) and Safari —
+/// plus the Gecko family (Zen/Firefox), which has no tab dictionary and is served through the
+/// accessibility tree by <see cref="GeckoTabEngine"/> instead (bevel-osad).
+/// Runs <c>/usr/bin/osascript</c> as a child process rather than in-proc OSAKit: the child
 /// inherits Bevel as its TCC responsible process (so Automation consent prompts and grants key to
 /// Bevel, not to a script host), and a hung target app can only stall the child, which the timeout
 /// then kills — never a thread of the shell.
@@ -44,34 +46,56 @@ public sealed class MacOSTabProvider : ITabProvider
     public Capabilities Capabilities { get; } = new(
         Available: true,
         TrayMode: TrayCapability.Mirrored,
-        Notes: new[] { "tabs: apple-events (iTerm2, Chromium family, Safari)" });
+        Notes: new[] { "tabs: apple-events (iTerm2, Chromium family, Safari) + ax (Zen, Firefox)" });
 
     public bool SupportsApp(string? bundleId) =>
-        bundleId is not null && IsSafeBundleId(bundleId) && Apps.ContainsKey(bundleId);
+        bundleId is not null && IsSafeBundleId(bundleId)
+        && (Apps.ContainsKey(bundleId) || GeckoTabEngine.Supports(bundleId));
 
     public async ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
     {
         if (!SupportsApp(bundleId)) return Array.Empty<AppTab>();
-        var dialect = Apps[bundleId];
-        var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
-        return Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
+
+        // Positive dispatch per mechanism — no implicit else, so a future third mechanism added to
+        // SupportsApp can't silently fall into the wrong engine.
+        // Gecko (Zen/Firefox) has no AppleScript tab dictionary at all — that family enumerates
+        // through the accessibility tree instead (bevel-osad, see GeckoTabEngine).
+        if (GeckoTabEngine.Supports(bundleId))
+            return await GeckoTabEngine.GetTabsAsync(bundleId, ct).ConfigureAwait(false);
+        if (Apps.TryGetValue(bundleId, out var dialect))
+        {
+            var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
+            return Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
+        }
+        return Array.Empty<AppTab>();
     }
 
     public async Task ActivateAsync(AppTab tab, CancellationToken ct = default)
     {
         // WindowRef/TabIndex round-trip from our own enumeration, but they cross a process boundary
         // as strings — re-validate as integers so nothing non-numeric can reach a script body.
-        // Both refs are 1-based indexes (Chromium/Safari) or positive AppleScript ids (iTerm2 —
-        // verified live: `id of window` is an integer), so anything < 1 is refused too.
+        // Both refs are 1-based indexes (Chromium/Safari/Gecko AX windows) or positive AppleScript
+        // ids (iTerm2 — verified live: `id of window` is an integer), so anything < 1 is refused too.
         if (!SupportsApp(tab.BundleId)
             || !int.TryParse(tab.WindowRef, NumberStyles.Integer, CultureInfo.InvariantCulture, out var windowRef)
             || windowRef < 1 || tab.TabIndex < 1)
             return;
-        await RunOsaScriptAsync(ActivationScript(tab.BundleId, Apps[tab.BundleId], windowRef, tab.TabIndex), ct)
-            .ConfigureAwait(false);
+
+        if (GeckoTabEngine.Supports(tab.BundleId))
+        {
+            await GeckoTabEngine.ActivateAsync(tab, windowRef, ct).ConfigureAwait(false);
+            return;
+        }
+        if (Apps.TryGetValue(tab.BundleId, out var dialect))
+            await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex), ct)
+                .ConfigureAwait(false);
     }
 
     // ── Script generation (internal for tests) ───────────────────────────────
+
+    /// <summary>Whether <paramref name="bundleId"/> is served by an AppleScript dialect (internal
+    /// for tests: pins that the Gecko family routes to the AX engine, never to script generation).</summary>
+    internal static bool HasScriptDialect(string bundleId) => Apps.ContainsKey(bundleId);
 
     /// <summary>Bundle ids are embedded in script source, so only pass the charset LaunchServices
     /// allows in practice — anything else is refused rather than escaped.</summary>
