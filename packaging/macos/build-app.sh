@@ -65,4 +65,11 @@ test -x "$APP/Contents/MacOS/Bevel"
 test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
 
+# Keep the repo's build output OUT of Spotlight/Launchpad so it doesn't shadow the canonical
+# /Applications/Bevel.app in the "Bevel" app list (bevel-5yx5). A .metadata_never_index marker in
+# OUT (dist/) — NOT inside the .app bundle, which would break the signature — makes Spotlight skip
+# dist/Bevel.app AND the dist/publish-app intermediate. rm -rf above only clears $APP, so this marker
+# in $OUT survives rebuilds.
+: > "$OUT/.metadata_never_index"
+
 echo "==> Built $APP (unsigned). Next: sign-app.sh (Developer ID + notarytool profile 'bevel')."
