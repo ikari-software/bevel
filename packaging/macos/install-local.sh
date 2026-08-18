@@ -12,9 +12,12 @@
 #   2. rsync --delete dist/Bevel.app -> /Applications/Bevel.app (mirror, no stale leftovers).
 #   3. lsregister -f the installed copy (register the ONE canonical bundle with LaunchServices).
 #   4. Prints the single resolved bundle LaunchServices now sees for the bundle id.
+#   5. Relaunches the installed bundle ONLY IF Bevel was already running when we started (so a deploy
+#      doesn't leave your live shell dead) — never launches a shell that wasn't there. NO_RELAUNCH=1 opts out.
 #
 #   Env: APP (source bundle, default dist/Bevel.app) · DEST (default /Applications/Bevel.app) ·
-#        BUNDLE_ID (default pl.ikari.bevel) · SKIP_NOTARY_CHECK=1 to bypass the staple-gate.
+#        BUNDLE_ID (default pl.ikari.bevel) · SKIP_NOTARY_CHECK=1 to bypass the staple-gate ·
+#        NO_RELAUNCH=1 to skip the was-running relaunch.
 #
 set -euo pipefail
 
@@ -46,6 +49,12 @@ if [ "${SKIP_NOTARY_CHECK:-0}" != "1" ]; then
 fi
 
 # --- 1. Quit any running Bevel ------------------------------------------------------------------------
+# Record whether a Bevel shell is live BEFORE we quit it, so step 5 can bring it back (only if it was
+# there). Match the main binary from ANY path (dev dist/ or /Applications) and exclude BevelHelper — the
+# trailing "( |$)" means "Bevel" followed by an arg or end-of-cmdline, so ".../MacOS/BevelHelper" is skipped.
+WAS_RUNNING=0
+if pgrep -f "Bevel\.app/Contents/MacOS/Bevel( |\$)" >/dev/null 2>&1; then WAS_RUNNING=1; fi
+
 # Graceful first (let the launcher tear down core/taskbar + the Dock restore), then hard-kill stragglers.
 echo "==> Quitting any running Bevel"
 osascript -e 'tell application id "'"$BUNDLE_ID"'" to quit' >/dev/null 2>&1 || true
@@ -82,3 +91,11 @@ else
 	echo "    (Spotlight has not re-indexed yet — the installed bundle is: $DEST)"
 fi
 echo "==> Done: $DEST"
+
+# --- 5. Relaunch ONLY if Bevel was running when we started (don't spawn a shell that wasn't there) -----
+if [ "$WAS_RUNNING" = "1" ] && [ "${NO_RELAUNCH:-0}" != "1" ]; then
+	echo "==> Bevel was running — relaunching the installed bundle"
+	open "$DEST"
+elif [ "$WAS_RUNNING" = "1" ]; then
+	echo "==> Bevel was running but NO_RELAUNCH=1 — not relaunching"
+fi
