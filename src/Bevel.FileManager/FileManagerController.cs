@@ -125,10 +125,45 @@ public sealed class FileManagerController : IDisposable
 
     // ── Mutations (delegate to FileOperationService) ───────────────────
     public Task<FileOpResult> CopyAsync(IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationToken ct = default)
-        => RunAsync(new CopyRequest { Timestamp = DateTimeOffset.UtcNow, Sources = sources, Destination = destination }, ct);
+        => RejectSelfNesting(FileOpKind.Copy, sources, destination) is { } r ? Reject(r)
+            : RunAsync(new CopyRequest { Timestamp = DateTimeOffset.UtcNow, Sources = sources, Destination = destination }, ct);
 
     public Task<FileOpResult> MoveAsync(IReadOnlyList<VfsPath> sources, VfsPath destination, CancellationToken ct = default)
-        => RunAsync(new MoveRequest { Timestamp = DateTimeOffset.UtcNow, Sources = sources, Destination = destination }, ct);
+        => RejectSelfNesting(FileOpKind.Move, sources, destination) is { } r ? Reject(r)
+            : RunAsync(new MoveRequest { Timestamp = DateTimeOffset.UtcNow, Sources = sources, Destination = destination }, ct);
+
+    /// <summary>Surface a pre-flight rejection the same way a completed op is surfaced (dialog/status
+    /// via OperationCompleted), without entering FileOperationService.</summary>
+    private Task<FileOpResult> Reject(FileOpResult result)
+    {
+        OperationCompleted?.Invoke(result);
+        return Task.FromResult(result);
+    }
+
+    /// <summary>Guards the one choke point both the drag-drop and the Move/Copy-To-Folder dialog
+    /// paths funnel through: a folder cannot be moved or copied INTO itself or its own subtree —
+    /// that would recurse forever / destroy the source. Returns a Failed result (surfaced via
+    /// OperationCompleted, no throw) when the destination is the source or lies under it; null to
+    /// proceed. (ce-review bevel-4y3y.)</summary>
+    private static FileOpResult? RejectSelfNesting(FileOpKind kind, IReadOnlyList<VfsPath> sources, VfsPath destination)
+    {
+        foreach (var src in sources)
+        {
+            if (destination.IsAtOrUnder(src))
+            {
+                var verb = kind == FileOpKind.Move ? "move" : "copy";
+                return new FileOpResult
+                {
+                    OperationId = Guid.NewGuid().ToString("N"),
+                    Kind = kind,
+                    Status = FileOpStatus.Failed,
+                    ItemResults = Array.Empty<FileItemResult>(),
+                    ErrorMessage = $"You can't {verb} the folder '{src.FileName}' into itself.",
+                };
+            }
+        }
+        return null;
+    }
 
     public Task<FileOpResult> DeleteAsync(IReadOnlyList<VfsPath> paths, bool toTrash, CancellationToken ct = default)
         => RunAsync(new DeleteRequest { Timestamp = DateTimeOffset.UtcNow, Paths = paths, ToTrash = toTrash }, ct);

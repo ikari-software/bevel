@@ -175,6 +175,34 @@ public sealed class FileManagerControllerTests : IDisposable
         Assert.Equal(FileOpStatus.Completed, seen!.Status);
     }
 
+    [Fact]
+    public async Task Moving_a_folder_into_its_own_subtree_is_rejected_before_any_mutation()
+    {
+        // bevel-4y3y: dropping / Move-To-Folder a folder into itself or a descendant would loop and
+        // destroy the source. The guard must reject with a Failed result surfaced via
+        // OperationCompleted — and touch nothing on disk.
+        Directory.CreateDirectory(Abs("src", "child"));
+        await File.WriteAllTextAsync(Abs("src", "child", "keep.txt"), "x");
+        FileOpResult? seen = null;
+        _controller.OperationCompleted += r => seen = r;
+
+        var into = P("src", "child");           // destination is UNDER the source
+        var result = await _controller.MoveAsync(new[] { P("src") }, into);
+
+        Assert.Equal(FileOpStatus.Failed, result.Status);
+        Assert.Same(result, seen);              // surfaced, not swallowed
+        Assert.Contains("into itself", result.ErrorMessage ?? "");
+        Assert.True(File.Exists(Abs("src", "child", "keep.txt")), "source must be untouched");
+    }
+
+    [Fact]
+    public async Task Copying_a_folder_onto_itself_is_rejected()
+    {
+        Directory.CreateDirectory(Abs("src"));
+        var result = await _controller.CopyAsync(new[] { P("src") }, P("src"));   // dest == source
+        Assert.Equal(FileOpStatus.Failed, result.Status);
+    }
+
     // ── New folder ─────────────────────────────────────────────────────
 
     [Fact]
