@@ -18,16 +18,6 @@ internal static class GeckoSessionStore
 {
     private static readonly byte[] Magic = "mozLz40\0"u8.ToArray();
 
-    /// <summary>App-support data roots per Gecko bundle id (relative to ~/Library/Application Support).</summary>
-    private static readonly Dictionary<string, string> DataRoots = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["app.zen-browser.zen"] = "zen",
-        ["org.mozilla.firefox"] = "Firefox",
-        ["org.mozilla.firefoxdeveloperedition"] = "Firefox",
-        ["org.mozilla.nightly"] = "Firefox",
-        ["org.mozilla.librewolf"] = "librewolf",
-    };
-
     /// <summary>Title → url for every open tab in the freshest profile's saved session, or an empty
     /// map when there is no readable store. Duplicate titles with DIFFERENT urls map to null and are
     /// removed (refuse-to-guess, same policy as the tab-press fallback).</summary>
@@ -52,7 +42,11 @@ internal static class GeckoSessionStore
     /// running instance's profile for any single-instance browser.</summary>
     internal static string? ResolveRecoveryFile(string bundleId)
     {
-        if (!DataRoots.TryGetValue(bundleId, out var rootName)) return null;
+        // The Gecko data root (e.g. "zen"/"Firefox") lives in the shared TabBrowserRegistry now
+        // (bevel-gxrq) — for the Gecko family the favicon root and the session-store root are the
+        // same Application Support dir. Non-Gecko / unknown ids have no session store.
+        var entry = TabBrowserRegistry.For(bundleId);
+        if (entry is not { IsGecko: true, FaviconRoot: { } rootName }) return null;
         var profiles = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "Library", "Application Support", rootName, "Profiles");

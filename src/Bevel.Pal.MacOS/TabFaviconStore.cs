@@ -42,23 +42,6 @@ internal static class TabFaviconStore
     /// hold profile subdirs ("Default", "Profile 1", …) each with a Favicons DB; Gecko roots hold
     /// Profiles/*/favicons.sqlite. (Safari's cache is TCC-locked behind Full Disk Access — out of
     /// scope by design, so Safari tabs stay icon-less.)</summary>
-    private static readonly Dictionary<string, (string Root, bool IsGecko)> Apps = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["com.google.Chrome"] = ("Google/Chrome", false),
-        ["com.google.Chrome.canary"] = ("Google/Chrome Canary", false),
-        ["company.thebrowser.Browser"] = ("Arc/User Data", false),
-        ["com.microsoft.edgemac"] = ("Microsoft Edge", false),
-        ["com.brave.Browser"] = ("BraveSoftware/Brave-Browser", false),
-        ["com.brave.Browser.beta"] = ("BraveSoftware/Brave-Browser-Beta", false),
-        ["com.vivaldi.Vivaldi"] = ("Vivaldi", false),
-        ["org.chromium.Chromium"] = ("Chromium", false),
-        ["app.zen-browser.zen"] = ("zen", true),
-        ["org.mozilla.firefox"] = ("Firefox", true),
-        ["org.mozilla.firefoxdeveloperedition"] = ("Firefox", true),
-        ["org.mozilla.nightly"] = ("Firefox", true),
-        ["org.mozilla.librewolf"] = ("librewolf", true),
-    };
-
     private static readonly byte[] PngMagic = { 0x89, 0x50, 0x4E, 0x47 };
 
     /// <summary>Sources above this are refused outright — a favicon DB in the hundreds of MB is
@@ -82,13 +65,14 @@ internal static class TabFaviconStore
     public static IReadOnlyList<Bevel.Pal.Abstractions.AppTab> Enrich(
         string bundleId, IReadOnlyList<Bevel.Pal.Abstractions.AppTab> tabs, CancellationToken ct)
     {
-        if (tabs.Count == 0 || ct.IsCancellationRequested || !Apps.TryGetValue(bundleId, out var app)) return tabs;
+        var app = TabBrowserRegistry.For(bundleId);
+        if (tabs.Count == 0 || ct.IsCancellationRequested || app?.FaviconRoot is null) return tabs;
         try
         {
             var appSupport = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "Library", "Application Support");
-            var source = ResolveDbPath(appSupport, app.Root, app.IsGecko);
+            var source = ResolveDbPath(appSupport, app.FaviconRoot, app.IsGecko);
             var dbCopy = FreshCopy(source, bundleId, ct);
             if (dbCopy is null) return tabs;
             return EnrichFromDb(dbCopy, app.IsGecko, bundleId, tabs, ct);
@@ -228,7 +212,7 @@ internal static class TabFaviconStore
         var stamp = info.LastWriteTimeUtc;
         var dir = CacheDir;
         Directory.CreateDirectory(dir);
-        // Defense-in-depth: reachable bundle ids come from the Apps allow-list, but this method is
+        // Defense-in-depth: reachable bundle ids come from the TabBrowserRegistry allow-list, but this method is
         // internal — never let a caller-supplied id path-traverse the cache dir.
         var copy = Path.Combine(dir, Path.GetFileName(bundleId) + ".sqlite");
 

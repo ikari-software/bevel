@@ -18,22 +18,13 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 internal static class GeckoTabEngine
 {
-    private static readonly HashSet<string> BundleIds = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "app.zen-browser.zen",
-        "org.mozilla.firefox",
-        "org.mozilla.firefoxdeveloperedition",
-        "org.mozilla.nightly",
-        "org.mozilla.librewolf",
-    };
-
     // Walk bounds. The DFS prunes at AXWebArea (page content is thousands of nodes the strip never
     // lives under), so chrome trees stay small and these caps guard only pathological targets.
     private const int MaxDepth = 12;
     private const int MaxVisited = 4000;
     private const float AxTimeoutSeconds = 1.5f;   // matches the taskbar prefetch budget
 
-    public static bool Supports(string bundleId) => BundleIds.Contains(bundleId);
+    public static bool Supports(string bundleId) => TabBrowserRegistry.For(bundleId)?.IsGecko == true;
 
     // ct is observed cooperatively INSIDE the walk, not passed to Task.Run: a pre-scheduling cancel
     // would surface as TaskCanceledException, and the ITabProvider contract is empty-not-throw.

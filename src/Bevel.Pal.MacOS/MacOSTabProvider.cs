@@ -28,20 +28,9 @@ public sealed class MacOSTabProvider : ITabProvider
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(4);
 
-    private static readonly Dictionary<string, Dialect> Apps = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["com.googlecode.iterm2"] = Dialect.ITerm,
-        ["com.google.Chrome"] = Dialect.Chromium,
-        ["com.google.Chrome.canary"] = Dialect.Chromium,
-        ["company.thebrowser.Browser"] = Dialect.Chromium,       // Arc
-        ["com.microsoft.edgemac"] = Dialect.Chromium,
-        ["com.brave.Browser"] = Dialect.Chromium,
-        ["com.brave.Browser.beta"] = Dialect.Chromium,
-        ["com.vivaldi.Vivaldi"] = Dialect.Chromium,
-        ["org.chromium.Chromium"] = Dialect.Chromium,
-        ["com.apple.Safari"] = Dialect.Safari,
-        ["com.apple.SafariTechnologyPreview"] = Dialect.Safari,
-    };
+    // The bundle-id → dialect map lives in TabBrowserRegistry now (bevel-gxrq). This is a script
+    // dialect only if the registry entry carries one (Gecko entries return null → served via AX).
+    private static Dialect? ScriptDialectFor(string bundleId) => TabBrowserRegistry.For(bundleId)?.ScriptDialect;
 
     public Capabilities Capabilities { get; } = new(
         Available: true,
@@ -50,7 +39,7 @@ public sealed class MacOSTabProvider : ITabProvider
 
     public bool SupportsApp(string? bundleId) =>
         bundleId is not null && IsSafeBundleId(bundleId)
-        && (Apps.ContainsKey(bundleId) || GeckoTabEngine.Supports(bundleId));
+        && (ScriptDialectFor(bundleId) is not null || GeckoTabEngine.Supports(bundleId));
 
     public async ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
     {
@@ -65,7 +54,7 @@ public sealed class MacOSTabProvider : ITabProvider
             var geckoTabs = await GeckoTabEngine.GetTabsAsync(bundleId, ct).ConfigureAwait(false);
             return await EnrichAsync(bundleId, geckoTabs, ct).ConfigureAwait(false);
         }
-        if (Apps.TryGetValue(bundleId, out var dialect))
+        if (ScriptDialectFor(bundleId) is { } dialect)
         {
             var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
             var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
@@ -90,7 +79,7 @@ public sealed class MacOSTabProvider : ITabProvider
             await GeckoTabEngine.ActivateAsync(tab, windowRef, ct).ConfigureAwait(false);
             return;
         }
-        if (Apps.TryGetValue(tab.BundleId, out var dialect))
+        if (ScriptDialectFor(tab.BundleId) is { } dialect)
             await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex), ct)
                 .ConfigureAwait(false);
     }
@@ -140,7 +129,7 @@ public sealed class MacOSTabProvider : ITabProvider
 
     /// <summary>Whether <paramref name="bundleId"/> is served by an AppleScript dialect (internal
     /// for tests: pins that the Gecko family routes to the AX engine, never to script generation).</summary>
-    internal static bool HasScriptDialect(string bundleId) => Apps.ContainsKey(bundleId);
+    internal static bool HasScriptDialect(string bundleId) => ScriptDialectFor(bundleId) is not null;
 
     /// <summary>Bundle ids are embedded in script source, so only pass the charset LaunchServices
     /// allows in practice — anything else is refused rather than escaped.</summary>
