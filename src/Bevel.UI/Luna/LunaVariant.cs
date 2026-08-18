@@ -194,6 +194,7 @@ public static class LunaVariantService
         var color = string.IsNullOrWhiteSpace(colorId) || !IsKnownColor(colorId!) ? DefaultColor : colorId!;
         var gloss = string.IsNullOrWhiteSpace(glossId) || !IsKnownGloss(glossId!) ? DefaultGloss : glossId!;
         if (color == _appliedColor && gloss == _appliedGloss && _injected.Count > 0) return;
+        Bevel.UI.Glyphs.InvalidateThemeCache();   // variant colours changed — drop cached icon brushes (bevel-lha4)
         if (Application.Current?.Resources is not { } res) return;
 
         var variant = Enum.Parse<LunaColorVariant>(color);

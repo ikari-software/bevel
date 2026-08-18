@@ -128,6 +128,7 @@ public static class ThemeService
         // theme so a retry of the SAME theme isn't swallowed as a no-op — otherwise a half-applied theme
         // would latch and Apply(theme) could never re-run to recover.
         if (applied) _appliedId = theme;
+        Glyphs.InvalidateThemeCache();   // token bundle swapped — drop cached icon brushes (bevel-lha4)
         return applied;
 
         // Live re-templating (bevel-dob): controls bind Theme="{DynamicResource Bevel.Theme.*}", so adding

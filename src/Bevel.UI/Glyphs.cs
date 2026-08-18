@@ -34,9 +34,19 @@ public static class Glyphs
         return Color.Parse(fallbackHex);
     }
 
-    /// <summary>Vertical gradient from two theme token keys.</summary>
-    private static LinearGradientBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
-        new()
+    // Brushes are resolved from theme resources on EVERY icon build, once per glyph part — a hot
+    // path when a large folder listing realizes hundreds of ItemView containers. Cache them per
+    // token; the immutable brushes are safe to share across icons. InvalidateThemeCache() drops the
+    // cache when a theme/scheme/variant swap changes the underlying tokens (ce-review bevel-lha4).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IBrush> _brushCache = new();
+
+    /// <summary>Drop the resolved-brush cache. Called by the theme/scheme/variant engines after they
+    /// change the token values so the next icon build re-resolves against the new palette.</summary>
+    public static void InvalidateThemeCache() => _brushCache.Clear();
+
+    /// <summary>Vertical gradient from two theme token keys (cached per token pair).</summary>
+    private static IBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
+        _brushCache.GetOrAdd(topKey + "|" + bottomKey, _ => new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
             EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
@@ -45,11 +55,11 @@ public static class Glyphs
                 new GradientStop(ResolveColor(topKey, topFallback), 0),
                 new GradientStop(ResolveColor(bottomKey, bottomFallback), 1),
             },
-        };
+        });
 
-    /// <summary>Solid brush from theme token key.</summary>
-    private static SolidColorBrush S(string tokenKey, string fallbackHex) =>
-        new(ResolveColor(tokenKey, fallbackHex));
+    /// <summary>Solid brush from theme token key (cached per token).</summary>
+    private static IBrush S(string tokenKey, string fallbackHex) =>
+        _brushCache.GetOrAdd(tokenKey, _ => new SolidColorBrush(ResolveColor(tokenKey, fallbackHex)));
 
     // ── Semantic color mappings (icon-specific tokens) ─────────────────────
     // Each icon part has its own Bevel.Color.Icon* token so schemes can adapt
