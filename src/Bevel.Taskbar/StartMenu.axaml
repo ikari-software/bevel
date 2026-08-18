@@ -118,6 +118,14 @@
                     <Style Selector="Button.lunarow:pointerover /template/ Border#row">
                         <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
                     </Style>
+                    <!-- Visible keyboard focus (WCAG 2.4.7, bevel-vk4n): a focused pinned/place row gets
+                         the same blue Luna selection as hover, so arrowing the menu is never invisible. -->
+                    <Style Selector="Button.lunarow:focus-visible /template/ Border#row">
+                        <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+                    </Style>
+                    <Style Selector="Button.lunarow:focus-visible TextBlock">
+                        <Setter Property="Foreground" Value="White" />
+                    </Style>
                     <Style Selector="TextBlock.pintitle">
                         <Setter Property="Foreground" Value="{DynamicResource Luna.Brush.StartMenuPinTitle}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
@@ -155,6 +163,10 @@
                         </Setter>
                     </Style>
                     <Style Selector="Button.footer:pointerover /template/ Border#fr">
+                        <Setter Property="Background" Value="{DynamicResource Luna.Brush.StartMenuFooterHover}" />
+                    </Style>
+                    <!-- Visible keyboard focus for the footer Log Off / Turn Off buttons (WCAG 2.4.7). -->
+                    <Style Selector="Button.footer:focus-visible /template/ Border#fr">
                         <Setter Property="Background" Value="{DynamicResource Luna.Brush.StartMenuFooterHover}" />
                     </Style>
                 </Border.Styles>

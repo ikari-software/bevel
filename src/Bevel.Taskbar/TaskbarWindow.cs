@@ -306,6 +306,64 @@ public sealed class TaskbarWindow : BevelWindow
         TaskbarNative.SetWindowLevel(handle, onTop ? TaskbarNative.CGMainMenuWindowLevel - 1 : 0);
     }
 
+    // ── Menu-scoped key focus (bevel-vk4n) ───────────────────────────────
+    // The taskbar is a non-activating utility bar: at idle it must NEVER steal key focus from the user's
+    // app (canBecomeKeyWindow stays false, set in ApplyTaskbarBehaviors). But a menu/popover (Start menu,
+    // a task-button or tray context menu) needs live keystrokes — arrow navigation, Enter to activate,
+    // Escape to dismiss — so for exactly the duration one is open we FLIP canBecomeKeyWindow true and make
+    // the bar key, then flip it back and hand key focus BACK to the app that had it (macOS menu-bar-extra
+    // popover behaviour). This is what makes the wired Ctrl+Esc / Escape handler and the menus' own arrow
+    // keys actually reach the taskbar instead of being dead code.
+
+    private int _priorAppPid;
+
+    /// <summary>Whether the taskbar is currently permitted to become the key window. False at idle; true
+    /// only while a menu/popover it owns is open. Drives the native <c>canBecomeKeyWindow</c> flip. Exposed
+    /// (managed state, independent of the native NSWindow) so headless tests can assert the scope without a
+    /// real window.</summary>
+    public bool IsKeyFocusAllowed { get; private set; }
+
+    /// <summary>True when a real native NSWindow backs this toplevel (i.e. not the headless test surface),
+    /// so callers can gate process-global native hooks — e.g. the Start-menu hotkey monitor — off in tests
+    /// where <see cref="TryGetNativeHandle"/> yields Zero.</summary>
+    public bool HasNativeWindow =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && TryGetNativeHandle() != IntPtr.Zero;
+
+    /// <summary>Allows or forbids the taskbar becoming the key window, for the lifetime of an open menu.
+    /// On allow: capture the frontmost app (to restore later), set <c>canBecomeKeyWindow</c> true, and make
+    /// the bar key so its popups get keystrokes. On forbid: set it false again and re-activate the captured
+    /// app, which returns key focus to where it was. The managed <see cref="IsKeyFocusAllowed"/> flag always
+    /// tracks the request, even with no native window (headless), so the scope is observable in tests.</summary>
+    public void SetKeyFocusAllowed(bool allowed)
+    {
+        if (IsKeyFocusAllowed == allowed) return;
+        IsKeyFocusAllowed = allowed;
+
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return;
+        var handle = TryGetNativeHandle();
+        if (handle == IntPtr.Zero) return;
+
+        if (allowed)
+        {
+            // Remember who was frontmost so we can hand key focus back on close (resigning alone can
+            // leave focus nowhere on a non-activating window).
+            _priorAppPid = TaskbarNative.FrontmostAppPid();
+            TaskbarNative.SetCanBecomeKeyWindow(handle, true);
+            TaskbarNative.MakeKey(handle);
+        }
+        else
+        {
+            TaskbarNative.SetCanBecomeKeyWindow(handle, false);
+            // Re-activate the app that owned key focus when the menu opened — the reliable way to return
+            // focus from a utility bar (macOS won't auto-pick a new key window for us).
+            if (_priorAppPid > 0)
+            {
+                TaskbarNative.ActivateAppByPid(_priorAppPid);
+                _priorAppPid = 0;
+            }
+        }
+    }
+
     /// <summary>
     /// Positions the window at the bottom of the primary display, full-width,
     /// with the themed taskbar height (30 logical px).
@@ -440,6 +498,53 @@ internal static class TaskbarNative
             objc_msgSend_void_intptr_bool(nsWindow, sel_setAcceptsMouseMovedEvents, accepts ? (byte)1 : (byte)0);
     }
 
+    // ── Menu-scoped key focus helpers (bevel-vk4n) ───────────────────────
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern int objc_msgSend_int(IntPtr receiver, IntPtr selector);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern IntPtr objc_msgSend_ret_int(IntPtr receiver, IntPtr selector, int arg);
+    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    private static extern void objc_msgSend_void_nuint(IntPtr receiver, IntPtr selector, nuint arg);
+
+    private static readonly IntPtr cls_NSWorkspace = objc_getClass("NSWorkspace");
+    private static readonly IntPtr cls_NSRunningApplication = objc_getClass("NSRunningApplication");
+    private static readonly IntPtr sel_sharedWorkspace = SelectorCache.Get("sharedWorkspace");
+    private static readonly IntPtr sel_frontmostApplication = SelectorCache.Get("frontmostApplication");
+    private static readonly IntPtr sel_processIdentifier = SelectorCache.Get("processIdentifier");
+    private static readonly IntPtr sel_runningAppWithPid = SelectorCache.Get("runningApplicationWithProcessIdentifier:");
+    private static readonly IntPtr sel_activateWithOptions = SelectorCache.Get("activateWithOptions:");
+    private static readonly IntPtr sel_makeKeyAndOrderFront = SelectorCache.Get("makeKeyAndOrderFront:");
+    private static readonly IntPtr sel_keyCode = SelectorCache.Get("keyCode");
+
+    // NSApplicationActivateIgnoringOtherApps — bring the target app fully forward on restore.
+    private const nuint NSApplicationActivateIgnoringOtherApps = 1 << 1;
+
+    /// <summary>PID of the frontmost application right now, or 0 if unavailable — captured when a menu opens
+    /// so focus can be returned to it on close.</summary>
+    public static int FrontmostAppPid()
+    {
+        if (cls_NSWorkspace == IntPtr.Zero) return 0;
+        var ws = objc_msgSend_ret(cls_NSWorkspace, sel_sharedWorkspace);
+        if (ws == IntPtr.Zero) return 0;
+        var app = objc_msgSend_ret(ws, sel_frontmostApplication);
+        return app == IntPtr.Zero ? 0 : objc_msgSend_int(app, sel_processIdentifier);
+    }
+
+    /// <summary>Re-activates the running application with <paramref name="pid"/> — used to hand key focus
+    /// back to the app that had it when a taskbar menu opened.</summary>
+    public static void ActivateAppByPid(int pid)
+    {
+        if (cls_NSRunningApplication == IntPtr.Zero || pid <= 0) return;
+        var app = objc_msgSend_ret_int(cls_NSRunningApplication, sel_runningAppWithPid, pid);
+        if (app != IntPtr.Zero)
+            objc_msgSend_void_nuint(app, sel_activateWithOptions, NSApplicationActivateIgnoringOtherApps);
+    }
+
+    /// <summary>Makes the window key + front, so its open popups receive keystrokes (only called after
+    /// <see cref="SetCanBecomeKeyWindow"/> has been flipped true for the menu's lifetime).</summary>
+    public static void MakeKey(IntPtr nsWindow)
+        => objc_msgSend_void_ptr(nsWindow, sel_makeKeyAndOrderFront, IntPtr.Zero);
+
     // ── Live modifier state (bevel-ww71) ─────────────────────────────────────
     // The taskbar is non-activating, so keyboard events don't route to its popups and (verified) macOS
     // pointer events over the popup carry NO modifier flags. [NSEvent modifierFlags] returns the CURRENT
@@ -462,6 +567,7 @@ internal static class TaskbarNative
     private static readonly nuint NSEventModifierFlagOption = (nuint)(1UL << 19);
     private static readonly nuint NSEventMaskLeftMouseDown = (nuint)(1UL << 1);
     private static readonly nuint NSEventMaskRightMouseDown = (nuint)(1UL << 3);
+    private static readonly nuint NSEventMaskKeyDown = (nuint)(1UL << 10);
 
     /// <summary>True iff Option/Alt is held right now (queried from macOS, focus-independent).</summary>
     public static bool OptionKeyDown()
@@ -490,6 +596,18 @@ internal static class TaskbarNative
         {
             var ctx = Marshal.PtrToStructure<BlockLiteral>(block).Context;
             if (ctx != IntPtr.Zero && GCHandle.FromIntPtr(ctx).Target is Action a) a();
+        }
+        catch { /* stale/freed handle — monitor is being torn down */ }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    private static void KeyMonitorInvoke(IntPtr block, IntPtr nsEvent)
+    {
+        // Key variant: hand the NSEvent to the stored reader, which extracts keyCode + modifierFlags.
+        try
+        {
+            var ctx = Marshal.PtrToStructure<BlockLiteral>(block).Context;
+            if (ctx != IntPtr.Zero && GCHandle.FromIntPtr(ctx).Target is Action<IntPtr> a) a(nsEvent);
         }
         catch { /* stale/freed handle — monitor is being torn down */ }
     }
@@ -529,6 +647,54 @@ internal static class TaskbarNative
             var blockHandle = GCHandle.Alloc(block, GCHandleType.Pinned);
             var mask = NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown;
             var token = objc_msgSend_ret_nuint_ptr(cls_NSEvent, sel_addGlobalMonitor, mask, blockHandle.AddrOfPinnedObject());
+            if (token == IntPtr.Zero)
+            {
+                actionHandle.Free(); blockHandle.Free(); descHandle.Free();
+                return IntPtr.Zero;
+            }
+            lock (_monitorLock)
+                _monitors[token] = new MonitorState { Action = actionHandle, Block = blockHandle, Desc = descHandle };
+            return token;
+        }
+        catch { return IntPtr.Zero; }
+    }
+
+    /// <summary>Install a global key-down monitor so Ctrl+Esc / Option+Esc can summon the Start menu even
+    /// though the taskbar is a non-activating window that gets no keystrokes at idle (bevel-vk4n). Global
+    /// monitors observe events delivered to OTHER apps (observe-only — they never consume), so this is the
+    /// honest way to make the wired open-gesture live from anywhere. <paramref name="onKey"/> receives the
+    /// event's keyCode and modifierFlags. Returns a token for <see cref="RemoveMonitor"/>, or Zero on
+    /// failure. Mirrors the mouse monitor's block ABI; the callback reads the NSEvent on invoke.</summary>
+    public static unsafe IntPtr AddGlobalKeyDownMonitor(Action<ulong, ulong> onKey)
+    {
+        try
+        {
+            var isa = dlsym(RTLD_DEFAULT, "_NSConcreteGlobalBlock");
+            if (isa == IntPtr.Zero || cls_NSEvent == IntPtr.Zero) return IntPtr.Zero;
+
+            // The reader runs on invoke: pull keyCode + modifierFlags off the NSEvent and forward them.
+            Action<IntPtr> reader = nsEvent =>
+            {
+                var keyCode = (ulong)objc_msgSend_nuint(nsEvent, sel_keyCode);
+                var flags = (ulong)objc_msgSend_nuint(nsEvent, sel_modifierFlags);
+                onKey(keyCode, flags);
+            };
+
+            var actionHandle = GCHandle.Alloc(reader);
+            var descHandle = GCHandle.Alloc(
+                new BlockDescriptor { Reserved = 0, Size = (nuint)Marshal.SizeOf<BlockLiteral>() },
+                GCHandleType.Pinned);
+            var block = new BlockLiteral
+            {
+                Isa = isa,
+                Flags = 1 << 28,                 // BLOCK_IS_GLOBAL
+                Reserved = 0,
+                Invoke = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&KeyMonitorInvoke,
+                Descriptor = descHandle.AddrOfPinnedObject(),
+                Context = GCHandle.ToIntPtr(actionHandle),
+            };
+            var blockHandle = GCHandle.Alloc(block, GCHandleType.Pinned);
+            var token = objc_msgSend_ret_nuint_ptr(cls_NSEvent, sel_addGlobalMonitor, NSEventMaskKeyDown, blockHandle.AddrOfPinnedObject());
             if (token == IntPtr.Zero)
             {
                 actionHandle.Free(); blockHandle.Free(); descHandle.Free();

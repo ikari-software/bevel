@@ -55,6 +55,13 @@ public partial class TaskbarView : UserControl
     private bool _wired;
     private bool _layoutQueued;
 
+    // Menu-scoped key focus (bevel-vk4n): the taskbar becomes key ONLY while a menu/popover it owns is
+    // open. A depth counter lets nested/overlapping menus (Start menu + a task menu) coexist without one
+    // closing dropping key focus the other still needs. Flyouts are wired once each (deduped).
+    private int _menuScopeDepth;
+    private readonly HashSet<Avalonia.Controls.Primitives.FlyoutBase> _scopedFlyouts = new();
+    private IntPtr _startHotkeyMonitor;   // native global Ctrl+Esc / Option+Esc monitor token (macOS)
+
     public TaskbarView() => InitializeComponent();
 
     public Button StartButtonControl => StartButton;
@@ -240,7 +247,18 @@ public partial class TaskbarView : UserControl
     /// deferred so activation is fully underway first (hiding the popup mid-gesture would cancel it).
     /// A Border+Tapped (not a Button+Command) so the row shares the flyoutrow hover-highlight with the
     /// stack flyout — one style-driven hover mechanism, not a per-list re-implementation (bevel-cust).</summary>
-    private void OnGroupWindowTapped(object? sender, TappedEventArgs e)
+    private void OnGroupWindowTapped(object? sender, TappedEventArgs e) => ActivateGroupWindowRow(sender);
+
+    /// <summary>Keyboard operability for a grouped-window flyout row (bevel-vk4n): Enter/Space activates
+    /// the window, mirroring the row's Tapped gesture so a keyboard/AT user can pick a window.</summary>
+    private void OnGroupWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        ActivateGroupWindowRow(sender);
+        e.Handled = true;
+    }
+
+    private void ActivateGroupWindowRow(object? sender)
     {
         if ((sender as Control)?.DataContext is TaskItemViewModel vm)
             vm.ActivateCommand.Execute(null);
@@ -275,6 +293,18 @@ public partial class TaskbarView : UserControl
     {
         if ((sender as Control)?.DataContext is StackFileViewModel vm)
             vm.OpenCommand.Execute(null);
+    }
+
+    /// <summary>Keyboard operability for a stack-flyout row (bevel-vk4n): Enter/Space opens the file, the
+    /// same action as a click/tap.</summary>
+    private void OnStackFileKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        if ((sender as Control)?.DataContext is StackFileViewModel vm)
+        {
+            vm.OpenCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     /// <summary>On press we record the row and START resolving its IStorageFile, so that by the time the
@@ -359,6 +389,23 @@ public partial class TaskbarView : UserControl
             StartLogoHost.Content = StartLogo.For(16);
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
+
+            // Menu-scoped key focus (bevel-vk4n): the Start menu's popup opening/closing drives the
+            // become-key flip, so its arrow-key navigation and Escape actually reach the bar. The menu
+            // also focuses its first item on open (StartMenu.OpenAsync).
+            if (_startMenu is not null)
+            {
+                _startMenu.MenuPopupControl.Opened += (_, _) => EnterMenuScope();
+                _startMenu.MenuPopupControl.Closed += (_, _) => ExitMenuScope();
+            }
+
+            WireFlyoutScope(TrayOverflowButton.Flyout);   // the "show hidden icons" tray overflow popover
+
+            // Native global Ctrl+Esc / Option+Esc summon (bevel-vk4n). Installed only when a REAL native
+            // window backs the taskbar — never in headless tests (where every TaskbarView would otherwise
+            // register a process-global AppKit monitor). Gated to macOS via HasNativeWindow.
+            if (_window?.HasNativeWindow == true)
+                _startHotkeyMonitor = TaskbarNative.AddGlobalKeyDownMonitor(OnGlobalStartHotkey);
             AddHandler(PointerPressedEvent, OnWindowButtonMiddleClick, RoutingStrategies.Tunnel);
 
             // Re-flow button widths when the strip resizes, the row count changes, or the window
@@ -409,6 +456,18 @@ public partial class TaskbarView : UserControl
         // width (they start at 0) even if their SizeChanged fired before we subscribed. Also wires
         // pointer handlers for containers realized before ContainerPrepared was subscribed.
         QueueLayout();
+    }
+
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        // Release the process-global hotkey monitor with the view (bevel-vk4n) so a torn-down taskbar
+        // doesn't leave a dangling AppKit monitor pointing at freed managed state.
+        if (_startHotkeyMonitor != IntPtr.Zero)
+        {
+            TaskbarNative.RemoveMonitor(_startHotkeyMonitor);
+            _startHotkeyMonitor = IntPtr.Zero;
+        }
+        base.OnUnloaded(e);
     }
 
     /// <summary>
@@ -490,6 +549,9 @@ public partial class TaskbarView : UserControl
         button.PointerExited += OnTaskButtonPointerExited;
         button.Click -= OnTaskButtonClick;
         button.Click += OnTaskButtonClick;
+        // A grouped-app button carries a windows-list Flyout; bind its open/close to the key-focus scope
+        // so keyboard users can arrow through the group's windows (bevel-vk4n). Idempotent per flyout.
+        WireFlyoutScope(button.Flyout);
     }
 
     /// <summary>
@@ -513,12 +575,27 @@ public partial class TaskbarView : UserControl
         await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
     }
 
+    /// <summary>Keyboard operability for a mirrored tray icon (bevel-vk4n): Enter/Space forwards a left
+    /// activation (Shift/Ctrl/Alt/Cmd carried through), the same as a left-click on the icon. Tray icons
+    /// are plain Images, so without this a keyboard/AT user could never operate the notification area.</summary>
+    private async void OnTrayIconKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
+        e.Handled = true;
+        await _vm.Tray.Forward(item.Id, TrayButton.Left, ToTrayModifiers(e.KeyModifiers));
+    }
+
     /// <summary>Refreshes a folder stack's recent-contents list (and clears its new-item cue) as its
     /// button is clicked, so the flyout that opens right after shows the current folder (bevel-12g).</summary>
     private void OnStackButtonClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control c && c.DataContext is StackViewModel stack)
             stack.Refresh();
+        // Bind this stack's recent-contents flyout to the key-focus scope (idempotent), so its rows are
+        // keyboard-navigable while open (bevel-vk4n).
+        if (sender is Button b)
+            WireFlyoutScope(b.Flyout);
     }
 
     private static TrayModifiers ToTrayModifiers(KeyModifiers mods)
@@ -705,9 +782,13 @@ public partial class TaskbarView : UserControl
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider) is { } menu)
             {
                 _openTaskMenu = menu;
+                // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
+                // close, so its arrow/Enter/Escape navigation reaches the bar (bevel-vk4n).
+                EnterMenuScope();
                 menu.Closed += (_, _) =>
                 {
                     if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null;
+                    ExitMenuScope();
                     // Skia-backed favicon bitmaps are unmanaged memory the GC can't see — release
                     // them with the menu (same pattern as the hover preview's bitmap swap).
                     DisposeTabRows(tabs);
@@ -947,21 +1028,27 @@ public partial class TaskbarView : UserControl
 
     // ── Start menu ──────────────────────────────────────────────────────
 
-    private async void OnStartButtonClick(object? sender, RoutedEventArgs e)
+    private void OnStartButtonClick(object? sender, RoutedEventArgs e) => ToggleStartMenu();
+
+    /// <summary>Opens the Start menu if closed, closes it if open. Shared by the Start button click, the
+    /// in-window Ctrl+Esc handler, and the native global hotkey (bevel-vk4n).</summary>
+    private void ToggleStartMenu()
     {
         if (_startMenu is null) return;
         if (_startMenu.IsOpen) _startMenu.Close();
-        else await _startMenu.OpenAsync(StartButton);
+        else _ = _startMenu.OpenAsync(StartButton);
     }
 
-    private async void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
+    private void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+Esc (Win2000 standard) or Option+Esc (macOS-friendly) opens the menu.
+        // Ctrl+Esc (Win2000 standard) or Option+Esc (macOS-friendly) opens the menu. This handler is now
+        // genuinely reachable: a menu open makes the taskbar key (SetKeyFocusAllowed), and the native
+        // global monitor summons the menu from idle when the bar isn't key yet (bevel-vk4n).
         if (e.Key == Key.Escape && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Alt)))
         {
             if (_startMenu is not null && !_startMenu.IsOpen)
             {
-                await _startMenu.OpenAsync(StartButton);
+                _ = _startMenu.OpenAsync(StartButton);
                 e.Handled = true;
             }
         }
@@ -970,5 +1057,45 @@ public partial class TaskbarView : UserControl
             _startMenu.Close();
             e.Handled = true;
         }
+    }
+
+    // ── Menu-scoped key focus (bevel-vk4n) ───────────────────────────────
+
+    /// <summary>Marks a menu/popover the taskbar owns as open: on the first one, flip the window to allow
+    /// key focus so its keystrokes (arrows / Enter / Escape) land on the bar.</summary>
+    private void EnterMenuScope()
+    {
+        if (_menuScopeDepth++ == 0)
+            _window?.SetKeyFocusAllowed(true);
+    }
+
+    /// <summary>Marks one owned menu/popover as closed: on the last one, flip the window back to non-key so
+    /// focus returns to the app that had it.</summary>
+    private void ExitMenuScope()
+    {
+        if (_menuScopeDepth > 0 && --_menuScopeDepth == 0)
+            _window?.SetKeyFocusAllowed(false);
+    }
+
+    /// <summary>Idempotently binds a flyout's open/close to the key-focus scope, so a task/tray/stack/group
+    /// popover drives the become-key flip just like the Start menu does.</summary>
+    private void WireFlyoutScope(Avalonia.Controls.Primitives.FlyoutBase? flyout)
+    {
+        if (flyout is null || !_scopedFlyouts.Add(flyout)) return;
+        flyout.Opened += (_, _) => EnterMenuScope();
+        flyout.Closed += (_, _) => ExitMenuScope();
+    }
+
+    /// <summary>Handles the native global Ctrl+Esc / Option+Esc summon (bevel-vk4n). Called off the AppKit
+    /// monitor thread, so it marshals the toggle back to the UI thread. Escape's macOS virtual key is 53;
+    /// Control = 1&lt;&lt;18, Option = 1&lt;&lt;19 in NSEvent.modifierFlags.</summary>
+    private void OnGlobalStartHotkey(ulong keyCode, ulong modifierFlags)
+    {
+        const ulong escKeyCode = 53;
+        const ulong controlFlag = 1UL << 18;
+        const ulong optionFlag = 1UL << 19;
+        if (keyCode != escKeyCode) return;
+        if ((modifierFlags & (controlFlag | optionFlag)) == 0) return;
+        Dispatcher.UIThread.Post(ToggleStartMenu);
     }
 }

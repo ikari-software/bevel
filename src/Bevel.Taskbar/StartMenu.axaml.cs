@@ -12,6 +12,8 @@ using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
@@ -80,7 +82,31 @@ public partial class StartMenu : UserControl
         ApplyThemeLayout();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
+        // Move keyboard focus INTO the menu so arrow keys work immediately (bevel-vk4n). The popup is a
+        // separate visual tree with its own TopLevel that only exists once open, so focusing is posted
+        // (Loaded priority) to run after the popup root is realized — the avalonia-popup-needs-visual-tree
+        // gotcha. The taskbar host flips itself key while the menu is open (SetKeyFocusAllowed), so this
+        // focus can actually receive keystrokes.
+        Dispatcher.UIThread.Post(FocusFirstItem, DispatcherPriority.Loaded);
         return Task.CompletedTask;
+    }
+
+    /// <summary>Focuses the first actionable row of the active layout so the menu is arrow-navigable the
+    /// instant it opens. Classic → the first top-level MenuItem; Luna → the first pinned/place row.</summary>
+    private void FocusFirstItem()
+    {
+        if (!MenuPopup.IsOpen) return;
+        if (LunaLayout.IsVisible)
+        {
+            var firstRow = LunaLayout.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(b => b.Classes.Contains("lunarow") && b.IsEffectivelyVisible);
+            firstRow?.Focus(NavigationMethod.Tab);
+        }
+        else
+        {
+            ItemsMenu.Items.OfType<MenuItem>().FirstOrDefault()?.Focus(NavigationMethod.Tab);
+        }
     }
 
     private bool _lunaWired;

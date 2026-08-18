@@ -19,6 +19,14 @@
         <Style Selector="Border.flyoutrow:pointerover TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
+        <!-- Keyboard focus must be visible (WCAG 2.4.7): a focused row gets the same blue selection as
+             hover, so tabbing/arrowing through a group or stack flyout is never invisible (bevel-vk4n). -->
+        <Style Selector="Border.flyoutrow:focus-visible">
+            <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+        </Style>
+        <Style Selector="Border.flyoutrow:focus-visible TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
 
         <!-- Row-overflow scroll chevrons (multi-row bar): flat vector arrows, no raised Classic button
              chrome, so they read cleanly on the themed bar. The arrow colour is the theme's tray text
@@ -39,6 +47,10 @@
         </Style>
         <Style Selector="RepeatButton.chevron:pressed /template/ Border#chev">
             <Setter Property="Background" Value="#22000000" />
+        </Style>
+        <!-- Visible keyboard focus for the overflow chevrons (WCAG 2.4.7, bevel-vk4n). -->
+        <Style Selector="RepeatButton.chevron:focus-visible /template/ Border#chev">
+            <Setter Property="Background" Value="#55FFFFFF" />
         </Style>
     </UserControl.Styles>
     <Panel>
@@ -76,7 +88,8 @@
         <Button x:Name="StartButton" Grid.Column="0"
                 Width="74" Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
                 Theme="{DynamicResource Bevel.Theme.StartButton}"
-                Focusable="False"
+                Focusable="True"
+                AutomationProperties.Name="Start"
                 Padding="6,0"
                 ClipToBounds="True"
                 HorizontalAlignment="Left"
@@ -133,7 +146,8 @@
                              not the click gesture itself, remains authoritative. -->
                         <ToggleButton Command="{Binding ActivateCommand}"
                                       IsChecked="{Binding IsFocused, Mode=OneWay}"
-                                      Focusable="False"
+                                      Focusable="True"
+                                      AutomationProperties.Name="{Binding Title}"
                                       Width="{Binding Width}"
                                       Opacity="{Binding Opacity}"
                                       FontWeight="{Binding TitleWeight}"
@@ -172,7 +186,8 @@
                          the app's windows. IsChecked reflects whether any child window is focused. -->
                     <DataTemplate DataType="tb:TaskGroupViewModel">
                         <ToggleButton IsChecked="{Binding IsFocused, Mode=OneWay}"
-                                      Focusable="False"
+                                      Focusable="True"
+                                      AutomationProperties.Name="{Binding Label}"
                                       Width="{Binding Width}"
                                       Opacity="{Binding Opacity}"
                                       MinWidth="0"
@@ -195,7 +210,9 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="tb:TaskItemViewModel">
                                                 <Border Classes="flyoutrow" HorizontalAlignment="Stretch"
-                                                        Padding="6,3" Tapped="OnGroupWindowTapped">
+                                                        Padding="6,3" Tapped="OnGroupWindowTapped"
+                                                        Focusable="True" KeyDown="OnGroupWindowKeyDown"
+                                                        AutomationProperties.Name="{Binding Title}">
                                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                                         <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                                                VerticalAlignment="Center" />
@@ -235,10 +252,12 @@
                     HorizontalAlignment="Right" VerticalAlignment="Stretch"
                     Background="{DynamicResource Bevel.Brush.TrayWell}"
                     Width="16" Margin="1,1,2,1" IsVisible="False">
-            <RepeatButton x:Name="ScrollUpBtn" Classes="chevron" Height="14" Focusable="False">
+            <RepeatButton x:Name="ScrollUpBtn" Classes="chevron" Height="14" Focusable="True"
+                          AutomationProperties.Name="Scroll buttons up">
                 <Path Data="M0,4 L4,0 L8,4 Z" Fill="{DynamicResource Bevel.Brush.TrayText}" />
             </RepeatButton>
-            <RepeatButton x:Name="ScrollDownBtn" Classes="chevron" Height="14" Focusable="False" Margin="0,1,0,0">
+            <RepeatButton x:Name="ScrollDownBtn" Classes="chevron" Height="14" Focusable="True" Margin="0,1,0,0"
+                          AutomationProperties.Name="Scroll buttons down">
                 <Path Data="M0,0 L4,4 L8,0 Z" Fill="{DynamicResource Bevel.Brush.TrayText}" />
             </RepeatButton>
         </StackPanel>
@@ -270,12 +289,17 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="tb:StackViewModel">
                                 <Button Padding="1" Background="Transparent" BorderThickness="0"
-                                        Focusable="False" ToolTip.Tip="{Binding Name}"
+                                        Focusable="True" ToolTip.Tip="{Binding Name}"
+                                        AutomationProperties.Name="{Binding Name}"
                                         Click="OnStackButtonClick">
                                     <Grid Width="16" Height="16">
                                         <Image Source="{Binding FolderIcon}" Width="16" Height="16" />
+                                        <!-- New-item cue: a coloured dot for sighted users, with a text alternative
+                                             (AutomationProperties.Name + tooltip) so AT announces "New items" too. -->
                                         <Ellipse Width="6" Height="6" Fill="#2E86D8" Stroke="White" StrokeThickness="1"
                                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 ToolTip.Tip="New items"
+                                                 AutomationProperties.Name="New items"
                                                  IsVisible="{Binding HasNew}" />
                                     </Grid>
                                     <Button.Flyout>
@@ -288,6 +312,8 @@
                                                                  click to open, drag out to any app. -->
                                                             <Border Classes="flyoutrow"
                                                                     HorizontalAlignment="Stretch" Padding="6,3"
+                                                                    Focusable="True" KeyDown="OnStackFileKeyDown"
+                                                                    AutomationProperties.Name="{Binding Name}"
                                                                     Tapped="OnStackFileTapped"
                                                                     PointerPressed="OnStackFilePressed"
                                                                     PointerMoved="OnStackFileMoved">
@@ -330,7 +356,8 @@
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <!-- Overflow chevron on the LEFT (Windows "show hidden icons"): an up glyph
                                  since the flyout opens above the bar; lists the hidden icons (dark backed). -->
-                            <Button IsVisible="{Binding Tray.HasOverflow}" Focusable="False"
+                            <Button x:Name="TrayOverflowButton" IsVisible="{Binding Tray.HasOverflow}" Focusable="True"
+                                    AutomationProperties.Name="Show hidden icons"
                                     Padding="3,0" Background="Transparent" BorderThickness="0"
                                     FontSize="13" FontWeight="Bold" Foreground="{DynamicResource Bevel.Brush.TrayText}"
                                     Content="&#x2303;" ToolTip.Tip="Show hidden icons" VerticalAlignment="Center">
@@ -351,8 +378,11 @@
                                                         <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
                                                                Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform"
                                                                Margin="4" VerticalAlignment="Center"
+                                                               Focusable="True"
+                                                               AutomationProperties.Name="{Binding Tooltip}"
                                                                ToolTip.Tip="{Binding Tooltip}"
-                                                               PointerPressed="OnTrayIconPressed" />
+                                                               PointerPressed="OnTrayIconPressed"
+                                                               KeyDown="OnTrayIconKeyDown" />
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
@@ -379,7 +409,10 @@
                                         <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
                                                Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform" Margin="1,0"
                                                VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
-                                               PointerPressed="OnTrayIconPressed" />
+                                               Focusable="True"
+                                               AutomationProperties.Name="{Binding Tooltip}"
+                                               PointerPressed="OnTrayIconPressed"
+                                               KeyDown="OnTrayIconKeyDown" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
