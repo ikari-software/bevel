@@ -33,6 +33,7 @@
                      Padding="22,1,18,1"
                      VerticalContentAlignment="Center"
                      FlowDirection="LeftToRight"
+                     AutomationProperties.Name="Address"
                      KeyDown="OnAddressKeyDown" />
 
             <!-- Folder icon (self-drawn vector, matches the list glyph) -->

@@ -76,6 +76,8 @@ public partial class TabStrip : UserControl
             Margin = new Thickness(0, 0, 4, 0),
             Focusable = false,
         };
+        // The bare "×" glyph is meaningless to a screen reader — give it a real name (bevel-6zs6).
+        Avalonia.Automation.AutomationProperties.SetName(closeButton, $"Close tab {header}");
         var content = new StackPanel { Orientation = Orientation.Horizontal };
         content.Children.Add(headerText);
         content.Children.Add(closeButton);
@@ -88,6 +90,7 @@ public partial class TabStrip : UserControl
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = content,
         };
+        Avalonia.Automation.AutomationProperties.SetName(container, header);   // the tab's accessible name
 
         var entry = new TabEntry { Id = id, Container = container, HeaderText = headerText, CloseButton = closeButton };
         _entries.Add(entry);
@@ -119,7 +122,11 @@ public partial class TabStrip : UserControl
     public void SetHeader(Guid id, string header)
     {
         var entry = _entries.FirstOrDefault(e => e.Id == id);
-        if (entry is not null) entry.HeaderText.Text = header;
+        if (entry is null) return;
+        entry.HeaderText.Text = header;
+        // Keep the accessible names in sync with the visible label (bevel-6zs6).
+        Avalonia.Automation.AutomationProperties.SetName(entry.Container, header);
+        Avalonia.Automation.AutomationProperties.SetName(entry.CloseButton, $"Close tab {header}");
     }
 
     /// <summary>Reads back a tab's current label — used by tests and diagnostics.</summary>
