@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DEV signing (NOT release — see sign-app.sh for the notarizable Developer ID build).
 #
-# Stable-signs the locally-built app host + helper so macOS TCC permission grants (Accessibility,
+# Stable-signs the packaged dist/Bevel.app bundle + helper so macOS TCC permission grants (Accessibility,
 # Screen Recording) PERSIST across rebuilds. `dotnet build` and `swift build` ad-hoc-sign their
 # output, and TCC keys the grant on the ad-hoc cdhash — which changes on every build. So each rebuild
 # looks like a brand-new binary and you must re-grant Accessibility every time (and the tray tooltip
@@ -16,13 +16,12 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 IDENTITY="${HELPER_SIGN_IDENTITY:-Apple Development: Cezar Pokorski (KQ832UQ6C7)}"
-APP="src/Bevel.App/bin/Debug/net10.0/Bevel.App"
 HELPER="native/helper-macos/.build/debug/BevelHelper"
 
-if [ -f "$APP" ]; then
-	codesign --force --sign "$IDENTITY" --identifier "pl.ikari.bevel" "$APP"
-	echo "==> signed app    -> pl.ikari.bevel"
-fi
+# NOTE: dev builds no longer emit a Debug app host — Bevel.App sets UseAppHost=false unless
+# BevelPackaging=true, so `dotnet run` executes the DLL via the shared `dotnet` host and there is
+# no per-build Bevel.App executable to stable-sign. The app you actually run is dist/Bevel.app
+# (below); the swift helper is still stable-signed here for the `swift build` debug-run path.
 if [ -f "$HELPER" ]; then
 	codesign --force --sign "$IDENTITY" --identifier "pl.ikari.bevel.helper" "$HELPER"
 	echo "==> signed helper -> pl.ikari.bevel.helper"

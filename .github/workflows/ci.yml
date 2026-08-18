@@ -84,6 +84,7 @@ jobs:
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
+            -p:BevelPackaging=true \
             --output .publish/${{ matrix.artifact-name }}
 
       - name: Upload artifact

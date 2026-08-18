@@ -21,7 +21,11 @@ PKG="$ROOT/packaging/macos"
 # loose managed .dll / .json, which codesign otherwise flags as unsigned "code" in an .app's MacOS
 # dir. DebugType=none drops PDBs (not shippable, and also flagged). Native libs self-extract at run
 # time; the hardened-runtime disable-library-validation entitlement permits that.
-PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true
+# BevelPackaging=true is REQUIRED here: Directory.Build.targets sets UseAppHost=false for every Exe on a
+# normal build/test (the Launch/TCC-hygiene fix — no apphosts pollute Spotlight). The packaging path is
+# the sole exception; without this flag PublishSingleFile would conflict with UseAppHost=false and the
+# publish would fail (and dist/Bevel.app would have no native Mach-O to rename to CFBundleExecutable).
+PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true -p:BevelPackaging=true
 	-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 	-p:DebugType=none -p:DebugSymbols=false -v quiet)
 
