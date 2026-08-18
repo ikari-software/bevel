@@ -214,6 +214,72 @@ public sealed class MmfBgraPoolTests
         finally { TryDelete(path); }
     }
 
+    [Fact]
+    public void Reader_before_the_writer_creates_the_pool_is_detached_and_never_creates_the_file()
+    {
+        var path = TempPath();
+        try
+        {
+            // Reader opens first — the writer hasn't created the file yet. It must NOT create it
+            // (a reader creating/initing could zero a pool the writer publishes a moment later).
+            using var reader = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024, isWriter: false);
+            Assert.False(File.Exists(path), "a reader must not create the pool file");
+            Assert.False(reader.TryGet("anything", out _));   // detached → always misses
+            Assert.Equal(0, reader.PublishedCount);
+        }
+        finally { TryDelete(path); }
+    }
+
+    [Fact]
+    public void Reader_cannot_publish()
+    {
+        var path = TempPath();
+        try
+        {
+            using (var writer = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024)) { }   // create it
+            using var reader = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024, isWriter: false);
+            Assert.Throws<InvalidOperationException>(() => reader.TryAdd("k", MakeImage(8, 8, 1)));
+        }
+        finally { TryDelete(path); }
+    }
+
+    [Fact]
+    public void Reader_attaches_read_only_to_an_existing_pool_and_reads_it()
+    {
+        var path = TempPath();
+        try
+        {
+            var img = MakeImage(16, 16, 3);
+            using (var writer = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024))
+                writer.TryAdd("k", img);
+
+            using var reader = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024, isWriter: false);
+            Assert.True(reader.TryGet("k", out var got));
+            Assert.Equal(img.Bgra, got.Bgra);
+        }
+        finally { TryDelete(path); }
+    }
+
+    [Fact]
+    public void Reader_detaches_on_a_geometry_mismatch_rather_than_reiniting()
+    {
+        var path = TempPath();
+        try
+        {
+            using (var writer = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024))
+                writer.TryAdd("k", MakeImage(8, 8, 1));
+
+            // A reader asking for a DIFFERENT geometry must detach (miss), NOT recreate/zero the
+            // writer's live pool — verified by re-attaching a matching reader and still finding "k".
+            using (var mismatched = MmfBgraPool.CreateOrOpen(path, 16, 2048, isWriter: false))
+                Assert.False(mismatched.TryGet("k", out _));
+
+            using var ok = MmfBgraPool.CreateOrOpen(path, 8, 64 * 1024, isWriter: false);
+            Assert.True(ok.TryGet("k", out _), "the writer's pool must be intact after a mismatched reader");
+        }
+        finally { TryDelete(path); }
+    }
+
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); }

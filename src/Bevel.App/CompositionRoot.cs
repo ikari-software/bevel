@@ -67,12 +67,15 @@ public static class CompositionRoot
         // re-decodes an icon the owner already has. The pool is SINGLE-WRITER — only the all-in-one or
         // the shell-core owner publishes; split UI roles are readers (miss -> private render). The pool
         // is a container-owned singleton (disposed with the container); the decorator just borrows it.
+        // The isWriter flag is now ALSO passed to the pool itself so a reader role opens the file
+        // read-only and never creates/resizes/inits it (ce-review bevel-lha4).
+        var poolIsWriter = role is ShellRole.All or ShellRole.Core;
         services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
-            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes));
+            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
             new Pal.MacOS.MacOSIconProvider(),
             sp.GetRequiredService<MmfBgraPool>(),
-            isWriter: role is ShellRole.All or ShellRole.Core));
+            isWriter: poolIsWriter));
 
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         // Opening a document is a purely local `open`(1) spawn — no shell-core proxy, every role direct.
