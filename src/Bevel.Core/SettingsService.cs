@@ -102,18 +102,14 @@ public sealed class SettingsService : IDisposable
             if (File.Exists(_configPath))
                 json = await File.ReadAllTextAsync(_configPath, ct).ConfigureAwait(false);
 
-            _raw = json is null
-                ? new Dictionary<string, JsonElement>()
-                : JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-                  ?? new Dictionary<string, JsonElement>();
+            _raw = ParseRawOrDefault(json);
 
             _version = await WriteRowAsync(conn, JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement), ct)
                 .ConfigureAwait(false);
         }
         else
         {
-            _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-                   ?? new Dictionary<string, JsonElement>();
+            _raw = ParseRawOrDefault(json);
             _version = version;
         }
 
@@ -188,8 +184,7 @@ public sealed class SettingsService : IDisposable
         if (json is null)
             return false;
 
-        _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-               ?? new Dictionary<string, JsonElement>();
+        _raw = ParseRawOrDefault(json);
         _version = fullVersion;
         MigrateRaw();   // a peer mid-upgrade may still write an older-schema blob (bevel-4er2)
         ApplyRaw();
@@ -409,6 +404,25 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>
+    /// <summary>Deserialize the blob to the raw dict, falling back to defaults (empty) on a MALFORMED
+    /// blob rather than throwing. A torn write or a hand-edited settings.db would otherwise throw
+    /// JsonException out of LoadAsync — called via GetResult() before the UI starts — and hard-crash
+    /// every process at boot; and out of the 750 ms poll on a peer's bad write (ce-review: reliability
+    /// + testing). Degrading to defaults matches the "missing file yields defaults" contract.</summary>
+    private static Dictionary<string, JsonElement> ParseRawOrDefault(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new Dictionary<string, JsonElement>();
+        try
+        {
+            return JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
+                   ?? new Dictionary<string, JsonElement>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, JsonElement>();
+        }
+    }
+
     private void ApplyRaw()
     {
         _settings = new BevelSettings

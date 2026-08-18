@@ -294,7 +294,7 @@ public static class Glyphs
         c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
         c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
         for (var i = 0; i < 3; i++)
-            c.Children.Add(Vec($"M5,{7.0 + i * 2.0} H10.6", null, PaperLine, 0.7));
+            c.Children.Add(Vec(FormattableString.Invariant($"M5,{7.0 + i * 2.0} H10.6"), null, PaperLine, 0.7));
     }
 
     static void ExeGlyph(Canvas c)

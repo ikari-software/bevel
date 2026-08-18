@@ -68,8 +68,13 @@ internal static class Program
         // A SIGTERM here means "shut THIS process down" — from the launcher tearing the shell down, or
         // a bare kill. Shut down locally (don't fan back out to the launcher, which sent it): the child
         // must run its own window teardown so the Dock is restored and the helper stopped.
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.ShutdownLocal());
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.ShutdownLocal());
+        // ctx.Cancel = true is REQUIRED (matching the headless sites below): it cancels .NET's
+        // default SIGTERM action, which would otherwise terminate the process right after this
+        // handler returns — BEFORE Avalonia's dispatcher processes the Shutdown() that ShutdownLocal
+        // posts, so window OnClosed / hosted-service Dispose (Dock restore, helper stop) never run
+        // (sigterm-poll-signal-cancel; this UI-process handler was the one site missing it).
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
 
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
@@ -426,7 +431,7 @@ internal static class Program
             command.Append(QuoteShellArgument(arg));
         }
         var logPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
-        command.Append($" >>{logPath} 2>&1 &");
+        command.Append($" >>{QuoteShellArgument(logPath)} 2>&1 &");   // quote: TMPDIR may contain spaces/metachars (ce-review)
 
         return new ProcessStartInfo
         {

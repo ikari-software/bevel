@@ -257,12 +257,18 @@ public sealed class MmfBgraPool : IDisposable
         int height = _accessor.ReadInt32(e + EHeight);
         int bgraLen = _accessor.ReadInt32(e + EBgraLen);
 
+        // These fields come straight out of a SHARED, cross-process file that a corrupt/truncated
+        // pool — or a hostile same-UID mapper — can populate with garbage. The writer validates on
+        // TryAdd; the reader must fail closed too, or `new byte[bgraLen]` OOMs / throws on the
+        // off-thread icon path (ce-review: security). Reject anything the writer couldn't have
+        // legitimately stored.
+        if (width <= 0 || height <= 0 || bgraLen <= 0
+            || bgraLen > _maxBgraBytes || bgraLen < (long)width * height * 4)
+            return false;
+
         var bgra = new byte[bgraLen];
-        if (bgraLen > 0)
-        {
-            long blobOff = _blobBase + (long)slot * _maxBgraBytes;
-            _accessor.ReadArray(blobOff, bgra, 0, bgraLen);
-        }
+        long blobOff = _blobBase + (long)slot * _maxBgraBytes;
+        _accessor.ReadArray(blobOff, bgra, 0, bgraLen);
 
         image = new PalImage(width, height, bgra);
         return true;

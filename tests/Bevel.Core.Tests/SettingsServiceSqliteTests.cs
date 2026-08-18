@@ -52,6 +52,32 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task Corrupt_blob_degrades_to_defaults_instead_of_crashing()
+    {
+        // A torn write or a hand-edited settings.db must NOT throw JsonException out of LoadAsync
+        // (called via GetResult() before the UI starts) and hard-crash every process at boot
+        // (ce-review). It should degrade to defaults, the same as a missing file.
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            await writer.UpdateAsync(s => s.TaskbarRows = 4);   // creates the row
+        }
+
+        // Corrupt the single JSON blob directly.
+        await using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={System.IO.Path.Combine(_dir, "settings.db")}"))
+        {
+            await conn.OpenAsync();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE settings SET json = '{ this is not valid json ' WHERE id = 1;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();   // must not throw
+        Assert.Equal(new BevelSettings().TaskbarRows, reader.Current.TaskbarRows);   // fell back to defaults
+    }
+
+    [Fact]
     public async Task InfoPaneStyle_Auto_default_survives_a_reload_despite_default_pruning()
     {
         // Regression (bevel-robr, Fable review): the default value is pruned from the blob because it equals

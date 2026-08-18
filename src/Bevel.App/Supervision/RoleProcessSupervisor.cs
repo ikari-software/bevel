@@ -155,10 +155,23 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         // so overlapping the two cold starts removes the core's entire startup from time-to-taskbar-
         // visible. Core readiness is still awaited AFTER spawning, so callers can assume a reachable
         // core — but the taskbar has already forked in parallel by then.
-        foreach (var p in _processes)
+        var started = new List<IRoleProcess>();
+        try
         {
-            _log?.Invoke($"supervisor: starting {p.Role}");
-            p.Start();
+            foreach (var p in _processes)
+            {
+                _log?.Invoke($"supervisor: starting {p.Role}");
+                p.Start();
+                started.Add(p);
+            }
+        }
+        catch
+        {
+            // A mid-fan-out Start() failure must not orphan the children already spawned — kill
+            // them in reverse before propagating (mirrors StopAsync's teardown; ce-review: reliability).
+            for (var i = started.Count - 1; i >= 0; i--)
+                try { started[i].Kill(); } catch { /* best-effort */ }
+            throw;
         }
         if (_coreReadyProbe is not null)
             await _coreReadyProbe(ct).ConfigureAwait(false);
@@ -206,11 +219,18 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                         // that never gets the signal — the shell "won't die" without SIGKILL (bevel-ply).
                         if (_stopped || ct.IsCancellationRequested) break;
                         _log?.Invoke($"supervisor: {p.Role} died — respawning");
+                        // Escalate BEFORE spawning: a successful Process.Start() is NOT proof of
+                        // health — a child that dies WITHIN the poll interval (bad config, crash on
+                        // init) would otherwise reset its backoff here and respawn hot forever. A
+                        // child still carrying a backoff entry died again without ever being seen
+                        // alive, so it accumulates like a failed spawn; the top-of-loop IsAlive check
+                        // (survived a full tick) is now the SOLE reset (ce-review: adversarial).
+                        _backoffTicks[p.Role] = _backoffTicks.TryGetValue(p.Role, out var prev)
+                            ? Math.Min(prev * 2, maxCooldown) : 1;
+                        _cooldown[p.Role] = _backoffTicks[p.Role];
                         p.Start();
                         if (p.Role == ShellRole.Core && _coreReadyProbe is not null)
                             await _coreReadyProbe(ct).ConfigureAwait(false);
-                        _cooldown.Remove(p.Role);      // healthy again — reset backoff
-                        _backoffTicks.Remove(p.Role);
                     }
                     catch (Exception ex)
                     {

@@ -214,6 +214,14 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Persist the taskbar row count off a resize drag. async void, guarded — a SaveAsync
+    /// fault must not surface as an unobserved task exception (ce-review: reliability).</summary>
+    private static async void PersistRows(SettingsService settings, int rows)
+    {
+        try { await settings.UpdateAsync(s => s.TaskbarRows = rows); }
+        catch (Exception ex) { Console.Error.WriteLine($"[app] persist TaskbarRows failed (swallowed): {ex.Message}"); }
+    }
+
     /// <summary>Opens the Taskbar Properties dialog (Start ▸ Settings ▸ Taskbar and Start Menu…),
     /// wiring it to apply clock changes to THIS live taskbar instantly — the dialog and the clock live
     /// in the same process, so no cross-process settings broadcast is needed. A fresh transient window
@@ -294,8 +302,10 @@ public partial class App : Application
         {
             Content = taskbarView,
         };
-        // Persist the row count when the user drags the bar taller/shorter (bevel-0ml).
-        taskbarWin.RowsChanged += rows => _ = settings.UpdateAsync(s => s.TaskbarRows = rows);
+        // Persist the row count when the user drags the bar taller/shorter (bevel-0ml). Guarded like
+        // ToggleTaskbarLock — a bare `_ = UpdateAsync(...)` swallowed a SaveAsync fault into an
+        // unobserved task exception (ce-review: reliability).
+        taskbarWin.RowsChanged += rows => PersistRows(settings, rows);
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
 
