@@ -551,9 +551,12 @@ public partial class ItemView : UserControl
         // have transparent/empty gaps (between a row's icon and its text, or a details row's
         // empty cells) that GetVisualAt falls through, which made most clicks miss. Same
         // coordinate transform the marquee uses.
+        // No _viewModels.Contains(vm) guard: a realized container's DataContext is always a current
+        // ItemViewModel once ItemsSource is set, and the Contains was an O(n) scan INSIDE this O(n)
+        // container loop — O(n²) per click in a large folder (ce-review: performance).
         foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
-            if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm || !_viewModels.Contains(vm))
+            if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm)
                 continue;
             var pos = ctl.TranslatePoint(default, ItemsPresenter) ?? default;
             if (new Rect(pos, ctl.Bounds.Size).Contains(pt)) return vm;
@@ -882,8 +885,11 @@ public partial class ItemView : UserControl
 
         // Commit through the controller (which drives FileOperationService); the optimistic
         // EditName is only a visual echo until the directory reloads with the real name.
+        // Compare against RealName — the box was seeded with RealName (line ~864), not the possibly
+        // extension-hidden DisplayName. Comparing to DisplayName fired a spurious rename when the
+        // name was left unchanged, and DROPPED a real "x.txt"→"x" edit (ce-review: correctness).
         if (commit && !string.IsNullOrWhiteSpace(newName)
-            && !string.Equals(newName, vm.DisplayName, StringComparison.Ordinal))
+            && !string.Equals(newName, vm.RealName, StringComparison.Ordinal))
         {
             vm.EditName = newName;
             RenameCommitted?.Invoke(this, new RenameCommittedEventArgs(vm.Path, newName));

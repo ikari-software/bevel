@@ -38,4 +38,32 @@ public class EnumerationErrorTest
             .GetField("ObjectCountText", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(statusBar)!;
         Assert.Contains("no longer exists", countText.Text ?? "", StringComparison.OrdinalIgnoreCase);
     }
+
+    [AvaloniaFact]
+    public async Task ReloadDifferential_on_a_vanished_directory_does_not_crash()
+    {
+        // The F5 / watcher-refresh sibling of LoadDirectory lacked the same enumeration-error guard,
+        // so refreshing after the folder's volume is ejected crashed the process (ce-review, anchor 100).
+        var root = new VfsRoot();
+        root.Register(new LocalFsProvider());
+        var win = new FileManagerWindow();
+        win.SetVfsRoot(root);
+        win.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // Load a real directory with content so ReloadDifferential takes the reconcile path (HasItems).
+        var dir = Path.Combine(Path.GetTempPath(), "bevel-reload-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "a.txt"), "x");
+        var path = new VfsPath("file", dir);
+        var load = typeof(FileManagerWindow).GetMethod("LoadDirectory", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await (Task)load.Invoke(win, new object?[] { path })!;
+        Dispatcher.UIThread.RunJobs();
+
+        // Delete the directory out from under the window, then differential-reload — must not throw.
+        Directory.Delete(dir, recursive: true);
+        var reload = typeof(FileManagerWindow).GetMethod("ReloadDifferential", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await (Task)reload.Invoke(win, new object?[] { path })!;
+        Dispatcher.UIThread.RunJobs();
+    }
 }
