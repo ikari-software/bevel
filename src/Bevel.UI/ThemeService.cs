@@ -79,12 +79,14 @@ public static class ThemeService
 
     /// <summary>Applies the named theme to the running app by swapping its merged token-override dict.
     /// Unknown/empty ids fall back to <see cref="DefaultTheme"/>. No-op if already applied. Must run on
-    /// the UI thread.</summary>
-    public static void Apply(string? id)
+    /// the UI thread. Returns TRUE when the template engine is now on the requested theme (including the
+    /// already-applied no-op), FALSE when the live re-template FAILED — the caller must then NOT apply
+    /// the colour variant / font for that theme, or the two engines end up disagreeing (ce-review).</summary>
+    public static bool Apply(string? id)
     {
         var theme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultTheme : id!;
-        if (theme == _appliedId) return;
-        if (Application.Current is not { } app || app.Resources is not { } res) return;
+        if (theme == _appliedId) return true;   // already in place — safe to apply the variant/font
+        if (Application.Current is not { } app || app.Resources is not { } res) return false;
 
         // Drop the previously-applied theme contributions (if any) so themes don't stack — both the
         // token dict at Application level and the control-template Styles set.
@@ -126,6 +128,7 @@ public static class ThemeService
         // theme so a retry of the SAME theme isn't swallowed as a no-op — otherwise a half-applied theme
         // would latch and Apply(theme) could never re-run to recover.
         if (applied) _appliedId = theme;
+        return applied;
 
         // Live re-templating (bevel-dob): controls bind Theme="{DynamicResource Bevel.Theme.*}", so adding
         // the theme's Styles above re-resolves those keys and re-templates every bound control IN PLACE —

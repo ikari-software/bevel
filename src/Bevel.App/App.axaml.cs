@@ -99,14 +99,19 @@ public partial class App : Application
             // All roles render themed UI, so this is common to every surface.
             var settings = services.GetRequiredService<SettingsService>();
             // Theme token bundle first (PKG-03) — the baseline the user overrides layer on top of.
-            UI.ThemeService.Apply(settings.Current.ThemeId);
-            UI.ThemeOptions.ApplyCrispBevels(
-                this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
-            // The active theme's appearance variant (W2K-01 colour scheme / Luna colour+gloss). The
-            // theme owns its options via ThemeVariants, which routes to the right engine and clears the
-            // others so shared chrome keys don't bleed across themes.
-            UI.ThemeVariants.Apply(settings.Current);
-            // UI font override (FNT-01) — top-level, so it wins over the theme's default face.
+            // Gate the theme-COUPLED engines (colour variant + crisp bevels) on the template swap
+            // actually succeeding: applying a theme's colour variant while its template failed to load
+            // leaves the two recolour engines disagreeing about the active theme (ce-review).
+            if (UI.ThemeService.Apply(settings.Current.ThemeId))
+            {
+                UI.ThemeOptions.ApplyCrispBevels(
+                    this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
+                // The active theme's appearance variant (W2K-01 colour scheme / Luna colour+gloss). The
+                // theme owns its options via ThemeVariants, which routes to the right engine and clears
+                // the others so shared chrome keys don't bleed across themes.
+                UI.ThemeVariants.Apply(settings.Current);
+            }
+            // UI font override (FNT-01) — orthogonal to the theme, so applied regardless.
             UI.FontService.Apply(settings.Current.UiFontFamily);
 
             // Cross-process live re-theming (bevel-dob): the Settings window persists ThemeId and bumps
@@ -119,10 +124,14 @@ public partial class App : Application
             settings.Changed += () =>
             {
                 var s = settings.Current;
-                UI.ThemeService.Apply(s.ThemeId);
-                UI.ThemeVariants.Apply(s);
+                // Gate the theme-coupled engines on the template swap succeeding (see the startup
+                // apply above) so a failed live re-template can't desync the recolour engines.
+                if (UI.ThemeService.Apply(s.ThemeId))
+                {
+                    UI.ThemeVariants.Apply(s);
+                    UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
+                }
                 UI.FontService.Apply(s.UiFontFamily);
-                UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
 
                 // Folder Options → apply live to every open file-manager window: update the app-wide
                 // extension-hiding flag and re-list each window (also re-runs the hidden-file filter).
