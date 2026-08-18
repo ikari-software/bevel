@@ -220,6 +220,57 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task Concurrent_edits_to_different_keys_merge_instead_of_clobbering()
+    {
+        // bevel-ha3x (ce-review E): the clobber. Two surfaces (Settings window + an Explorer window) each
+        // load the SAME db, then each save a DIFFERENT key in between. Under last-writer-wins the second
+        // write serializes its OWN full blob — which never saw the peer's change — and silently drops it.
+        // The delta paths now CAS on the version and re-apply the delta on the reloaded peer blob, so both
+        // keys survive.
+        using var a = new SettingsService(_dir);
+        using var b = new SettingsService(_dir);
+        await a.LoadAsync();
+        await b.LoadAsync();
+        Assert.Equal(a.Version, b.Version); // both loaded the same seed version
+
+        // A sets key X; B sets a DIFFERENT key Y. A commits first, so B's save is the one that would clobber.
+        await a.UpdateAsync(s => s.TaskbarStartLabel = "Menu"); // key X
+        await b.UpdateAsync(s => s.ShowHiddenFiles = true);     // key Y — B's _version is now stale → CAS miss
+
+        // A fresh instance (a third process) must see BOTH keys. Under LWW, X ("Menu") would be gone.
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal("Menu", reader.Current.TaskbarStartLabel); // A's change survived B's save (the merge)
+        Assert.True(reader.Current.ShowHiddenFiles);            // B's change is present too
+
+        // The merge advanced the version monotonically (seed → A → B) with no write lost, and B converged
+        // its own in-memory state onto the merged blob (it re-applied its delta on top of A's).
+        Assert.Equal(a.Version + 1, b.Version);
+        Assert.Equal(reader.Version, b.Version);
+        Assert.Equal("Menu", b.Current.TaskbarStartLabel); // B pulled A's key in during the CAS-miss reload
+        Assert.True(b.Current.ShowHiddenFiles);
+    }
+
+    [Fact]
+    public async Task Concurrent_theme_override_and_setting_edits_merge()
+    {
+        // The other delta path (UpdateThemeOverridesAsync) merges the same way: A writes a plain setting, B
+        // writes a per-theme override with a stale version → CAS miss → reload + re-apply → both survive.
+        using var a = new SettingsService(_dir);
+        using var b = new SettingsService(_dir);
+        await a.LoadAsync();
+        await b.LoadAsync();
+
+        await a.UpdateAsync(s => s.ThemeId = "luna");
+        await b.UpdateThemeOverridesAsync("luna", o => o.CrispBevels = true); // stale version → merges onto A's
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal("luna", reader.Current.ThemeId);           // A's setting survived
+        Assert.True(reader.ThemeOverridesFor("luna").CrispBevels); // B's override survived
+    }
+
+    [Fact]
     public async Task Legacy_settings_json_is_imported_once_into_the_db()
     {
         // A pre-P5 settings.json exists but no DB yet.

@@ -117,7 +117,17 @@ public sealed class SettingsService : IDisposable
         ApplyRaw();
     }
 
-    /// <summary>Write current settings to the DB (blob + version bump) in a transaction.</summary>
+    /// <summary>
+    /// Write current settings to the DB (blob + version bump) in a transaction.
+    ///
+    /// <para><b>Whole-blob replacement stays LAST-WRITER-WINS.</b> This entry point carries no delta — it
+    /// serializes whatever <see cref="Current"/> + overrides currently hold — so on a concurrent peer write
+    /// there is nothing to re-apply and merge; it can only clobber or be clobbered. The MERGE guarantee lives
+    /// on the delta paths (<see cref="UpdateAsync"/> / <see cref="UpdateThemeOverridesAsync"/>), which hold the
+    /// <see cref="Action{T}"/> across a CAS-retry loop and re-apply it on the freshly-reloaded peer blob. In
+    /// practice every production writer goes through those delta paths; only whole-object saves (mostly tests,
+    /// and the deliberate <c>CopyFrom</c> "revert to baseline") use this — where LWW is the intended semantic.</para>
+    /// </summary>
     public async Task SaveAsync(CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
@@ -126,22 +136,7 @@ public sealed class SettingsService : IDisposable
             var conn = await OpenAsync(ct).ConfigureAwait(false);
             var json = SerializeRaw();
             _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
-
-            // Passive export: a human-readable settings.json mirror (the DB is the source of truth;
-            // nothing reads this at runtime). Write it ATOMICALLY via a temp file + replace: two
-            // processes' concurrent WriteAllText to the same path throw a sharing violation on Windows'
-            // exclusive locking. temp+replace makes each writer touch its own file; the replace is a
-            // fast atomic rename, and a lost race is harmless (the DB already holds the value).
-            var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
-                File.Move(tmp, _configPath, overwrite: true);
-            }
-            catch (IOException)
-            {
-                try { File.Delete(tmp); } catch { /* leave nothing behind */ }
-            }
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -149,18 +144,114 @@ public sealed class SettingsService : IDisposable
         }
     }
 
-    /// <summary>Update a single setting and persist.</summary>
-    public async Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
+    /// <summary>Update a single setting and persist, MERGING with any concurrent peer edit to a different key
+    /// (see <see cref="MutateMergeAndSaveAsync"/>).</summary>
+    public Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
+        // Re-read the _settings FIELD on each apply (not a captured local): the CAS-miss reload path replaces
+        // it with a fresh instance via ApplyRaw, and the delta must land on that reloaded object.
+        => MutateMergeAndSaveAsync(() => update(_settings), ct);
+
+    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist, merging with a
+    /// concurrent peer edit to a different key.</summary>
+    public Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
+        // ThemeOverridesFor re-fetches from the (post-reload) overrides dict on each apply, mirroring UpdateAsync.
+        => MutateMergeAndSaveAsync(() => update(ThemeOverridesFor(themeId)), ct);
+
+    /// <summary>Bounded retry budget for the CAS-merge loop before falling back to a last-writer-wins write, so
+    /// a save can never spin forever against a very hot peer writer.</summary>
+    private const int MaxCasRetries = 5;
+
+    /// <summary>
+    /// The delta write path: apply <paramref name="applyDelta"/> to the in-memory model, serialize, and commit
+    /// with a version compare-and-swap keyed on this process's last-loaded <see cref="Version"/>.
+    ///
+    /// <para>On a CAS miss (a peer bumped the row first) the peer's change would otherwise be silently clobbered
+    /// by our stale full blob. Instead we RELOAD the peer's row (its json + version), run the same migrate +
+    /// project pipeline used on load, RE-APPLY this update's delta on top of that reloaded state, re-serialize,
+    /// and retry against the peer's version — so two surfaces editing DIFFERENT keys MERGE. Bounded by
+    /// <see cref="MaxCasRetries"/>; on exhaustion we fall back to an unconditional last-writer-wins write so a
+    /// save never hangs or throws.</para>
+    ///
+    /// <para>The whole read-modify-write runs under <see cref="_writeLock"/> on this process's single connection;
+    /// the 750&#160;ms poller's <see cref="ReloadIfChangedAsync"/> is a cheap version probe on the same connection
+    /// and is not gated by the lock, so it never deadlocks behind a write.</para>
+    /// </summary>
+    private async Task MutateMergeAndSaveAsync(Action applyDelta, CancellationToken ct = default)
     {
-        update(_settings);
-        await SaveAsync(ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+            applyDelta();
+            var json = SerializeRaw();
+
+            if (_version == 0)
+            {
+                // Never loaded / no row yet: nothing to CAS against — seed unconditionally (the upsert
+                // handles Save-without-Load, matching LoadAsync's seed).
+                _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                var landed = false;
+                for (var attempt = 0; attempt < MaxCasRetries; attempt++)
+                {
+                    var newVersion = await WriteRowCasAsync(conn, json, _version, ct).ConfigureAwait(false);
+                    if (newVersion is int v)
+                    {
+                        _version = v;
+                        landed = true;
+                        break;
+                    }
+
+                    // A peer wrote first. Reload its blob, run the SAME migrate + project pipeline as load
+                    // (pruning + migration must still run on the reloaded state), re-apply THIS delta on top,
+                    // re-serialize, and retry against the peer's version.
+                    var (peerJson, peerVersion) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
+                    if (peerJson is null)
+                        break; // row vanished (shouldn't happen) — fall back to an unconditional write
+
+                    _raw = ParseRawOrDefault(peerJson);
+                    _version = peerVersion;
+                    MigrateRaw();
+                    ApplyRaw();
+                    applyDelta();
+                    json = SerializeRaw();
+                }
+
+                if (!landed)
+                {
+                    // Retries exhausted (or the row vanished): last-writer-wins so the save always completes.
+                    _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+                }
+            }
+
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
-    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist.</summary>
-    public async Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
+    /// <summary>Passive export: a human-readable settings.json mirror (the DB is the source of truth; nothing
+    /// reads this at runtime). Written ATOMICALLY via a temp file + replace: two processes' concurrent
+    /// WriteAllText to the same path throw a sharing violation on Windows' exclusive locking. temp+replace makes
+    /// each writer touch its own file; the replace is a fast atomic rename, and a lost race is harmless (the DB
+    /// already holds the value). Callers hold <see cref="_writeLock"/>.</summary>
+    private async Task WritePassiveExportAsync(string json, CancellationToken ct)
     {
-        update(ThemeOverridesFor(themeId));
-        await SaveAsync(ct).ConfigureAwait(false);
+        var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
+            File.Move(tmp, _configPath, overwrite: true);
+        }
+        catch (IOException)
+        {
+            try { File.Delete(tmp); } catch { /* leave nothing behind */ }
+        }
     }
 
     /// <summary>
@@ -277,6 +368,26 @@ public sealed class SettingsService : IDisposable
         var version = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
         await tx.CommitAsync(ct).ConfigureAwait(false);
         return version;
+    }
+
+    // Compare-and-swap write: bump the row ONLY if its version still equals expectedVersion (this process's
+    // last-seen version). Returns the new version on success, or null when a peer wrote first (0 rows changed,
+    // so RETURNING yields no row) — the signal for MutateMergeAndSaveAsync to reload, re-apply its delta, and
+    // retry. Wrapped in a transaction so the guarded check + write + bump commit atomically against other writers.
+    private static async Task<int?> WriteRowCasAsync(SqliteConnection conn, string json, int expectedVersion, CancellationToken ct)
+    {
+        using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText =
+            "UPDATE settings SET json = $json, version = version + 1 " +
+            "WHERE id = 1 AND version = $expected " +
+            "RETURNING version;";
+        cmd.Parameters.AddWithValue("$json", json);
+        cmd.Parameters.AddWithValue("$expected", expectedVersion);
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+        return result is null or DBNull ? (int?)null : Convert.ToInt32(result);
     }
 
     /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).
