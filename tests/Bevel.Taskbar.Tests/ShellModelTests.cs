@@ -308,6 +308,27 @@ public sealed class ShellModelTests
         Assert.DoesNotContain("minimize:b", manager.Actions);
     }
 
+    [AvaloniaFact]
+    public async Task Capture_is_bounded_and_falls_back_without_blocking()
+    {
+        // bevel-1275: the window-state-change / hover-thumbnail path must never hang on a cold or wedged
+        // ScreenCaptureKit capture. A capture that never completes on its own must still resolve promptly
+        // once the caller's deadline fires (the real MacOSWindowManager now also carries an intrinsic
+        // deadline so a caller that forgets is bounded too) — returning null so the button keeps its
+        // static app icon, never wedging the pipeline.
+        var manager = new StubWindowManager { CaptureHangs = true };
+        using var model = new ShellModel(manager, null, null);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var png = await model.CaptureWindowAsync(new ForeignWindowId("w1"), 0, 0, cts.Token);
+        sw.Stop();
+
+        Assert.Null(png);                                  // bounded → fall back to the app icon, no preview
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2),  // resolved on the deadline, did not block indefinitely
+            $"capture should be bounded by the caller deadline, took {sw.ElapsedMilliseconds}ms");
+    }
+
     private sealed class StubWindowManager : IWindowManager
     {
         public IReadOnlyList<ForeignWindow> Live { get; set; } = [];
@@ -342,6 +363,19 @@ public sealed class ShellModelTests
         }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+
+        /// <summary>When set, a capture blocks until its token cancels — a stand-in for a wedged/cold
+        /// ScreenCaptureKit init in the helper — then returns null (the PAL's bounded-timeout fallback to
+        /// the static app icon). Lets a test assert the capture path is bounded and never blocks (bevel-1275).</summary>
+        public bool CaptureHangs { get; set; }
+
+        public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
+        {
+            if (!CaptureHangs) return null;
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            catch (OperationCanceledException) { }
+            return null;   // deadline fired → no preview, mirrors MacOSWindowManager's null fallback
+        }
 
         public event EventHandler<ForeignWindow>? WindowOpened;
         public event EventHandler<ForeignWindow>? WindowClosed;

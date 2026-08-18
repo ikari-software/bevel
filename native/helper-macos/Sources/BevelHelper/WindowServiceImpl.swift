@@ -435,29 +435,52 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// (no Screen Recording permission, window gone, or capture error) — the caller shows no preview.
     private func captureWindowThumbnail(windowID: CGWindowID, maxWidth: Int, maxHeight: Int) async -> Data {
         guard CGPreflightScreenCaptureAccess() else { return Data() }
-        // onScreenWindowsOnly:false so MINIMIZED windows are still capturable — the rest of the helper
-        // deliberately supports minimized windows (bevel-m2.3), and the taskbar hovers them too. Otherwise
-        // hovering a minimized item silently falls back to title-only (review: swift-ios).
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
-              let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
-            return Data()
+        // Bound the whole capture (cold SCShareableContent + screenshot) so a slow first-call CGS/SCK
+        // init after a Screen-Recording grant can never hang the RPC (bevel-1275). On timeout the caller
+        // keeps the limited-mode app icon — identical to any other capture failure. The .NET side carries
+        // its own deadline too; this is the belt-and-suspenders leg inside the helper.
+        let result = await Self.withTimeout(seconds: 2.5) {
+            // onScreenWindowsOnly:false so MINIMIZED windows are still capturable — the rest of the helper
+            // deliberately supports minimized windows (bevel-m2.3), and the taskbar hovers them too. Otherwise
+            // hovering a minimized item silently falls back to title-only (review: swift-ios).
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+                  let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
+                return Data()
+            }
+            let w = scWindow.frame.width, h = scWindow.frame.height
+            guard w > 1, h > 1 else { return Data() }
+            let maxW = maxWidth > 0 ? Double(maxWidth) : 240
+            let maxH = maxHeight > 0 ? Double(maxHeight) : 160
+            let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
+            let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
+            let config = SCStreamConfiguration()
+            config.width = max(2, Int(w * scale))
+            config.height = max(2, Int(h * scale))
+            config.showsCursor = false
+            config.ignoreShadowsSingleWindow = true
+            let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+            guard let cgImage = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else {
+                return Data()
+            }
+            return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
         }
-        let w = scWindow.frame.width, h = scWindow.frame.height
-        guard w > 1, h > 1 else { return Data() }
-        let maxW = maxWidth > 0 ? Double(maxWidth) : 240
-        let maxH = maxHeight > 0 ? Double(maxHeight) : 160
-        let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
-        let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
-        let config = SCStreamConfiguration()
-        config.width = max(2, Int(w * scale))
-        config.height = max(2, Int(h * scale))
-        config.showsCursor = false
-        config.ignoreShadowsSingleWindow = true
-        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
-        guard let cgImage = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else {
-            return Data()
+        return result ?? Data()
+    }
+
+    /// Runs `operation` but returns nil if it hasn't finished within `seconds` — a bound around a
+    /// cold/wedged ScreenCaptureKit init so a slow first capture can't hang the RPC (bevel-1275). The
+    /// losing branch is cancelled; the caller treats nil as "capture unavailable" (limited-mode icon).
+    static func withTimeout<T: Sendable>(seconds: Double, _ operation: @escaping @Sendable () async -> T?) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
     }
 
     private func layer0Entries(options: CGWindowListOption) -> [[String: Any]] {
