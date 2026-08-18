@@ -41,6 +41,7 @@ public sealed class ProgramCurationTests
             store.RecordLaunch("com.a");
             store.RecordLaunch("com.a");
 
+            store.FlushAsync().Wait();   // writes are now fire-and-forget off the UI thread (ce-review)
             var reloaded = new ProgramUsageStore(dir);
             Assert.Equal(2, reloaded.LaunchCount("com.a"));
             Assert.Equal(seen, reloaded.FirstSeen("com.a"));

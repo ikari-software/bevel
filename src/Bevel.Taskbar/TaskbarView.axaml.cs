@@ -695,9 +695,15 @@ public partial class TaskbarView : UserControl
                 return;
             }
 
+            // Dismiss any still-open prior menu BEFORE opening the new one, so its Closed handler
+            // (which removes its global mouse monitor) runs first. The monitors are now per-token
+            // (ce-review P0 fix in TaskbarWindow), but keeping the ordering clean avoids two
+            // monitors briefly both firing on the same outside click.
+            _openTaskMenu?.Hide();
+            _openTaskMenu = null;
+
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider) is { } menu)
             {
-                _openTaskMenu?.Hide();
                 _openTaskMenu = menu;
                 menu.Closed += (_, _) =>
                 {

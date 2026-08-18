@@ -29,6 +29,12 @@ public static class TrayIconTint
     private const double MaxFillForTemplate = 0.55;
     private const double MaxColourFracForTemplate = 0.06;
 
+    // Disabled per user preference (bevel-7hf4): show every tray icon in its REAL captured appearance
+    // rather than flattening monochrome glyphs to a single theme ink. The analysis stays behind this
+    // flag for a future opt-in "theme tray icons" setting; when it flips back on, move Process off the
+    // UI thread (ce-review: the per-pixel scan + recolour must not run inline in a tray update).
+    private const bool TintTemplateIcons = false;
+
     /// <summary>Decode <paramref name="png"/>, and if it looks like a template glyph, return a copy
     /// recoloured to <paramref name="ink"/> (alpha preserved). Otherwise return the icon untouched.
     /// Null only when the PNG can't be decoded.</summary>
@@ -42,6 +48,11 @@ public static class TrayIconTint
         var size = src.PixelSize;
         int w = size.Width, h = size.Height;
         if (w <= 0 || h <= 0) return new Result(src, false);
+
+        // Tinting is disabled (bevel-7hf4) — skip the whole per-pixel analysis, which otherwise runs
+        // on the UI thread on every tray ItemUpdated / ink change and discards its result (ce-review:
+        // performance + standards). The analysis below stays intact for the future opt-in setting.
+        if (!TintTemplateIcons) return new Result(src, false);
 
         int stride = w * 4;
         var buf = new byte[stride * h];
@@ -66,11 +77,7 @@ public static class TrayIconTint
 
         double fill = (double)opaque / total;
         double colourFrac = opaque == 0 ? 1 : (double)coloured / opaque;
-        // Disabled per user preference (bevel-7hf4): show every icon in its REAL captured appearance
-        // rather than flattening monochrome glyphs to a single theme ink — they lose their distinct look.
-        // The analysis above is kept behind this flag for a future opt-in "theme tray icons" setting.
-        const bool TintTemplateIcons = false;
-        bool isTemplate = TintTemplateIcons && opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
+        bool isTemplate = opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
         if (!isTemplate) return new Result(src, false);
 
         // Recolour: RGB <- ink, A <- source alpha (premultiplied). The glyph SHAPE lives in the alpha.

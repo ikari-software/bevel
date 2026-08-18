@@ -28,6 +28,11 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     /// (failures are logged host-side, bounded by a deadline).</summary>
     public void SetConsolidated(bool consolidated)
     {
+        // Dedup HERE so BOTH callers benefit — the settings-poll path (TaskbarViewModel) and the
+        // in-process live-settings path (TaskbarView.ApplyLiveSettings). Previously only the former
+        // deduped, so an unchanged value from the live path re-fired the native hide (ce-review:
+        // maintainability; the two-path pattern this taskbar has a history of).
+        if (_consolidated == consolidated) return;
         _consolidated = consolidated;
         _ = _tray?.SetNativeTrayHiddenAsync(consolidated);
     }
@@ -307,5 +312,13 @@ public sealed class TrayItemViewModel : ObservableObject
     }
 
     /// <summary>Re-run adaptive tinting for the current ink (macOS template model, see <see cref="TrayIconTint"/>).</summary>
-    private void Retint() => IconSource = TrayIconTint.Process(_png, _ink)?.Image;
+    private void Retint()
+    {
+        // Process returns a freshly-decoded, unshared Skia bitmap on every live ItemUpdated and every
+        // ink change — dispose the outgoing one or it leaks unmanaged memory per repaint (ce-review;
+        // same discipline as the hover-preview and tab-favicon paths).
+        var old = IconSource;
+        IconSource = TrayIconTint.Process(_png, _ink)?.Image;
+        if (!ReferenceEquals(old, IconSource)) (old as IDisposable)?.Dispose();
+    }
 }

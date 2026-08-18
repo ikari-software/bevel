@@ -113,15 +113,35 @@ public sealed class ProgramUsageStore
         WriteToDisk();
     }
 
+    // Serialize UNDER _gate (a consistent snapshot of _byApp), then push the disk write OFF the UI
+    // thread — WriteToDisk is reached from Start-menu launch handlers on the UI thread, and inline
+    // File I/O there violates never-block-UI and stalls the taskbar under disk contention
+    // (ce-review: frontend-races + reliability + standards). Writes are best-effort and already
+    // coalesced by BeginBatch, so a fire-and-forget Task.Run is the minimal correct fix.
+    // Called while holding _gate, so _lastWrite is mutated single-threaded. Each write CHAINS onto
+    // the previous one, so the writes run in order (no torn file) AND awaiting the tail — FlushAsync,
+    // for tests — awaits every pending write.
     private void WriteToDisk()
     {
-        try
+        string json;
+        try { json = JsonSerializer.Serialize(_byApp); }
+        catch { return; }
+        var path = _path;
+        _lastWrite = _lastWrite.ContinueWith(_ =>
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(_byApp));
-        }
-        catch { /* best-effort: usage stats must never break the taskbar */ }
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, json);
+            }
+            catch { /* best-effort: usage stats must never break the taskbar */ }
+        }, TaskScheduler.Default);
     }
+
+    private Task _lastWrite = Task.CompletedTask;
+
+    /// <summary>Awaits all pending background writes. Test-only seam — production is fire-and-forget.</summary>
+    internal Task FlushAsync() { lock (_gate) return _lastWrite; }
 
     private sealed class BatchScope : IDisposable
     {

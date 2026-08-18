@@ -469,26 +469,39 @@ internal static class TaskbarNative
 
     // ── Global mouse-down monitor for click-outside dismiss (bevel-ww71) ──────
     // addGlobalMonitorForEventsMatchingMask: fires ONLY for events delivered to OTHER apps — exactly
-    // "the user clicked away from us". No focus/coordinate assumptions. The handler is a non-capturing
-    // GLOBAL ObjC block; a single static callback dispatches to whatever menu is currently open.
+    // "the user clicked away from us". No focus/coordinate assumptions. The handler is a GLOBAL ObjC
+    // block whose Context field carries a GCHandle to THIS monitor's callback, so multiple monitors
+    // can coexist — the callback is recovered from the block pointer, not a shared static.
 
-    private static Action? _globalMouseDown;
+    // Per-token pinned state. Keyed by the native monitor id so RemoveMonitor frees EXACTLY the
+    // handles for the monitor being removed. The prior design kept a single set of statics, so
+    // opening a second task menu overwrote the first's handles and a later RemoveMonitor freed the
+    // WRONG (still-registered) monitor's block under AppKit — a native use-after-free (P0, ce-review).
+    private sealed class MonitorState { public GCHandle Action; public GCHandle Block; public GCHandle Desc; }
+    private static readonly Dictionary<IntPtr, MonitorState> _monitors = new();
+    private static readonly object _monitorLock = new();
 
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
-    private static void MonitorInvoke(IntPtr block, IntPtr nsEvent) => _globalMouseDown?.Invoke();
+    private static void MonitorInvoke(IntPtr block, IntPtr nsEvent)
+    {
+        // The block pointer IS our pinned BlockLiteral; recover this monitor's own callback from its
+        // Context field rather than a shared static, so the right flyout dismisses.
+        try
+        {
+            var ctx = Marshal.PtrToStructure<BlockLiteral>(block).Context;
+            if (ctx != IntPtr.Zero && GCHandle.FromIntPtr(ctx).Target is Action a) a();
+        }
+        catch { /* stale/freed handle — monitor is being torn down */ }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct BlockLiteral { public IntPtr Isa; public int Flags; public int Reserved; public IntPtr Invoke; public IntPtr Descriptor; }
+    private struct BlockLiteral { public IntPtr Isa; public int Flags; public int Reserved; public IntPtr Invoke; public IntPtr Descriptor; public IntPtr Context; }
     [StructLayout(LayoutKind.Sequential)]
     private struct BlockDescriptor { public nuint Reserved; public nuint Size; }
 
     [DllImport("/usr/lib/libSystem.dylib", EntryPoint = "dlsym")]
     private static extern IntPtr dlsym(IntPtr handle, string symbol);
     private static readonly IntPtr RTLD_DEFAULT = new(-2);
-
-    private static BlockDescriptor _blockDesc = new() { Reserved = 0, Size = (nuint)Marshal.SizeOf<BlockLiteral>() };
-    private static BlockLiteral _block;
-    private static GCHandle _descHandle, _blockHandle;
 
     /// <summary>Install a global mouse-down monitor; <paramref name="onOutsideClick"/> runs (on the calling
     /// dispatcher's thread is the caller's job) when a click lands in another app. Returns a token to pass to
@@ -497,32 +510,47 @@ internal static class TaskbarNative
     {
         try
         {
-            _globalMouseDown = onOutsideClick;
             var isa = dlsym(RTLD_DEFAULT, "_NSConcreteGlobalBlock");
             if (isa == IntPtr.Zero || cls_NSEvent == IntPtr.Zero) return IntPtr.Zero;
 
-            _descHandle = GCHandle.Alloc(_blockDesc, GCHandleType.Pinned);
-            _block = new BlockLiteral
+            var actionHandle = GCHandle.Alloc(onOutsideClick);   // keeps the callback alive; not pinned
+            var descHandle = GCHandle.Alloc(
+                new BlockDescriptor { Reserved = 0, Size = (nuint)Marshal.SizeOf<BlockLiteral>() },
+                GCHandleType.Pinned);
+            var block = new BlockLiteral
             {
                 Isa = isa,
                 Flags = 1 << 28,                 // BLOCK_IS_GLOBAL
                 Reserved = 0,
                 Invoke = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&MonitorInvoke,
-                Descriptor = _descHandle.AddrOfPinnedObject(),
+                Descriptor = descHandle.AddrOfPinnedObject(),
+                Context = GCHandle.ToIntPtr(actionHandle),
             };
-            _blockHandle = GCHandle.Alloc(_block, GCHandleType.Pinned);
+            var blockHandle = GCHandle.Alloc(block, GCHandleType.Pinned);
             var mask = NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown;
-            return objc_msgSend_ret_nuint_ptr(cls_NSEvent, sel_addGlobalMonitor, mask, _blockHandle.AddrOfPinnedObject());
+            var token = objc_msgSend_ret_nuint_ptr(cls_NSEvent, sel_addGlobalMonitor, mask, blockHandle.AddrOfPinnedObject());
+            if (token == IntPtr.Zero)
+            {
+                actionHandle.Free(); blockHandle.Free(); descHandle.Free();
+                return IntPtr.Zero;
+            }
+            lock (_monitorLock)
+                _monitors[token] = new MonitorState { Action = actionHandle, Block = blockHandle, Desc = descHandle };
+            return token;
         }
         catch { return IntPtr.Zero; }
     }
 
     public static void RemoveMonitor(IntPtr token)
     {
-        _globalMouseDown = null;
-        try { if (token != IntPtr.Zero) objc_msgSend_void_ptr(cls_NSEvent, sel_removeMonitor, token); } catch { }
-        if (_blockHandle.IsAllocated) _blockHandle.Free();
-        if (_descHandle.IsAllocated) _descHandle.Free();
+        if (token == IntPtr.Zero) return;
+        try { objc_msgSend_void_ptr(cls_NSEvent, sel_removeMonitor, token); } catch { }
+        MonitorState? st;
+        lock (_monitorLock) { _monitors.Remove(token, out st); }
+        if (st is null) return;
+        if (st.Action.IsAllocated) st.Action.Free();
+        if (st.Block.IsAllocated) st.Block.Free();
+        if (st.Desc.IsAllocated) st.Desc.Free();
     }
 
     public static void SetCollectionBehavior(IntPtr nsWindow, int behavior)

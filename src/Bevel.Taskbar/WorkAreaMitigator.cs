@@ -97,8 +97,10 @@ public sealed class WorkAreaMitigator : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
-            _settleCts?.Cancel();
+            var prev = _settleCts;
             _settleCts = cts = new CancellationTokenSource();
+            prev?.Cancel();
+            prev?.Dispose();   // the superseded source was never disposed — one leaked per re-arm (ce-review)
         }
         _ = SettleAndMitigateAsync(cts.Token);
     }
