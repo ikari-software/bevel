@@ -76,6 +76,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _tray.ItemRemoved += OnTrayItemRemoved;
         _tray.ItemUpdated += OnTrayItemUpdated;
 
+        // Start SERVING before the (helper-dependent) window/tray seed below. Settings are already loaded
+        // (Program.RunShellCore does settings.LoadAsync BEFORE constructing this server), and they are the
+        // one snapshot a peer NEEDS synchronously at its first paint — the taskbar/Explorer read Current to
+        // apply the theme immediately, and RemoteSettingsService.LoadAsync only waits ~5s before falling
+        // back to DEFAULTS (losing the user's theme). Gating _server.Start() behind the ~2-10s helper
+        // connect made peers time out and boot on defaults on a cold launch. So accept clients now: a peer
+        // connecting mid-seed gets the correct settings snapshot immediately; its windows/tray fill in as
+        // the seed completes and the 2s reconcile re-fetches (windows self-heal; PushSnapshot locks _gate,
+        // so it never observes a half-applied projection).
+        _server.Start();
+
         // host.Start() launches the Swift helper ASYNCHRONOUSLY (HelperLifecycle), so this initial
         // snapshot races the helper's gRPC connect: the first enumerate can throw
         // InvalidOperationException("Helper not connected"). A headless core MUST NOT crash on that race
@@ -106,8 +117,6 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 apply();
             _seedBuffer = null;
         }
-
-        _server.Start();
     }
 
     /// <summary>Runs <paramref name="enumerate"/>, tolerating the "Helper not connected" race at startup:
