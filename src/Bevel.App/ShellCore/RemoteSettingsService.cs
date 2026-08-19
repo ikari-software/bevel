@@ -79,6 +79,9 @@ public sealed class RemoteSettingsService : ISettingsService, IAsyncDisposable
         }
         catch (Exception)
         {
+            // Core not up yet (a first-connect race) → seed defaults for the immediate first paint. This is
+            // NOT terminal: EnsureConnectedAsync armed the client's reconnect supervisor, so once the core
+            // binds its socket the on-connect SettingsSnapshot arrives and ApplySnapshot re-themes live.
             ct.ThrowIfCancellationRequested(); // the CALLER cancelled → propagate; our 5s bound / a dead core → fall back
             SeedDefaultsIfUnseeded();
         }

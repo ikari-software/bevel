@@ -174,6 +174,32 @@ public sealed class ShellCoreIntegrationTests
             "the command queued while disconnected should replay against the PAL after reconnect");
     }
 
+    // 4b. A client whose VERY FIRST connect fails (it dialed before the core bound its socket — exactly
+    //     what RemoteSettingsService does in LoadAsync at startup, racing core boot) must still keep
+    //     retrying and connect once the core comes up. Before the fix the reconnect supervisor was armed
+    //     only by the DROP of an ESTABLISHED link, so a never-connected client stayed stuck forever and
+    //     the split taskbar booted on DEFAULT settings — the core's real snapshot never reached it.
+    [Fact]
+    public async Task ClientThatFailsItsFirstConnect_StillReconnectsWhenTheCoreComesUp()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+
+        // No server yet: the first connect must fail (nothing to dial).
+        await using var core = new ShellCoreClient(path, nonce);
+        await Assert.ThrowsAnyAsync<Exception>(() => core.EnsureConnectedAsync(Ct));
+        Assert.False(core.IsConnected);
+
+        // The core now comes up on the same endpoint. The supervisor — armed by the failed first connect —
+        // must re-dial and connect with NO further explicit EnsureConnectedAsync call.
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await WaitFor(() => core.IsConnected,
+            "a client that failed its first connect should reconnect once the core comes up");
+    }
+
     // 5. The tray mirrors over the shell-core bridge (bevel-m3.1.1): the core replays its tray
     //    projection as a snapshot on connect, streams live add/remove deltas, and a click issued on
     //    the UI-side host round-trips to the core's real tray host.
