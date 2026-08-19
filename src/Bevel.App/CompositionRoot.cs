@@ -13,11 +13,11 @@ namespace Bevel.App;
 /// DI composition helpers. This is the only place concrete PALs are named (ARCH-03/DI-02).
 ///
 /// <para>Also the role-aware home of <see cref="Bevel.Core.ISettingsService"/> (core-owns-settings,
-/// bevel-6nve): Core and All (and the Fake PAL) bind the real DB-backed <c>SettingsService</c> — the sole
+/// bevel-6nve): Core (and the Fake PAL) binds the real DB-backed <c>SettingsService</c> — the sole
 /// opener + writer of settings.db; Taskbar/Explorer/Desktop bind <c>RemoteSettingsService</c>, a peer that
 /// reads the core's pushed snapshot and sends changed-keys merge patches to the core over a shell-core
 /// client. Taskbar reuses its existing client; Explorer/Desktop add a settings-only client (their
-/// window/app/tray stay direct-PAL). All builds NO client and NO server — provably IPC-free.</para>
+/// window/app/tray stay direct-PAL). The Core builds NO client — it is the server.</para>
 /// </summary>
 public static class CompositionRoot
 {
@@ -34,7 +34,7 @@ public static class CompositionRoot
     /// registered for every role but are lazy, so a role that never resolves them costs nothing.
     /// </summary>
     public static IServiceCollection AddBevelPlatform(
-        this IServiceCollection services, PalKind pal, ShellRole role = ShellRole.All)
+        this IServiceCollection services, PalKind pal, ShellRole role)
     {
         return pal switch
         {
@@ -58,8 +58,8 @@ public static class CompositionRoot
         services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
         services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
         services.AddSingleton<ITabProvider, Pal.Fake.FakeTabProvider>();
-        // The Fake PAL is the single-process dev/test shell (role=all semantics), so it owns settings.db
-        // directly through the real service — never a shell-core peer (core-owns-settings, bevel-6nve).
+        // The Fake PAL is the single-process dev/test shell, so it owns settings.db directly through the
+        // real service — never a shell-core peer (core-owns-settings, bevel-6nve).
         services.AddSingleton<Bevel.Core.ISettingsService, Bevel.Core.SettingsService>();
         return services;
     }
@@ -74,12 +74,12 @@ public static class CompositionRoot
 
         // Icons go through the shared, memory-mapped BGRA pool (bevel-gww.6): each icon is rendered once
         // and published to a file the other role processes map read-only, so a UI process never
-        // re-decodes an icon the owner already has. The pool is SINGLE-WRITER — only the all-in-one or
-        // the shell-core owner publishes; split UI roles are readers (miss -> private render). The pool
+        // re-decodes an icon the owner already has. The pool is SINGLE-WRITER — only the shell-core
+        // owner publishes; the UI roles are readers (miss -> private render). The pool
         // is a container-owned singleton (disposed with the container); the decorator just borrows it.
         // The isWriter flag is now ALSO passed to the pool itself so a reader role opens the file
         // read-only and never creates/resizes/inits it (ce-review bevel-lha4).
-        var poolIsWriter = role is ShellRole.All or ShellRole.Core;
+        var poolIsWriter = role is ShellRole.Core;
         services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
             IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
@@ -97,10 +97,10 @@ public static class CompositionRoot
         // child), so like IFileOpener every role gets the direct implementation, no core proxy.
         services.AddSingleton<ITabProvider, Pal.MacOS.MacOSTabProvider>();
 
-        // Window management + app environment: the single-source-of-truth split. In a SPLIT taskbar
+        // Window management + app environment: the single-source-of-truth split. In the taskbar
         // process these are shell-core CLIENTS (one UDS connection to the core, which owns the helper
-        // stream + the /Applications watchers). In the Core role, the all-in-one process, and the
-        // (lazy, unused) explorer/desktop roles they are the DIRECT macOS implementations.
+        // stream + the /Applications watchers). In the Core role and the (lazy, unused) explorer/desktop
+        // roles they are the DIRECT macOS implementations.
         if (role is ShellRole.Taskbar)
         {
             services.AddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
@@ -132,14 +132,13 @@ public static class CompositionRoot
             // In-process window management: no link to lose, so the indicator stays hidden.
             services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
 
-            if (role is ShellRole.Core or ShellRole.All)
+            if (role is ShellRole.Core)
             {
-                // The shell core (and the all-in-one process) is the SOLE opener + writer of settings.db
-                // (core-owns-settings, bevel-6nve). The all-in-one constructs NO shell-core client and NO
-                // server — it stays provably IPC-free.
+                // The shell core is the SOLE opener + writer of settings.db (core-owns-settings,
+                // bevel-6nve).
                 services.AddSingleton<ISettingsService, Bevel.Core.SettingsService>();
-                // Host the helper EAGERLY only where window management actually runs: the headless core
-                // and the all-in-one process. Explorer/Desktop keep the singleton lazy, never started.
+                // Host the helper EAGERLY only where window management actually runs: the headless core.
+                // Explorer/Desktop keep the singleton lazy, never started.
                 services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
             }
             else
@@ -157,7 +156,7 @@ public static class CompositionRoot
     }
 
     /// <summary>Lets each feature module self-register its services (DI-01).</summary>
-    public static IServiceCollection AddBevelModules(this IServiceCollection services, ShellRole role = ShellRole.All)
+    public static IServiceCollection AddBevelModules(this IServiceCollection services, ShellRole role)
     {
         IModule[] modules =
         {
@@ -190,9 +189,9 @@ public static class CompositionRoot
         // bevelctl socket, the macOS bevel:// URL-event handler) resolve this singleton.
         services.AddSingleton<Bevel.Interop.Cli.AutomationCommandRouter>();
 
-        // Serve the bevelctl socket only from the process that owns the live file manager (All /
-        // Explorer) — the one where IShellAutomation's window verbs actually work.
-        if (role is ShellRole.All or ShellRole.Explorer)
+        // Serve the bevelctl socket only from the process that owns the live file manager (Explorer)
+        // — the one where IShellAutomation's window verbs actually work.
+        if (role is ShellRole.Explorer)
             services.AddHostedService<AutomationSocketHost>();
 
         return services;

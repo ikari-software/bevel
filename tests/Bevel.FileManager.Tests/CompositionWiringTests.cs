@@ -72,9 +72,10 @@ public class CompositionWiringTests
     public void MacOS_platform_registers_a_hosted_service()
     {
         // bevel-c0y: the macOS PAL adds HelperLifecycle as an IHostedService. Program.Main
-        // now starts the host, so that hosted service actually runs (previously dead).
+        // now starts the host, so that hosted service actually runs (previously dead). The Core
+        // role is the one that hosts the helper (it owns window management).
         var services = new ServiceCollection();
-        services.AddBevelPlatform(PalKind.MacOS);
+        services.AddBevelPlatform(PalKind.MacOS, ShellRole.Core);
 
         Assert.Contains(services, d => d.ServiceType == typeof(IHostedService));
     }

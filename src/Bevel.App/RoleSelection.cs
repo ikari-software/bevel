@@ -1,10 +1,10 @@
 namespace Bevel.App;
 
 /// <summary>
-/// Which shell surface this process hosts. The shell runs either as one all-in-one process
-/// (<see cref="ShellRole.All"/> — the default and the pre-split behaviour) or split so each surface
-/// is its own process, launched from the same executable with
-/// <c>--role=taskbar|explorer|desktop</c> (mirrors the <c>--pal=</c> switch).
+/// Which shell surface this process hosts. The shell ALWAYS runs split: each surface is its own
+/// process, launched from the same executable with <c>--role=taskbar|explorer|desktop|core</c>
+/// (mirrors the <c>--pal=</c> switch) under a supervising <c>--role=launcher</c>. An argument-less
+/// launch is the launcher, which spawns the surface processes — there is no single-process mode.
 ///
 /// Splitting buys crash isolation (an Explorer crash doesn't take down the taskbar) and lets each
 /// process instantiate ONLY the services it resolves: MS.DI singletons are lazy, so a non-taskbar
@@ -13,9 +13,6 @@ namespace Bevel.App;
 /// </summary>
 public enum ShellRole
 {
-    /// <summary>All surfaces in one process — the default, back-compatible single-process shell.</summary>
-    All,
-
     /// <summary>The taskbar: Start menu, window buttons, clock. The only role that drives window management.</summary>
     Taskbar,
 
@@ -38,9 +35,10 @@ public enum ShellRole
 }
 
 /// <summary>
-/// Resolves the shell role from the command line: <c>--role=taskbar|explorer|desktop</c>.
-/// Defaults to <see cref="ShellRole.All"/> so an argument-less launch is the classic single process.
-/// Mirrors <see cref="PalSelector"/>'s <c>=</c>-form parsing; unknown values fall back to All.
+/// Resolves the shell role from the command line: <c>--role=taskbar|explorer|desktop|core|launcher</c>.
+/// Defaults to <see cref="ShellRole.Launcher"/> so an argument-less launch is the split launcher that
+/// spawns the surface processes. Mirrors <see cref="PalSelector"/>'s <c>=</c>-form parsing; unknown
+/// values fall back to the launcher.
 /// </summary>
 public static class RoleSelector
 {
@@ -58,10 +56,10 @@ public static class RoleSelector
                 "desktop" => ShellRole.Desktop,
                 "core" => ShellRole.Core,
                 "launcher" or "supervisor" or "boot" => ShellRole.Launcher,
-                _ => ShellRole.All,
+                _ => ShellRole.Launcher,
             };
         }
 
-        return ShellRole.All;
+        return ShellRole.Launcher;
     }
 }

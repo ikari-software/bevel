@@ -15,9 +15,10 @@ public partial class App : Application
 {
     public static IServiceProvider? Services { get; set; }
 
-    /// <summary>Which surface(s) this process hosts. Set in <see cref="Program"/> before the lifetime
-    /// starts; <see cref="ShellRole.All"/> (the default) is the classic single-process shell.</summary>
-    public static ShellRole Role { get; set; } = ShellRole.All;
+    /// <summary>Which surface this process hosts. Always set in <see cref="Program"/> from the resolved
+    /// <c>--role</c> before the lifetime starts; each surface process runs exactly one role. The Taskbar
+    /// default is just a placeholder for the never-used unset case — Program always overwrites it.</summary>
+    public static ShellRole Role { get; set; } = ShellRole.Taskbar;
 
     /// <summary>Captured desktop lifetime, used to drive a clean shutdown from a signal handler.</summary>
     private static IClassicDesktopStyleApplicationLifetime? _lifetime;
@@ -118,8 +119,7 @@ public partial class App : Application
             // Settings/Onboarding dialog sends its change to the shell core (sole writer), which applies it
             // and BROADCASTS a fresh snapshot to every UI process; RemoteSettingsService decodes it and
             // raises Changed here, so a theme switch reskins every shell surface (taskbar, desktop, …), not
-            // just the process that owns the dialog. (In role=all the dialog also applies live in-process, so
-            // this handler is idempotent belt-and-braces.) The 750 ms DB poll this used to ride is retired —
+            // just the process that owns the dialog. The 750 ms DB poll this used to ride is retired —
             // the push replaces it.
             // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
             // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
@@ -146,15 +146,13 @@ public partial class App : Application
             };
             // The 750 ms settings-DB poll (ReloadIfChangedAsync tick) is RETIRED (core-owns-settings,
             // bevel-6nve): live updates now arrive as a shell-core broadcast that RemoteSettingsService
-            // turns into the Changed event above (peer roles), or are applied in-process by the dialog
-            // itself (role=all / core). No process polls settings.db any more.
+            // turns into the Changed event above (peer roles), or applied by the core itself. No
+            // process polls settings.db any more.
 
-            // Create only this process's surface(s). In the default all-in-one role every block
-            // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.
-            // Creation order for All matches the pre-split app: desktop behind, then taskbar, then
-            // the file manager, which is set last as MainWindow. Each single role sets MainWindow to
-            // its own window. Only the taskbar role resolves the window manager / app environment, so
-            // in the other roles those singletons (and the helper) are never constructed.
+            // Create only this process's surface. The shell always runs split (--role=…), so exactly
+            // one block below runs and sets MainWindow to its own window. Only the taskbar role resolves
+            // the window manager / app environment, so in the other roles those singletons (and the
+            // helper) are never constructed.
             var role = Role;
 
             // Split-mode chrome (the taskbar and desktop processes) is the environment, not an app:
@@ -162,22 +160,21 @@ public partial class App : Application
             // fixes bevel-nji — the Swift helper enumerates only .regular apps' windows, so the
             // chrome's own transient popups (tooltips, menus) stop leaking into the taskbar's
             // foreign-window list (where they registered as windows, shifted the bar, and dismissed
-            // themselves). NOT applied to All: that single process also hosts the file-manager window,
-            // which SHOULD appear in the taskbar, and activation policy can't distinguish it from a
-            // tooltip in the same process.
+            // themselves). NOT applied to the Explorer role: its file-manager window SHOULD appear in
+            // the taskbar.
             if (OperatingSystem.IsMacOS() && role is ShellRole.Taskbar or ShellRole.Desktop)
                 Pal.MacOS.ShellActivation.HideFromDock();
 
-            if (role is ShellRole.All or ShellRole.Desktop)
+            if (role is ShellRole.Desktop)
                 CreateDesktopSurface(desktop);
-            if (role is ShellRole.All or ShellRole.Taskbar)
+            if (role is ShellRole.Taskbar)
                 CreateTaskbarSurface(services, settings, desktop);
-            if (role is ShellRole.All or ShellRole.Explorer)
+            if (role is ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
 
             // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376):
-            // only in the FM-hosting roles, where the router's window verbs resolve to a live surface.
-            if (role is ShellRole.All or ShellRole.Explorer)
+            // only in the FM-hosting role, where the router's window verbs resolve to a live surface.
+            if (role is ShellRole.Explorer)
             {
                 UrlActivation.Wire(this, services);
                 AppleEventBridge.Wire(services);
@@ -335,7 +332,7 @@ public partial class App : Application
     /// menu setup) instead of building a malformed window in the taskbar process.</summary>
     private static void OpenExplorerAt(IServiceProvider services, VfsPath path)
     {
-        if (Role is ShellRole.All or ShellRole.Explorer)
+        if (Role is ShellRole.Explorer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(path);
         else
             Program.SpawnExplorer(path.Value);
@@ -347,7 +344,7 @@ public partial class App : Application
     private static void OpenExplorerSearch(IServiceProvider services)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (Role is ShellRole.All or ShellRole.Explorer)
+        if (Role is ShellRole.Explorer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(new VfsPath("file", home)).BeginSearch();
         else
             Program.SpawnExplorer(home, search: true);
@@ -376,8 +373,8 @@ public partial class App : Application
         // open at (its current directory); every window's request is served by the same
         // factory, reusing the shared VfsRoot/SettingsService with fresh per-window
         // navigation/undo state. (Cross-process Ctrl+N — spawning a new explorer PROCESS — is
-        // wired in the supervision phase; in-process spawning stays correct for the all-in-one
-        // and single-explorer-process roles.) New Tab (Ctrl+T) is out of scope.
+        // wired in the supervision phase; in-process spawning stays correct within the explorer
+        // process.) New Tab (Ctrl+T) is out of scope.
         FileManagerWindow.NewWindowRequested += path => factory.Create(path);
     }
 }

@@ -182,14 +182,13 @@ internal static class Program
         };
 
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
-        // first, then the UI surfaces — desktop behind, taskbar in front (mirroring the all-in-one
-        // creation order). Explorer stays on-demand (a window the user opens), not a supervised surface.
+        // first, then the UI surfaces — desktop behind, taskbar in front (the full shell the user
+        // expects). Explorer stays on-demand (a window the user opens), not a supervised surface.
         //
-        // TEMP (taskbar-focus iteration): the desktop surface is OFF by default — it sits behind
-        // everything and muddies focus/enumeration while we work on the bar. The core is still
-        // required (the taskbar is an IPC client of it). Set BEVEL_ENABLE_DESKTOP=1 to bring the
-        // desktop back.
-        // Desktop (when enabled) sits at index 1 — behind the taskbar, mirroring all-in-one order.
+        // The desktop surface is OFF by default (user preference: it's not useful today and just gets in
+        // the way — it's launched on demand from the Start menu, bevel-gdie). Set BEVEL_ENABLE_DESKTOP=1
+        // to spawn it at boot. The core is always required (the taskbar is an IPC client of it); if the
+        // desktop is enabled it sits at index 1 — behind the taskbar, in front of the core.
         ShellRole[] roles = Environment.GetEnvironmentVariable("BEVEL_ENABLE_DESKTOP") == "1"
             ? [ShellRole.Core, ShellRole.Desktop, ShellRole.Taskbar]
             : [ShellRole.Core, ShellRole.Taskbar];
@@ -286,7 +285,8 @@ internal static class Program
         ShellRole.Taskbar => "taskbar",
         ShellRole.Explorer => "explorer",
         ShellRole.Desktop => "desktop",
-        _ => "all",
+        ShellRole.Launcher => "launcher",
+        _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown shell role"),
     };
 
     /// <summary>Polls for a file to appear (the shell-core socket) up to <paramref name="timeout"/>.</summary>

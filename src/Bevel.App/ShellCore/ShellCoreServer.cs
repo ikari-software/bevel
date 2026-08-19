@@ -76,9 +76,21 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _tray.ItemRemoved += OnTrayItemRemoved;
         _tray.ItemUpdated += OnTrayItemUpdated;
 
-        var initialWindows = await _windows.EnumerateAsync(ct).ConfigureAwait(false);
-        var initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false);
-        var initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false);
+        // host.Start() launches the Swift helper ASYNCHRONOUSLY (HelperLifecycle), so this initial
+        // snapshot races the helper's gRPC connect: the first enumerate can throw
+        // InvalidOperationException("Helper not connected"). A headless core MUST NOT crash on that race
+        // (the design is graceful degradation) — otherwise the supervisor crash-loops the core forever in
+        // split mode. Probe with the window enumerate, retrying briefly while the helper is still
+        // connecting; once it's up, apps/tray share the same helper connection and enumerate cleanly.
+        // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
+        // repopulate. (~10s covers a cold helper exec + connect.)
+        var initialWindows = await SeedWhenHelperReadyAsync(_windows.EnumerateAsync, ct).ConfigureAwait(false);
+        IReadOnlyList<InstalledApp> initialApps;
+        try { initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false); }
+        catch (InvalidOperationException) { initialApps = Array.Empty<InstalledApp>(); }
+        IReadOnlyList<TrayItem> initialTray;
+        try { initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false); }
+        catch (InvalidOperationException) { initialTray = Array.Empty<TrayItem>(); }
         lock (_gate)
         {
             foreach (var w in initialWindows)
@@ -96,6 +108,28 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
 
         _server.Start();
+    }
+
+    /// <summary>Runs <paramref name="enumerate"/>, tolerating the "Helper not connected" race at startup:
+    /// the helper connects asynchronously after <c>host.Start()</c>, so the first enumerate can throw until
+    /// it's up. Retries on that transient <see cref="InvalidOperationException"/> for ~10s, then degrades to
+    /// an empty snapshot (the live delta streams + the window reconcile backstop repopulate). Never crashes
+    /// the core.</summary>
+    private static async ValueTask<IReadOnlyList<T>> SeedWhenHelperReadyAsync<T>(
+        Func<CancellationToken, ValueTask<IReadOnlyList<T>>> enumerate, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return await enumerate(ct).ConfigureAwait(false); }
+            catch (InvalidOperationException) when (attempt < 66 && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(150, ct).ConfigureAwait(false);   // ~66 × 150ms ≈ 10s
+            }
+            catch (InvalidOperationException)
+            {
+                return Array.Empty<T>();   // timed out — streams + reconcile will fill it in
+            }
+        }
     }
 
     // ── Snapshot on connect (synchronous — see the field comment) ────────
