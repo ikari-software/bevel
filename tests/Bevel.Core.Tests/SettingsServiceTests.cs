@@ -109,6 +109,62 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Snapshot_json_is_byte_identical_to_the_persisted_blob(/* bevel-6nve */)
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        await service.UpdateAsync(s =>
+        {
+            s.TaskbarStartLabel = "Go";
+            s.TaskbarOpacity = 70;
+        });
+
+        // The wire snapshot the core pushes must equal what a load round-trips — i.e. the persisted blob.
+        var snapshot = service.SnapshotJson();
+        var onDisk = await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json"));
+        Assert.Equal(onDisk, snapshot);
+
+        // And re-seeding a fresh (separate) store from that snapshot reproduces the same typed state.
+        var otherDir = _dir + "-2";
+        try
+        {
+            var fresh = new SettingsService(otherDir);
+            await fresh.LoadAsync();
+            await fresh.ApplyPatchJsonAsync(snapshot);
+            Assert.Equal("Go", fresh.Current.TaskbarStartLabel);
+            Assert.Equal(70, fresh.Current.TaskbarOpacity);
+        }
+        finally
+        {
+            try { Directory.Delete(otherDir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public async Task Apply_patch_merges_a_changed_key_without_dropping_others(/* bevel-6nve */)
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        await service.UpdateAsync(s =>
+        {
+            s.TaskbarStartLabel = "Go";
+            s.TaskbarOpacity = 70;
+        });
+
+        // A changed-keys merge patch touching only ONE key must leave the other explicit choice intact.
+        await service.ApplyPatchJsonAsync("""{ "taskbarOpacity": 55 }""");
+
+        Assert.Equal(55, service.Current.TaskbarOpacity);
+        Assert.Equal("Go", service.Current.TaskbarStartLabel);
+
+        // …and the merge persisted (the patch went through the real write pipeline, not just memory).
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+        Assert.Equal(55, reloaded.Current.TaskbarOpacity);
+        Assert.Equal("Go", reloaded.Current.TaskbarStartLabel);
+    }
+
+    [Fact]
     public async Task Legacy_group_windows_bool_seeds_grouping_when_the_new_key_is_absent()
     {
         Directory.CreateDirectory(_dir);

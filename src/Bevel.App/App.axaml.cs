@@ -97,7 +97,7 @@ public partial class App : Application
             // UI thread, so nothing blocks the dispatcher here (core rule: never block the UI
             // thread). Apply the whitelisted theme overrides (bevel-wym) from the loaded snapshot.
             // All roles render themed UI, so this is common to every surface.
-            var settings = services.GetRequiredService<SettingsService>();
+            var settings = services.GetRequiredService<ISettingsService>();
             // Theme token bundle first (PKG-03) — the baseline the user overrides layer on top of.
             // Gate the theme-COUPLED engines (colour variant + crisp bevels) on the template swap
             // actually succeeding: applying a theme's colour variant while its template failed to load
@@ -114,10 +114,13 @@ public partial class App : Application
             // UI font override (FNT-01) — orthogonal to the theme, so applied regardless.
             UI.FontService.Apply(settings.Current.UiFontFamily);
 
-            // Cross-process live re-theming (bevel-dob): the Settings window persists ThemeId and bumps
-            // the settings-DB version in ITS process; every OTHER role polls the shared DB for that
-            // external write and re-applies theme/scheme/font live — so a theme switch reskins every
-            // shell surface (taskbar, desktop, …), not just the process that owns Settings.
+            // Cross-process live re-theming (bevel-dob / core-owns-settings bevel-6nve): a peer role's
+            // Settings/Onboarding dialog sends its change to the shell core (sole writer), which applies it
+            // and BROADCASTS a fresh snapshot to every UI process; RemoteSettingsService decodes it and
+            // raises Changed here, so a theme switch reskins every shell surface (taskbar, desktop, …), not
+            // just the process that owns the dialog. (In role=all the dialog also applies live in-process, so
+            // this handler is idempotent belt-and-braces.) The 750 ms DB poll this used to ride is retired —
+            // the push replaces it.
             // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
             // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
             Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = settings.Current.HideKnownExtensions;
@@ -141,24 +144,10 @@ public partial class App : Application
                     foreach (var w in fmReg.All())
                         w.ApplyFolderOptions();   // info-pane style + column + re-list
             };
-            var reloadTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
-            var reloadInFlight = false;
-            reloadTimer.Tick += async (_, _) =>
-            {
-                // A DB read that overruns the 750ms interval must not overlap the next tick — two
-                // ReloadIfChangedAsync calls would race on the service's _version/_raw. Tick runs on the
-                // UI thread, so this plain-bool gate is single-threaded and race-free. (The read itself is
-                // cheap now: ReloadIfChangedAsync probes only the version int on the no-change tick — bevel-6nve.)
-                if (reloadInFlight) return;
-                reloadInFlight = true;
-                try { await settings.ReloadIfChangedAsync(); }   // raises Changed on an external write
-                catch { /* transient DB contention; the next tick retries */ }
-                finally { reloadInFlight = false; }
-            };
-            reloadTimer.Start();
-            // Stop the poll before the container tears the SettingsService (+ its SQLite connection)
-            // down — same shutdown discipline as shellModel/mitigator below (bevel-fu5).
-            desktop.Exit += (_, _) => reloadTimer.Stop();
+            // The 750 ms settings-DB poll (ReloadIfChangedAsync tick) is RETIRED (core-owns-settings,
+            // bevel-6nve): live updates now arrive as a shell-core broadcast that RemoteSettingsService
+            // turns into the Changed event above (peer roles), or are applied in-process by the dialog
+            // itself (role=all / core). No process polls settings.db any more.
 
             // Create only this process's surface(s). In the default all-in-one role every block
             // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.
@@ -210,7 +199,7 @@ public partial class App : Application
     /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
     /// bar (bevel-cust.ctxmenu). async void, so the settings I/O is guarded — a SaveAsync failure must
     /// not crash the shell from a context-menu click (review: reliability).</summary>
-    private static async void ToggleTaskbarLock(SettingsService settings, Taskbar.TaskbarView taskbarView)
+    private static async void ToggleTaskbarLock(ISettingsService settings, Taskbar.TaskbarView taskbarView)
     {
         try
         {
@@ -225,7 +214,7 @@ public partial class App : Application
 
     /// <summary>Persist the taskbar row count off a resize drag. async void, guarded — a SaveAsync
     /// fault must not surface as an unobserved task exception (ce-review: reliability).</summary>
-    private static async void PersistRows(SettingsService settings, int rows)
+    private static async void PersistRows(ISettingsService settings, int rows)
     {
         try { await settings.UpdateAsync(s => s.TaskbarRows = rows); }
         catch (Exception ex) { Console.Error.WriteLine($"[app] persist TaskbarRows failed (swallowed): {ex.Message}"); }
@@ -257,7 +246,7 @@ public partial class App : Application
     /// role that resolves <c>IWindowManager</c>/<c>IAppEnvironment</c>, so only here does the helper
     /// spin up.</summary>
     private static void CreateTaskbarSurface(
-        IServiceProvider services, SettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
+        IServiceProvider services, ISettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {
         // Apply the button-height tier before any TaskbarWindow/HeightForRows geometry is computed
         // (bevel-m2.10.1) — it's a startup-wide metric read by the window and the work-area band.

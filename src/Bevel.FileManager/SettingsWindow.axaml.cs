@@ -10,11 +10,11 @@ namespace Bevel.FileManager;
 /// </summary>
 public partial class SettingsWindow : UI.BevelWindow
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
 
     public SettingsWindow() : this(null!) { }
 
-    public SettingsWindow(SettingsService settings)
+    public SettingsWindow(ISettingsService settings)
     {
         _settings = settings;
         InitializeComponent();

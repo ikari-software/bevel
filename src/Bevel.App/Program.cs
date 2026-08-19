@@ -55,7 +55,7 @@ internal static class Program
         // THIS thread, before the dispatcher pumps — so it's loaded by the time theme apply reads it, and
         // nothing else touches the service until then (no concurrency, no UI-thread block).
         var settingsLoad = Task.Run(() =>
-            host.Services.GetRequiredService<Bevel.Core.SettingsService>().LoadAsync());
+            host.Services.GetRequiredService<Bevel.Core.ISettingsService>().LoadAsync());
 
         // Let a termination signal (SIGTERM / SIGINT / Ctrl-C) drive a clean Avalonia
         // shutdown so window OnClosed handlers and hosted-service Dispose run (e.g. the
@@ -127,6 +127,12 @@ internal static class Program
         var apps = services.GetRequiredService<Bevel.Pal.Abstractions.IAppEnvironment>();
         var tray = services.GetRequiredService<Bevel.Pal.Abstractions.ISystemTrayHost>();
 
+        // The core is the sole opener of settings.db (core-owns-settings, bevel-6nve): load it here so the
+        // server can hand every UI process a settings snapshot on connect and apply their write patches as
+        // the single writer. Blocking is safe — this is the headless core's main thread, no dispatcher.
+        var settings = services.GetRequiredService<Bevel.Core.ISettingsService>();
+        settings.LoadAsync().GetAwaiter().GetResult();
+
         // Warm the window + tray streams BEFORE the server enumerates (same ordering as all-in-one):
         // the polls subscribe to the helper and prime the first enumerate.
         if (windows is Pal.MacOS.MacOSWindowManager macWm)
@@ -135,7 +141,7 @@ internal static class Program
             _ = macTray.StartPollAsync();
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
-        var server = new ShellCore.ShellCoreServer(windows, apps, tray, socketPath, nonce);
+        var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
         server.StartAsync().GetAwaiter().GetResult();
 
         // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a

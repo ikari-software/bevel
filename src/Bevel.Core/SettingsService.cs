@@ -18,10 +18,13 @@ namespace Bevel.Core;
 /// just the transport. settings.json is still written on save as a passive human-readable export
 /// (mirrors this repo's beads .jsonl pattern) — the DB is the single source of truth for reads.
 ///
-/// Live cross-process propagation is wired to the shell-core broadcast in a LATER phase; this
-/// phase only makes external changes DETECTABLE (poll <see cref="ReloadIfChangedAsync"/>).
+/// Live cross-process propagation runs through the shell core (core-owns-settings, bevel-6nve): the
+/// <c>--role=core</c> process is the SOLE opener + writer of this DB, snapshots the blob to every UI
+/// process on connect, and broadcasts a fresh snapshot after each write it applies. Peer roles never
+/// open the DB — they get <c>RemoteSettingsService</c> instead. <see cref="ReloadIfChangedAsync"/> and
+/// the monotonic <see cref="Version"/> remain for the DB-layer tests and interface-contract compat.
 /// </summary>
-public sealed class SettingsService : IDisposable
+public sealed class SettingsService : ISettingsService, IDisposable
 {
     private static readonly string DefaultConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
@@ -118,15 +121,12 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>
-    /// Write current settings to the DB (blob + version bump) in a transaction.
-    ///
-    /// <para><b>Whole-blob replacement stays LAST-WRITER-WINS.</b> This entry point carries no delta — it
-    /// serializes whatever <see cref="Current"/> + overrides currently hold — so on a concurrent peer write
-    /// there is nothing to re-apply and merge; it can only clobber or be clobbered. The MERGE guarantee lives
-    /// on the delta paths (<see cref="UpdateAsync"/> / <see cref="UpdateThemeOverridesAsync"/>), which hold the
-    /// <see cref="Action{T}"/> across a CAS-retry loop and re-apply it on the freshly-reloaded peer blob. In
-    /// practice every production writer goes through those delta paths; only whole-object saves (mostly tests,
-    /// and the deliberate <c>CopyFrom</c> "revert to baseline") use this — where LWW is the intended semantic.</para>
+    /// Write current settings to the DB (blob + version bump) in a transaction — a whole-blob write that
+    /// serializes whatever <see cref="Current"/> + overrides currently hold. Used for whole-object saves
+    /// (mostly tests, and the deliberate <c>CopyFrom</c> "revert to baseline"); the per-setting delta paths
+    /// (<see cref="UpdateAsync"/> / <see cref="UpdateThemeOverridesAsync"/>) go through
+    /// <see cref="MutateMergeAndSaveAsync"/> instead. Under core-owns-settings (bevel-6nve) the core is the
+    /// SOLE writer, so there is no concurrent peer to reconcile against.
     /// </summary>
     public async Task SaveAsync(CancellationToken ct = default)
     {
@@ -144,37 +144,33 @@ public sealed class SettingsService : IDisposable
         }
     }
 
-    /// <summary>Update a single setting and persist, MERGING with any concurrent peer edit to a different key
-    /// (see <see cref="MutateMergeAndSaveAsync"/>).</summary>
+    /// <summary>Update a single setting and persist. The delta MERGES onto the current in-memory state
+    /// (see <see cref="MutateMergeAndSaveAsync"/>) — changing one key never drops the others.</summary>
     public Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
-        // Re-read the _settings FIELD on each apply (not a captured local): the CAS-miss reload path replaces
-        // it with a fresh instance via ApplyRaw, and the delta must land on that reloaded object.
+        // Re-read the _settings FIELD on each apply (not a captured local) so the delta always lands on the
+        // live instance, even if a reload swapped it out from under us.
         => MutateMergeAndSaveAsync(() => update(_settings), ct);
 
-    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist, merging with a
-    /// concurrent peer edit to a different key.</summary>
+    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist, merging onto the
+    /// current in-memory state.</summary>
     public Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
-        // ThemeOverridesFor re-fetches from the (post-reload) overrides dict on each apply, mirroring UpdateAsync.
+        // ThemeOverridesFor re-fetches from the current overrides dict on each apply, mirroring UpdateAsync.
         => MutateMergeAndSaveAsync(() => update(ThemeOverridesFor(themeId)), ct);
 
-    /// <summary>Bounded retry budget for the CAS-merge loop before falling back to a last-writer-wins write, so
-    /// a save can never spin forever against a very hot peer writer.</summary>
-    private const int MaxCasRetries = 5;
-
     /// <summary>
-    /// The delta write path: apply <paramref name="applyDelta"/> to the in-memory model, serialize, and commit
-    /// with a version compare-and-swap keyed on this process's last-loaded <see cref="Version"/>.
+    /// The delta write path: apply <paramref name="applyDelta"/> to the in-memory model, serialize the whole
+    /// current state, and commit it — a straight single-writer apply.
     ///
-    /// <para>On a CAS miss (a peer bumped the row first) the peer's change would otherwise be silently clobbered
-    /// by our stale full blob. Instead we RELOAD the peer's row (its json + version), run the same migrate +
-    /// project pipeline used on load, RE-APPLY this update's delta on top of that reloaded state, re-serialize,
-    /// and retry against the peer's version — so two surfaces editing DIFFERENT keys MERGE. Bounded by
-    /// <see cref="MaxCasRetries"/>; on exhaustion we fall back to an unconditional last-writer-wins write so a
-    /// save never hangs or throws.</para>
+    /// <para>The delta MERGES onto the current in-memory state: <paramref name="applyDelta"/> mutates one (or
+    /// a few) keys on the live <see cref="Current"/>/overrides, and <see cref="SerializeRaw"/> then captures
+    /// every other explicit key alongside it, so changing key Y never drops an earlier key X. The cross-process
+    /// compare-and-swap that used to reconcile two writers is GONE: under core-owns-settings (bevel-6nve) the
+    /// shell core is the SOLE opener + writer of settings.db, so there is no peer to race — beads y7r4/ha3x
+    /// (the CAS retry + clobber-merge) are dissolved.</para>
     ///
-    /// <para>The whole read-modify-write runs under <see cref="_writeLock"/> on this process's single connection;
-    /// the 750&#160;ms poller's <see cref="ReloadIfChangedAsync"/> is a cheap version probe on the same connection
-    /// and is not gated by the lock, so it never deadlocks behind a write.</para>
+    /// <para><see cref="_writeLock"/> is KEPT: within this one process, live-apply sliders/text boxes call
+    /// <see cref="UpdateAsync"/> on every tick/keystroke, and the lock still serialises those against each
+    /// other and guards the passive-export file write from overlapping itself.</para>
     /// </summary>
     private async Task MutateMergeAndSaveAsync(Action applyDelta, CancellationToken ct = default)
     {
@@ -182,51 +178,11 @@ public sealed class SettingsService : IDisposable
         try
         {
             var conn = await OpenAsync(ct).ConfigureAwait(false);
-
-            applyDelta();
+            applyDelta();                 // merge the delta onto the current in-memory state
             var json = SerializeRaw();
-
-            if (_version == 0)
-            {
-                // Never loaded / no row yet: nothing to CAS against — seed unconditionally (the upsert
-                // handles Save-without-Load, matching LoadAsync's seed).
-                _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
-            }
-            else
-            {
-                var landed = false;
-                for (var attempt = 0; attempt < MaxCasRetries; attempt++)
-                {
-                    var newVersion = await WriteRowCasAsync(conn, json, _version, ct).ConfigureAwait(false);
-                    if (newVersion is int v)
-                    {
-                        _version = v;
-                        landed = true;
-                        break;
-                    }
-
-                    // A peer wrote first. Reload its blob, run the SAME migrate + project pipeline as load
-                    // (pruning + migration must still run on the reloaded state), re-apply THIS delta on top,
-                    // re-serialize, and retry against the peer's version.
-                    var (peerJson, peerVersion) = await ReadRowAsync(conn, ct).ConfigureAwait(false);
-                    if (peerJson is null)
-                        break; // row vanished (shouldn't happen) — fall back to an unconditional write
-
-                    _raw = ParseRawOrDefault(peerJson);
-                    _version = peerVersion;
-                    MigrateRaw();
-                    ApplyRaw();
-                    applyDelta();
-                    json = SerializeRaw();
-                }
-
-                if (!landed)
-                {
-                    // Retries exhausted (or the row vanished): last-writer-wins so the save always completes.
-                    _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
-                }
-            }
-
+            // Unconditional upsert: WriteRowAsync seeds version 1 on a first write (Save-without-Load too)
+            // and bumps monotonically thereafter. No CAS — the core is the only writer.
+            _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
             await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
         }
         finally
@@ -281,6 +237,103 @@ public sealed class SettingsService : IDisposable
         ApplyRaw();
         Changed?.Invoke();
         return true;
+    }
+
+    // ── Wire helpers (bevel-6nve): the seam the core-owned IPC path serializes over ──────────────
+
+    /// <summary>Serialize the current settings to the canonical persisted JSON blob — byte-identical to the
+    /// blob <see cref="SaveAsync"/> writes and <see cref="LoadAsync"/> reads back — by running the same
+    /// prune + serialize (<see cref="SerializeRaw"/>) the persist path uses. The core pushes this as its
+    /// snapshot on the wire; no serialization is duplicated here.</summary>
+    public string SnapshotJson() => SerializeRaw();
+
+    /// <summary>
+    /// Merge the changed top-level keys carried in <paramref name="patchJson"/> onto the current <c>_raw</c>
+    /// state, then run the existing migrate + project + persist pipeline. This is a straight single-writer
+    /// apply (the core is the sole writer, so there is no peer to CAS against). Unknown keys in the patch are
+    /// preserved verbatim, and keys the patch omits keep their current value — a changed-keys MERGE, not a
+    /// whole-blob replace. Reuses <see cref="MigrateRaw"/>/<see cref="ApplyRaw"/>/<see cref="SerializeRaw"/>;
+    /// no serialization is duplicated.
+    /// </summary>
+    public async Task ApplyPatchJsonAsync(string patchJson, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+            // Overlay the changed keys onto current state (a torn/blank patch degrades to no-op, matching
+            // ParseRawOrDefault's "malformed yields defaults" contract). RFC 7386 JSON Merge Patch
+            // semantics: a key whose value is JSON null is a DELETION (revert-to-default), so a peer can
+            // express "this knob went back to its default" — which prunes to an absent key — through the
+            // same changed-keys patch instead of only ever adding/overwriting.
+            foreach (var (key, value) in ParseRawOrDefault(patchJson))
+            {
+                if (value.ValueKind == JsonValueKind.Null) _raw.Remove(key);
+                else _raw[key] = value;
+            }
+
+            MigrateRaw();   // a peer mid-upgrade may still carry an older-schema key set
+            ApplyRaw();
+            var json = SerializeRaw();
+            _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    // ── DB-free blob projection / diff (bevel-6nve): the reuse points a REMOTE peer decodes core
+    //    snapshots and computes its write patches through, so the peer's projection stays byte-identical
+    //    to the core's WITHOUT the peer opening SQLite or re-implementing ApplyRaw/SerializeRaw. Pure
+    //    in-memory: the transient instance never opens a connection (OpenAsync is only reached via
+    //    Load/Save, which these never call), so the config dir it is rooted at is inert. ──────────────
+
+    private static readonly JsonElement NullJson = JsonDocument.Parse("null").RootElement.Clone();
+
+    /// <summary>Project a canonical settings blob into the typed model + per-theme overrides, running the
+    /// SAME migrate + project pipeline a <see cref="LoadAsync"/> does, with no DB access. A remote peer
+    /// decodes each core snapshot through this so its <see cref="Current"/> matches the core's exactly.</summary>
+    public static (BevelSettings Settings, IReadOnlyDictionary<string, ThemeOverrides> Overrides) ProjectBlob(string? json)
+    {
+        var s = new SettingsService(DefaultConfigDir); // never opened — projection is pure in-memory
+        s._raw = ParseRawOrDefault(json);
+        s.MigrateRaw();
+        s.ApplyRaw();
+        return (s._settings, new Dictionary<string, ThemeOverrides>(s._themeOverrides));
+    }
+
+    /// <summary>Serialize a typed model + per-theme overrides to the canonical pruned blob — reusing the
+    /// exact <see cref="SerializeRaw"/> the persist path uses (no DB, no duplicated serialization).</summary>
+    public static string SerializeBlob(BevelSettings settings, IReadOnlyDictionary<string, ThemeOverrides> overrides)
+    {
+        var s = new SettingsService(DefaultConfigDir);
+        s._settings = settings;
+        foreach (var (id, o) in overrides)
+            s._themeOverrides[id] = o;
+        return s.SerializeRaw();
+    }
+
+    /// <summary>Compute an RFC 7386 JSON merge patch of the top-level keys that DIFFER between two canonical
+    /// blobs: an added/changed key carries its new value, a key present in <paramref name="beforeBlob"/> but
+    /// gone from <paramref name="afterBlob"/> (reverted to default → pruned) carries JSON <c>null</c> so the
+    /// core's <see cref="ApplyPatchJsonAsync"/> deletes it. This is the changed-keys write patch a remote peer
+    /// sends the core (sole writer): scoped to what the caller actually changed, so concurrent edits to other
+    /// keys still merge.</summary>
+    public static string ComputeMergePatch(string beforeBlob, string afterBlob)
+    {
+        var before = ParseRawOrDefault(beforeBlob);
+        var after = ParseRawOrDefault(afterBlob);
+        var patch = new Dictionary<string, JsonElement>();
+        foreach (var (key, value) in after)
+            if (!before.TryGetValue(key, out var old) || old.GetRawText() != value.GetRawText())
+                patch[key] = value;                 // added or changed
+        foreach (var key in before.Keys)
+            if (!after.ContainsKey(key))
+                patch[key] = NullJson;              // removed → RFC 7386 null = delete
+        return JsonSerializer.Serialize(patch, SettingsJsonContext.Default.DictionaryStringJsonElement);
     }
 
     // ── SQLite plumbing ─────────────────────────────────────────────────────────────────────────
@@ -368,26 +421,6 @@ public sealed class SettingsService : IDisposable
         var version = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
         await tx.CommitAsync(ct).ConfigureAwait(false);
         return version;
-    }
-
-    // Compare-and-swap write: bump the row ONLY if its version still equals expectedVersion (this process's
-    // last-seen version). Returns the new version on success, or null when a peer wrote first (0 rows changed,
-    // so RETURNING yields no row) — the signal for MutateMergeAndSaveAsync to reload, re-apply its delta, and
-    // retry. Wrapped in a transaction so the guarded check + write + bump commit atomically against other writers.
-    private static async Task<int?> WriteRowCasAsync(SqliteConnection conn, string json, int expectedVersion, CancellationToken ct)
-    {
-        using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
-        using var cmd = conn.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText =
-            "UPDATE settings SET json = $json, version = version + 1 " +
-            "WHERE id = 1 AND version = $expected " +
-            "RETURNING version;";
-        cmd.Parameters.AddWithValue("$json", json);
-        cmd.Parameters.AddWithValue("$expected", expectedVersion);
-        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
-        await tx.CommitAsync(ct).ConfigureAwait(false);
-        return result is null or DBNull ? (int?)null : Convert.ToInt32(result);
     }
 
     /// <summary>Rebuild <c>_raw</c> from the typed model + overrides and serialize it (the blob).

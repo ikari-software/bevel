@@ -26,7 +26,7 @@ public partial class FileManagerWindow : BevelWindow
 {
     private VfsRoot? _vfsRoot;
     private FileManagerController? _controller;
-    private Core.SettingsService? _settings;
+    private Core.ISettingsService? _settings;
     private Bevel.Pal.Abstractions.IFileOpener? _fileOpener;
 
     /// <summary>Wire the OS default-handler opener (set by the window factory). Activating a FILE
@@ -506,7 +506,7 @@ public partial class FileManagerWindow : BevelWindow
         controller.OperationRunner = null;
     }
 
-    public void SetSettingsService(Core.SettingsService settings)
+    public void SetSettingsService(Core.ISettingsService settings)
     {
         _settings = settings;
         // Restore the persisted left-pane state (bevel-xw12): which pane is showing + its width.

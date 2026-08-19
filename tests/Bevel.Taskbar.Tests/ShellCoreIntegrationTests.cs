@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Bevel.App.ShellCore;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -24,6 +25,8 @@ public sealed class ShellCoreIntegrationTests
         => Path.Combine(Path.GetTempPath(), $"bvlcore-{Guid.NewGuid():N}"[..14] + ".sock");
 
     private static byte[] NewNonce() => RandomNumberGenerator.GetBytes(32);
+
+    private static string NewConfigDir() => Path.Combine(Path.GetTempPath(), $"bvlset-{Guid.NewGuid():N}");
 
     private static async Task WaitFor(Func<bool> condition, string because)
     {
@@ -50,7 +53,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -78,7 +81,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal();
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -118,7 +121,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal();
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -141,7 +144,7 @@ public sealed class ShellCoreIntegrationTests
         var path = NewSocketPath();
         var nonce = NewNonce();
 
-        var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -158,7 +161,7 @@ public sealed class ShellCoreIntegrationTests
         Assert.DoesNotContain("win-42", pal.Activated);
 
         // Bring a core back on the SAME socket + nonce (as the supervisor-respawned core would be).
-        await using var server2 = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server2 = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server2.StartAsync(Ct);
 
         // The reconnect supervisor re-dials with backoff; on reconnect the queued action replays.
@@ -177,7 +180,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -214,7 +217,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -239,7 +242,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -268,7 +271,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
         await server.StartAsync(Ct);
         await using var core = new ShellCoreClient(path, nonce);
         var wm = new ShellCoreWindowManager(core);
@@ -293,6 +296,124 @@ public sealed class ShellCoreIntegrationTests
 
         var png = await wm.CaptureWindowAsync(new ForeignWindowId("win-7"), 240, 160, Ct);
         Assert.Null(png);   // not-connected short-circuits to null without throwing
+    }
+
+    // ── core-owns-settings (bevel-6nve) ────────────────────────────────────────────────────────────
+
+    // A connected client gets the settings blob as a SettingsSnapshot the moment it connects, and a
+    // SettingsChanged (fresh blob + higher version) after any ApplySettingsUpdate — the raw wire behaviour
+    // the RemoteSettingsService is built on. Server side is a real DB-backed SettingsService(tmpdir).
+    [Fact]
+    public async Task Settings_snapshot_on_connect_and_change_after_apply()
+    {
+        var dir = NewConfigDir();
+        var settings = new SettingsService(dir);
+        await settings.LoadAsync(Ct);
+        await settings.UpdateAsync(s => s.TaskbarOpacity = 70, Ct); // a non-default explicit key to see in the blob
+
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        try
+        {
+            await using var server = new ShellCoreServer(pal, pal, pal, settings, path, nonce);
+            await server.StartAsync(Ct);
+
+            await using var client = new ShellCoreClient(path, nonce);
+            var gotSnapshot = new TaskCompletionSource<CoreEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gotChange = new TaskCompletionSource<CoreEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.EventReceived += e =>
+            {
+                if (e.Kind == CoreEventKind.SettingsSnapshot) gotSnapshot.TrySetResult(e);
+                if (e.Kind == CoreEventKind.SettingsChanged) gotChange.TrySetResult(e);
+            };
+            await client.EnsureConnectedAsync(Ct);
+
+            var snap = await gotSnapshot.Task.WaitAsync(Timeout);
+            Assert.Contains("taskbarOpacity", snap.SettingsJson!);
+            Assert.True(snap.SettingsVersion >= 1);
+
+            var resp = await client.SendAsync(
+                new CoreCommand(CoreCommandKind.ApplySettingsUpdate, SettingsPatchJson: """{ "taskbarShowClock": false }"""), Ct);
+            Assert.True(resp.Ok);
+
+            var change = await gotChange.Task.WaitAsync(Timeout);
+            Assert.True(change.SettingsVersion > snap.SettingsVersion);
+            Assert.Contains("taskbarShowClock", change.SettingsJson!);
+            Assert.False(settings.Current.TaskbarShowClock); // the core actually applied + persisted it
+        }
+        finally
+        {
+            settings.Dispose();
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    // The RemoteSettingsService (peer role) seam: LoadAsync pulls the snapshot into Current, an UpdateAsync
+    // forwards a changed-keys patch to the core whose SettingsChanged broadcast updates Current + fires
+    // Changed (merging — the untouched key survives), the core is the actual writer, and ReloadIfChangedAsync
+    // is a no-op. The peer never opens the DB.
+    [Fact]
+    public async Task RemoteSettingsService_loads_snapshot_and_forwards_updates_via_the_core()
+    {
+        var dir = NewConfigDir();
+        var core = new SettingsService(dir);
+        await core.LoadAsync(Ct);
+        await core.UpdateAsync(s => s.ThemeId = "luna", Ct); // seed an explicit key the merge must preserve
+
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        try
+        {
+            await using var server = new ShellCoreServer(pal, pal, pal, core, path, nonce);
+            await server.StartAsync(Ct);
+
+            await using var client = new ShellCoreClient(path, nonce);
+            await using var remote = new RemoteSettingsService(client);
+            await remote.LoadAsync(Ct);
+
+            Assert.Equal("luna", remote.Current.ThemeId);
+            var loadedVersion = remote.Version;
+            Assert.True(loadedVersion >= 1);
+            Assert.False(await remote.ReloadIfChangedAsync(Ct)); // peer reload never claims a change
+
+            // Subscribe AFTER load (the load-time snapshot already applied + was deduped), then update: the
+            // core's broadcast is what advances Current — the peer does not mutate it locally.
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            remote.Changed += () => changed.TrySetResult();
+
+            await remote.UpdateAsync(s => s.TaskbarOpacity = 55, Ct);
+            await changed.Task.WaitAsync(Timeout);
+
+            Assert.Equal(55, remote.Current.TaskbarOpacity);  // the broadcast landed
+            Assert.Equal("luna", remote.Current.ThemeId);     // the untouched key merged through, not clobbered
+            Assert.True(remote.Version > loadedVersion);
+            Assert.Equal(55, core.Current.TaskbarOpacity);    // the core is the real writer
+        }
+        finally
+        {
+            core.Dispose();
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>A no-op <see cref="ISettingsService"/> for the window/app/tray tests that don't exercise
+    /// settings — the server needs one to snapshot, but these tests only care about the other projections.</summary>
+    private sealed class StubSettings : ISettingsService
+    {
+        public BevelSettings Current { get; } = new();
+        public int Version => 0;
+        public event Action? Changed { add { } remove { } }
+        public ThemeOverrides ThemeOverridesFor(string themeId) => new();
+        public Task LoadAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task SaveAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default) { update(Current); return Task.CompletedTask; }
+        public Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<bool> ReloadIfChangedAsync(CancellationToken ct = default) => Task.FromResult(false);
+        public string SnapshotJson() => "{}";
+        public Task ApplyPatchJsonAsync(string patchJson, CancellationToken ct = default) => Task.CompletedTask;
+        public void Dispose() { }
     }
 
     private sealed class ControllablePal : IWindowManager, IAppEnvironment, ISystemTrayHost

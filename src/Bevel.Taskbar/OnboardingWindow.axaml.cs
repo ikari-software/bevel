@@ -20,7 +20,7 @@ namespace Bevel.Taskbar;
 /// </summary>
 public partial class OnboardingWindow : Bevel.UI.BevelWindow
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private BevelSettings? _baseline;   // settings at open (or last Apply); Cancel reverts to this
     private readonly IPermissionBroker? _permissionBroker;
     private readonly IShellSession? _shellSession;
@@ -45,7 +45,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         InitializeComponent();
     }
 
-    public OnboardingWindow(SettingsService settings, IPermissionBroker? permissionBroker = null, IShellSession? shellSession = null)
+    public OnboardingWindow(ISettingsService settings, IPermissionBroker? permissionBroker = null, IShellSession? shellSession = null)
     {
         InitializeComponent();
         _settings = settings;

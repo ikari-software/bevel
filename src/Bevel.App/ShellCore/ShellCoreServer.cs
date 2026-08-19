@@ -1,3 +1,4 @@
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.ShellCore.Ipc;
 
@@ -19,6 +20,10 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private readonly IWindowManager _windows;
     private readonly IAppEnvironment _apps;
     private readonly ISystemTrayHost _tray;
+    // The core is the SOLE opener of settings.db (core-owns-settings, bevel-6nve): it snapshots this to
+    // every UI process on connect and applies their changed-keys patches as the single writer, so no peer
+    // touches SQLite. This is the real DB-backed SettingsService in the core role.
+    private readonly ISettingsService _settings;
     private readonly UdsMessageServer _server;
 
     // The owned projection. A snapshot must be produced SYNCHRONOUSLY on connect (so the transport
@@ -36,11 +41,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private List<Action>? _seedBuffer = new();
 
     public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, ISystemTrayHost tray,
-        string socketPath, byte[] nonce)
+        ISettingsService settings, string socketPath, byte[] nonce)
     {
         _windows = windows;
         _apps = apps;
         _tray = tray;
+        _settings = settings;
         _server = new UdsMessageServer(socketPath, nonce, HandleRequestAsync);
         _server.ClientConnected += PushSnapshot;
     }
@@ -102,12 +108,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
             appSnapshot = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: _installed);
             traySnapshot = new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: _trayById.Values.ToArray());
         }
+        // The settings blob lives in the service (its own single-writer discipline), not the _gate-guarded
+        // projection, so it is snapshotted outside the lock. SnapshotJson/Version are cheap in-memory reads.
+        var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
+            SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version);
         // Fire-and-forget: the transport funnels these through the client's ordered write channel,
         // so the snapshots (and any later broadcast) stay in order; a dead client is the
         // transport's problem, not ours.
         _ = sendToClient(CoreProtocol.Serialize(windowSnapshot));
         _ = sendToClient(CoreProtocol.Serialize(appSnapshot));
         _ = sendToClient(CoreProtocol.Serialize(traySnapshot));
+        _ = sendToClient(CoreProtocol.Serialize(settingsSnapshot));
     }
 
     // ── PAL events -> projection update + delta broadcast ────────────────
@@ -228,6 +239,19 @@ public sealed class ShellCoreServer : IAsyncDisposable
                     new TrayItemId(cmd.TrayItemId ?? throw new ArgumentException("ForwardTrayClick needs TrayItemId")),
                     cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, ct).ConfigureAwait(false);
                 return new CoreResponse(Ok: true, Delivered: delivered);
+            case CoreCommandKind.GetSettings:
+                // The on-connect bootstrap pull (a peer that connected before the snapshot, or is
+                // re-syncing) — hand back the current blob + version.
+                return new CoreResponse(Ok: true, SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version);
+            case CoreCommandKind.ApplySettingsUpdate:
+                // The core is the sole writer: apply the peer's changed-keys merge patch, then broadcast the
+                // fresh blob to EVERY UI process (including the sender) so they all re-project off one source.
+                await _settings.ApplyPatchJsonAsync(
+                    cmd.SettingsPatchJson ?? throw new ArgumentException("ApplySettingsUpdate needs SettingsPatchJson"),
+                    ct).ConfigureAwait(false);
+                _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.SettingsChanged,
+                    SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version)));
+                return CoreResponse.Success();
             default:
                 return CoreResponse.Fail($"unknown command {cmd.Kind}");
         }

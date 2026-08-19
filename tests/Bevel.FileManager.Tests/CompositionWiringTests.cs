@@ -20,6 +20,10 @@ public class CompositionWiringTests
     {
         var services = new ServiceCollection();
         new FileManagerModule().ConfigureServices(services);
+        // ISettingsService moved to the role-aware CompositionRoot registration (core-owns-settings,
+        // bevel-6nve), so the module no longer binds it — supply the real DB-backed one for this
+        // module-only wiring graph (these tests exercise the FileManager window wiring, not role split).
+        services.AddSingleton<ISettingsService, SettingsService>();
         return services.BuildServiceProvider();
     }
 
@@ -43,7 +47,7 @@ public class CompositionWiringTests
         using var sp = BuildModuleServices();
 
         Assert.NotNull(sp.GetRequiredService<FileOperationService>());
-        Assert.NotNull(sp.GetRequiredService<SettingsService>());
+        Assert.NotNull(sp.GetRequiredService<ISettingsService>());
         Assert.NotNull(sp.GetRequiredService<IConflictHandler>());
     }
 
@@ -58,7 +62,7 @@ public class CompositionWiringTests
         var ex = Record.Exception(() =>
         {
             fm.SetVfsRoot(sp.GetRequiredService<VfsRoot>());
-            fm.SetSettingsService(sp.GetRequiredService<SettingsService>());
+            fm.SetSettingsService(sp.GetRequiredService<ISettingsService>());
             fm.SetController(sp.GetRequiredService<FileManagerController>());
         });
         Assert.Null(ex);
