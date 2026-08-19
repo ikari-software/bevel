@@ -126,6 +126,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// another app's window), so the taskbar pressed-state can follow focus that didn't originate
     /// from a taskbar click. Same lifetime/threading contract as `launchObserverToken`.
     private var activateObserverToken: NSObjectProtocol?
+    /// NSWorkspace active-Space-change hook token. Fires when the user switches macOS Spaces
+    /// (desktops). Each Space shows a different on-screen window set, but AX/CGWindowList emit no
+    /// per-window notification for the switch, so without this the taskbar could only converge on
+    /// the 500ms poll — and a poll that lands mid-animation reads the transient on-screen set, so it
+    /// took "a few rounds" to settle. Same lifetime/threading contract as `launchObserverToken`.
+    private var spaceObserverToken: NSObjectProtocol?
+    /// Pending settle-delayed reconcile scheduled by the Space-change hook. Cancelled and replaced
+    /// on each notification so a burst of rapid Space flips coalesces into ONE trailing reconcile.
+    /// Guarded by `observerLock` (assigned on the main-thread handler, cleared on a global queue).
+    private var spaceReconcileWork: DispatchWorkItem?
     /// Serializes observer registration, which can now come from two threads (the poll's
     /// `ensureObservers` and the launch hook's `addObserver`).
     private let observerLock = NSLock()
@@ -179,6 +189,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
             activateObserverToken = nil
         }
+        // Remove the Space-change hook and cancel any pending settle-delayed reconcile so it
+        // can't fire a reconcile after teardown.
+        if let token = spaceObserverToken {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+            spaceObserverToken = nil
+        }
+        observerLock.lock()
+        spaceReconcileWork?.cancel()
+        spaceReconcileWork = nil
+        observerLock.unlock()
 
         // Tear down AXObservers (and their run-loop sources) BEFORE the run loop is
         // stopped and before the instance can be deallocated — see removeAllObservers.
@@ -1439,6 +1459,27 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                       let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 else { return }
                 self.broadcastFocusForApp(pid: app.processIdentifier)
+            }
+
+            // Active-Space-change hook: the user switched Spaces (desktops). Schedule a SINGLE
+            // debounced reconcile after a settle delay so it runs AFTER the Space-switch animation,
+            // not during — a mid-animation enumeration reads the transient on-screen set and takes
+            // several poll rounds to converge. Cancel any pending work so a burst of rapid switches
+            // collapses to one trailing refresh. The notification is delivered on the MAIN thread;
+            // `reconcile()` does CGWindowList + AX round-trips, so we hop to a global queue via
+            // `asyncAfter` — that both delays past the animation and keeps the heavy work off the
+            // main thread (reconcile is thread-agnostic: all shared state goes through stateLock).
+            self.spaceObserverToken = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.activeSpaceDidChangeNotification,
+                object: nil, queue: nil
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.observerLock.lock()
+                self.spaceReconcileWork?.cancel()
+                let work = DispatchWorkItem { [weak self] in self?.reconcile() }
+                self.spaceReconcileWork = work
+                self.observerLock.unlock()
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.30, execute: work)
             }
 
             self.axRunLoopReady.signal()
