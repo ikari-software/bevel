@@ -43,12 +43,13 @@ public static class TaskButtonMenu
     public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon);
 
     public static MenuFlyout? TryShow(
-        Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null)
+        Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
+        Action? onActivateForeign = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -58,7 +59,11 @@ public static class TaskButtonMenu
     public static bool Recognizes(object? dc) => dc is TaskGroupViewModel or TaskItemViewModel;
 
     // internal (not private) so headless tests can assert the built shape without ShowAt.
-    internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider)
+    // onActivateForeign (bevel-nxic): invoked the instant a menu item that brings a FOREIGN window/app
+    // to the front is chosen (window Activate, a Tab, or Quit/Force Quit) — the taskbar uses it to cancel
+    // the key-focus handback so the menu's Closed doesn't re-raise the prior app over the new front.
+    internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
+        Action? onActivateForeign = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -75,7 +80,9 @@ public static class TaskButtonMenu
             foreach (var win in model.Windows)
             {
                 var per = new MenuItem { Header = string.IsNullOrEmpty(win.Title) ? model.AppName : win.Title };
-                per.Items.Add(new MenuItem { Header = "_Activate", Command = win.ActivateCommand });
+                var activate = new MenuItem { Header = "_Activate", Command = win.ActivateCommand };
+                if (onActivateForeign is not null) activate.Click += (_, _) => onActivateForeign();
+                per.Items.Add(activate);
                 per.Items.Add(new MenuItem { Header = "Mi_nimize", Command = win.MinimizeCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
                 windows.Items.Add(per);
@@ -101,7 +108,7 @@ public static class TaskButtonMenu
             foreach (var row in tabs.Take(MaxTabRows))
             {
                 var captured = row.Tab;
-                tabMenu.Items.Add(new MenuItem
+                var tabItem = new MenuItem
                 {
                     Header = EscapeHeader(Ellipsize(captured.Title)),
                     Icon = row.Icon is { } fav ? new Image { Source = fav, Width = 16, Height = 16 } : null,
@@ -112,7 +119,11 @@ public static class TaskButtonMenu
                         using var cts = new System.Threading.CancellationTokenSource(TabActivateBudget);
                         await tabProvider.ActivateAsync(captured, cts.Token);
                     }),
-                });
+                };
+                // Activating a tab raises its window + activates the app — a foreign front change, so
+                // cancel the handback too (bevel-nxic).
+                if (onActivateForeign is not null) tabItem.Click += (_, _) => onActivateForeign();
+                tabMenu.Items.Add(tabItem);
             }
             if (tabs.Count > MaxTabRows)
                 tabMenu.Items.Add(new MenuItem { Header = $"… {tabs.Count - MaxTabRows} more", IsEnabled = false });
@@ -127,11 +138,15 @@ public static class TaskButtonMenu
         // the modifier at open (TaskbarNative.OptionKeyDown, focus-independent) sets the single correct
         // item BEFORE the popup renders, so it's always right and needs no repaint.
         var force = TaskbarNative.OptionKeyDown();
-        items.Add(new MenuItem
+        var quit = new MenuItem
         {
             Header = force ? "_Force Quit" : "_Quit",
             Command = force ? model.ForceQuitCommand : model.QuitCommand,
-        });
+        };
+        // Quitting the target hands the front to whatever the OS surfaces next; don't fight it by
+        // re-raising the app that was frontmost when the menu opened (bevel-nxic).
+        if (onActivateForeign is not null) quit.Click += (_, _) => onActivateForeign();
+        items.Add(quit);
 
         var flyout = new MenuFlyout { ItemsSource = items };
 

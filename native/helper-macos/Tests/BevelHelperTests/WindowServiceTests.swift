@@ -231,6 +231,29 @@ final class WindowServiceTests: XCTestCase {
         }
     }
 
+    func testRestoreAndActivateInvalidWindowID() {
+        // bevel-nxic: the atomic op resolves the window like activate/restore, so an unknown id is notFound.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.restoreAndActivate(windowID: "999999999")) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .notFound)
+        }
+    }
+
+    func testRestoreAndActivateEmptyWindowID() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.restoreAndActivate(windowID: "")) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .invalidArgument)
+        }
+    }
+
     func testCloseInvalidWindowID() {
         let svc = WindowServiceImpl(expectedKey: "test-key")
         XCTAssertThrowsError(try svc.closeWindow(windowID: "999999999")) { error in

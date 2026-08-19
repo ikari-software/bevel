@@ -300,6 +300,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         )
 
+        // ── RestoreAndActivate (bevel-nxic) ────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "RestoreAndActivate"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_WindowRef>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_ActivateReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                try self.restoreAndActivate(windowID: req.message.windowID)
+                return StreamingServerResponse(
+                    single: ServerResponse(message: Bevel_Helper_V1_ActivateReply())
+                )
+            }
+        )
+
         // ── Close ────────────────────────────────────────────────────────
         router.registerHandler(
             forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Close"),
@@ -1057,27 +1079,50 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
 
         let (pid, axWin) = try resolveWindow(windowID: windowID)
+        raiseAppThenWindow(pid: pid, axWin: axWin)
+    }
 
-        // AXRaise reorders the window WITHIN its own app. Best-effort: some apps (Apple Music) expose
-        // no correlated window element, so skip the raise there rather than failing the whole
-        // activation — the app-frontmost step below still brings the app (and its window) forward.
-        if let axWin {
-            _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-        }
-
-        // Make the owning app frontmost. This is what actually brings a window up when Bevel's taskbar
-        // sits at a high window level (holding key focus after the click) — and it is the ONLY step
-        // available for apps without a window AX element. kAXFrontmostAttribute is the
-        // accessibility-native activation and works for most apps.
+    /// Bring `pid`'s app frontmost, THEN raise the specific window LAST (bevel-nxic). Order matters:
+    ///
+    /// 1. App activation FIRST — `kAXFrontmostAttribute` is the accessibility-native activation and the
+    ///    ONLY step available for apps without a window AX element; `NSRunningApplication.activate` is the
+    ///    belt-and-suspenders for apps whose app-level AX is ALSO restricted (Apple Music — no window AX
+    ///    element AND no app-AX activation), since it isn't accessibility-dependent. This is what actually
+    ///    brings a window up when Bevel's taskbar sits at a high window level holding key focus.
+    /// 2. `AXRaise` the target window LAST — it only reorders WITHIN the app, and app activation preserves
+    ///    the app's internal window order, so raising AFTER the app comes forward guarantees the clicked
+    ///    window ends topmost, with no sibling window landing on top afterward. `axWin == nil` (Apple
+    ///    Music: no correlated window element) simply skips the raise — the app-frontmost step still
+    ///    brought the app (and its window) forward.
+    func raiseAppThenWindow(pid: pid_t, axWin: AXUIElement?) {
         let appElement = AXUIElementCreateApplication(pid)
         _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-
-        // Belt-and-suspenders for apps whose app-level AX is ALSO restricted, so kAXFrontmostAttribute
-        // silently no-ops (Apple Music is the canonical case — no window AX element AND no app-AX
-        // activation). NSRunningApplication.activate is not accessibility-dependent, so it brings such
-        // apps forward when the AX path can't. Harmless for the apps AX already handled.
         NSRunningApplication(processIdentifier: pid)?.activate()
+
+        if let axWin {
+            _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
+        }
+    }
+
+    /// De-miniaturize (only if minimized) THEN activate, as one op (bevel-nxic). Collapsing the taskbar's
+    /// old Restore-then-Activate two-RPC dance removes the round-trip gap where the second call could
+    /// `AXRaise` before the window finished materializing and land it mid-stack. Clearing `kAXMinimized`
+    /// kicks off the de-miniaturize; `raiseAppThenWindow` then activates the app and raises the window
+    /// LAST, so the clicked window reliably ends frontmost.
+    func restoreAndActivate(windowID: String) throws {
+        // App-presence entry ("app:<bundle>"): no window — activating the app IS the reopen (shared path).
+        if windowID.hasPrefix("app:") {
+            try activateWindow(windowID: windowID)
+            return
+        }
+
+        let (pid, axWin) = try resolveWindow(windowID: windowID)
+        // Best-effort de-miniaturize: a non-minimized window no-ops here and still activates below.
+        if let axWin {
+            AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+        }
+        raiseAppThenWindow(pid: pid, axWin: axWin)
     }
 
     /// Quit (or force-quit) every running instance of an app by bundle id (bevel-ww71). Graceful

@@ -212,6 +212,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 await _windows.MinimizeAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Restore:
                 await _windows.RestoreAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
+            case CoreCommandKind.RestoreAndActivate:
+                await _windows.RestoreAndActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Close:
                 await _windows.CloseAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Reposition:

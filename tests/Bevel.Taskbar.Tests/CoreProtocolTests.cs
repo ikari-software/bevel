@@ -79,6 +79,15 @@ public sealed class CoreProtocolTests
     }
 
     [Fact]
+    public void RestoreAndActivate_command_round_trips(/* bevel-nxic */)
+    {
+        var back = RoundTrip(new CoreCommand(CoreCommandKind.RestoreAndActivate, WindowId: "cg-1618"));
+
+        Assert.Equal(CoreCommandKind.RestoreAndActivate, back.Kind);
+        Assert.Equal("cg-1618", back.WindowId);
+    }
+
+    [Fact]
     public void Response_carries_query_results_and_failure()
     {
         var ok = RoundTrip(new CoreResponse(Ok: true, RunningApps: new[] { new RunningApp("com.a", "Alpha", 42) }));

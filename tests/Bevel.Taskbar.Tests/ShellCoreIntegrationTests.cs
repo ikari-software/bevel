@@ -133,6 +133,11 @@ public sealed class ShellCoreIntegrationTests
 
         await WaitFor(() => pal.Activated.Contains("win-7"), "core should have activated the window on the PAL");
         Assert.Contains("/Applications/Calculator.app", pal.Launched);
+
+        // bevel-nxic: the atomic restore+activate command passes through the core to the PAL as one op.
+        await wm.RestoreAndActivateAsync(new ForeignWindowId("win-9"), Ct);
+        await WaitFor(() => pal.RestoredAndActivated.Contains("win-9"),
+            "core should have restore+activated the window on the PAL");
     }
 
     // 4. A window action issued while the core link is DOWN is queued (not a dead click), then
@@ -422,6 +427,7 @@ public sealed class ShellCoreIntegrationTests
         private readonly List<TrayItem> _trayItems = new();
         private IReadOnlyList<InstalledApp> _installed = Array.Empty<InstalledApp>();
         public ConcurrentBag<string> Activated { get; } = new();
+        public ConcurrentBag<string> RestoredAndActivated { get; } = new();
         public ConcurrentBag<string> Launched { get; } = new();
         public ConcurrentBag<string> TrayClicks { get; } = new();
 
@@ -448,6 +454,7 @@ public sealed class ShellCoreIntegrationTests
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) { RestoredAndActivated.Add(id.Value); return Task.CompletedTask; }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
 

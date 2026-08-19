@@ -35,6 +35,12 @@ service WindowService {
   // Restore a minimized window.
   rpc Restore(WindowRef) returns (RestoreReply);
 
+  // Restore-if-minimized THEN activate, as one atomic op (bevel-nxic): de-miniaturize (only if the
+  // window is minimized), bring the owning app frontmost, and AXRaise the target window LAST so it
+  // reliably ends topmost within its app — no second RPC racing the de-miniaturize animation, and no
+  // sibling window landing on top after app activation reorders. Reuses ActivateReply (empty).
+  rpc RestoreAndActivate(WindowRef) returns (ActivateReply);
+
   // Close a window.
   rpc Close(WindowRef) returns (CloseReply);
 

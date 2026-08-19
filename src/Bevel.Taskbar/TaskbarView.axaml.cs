@@ -261,7 +261,12 @@ public partial class TaskbarView : UserControl
     private void ActivateGroupWindowRow(object? sender)
     {
         if ((sender as Control)?.DataContext is TaskItemViewModel vm)
+        {
             vm.ActivateCommand.Execute(null);
+            // This flyout's Closed will fire ExitMenuScope → the key-focus handback; cancel it so we don't
+            // re-raise the previously-frontmost app back OVER the window we just activated (bevel-nxic).
+            _window?.CancelKeyFocusHandback();
+        }
         Dispatcher.UIThread.Post(() =>
         {
             foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
@@ -779,7 +784,8 @@ public partial class TaskbarView : UserControl
             _openTaskMenu?.Hide();
             _openTaskMenu = null;
 
-            if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider) is { } menu)
+            if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider,
+                    onActivateForeign: () => _window?.CancelKeyFocusHandback()) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on

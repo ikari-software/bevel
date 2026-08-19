@@ -364,6 +364,14 @@ public sealed class TaskbarWindow : BevelWindow
         }
     }
 
+    /// <summary>Cancels the pending key-focus handback (bevel-nxic): forgets the captured prior app so the
+    /// next <see cref="SetKeyFocusAllowed"/>(false) resigns key WITHOUT re-activating anyone. The handback
+    /// exists to restore focus after a menu that took NO action (open, arrow, Escape); when the menu's own
+    /// action was to activate a foreign window/app, re-raising the prior app would stomp that
+    /// just-activated window below it (the regression this fixes). Callers invoke this the moment they
+    /// drive a foreign activation/quit from an open taskbar menu. No-op when nothing was captured.</summary>
+    public void CancelKeyFocusHandback() => _priorAppPid = 0;
+
     /// <summary>
     /// Positions the window at the bottom of the primary display, full-width,
     /// with the themed taskbar height (30 logical px).

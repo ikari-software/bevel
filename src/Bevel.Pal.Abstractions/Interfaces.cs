@@ -15,6 +15,17 @@ public interface IWindowManager
     Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default);
     Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);
     Task CloseAsync(ForeignWindowId id, CancellationToken ct = default);
+
+    /// <summary>De-miniaturize (if minimized) and activate in ONE atomic operation (bevel-nxic): the
+    /// taskbar's minimized→click path. Backends that own the real activation collapse this into a single
+    /// helper round-trip whose order is "raise the clicked window LAST", so it reliably ends frontmost
+    /// instead of a two-RPC <see cref="RestoreAsync"/>+<see cref="ActivateAsync"/> racing the
+    /// de-miniaturize animation. Default: the sequential fallback, correct for in-memory/test backends.</summary>
+    async Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        await RestoreAsync(id, ct).ConfigureAwait(false);
+        await ActivateAsync(id, ct).ConfigureAwait(false);
+    }
     Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default);
 
     /// <summary>Capture a PNG thumbnail of a window's current pixels for hover previews (bevel-cust).

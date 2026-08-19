@@ -99,6 +99,8 @@ public enum CoreCommandKind
     Activate,
     Minimize,
     Restore,
+    /// <summary>Atomic restore-if-minimized + activate (bevel-nxic): one core round-trip, one helper op.</summary>
+    RestoreAndActivate,
     Close,
     Reposition,
     EnumerateInstalledApps,

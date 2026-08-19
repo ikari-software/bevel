@@ -242,8 +242,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             if (IsMinimized)
             {
                 IsMinimized = false;   // optimistic: the button un-dims on the click, not a round-trip later
-                await _windows.RestoreAsync(Id);
-                await _windows.ActivateAsync(Id);
+                // ONE atomic op (bevel-nxic): the helper de-miniaturizes then raises the window LAST, so a
+                // second RPC no longer races the de-miniaturize animation and lands the window mid-stack.
+                await _windows.RestoreAndActivateAsync(Id);
             }
             else if (IsFocused)
             {

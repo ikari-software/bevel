@@ -34,6 +34,8 @@ public sealed class FakeWindowManager : IWindowManager
     public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+    // One atomic op in the real PAL (bevel-nxic); in-memory it's a no-op like Restore+Activate.
+    public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
 

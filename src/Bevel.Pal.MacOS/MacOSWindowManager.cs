@@ -114,6 +114,15 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    public async Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        await ws.RestoreAndActivateAsync(new WindowRef { WindowId = id.Value },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+    }
+
     public async Task CloseAsync(ForeignWindowId id, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
