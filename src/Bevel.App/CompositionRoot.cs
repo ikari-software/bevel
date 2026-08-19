@@ -178,10 +178,20 @@ public static class CompositionRoot
         services.AddSingleton<FileManagerWindowFactory>();
 
         // Automation command model (08-os-interop.md §3.1 / M4): the single seam every inbound
-        // surface (Apple Events, bevelctl, bevel://) funnels through. The window-coupled verbs reach
-        // the live file manager via FileManagerShellSurface; the filesystem verbs run on the VFS.
+        // surface (Apple Events, bevelctl, bevel://) funnels through. The window-coupled verbs reach a
+        // file-manager surface; the filesystem verbs run on the VFS.
         services.AddSingleton<Bevel.Interop.IKnownFolders>(Bevel.Interop.SystemKnownFolders.Instance);
-        services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
+        // The window seam is ROLE-AWARE (bevel-e7a7). The Explorer process owns a live in-process
+        // FileManagerWindow graph, so it uses FileManagerShellSurface (addresses windows by registry id).
+        // Every other role — crucially the persistent TASKBAR that now hosts the socket — has no such
+        // graph, so it uses SpawningShellSurface, whose open/reveal verbs spawn a --role=explorer process
+        // instead of building a malformed window in-process. This is what lets bevelctl/bevel:// open &
+        // reveal with NO Explorer already running.
+        if (role is ShellRole.Explorer)
+            services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
+        else
+            services.AddSingleton<Bevel.Interop.IShellSurface, SpawningShellSurface>();
+        services.AddSingleton<IExplorerSpawner, ProcessExplorerSpawner>();
         services.AddSingleton<Bevel.Interop.IProgramSurface, AppEnvironmentProgramSurface>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
         // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
@@ -189,9 +199,12 @@ public static class CompositionRoot
         // bevelctl socket, the macOS bevel:// URL-event handler) resolve this singleton.
         services.AddSingleton<Bevel.Interop.Cli.AutomationCommandRouter>();
 
-        // Serve the bevelctl socket only from the process that owns the live file manager (Explorer)
-        // — the one where IShellAutomation's window verbs actually work.
-        if (role is ShellRole.Explorer)
+        // Serve the bevelctl socket from the PERSISTENT host — the always-up TASKBAR (bevel-e7a7), NOT
+        // the on-demand Explorer that only exists once a window is open. The taskbar has the full
+        // automation DI graph; its filesystem/program verbs run directly, and its window verbs spawn an
+        // Explorer via SpawningShellSurface. Exactly one process binds the fixed socket path, so there is
+        // never a second server on it. A bind failure is logged, never fatal.
+        if (role is ShellRole.Taskbar)
             services.AddHostedService<AutomationSocketHost>();
 
         return services;

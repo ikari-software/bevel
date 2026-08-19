@@ -172,9 +172,13 @@ public partial class App : Application
             if (role is ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
 
-            // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376):
-            // only in the FM-hosting role, where the router's window verbs resolve to a live surface.
-            if (role is ShellRole.Explorer)
+            // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376): wired
+            // in the PERSISTENT host — the always-up TASKBAR that also serves the bevelctl socket
+            // (bevel-e7a7) — so both funnel through the one AutomationCommandRouter with NO Explorer
+            // window required. The router's window verbs resolve to SpawningShellSurface here (open/reveal
+            // spawn an Explorer); filesystem/program verbs run directly. Wiring these only in the taskbar
+            // (never the on-demand Explorer) keeps exactly one process handling inbound automation.
+            if (role is ShellRole.Taskbar)
             {
                 UrlActivation.Wire(this, services);
                 AppleEventBridge.Wire(services);
@@ -365,6 +369,14 @@ public partial class App : Application
         // Spawned via Start ▸ Search → open straight into Find mode (bevel-x6pv).
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--search", StringComparison.OrdinalIgnoreCase)))
             fm.BeginSearch();
+        // Spawned by the automation `reveal` verb (bevel-e7a7): --select=<item> queues a selection that
+        // the FileManagerWindow applies once the target folder's listing finishes (SelectAfterLoad) —
+        // the same model→view highlight the in-process reveal uses. Split-mode `reveal` is thus a plain
+        // Explorer spawn: no live in-process window required, no cross-process IPC.
+        var selectArg = Environment.GetCommandLineArgs()
+            .FirstOrDefault(a => a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(selectArg))
+            fm.SelectAfterLoad(new[] { new VfsPath("file", selectArg.Substring("--select=".Length)) });
         desktop.MainWindow = fm;
 
         // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which

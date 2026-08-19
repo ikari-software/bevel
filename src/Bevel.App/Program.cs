@@ -345,10 +345,14 @@ internal static class Program
 
     /// <summary>Opens a Bevel Explorer window at <paramref name="filePath"/> as its OWN
     /// <c>--role=explorer</c> process — the way the split shell hosts the file manager. Called from the
-    /// taskbar's Start-menu "places": creating the window in the taskbar process instead gives it none
-    /// of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus role /
-    /// open-path), so the child inherits the same PAL + control/shell-core environment.</summary>
-    internal static void SpawnExplorer(string filePath, bool search = false)
+    /// taskbar's Start-menu "places" and from the automation command model's window verbs
+    /// (<c>open</c>/<c>reveal</c>, bevel-e7a7): creating the window in the taskbar process instead gives
+    /// it none of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus
+    /// role / open-path / select), so the child inherits the same PAL + control/shell-core environment.
+    /// <paramref name="selectPath"/> (a <c>reveal</c> target) is handed to the child via
+    /// <c>--select=</c>, which <see cref="App.CreateExplorerSurface"/> turns into a
+    /// <c>SelectAfterLoad</c> once the folder lists.</summary>
+    internal static void SpawnExplorer(string filePath, bool search = false, string? selectPath = null)
     {
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(processPath)) return;
@@ -356,11 +360,14 @@ internal static class Program
         var childArgs = Environment.GetCommandLineArgs().Skip(1)
             .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase)
                      && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase)
+                     && !a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase)
                      && !a.Equals("--search", StringComparison.OrdinalIgnoreCase))
             .Append("--role=explorer")
             .Append("--open-path=" + filePath)
             .ToList();
         if (search) childArgs.Add("--search");   // open the new window straight into Find mode (bevel-x6pv)
+        if (!string.IsNullOrEmpty(selectPath))
+            childArgs.Add("--select=" + selectPath);   // highlight this item once its folder loads (bevel-e7a7)
 
         try
         {
