@@ -45,4 +45,18 @@ public class RenderStartLogoTest
                       ?? Path.Combine(Path.GetTempPath(), "bevel-startlogo-render.png");
         frame.Save(outPath);
     }
+
+    [AvaloniaFact]
+    public void Apple_badge_has_a_vector_drop_shadow()
+    {
+        // The Apple mark (bevel-dotj) carries a subtle DropShadowEffect for depth on the Start face — a
+        // render effect, so it stays vector + antialiased (no bitmap). Navigate Viewbox → Canvas → Path.
+        var badge = StartLogo.Build(StartLogo.Kind.Apple, 16);
+        var canvas = Assert.IsType<Canvas>(Assert.IsType<Viewbox>(badge).Child);
+        var path = Assert.IsType<Avalonia.Controls.Shapes.Path>(canvas.Children[0]);
+
+        var shadow = Assert.IsType<Avalonia.Media.DropShadowEffect>(path.Effect);
+        Assert.True(shadow.Opacity > 0 && shadow.Opacity < 1, "shadow should be subtle, not opaque");
+        Assert.True(shadow.BlurRadius > 0, "shadow should be soft");
+    }
 }

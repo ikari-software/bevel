@@ -161,6 +161,18 @@ public static class StartLogo
                 "2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 " +
                 "3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 " +
                 "2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"),
+            // A subtle vector drop shadow lifts the brushed-metal mark off the Start face (bevel-dotj) — a
+            // render effect, so it stays resolution-independent + antialiased (no bitmap). Soft neutral dark
+            // at low opacity so it reads on BOTH the classic gray and the Luna green face without a token.
+            // Offsets/blur are in the 24-unit canvas space, scaled down with the Viewbox to ~2/3 at 16px.
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.35,
+                BlurRadius = 2.5,
+                OffsetX = 0,
+                OffsetY = 1,
+            },
         };
         var canvas = new Canvas { Width = 24, Height = 24, Children = { path } };
         return new Viewbox { Width = size, Height = size, Stretch = Stretch.Uniform, Child = canvas };

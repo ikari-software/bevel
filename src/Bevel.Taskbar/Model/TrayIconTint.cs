@@ -29,11 +29,13 @@ public static class TrayIconTint
     private const double MaxFillForTemplate = 0.55;
     private const double MaxColourFracForTemplate = 0.06;
 
-    // Disabled per user preference (bevel-7hf4): show every tray icon in its REAL captured appearance
-    // rather than flattening monochrome glyphs to a single theme ink. The analysis stays behind this
-    // flag for a future opt-in "theme tray icons" setting; when it flips back on, move Process off the
-    // UI thread (ce-review: the per-pixel scan + recolour must not run inline in a tray update).
-    private const bool TintTemplateIcons = false;
+    // Enabled (bevel-dotj): mirrored macOS status items are TEMPLATE glyphs — white ink designed for the
+    // dark system menu bar, so captured as-is they render white-on-gray on Bevel's light Win2000 tray (no
+    // contrast). Recolour only those inferred templates to the bar's contrast ink (Bevel.Brush.TrayText —
+    // dark on the Win2000 grey well, light on the Luna blue well); REAL multi-colour app icons are left
+    // untouched by the colour/fill heuristic below. The per-pixel scan + recolour is heavy, so callers run
+    // Process OFF the UI thread (TrayItemViewModel.Retint marshals only the finished bitmap back).
+    private const bool TintTemplateIcons = true;
 
     /// <summary>Decode <paramref name="png"/>, and if it looks like a template glyph, return a copy
     /// recoloured to <paramref name="ink"/> (alpha preserved). Otherwise return the icon untouched.
@@ -49,9 +51,8 @@ public static class TrayIconTint
         int w = size.Width, h = size.Height;
         if (w <= 0 || h <= 0) return new Result(src, false);
 
-        // Tinting is disabled (bevel-7hf4) — skip the whole per-pixel analysis, which otherwise runs
-        // on the UI thread on every tray ItemUpdated / ink change and discards its result (ce-review:
-        // performance + standards). The analysis below stays intact for the future opt-in setting.
+        // Opt-out hook (kept for a future "show real captured colours" setting): when off, skip the
+        // per-pixel analysis and pass the icon through unchanged.
         if (!TintTemplateIcons) return new Result(src, false);
 
         int stride = w * 4;

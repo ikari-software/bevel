@@ -311,14 +311,36 @@ public sealed class TrayItemViewModel : ObservableObject
         Retint();
     }
 
-    /// <summary>Re-run adaptive tinting for the current ink (macOS template model, see <see cref="TrayIconTint"/>).</summary>
+    // Monotonic retint token: only the latest Process result is applied, so an out-of-order completion
+    // (a stale ink/png that finished after a newer one) is discarded rather than clobbering the icon.
+    // Read/written on the UI thread only (Retint runs there; the continuation Posts back there).
+    private int _retintGen;
+
+    /// <summary>Re-run adaptive tinting for the current ink (macOS template model, see <see cref="TrayIconTint"/>).
+    /// The decode + per-pixel scan + recolour runs OFF the UI thread (bevel-dotj: it must never run inline in
+    /// a tray ItemUpdated / ink change); only the finished bitmap is marshalled back.</summary>
     private void Retint()
     {
-        // Process returns a freshly-decoded, unshared Skia bitmap on every live ItemUpdated and every
-        // ink change — dispose the outgoing one or it leaks unmanaged memory per repaint (ce-review;
-        // same discipline as the hover-preview and tab-favicon paths).
+        var gen = ++_retintGen;
+        var png = _png;
+        var ink = _ink;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var img = TrayIconTint.Process(png, ink)?.Image;
+            Dispatcher.UIThread.Post(() => Apply(img, gen));
+        });
+    }
+
+    private void Apply(Bitmap? img, int gen)
+    {
+        // Superseded by a newer retint while this one was off-thread — drop it (and its unmanaged memory).
+        if (gen != _retintGen) { (img as IDisposable)?.Dispose(); return; }
+        // Process returns a freshly-decoded, unshared Skia bitmap on every live ItemUpdated and every ink
+        // change — dispose the outgoing one or it leaks unmanaged memory per repaint (ce-review; same
+        // discipline as the hover-preview and tab-favicon paths).
         var old = IconSource;
-        IconSource = TrayIconTint.Process(_png, _ink)?.Image;
-        if (!ReferenceEquals(old, IconSource)) (old as IDisposable)?.Dispose();
+        if (ReferenceEquals(old, img)) return;
+        IconSource = img;
+        (old as IDisposable)?.Dispose();
     }
 }

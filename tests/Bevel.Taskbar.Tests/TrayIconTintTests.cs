@@ -11,10 +11,11 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// Tray-icon tinting is currently OFF (bevel-7hf4): every mirrored menu-bar icon keeps its REAL captured
-/// colours, so Process never recolours — even a sparse monochrome template glyph passes through. The
-/// template analysis stays in TrayIconTint behind its flag for a future opt-in "theme tray icons" setting;
-/// when that flag returns, the first test flips back to asserting recolour-to-ink.
+/// Tray-icon tinting is ON (bevel-dotj): mirrored macOS status items are TEMPLATE glyphs (white ink for
+/// the dark system menu bar), so on Bevel's light Win2000 tray they would render white-on-gray. Process
+/// infers a template (sparse + near-monochrome) and recolours it to the bar's contrast ink so it reads on
+/// the tray. REAL multi-colour app icons, and cell-filling icons that carry their own background, are left
+/// untouched.
 /// </summary>
 public class TrayIconTintTests
 {
@@ -46,20 +47,36 @@ public class TrayIconTintTests
     private static bool InBlock(int x, int y, int lo, int hi) => x >= lo && x < hi && y >= lo && y < hi;
 
     [AvaloniaFact]
-    public void Sparse_monochrome_glyph_keeps_captured_colour_while_tinting_is_off()
+    public void Sparse_monochrome_glyph_is_recoloured_to_contrast_ink()
     {
         // ~25% fill, pure white, transparent elsewhere → a template glyph, the strongest recolour
-        // candidate. With tinting disabled it must still pass through untouched.
+        // candidate. It must be recoloured to the bar's ink so it reads on the light Win2000 tray.
         var png = Png((x, y) => InBlock(x, y, 4, 12) ? ((byte)255, (byte)255, (byte)255, (byte)255) : ((byte)0, (byte)0, (byte)0, (byte)0));
 
         var res = TrayIconTint.Process(png, Colors.Black);
         Assert.NotNull(res);
-        Assert.False(res!.Value.Recoloured);
+        Assert.True(res!.Value.Recoloured, "a sparse white template glyph should recolour to the tray ink");
 
-        // A centre pixel stays the captured white, not the black ink.
+        // The captured white centre pixel is now the DARK ink — legible contrast on the grey tray well —
+        // while the glyph's coverage (alpha/shape) is preserved.
         var px = ReadPixel(res.Value.Image, 8, 8);
-        Assert.True(px.R > 215 && px.G > 215 && px.B > 215, $"expected captured white pixel, got {px}");
+        Assert.True(px.R < 40 && px.G < 40 && px.B < 40, $"expected dark ink pixel, got {px}");
         Assert.True(px.A > 200, "glyph coverage should be preserved");
+    }
+
+    [AvaloniaFact]
+    public void Template_glyph_recolours_to_light_ink_on_a_dark_bar()
+    {
+        // The SAME template glyph on a dark bar (e.g. Luna): the ink token is light, so the recolour keeps
+        // the glyph light — the fix is driven by the theme's TrayText token, not a hardcoded dark colour.
+        var png = Png((x, y) => InBlock(x, y, 4, 12) ? ((byte)255, (byte)255, (byte)255, (byte)255) : ((byte)0, (byte)0, (byte)0, (byte)0));
+
+        var res = TrayIconTint.Process(png, Color.FromRgb(0xEA, 0xF2, 0xFF));
+        Assert.NotNull(res);
+        Assert.True(res!.Value.Recoloured);
+
+        var px = ReadPixel(res.Value.Image, 8, 8);
+        Assert.True(px.R > 215 && px.G > 215 && px.B > 215, $"expected light ink pixel, got {px}");
     }
 
     [AvaloniaFact]
