@@ -95,7 +95,25 @@ echo "==> Done: $DEST"
 # --- 5. Relaunch ONLY if Bevel was running when we started (don't spawn a shell that wasn't there) -----
 if [ "$WAS_RUNNING" = "1" ] && [ "${NO_RELAUNCH:-0}" != "1" ]; then
 	echo "==> Bevel was running — relaunching the installed bundle"
-	open "$DEST"
+	# The quit above can still be tearing down when we get here; `open`-ing into that window makes
+	# LaunchServices return -600 (procNotFound) and leaves the shell DEAD (bevel-9ku7). So (1) wait for the
+	# old instance to fully exit, then (2) retry `open` until a process actually appears.
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		pgrep -f "$DEST/Contents/MacOS/Bevel" >/dev/null 2>&1 || break
+		sleep 0.5
+	done
+	relaunched=0
+	for attempt in 1 2 3 4 5; do
+		open "$DEST" 2>/dev/null || true
+		for _ in 1 2 3 4 5 6; do
+			if pgrep -f "$DEST/Contents/MacOS/Bevel" >/dev/null 2>&1; then relaunched=1; break; fi
+			sleep 0.5
+		done
+		[ "$relaunched" = 1 ] && break
+		echo "    relaunch attempt $attempt didn't take (LaunchServices busy) — retrying…" >&2
+	done
+	[ "$relaunched" = 1 ] && echo "==> Relaunched." \
+		|| echo "    WARNING: could not relaunch $DEST after 5 tries — launch it manually." >&2
 elif [ "$WAS_RUNNING" = "1" ]; then
 	echo "==> Bevel was running but NO_RELAUNCH=1 — not relaunching"
 fi
