@@ -25,8 +25,12 @@ PKG="$ROOT/packaging/macos"
 # normal build/test (the Launch/TCC-hygiene fix — no apphosts pollute Spotlight). The packaging path is
 # the sole exception; without this flag PublishSingleFile would conflict with UseAppHost=false and the
 # publish would fail (and dist/Bevel.app would have no native Mach-O to rename to CFBundleExecutable).
+# PublishReadyToRun (bevel-k93j): crossgen the IL to native ahead-of-time for $RID so each role process
+# (launcher/core/taskbar/explorer) doesn't JIT the framework + Avalonia graph cold on startup — the biggest
+# multi-process startup cost, paid N×. Slower to build, faster to start. Works with single-file/self-contained.
 PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true -p:BevelPackaging=true
 	-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+	-p:PublishReadyToRun=true
 	-p:DebugType=none -p:DebugSymbols=false -v quiet)
 
 echo "==> Publishing Bevel.App ($CONFIG / $RID, single-file)"
