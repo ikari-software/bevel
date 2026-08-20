@@ -72,6 +72,10 @@
                         <!-- Leaves. -->
                         <MenuItem x:Name="HelpItem" Header="_Help" Click="OnHelpClick" />
                         <MenuItem x:Name="RunItem" Header="_Run…" Click="OnRunClick" />
+                        <!-- Show/Hide the desktop surface on demand (bevel-gdie): the desktop-role child
+                             is OFF by default, spawned/killed here via the launcher. Header flips to
+                             "Hide Desktop" while it's up. -->
+                        <MenuItem x:Name="DesktopItem" Header="Show _Desktop" Click="OnToggleDesktopClick" />
 
                         <Separator />
 
@@ -408,6 +412,21 @@
                                  "Quit Bevel" items), surfaced honestly here rather than hidden behind the
                                  footer's Log Off / Turn Off wording. -->
                             <Border Height="1" Background="{DynamicResource Luna.Brush.StartMenuPlacesDivider}" Margin="10,4" />
+                            <!-- Show/Hide Desktop (bevel-gdie): spawns/kills the desktop-role child on demand.
+                                 LunaDesktopText flips to "Hide Desktop" while the surface is up. -->
+                            <Button x:Name="LunaDesktopButton" Classes="lunarow" Click="OnToggleDesktopClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
+                                        <!-- Desktop = monitor screen + stand, on the shared 24-grid. -->
+                                        <Panel>
+                                            <Path Fill="White" Stroke="#5A6472" StrokeThickness="1" Data="M5,6.5 L19,6.5 L19,15.5 L5,15.5 Z" />
+                                            <Path Fill="#2A6FD0" Data="M6.5,8 L17.5,8 L17.5,14 L6.5,14 Z" />
+                                            <Path Fill="#5A6472" Data="M10.5,15.5 L13.5,15.5 L14.5,18 L9.5,18 Z" />
+                                        </Panel>
+                                    </Border>
+                                    <TextBlock x:Name="LunaDesktopText" Text="Show Desktop" Classes="place" />
+                                </StackPanel>
+                            </Button>
                             <Button Classes="lunarow" Click="OnRestartClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Luna.Brush.StartMenuLogOffIcon}">

@@ -223,6 +223,24 @@ internal static class Program
                         await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;
                     case LauncherControl.Command.Quit:
                         stop.Set(); break;
+                    // Desktop Show/Hide toggle (bevel-gdie): spawn/kill the --role=desktop child on demand.
+                    // The factory re-uses CreateRoleStartInfo so the runtime desktop inherits the EXACT same
+                    // core socket/token + control env as a boot-time desktop (BEVEL_ENABLE_DESKTOP=1) — it's
+                    // a client of the already-running core, torn down cleanly by the supervisor on Hide/quit.
+                    case LauncherControl.Command.SpawnDesktop:
+                        RestartDiag.Log("launcher: received SpawnDesktop → supervisor.SpawnRoleAsync(Desktop)");
+                        await supervisor.SpawnRoleAsync(
+                            ShellRole.Desktop,
+                            () => new RoleProcess(ShellRole.Desktop, CreateRoleStartInfo(ShellRole.Desktop, args, childEnv)),
+                            ct).ConfigureAwait(false);
+                        break;
+                    case LauncherControl.Command.CloseDesktop:
+                        RestartDiag.Log("launcher: received CloseDesktop → supervisor.CloseRoleAsync(Desktop)");
+                        await supervisor.CloseRoleAsync(ShellRole.Desktop, ct).ConfigureAwait(false);
+                        break;
+                    case LauncherControl.Command.QueryDesktop:
+                        // Reply byte carries state (1 up / 0 down) instead of the plain ack below.
+                        return new[] { (byte)(await supervisor.IsRoleRunningAsync(ShellRole.Desktop, ct).ConfigureAwait(false) ? 1 : 0) };
                 }
             }
             return new byte[] { 1 }; // ack

@@ -16,12 +16,16 @@ internal static class LauncherControl
     public const string SocketEnv = "BEVEL_LAUNCHER_SOCKET";
     public const string TokenEnv = "BEVEL_LAUNCHER_TOKEN";
 
-    /// <summary>Control verbs. One byte on the wire; the reply is a single 0x01 ack.</summary>
+    /// <summary>Control verbs. One byte on the wire; the reply is a single 0x01 ack — except
+    /// <see cref="QueryDesktop"/>, whose reply byte carries the desktop's running state (1/0).</summary>
     public enum Command : byte
     {
         RestartAll = 1,   // kill+respawn everything → whole shell on the latest binary
         RestartCore = 2,  // swap just the shell-core owner (update-on-demand)
         Quit = 3,         // tear the whole shell down
+        SpawnDesktop = 4, // launch the --role=desktop child on demand (Start ▸ Show Desktop, bevel-gdie)
+        CloseDesktop = 5, // terminate + de-supervise the desktop child (Start ▸ Hide Desktop)
+        QueryDesktop = 6, // ask whether the desktop child is running; reply byte is 1 (up) / 0 (down)
     }
 
     private static string DefaultSocketPath =>
@@ -86,6 +90,39 @@ internal static class LauncherControl
         catch
         {
             return false; // launcher gone / socket stale — caller falls back to in-process behaviour
+        }
+    }
+
+    /// <summary>
+    /// Child side: ask the launcher whether the desktop child is currently supervised/running.
+    /// Returns <c>true</c>/<c>false</c> from the launcher's reply byte, or <c>null</c> when
+    /// unsupervised (no control env) or the launcher is unreachable — so a caller can default its
+    /// "Show Desktop" label without crashing. Mirrors <see cref="TrySend"/>'s bounded off-thread
+    /// guard (deadlock-safe from any thread), but the outer <c>GetResult()</c> still blocks the
+    /// caller for up to the timeout, so callers on the UI thread MUST invoke this off the UI thread.
+    /// </summary>
+    public static bool? QueryDesktopRunning()
+    {
+        var socketPath = Environment.GetEnvironmentVariable(SocketEnv);
+        var token = Environment.GetEnvironmentVariable(TokenEnv);
+        if (string.IsNullOrEmpty(socketPath) || string.IsNullOrEmpty(token))
+            return null; // unsupervised (all-in-one / no launcher) — caller degrades to a default
+
+        try
+        {
+            var nonce = Convert.FromHexString(token);
+            return Task.Run(async () =>
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await using var client = new UdsMessageClient(socketPath, nonce, "launcher");
+                await client.ConnectAsync(cts.Token).ConfigureAwait(false);
+                var reply = await client.RequestAsync(new[] { (byte)Command.QueryDesktop }, cts.Token).ConfigureAwait(false);
+                return (bool?)(reply.Length >= 1 && reply[0] == 1);
+            }).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            return null; // launcher gone / socket stale — treat as "unknown", caller shows the default label
         }
     }
 }

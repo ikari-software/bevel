@@ -84,6 +84,25 @@ public partial class App : Application
         RequestExit();
     }
 
+    /// <summary>
+    /// Start ▸ "Show/Hide Desktop" (bevel-gdie): flip the desktop child on demand via the launcher control
+    /// socket. Runs entirely OFF the UI thread — both the state query and the spawn/close command do a
+    /// bounded synchronous UDS round-trip (up to a few seconds each), and the caller is a Start-menu click
+    /// on the UI thread. Fire-and-forget: the desktop process appears/disappears under the launcher's
+    /// supervision, nothing here awaits it. Unsupervised (all-in-one / no launcher): the query returns null
+    /// and the send returns false, so this degrades to a harmless no-op instead of crashing.
+    /// </summary>
+    public static void ToggleDesktop()
+    {
+        Task.Run(() =>
+        {
+            var running = Supervision.LauncherControl.QueryDesktopRunning() ?? false;
+            Supervision.LauncherControl.TrySend(running
+                ? Supervision.LauncherControl.Command.CloseDesktop
+                : Supervision.LauncherControl.Command.SpawnDesktop);
+        });
+    }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -276,6 +295,10 @@ public partial class App : Application
             openFolder: path => OpenExplorerAt(services, path),
             // Start ▸ Search → open a Bevel Explorer already in Find mode (bevel-x6pv).
             openSearch: () => OpenExplorerSearch(services),
+            // Start ▸ Show/Hide Desktop (bevel-gdie): spawn/kill the --role=desktop child via the launcher,
+            // and a state probe so the item labels itself "Show" (hidden) vs "Hide" (shown) on each open.
+            toggleDesktop: ToggleDesktop,
+            desktopRunning: Supervision.LauncherControl.QueryDesktopRunning,
             // Tab enumeration for the task-button menu's Tabs section (bevel-a40b).
             tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>());
         // Start the background shell model (subscribes to window events + enumerates installed
