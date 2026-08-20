@@ -187,7 +187,14 @@ public partial class App : Application
             if (role is ShellRole.Desktop)
                 CreateDesktopSurface(desktop);
             if (role is ShellRole.Taskbar)
+            {
+                // Publish the taskbar↔Explorer channel's rendezvous dir + shared nonce into this
+                // process's env BEFORE any Explorer is spawned (Start-menu places, open/reveal), so every
+                // spawned Explorer inherits the same discovery root + secret and its control server binds
+                // where this taskbar's client will look (bevel-uldj).
+                ShellCore.ExplorerControlEndpoint.PublishForChildren();
                 CreateTaskbarSurface(services, settings, desktop);
+            }
             if (role is ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
 

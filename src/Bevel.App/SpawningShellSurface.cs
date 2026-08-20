@@ -37,11 +37,12 @@ public sealed class ProcessExplorerSpawner : IExplorerSpawner
 /// window". This is what makes <c>bevelctl</c>/<c>bevel://</c> work with no Explorer already open.
 ///
 /// <para>The verbs that address a PRE-EXISTING live window — <c>select</c>-in-frontmost and the
-/// window/selection queries — have no persistent-host answer: the child Explorer owns its own
-/// per-process window-id space (<see cref="FileManagerWindowRegistry"/>), invisible from here, and the
-/// core's OS-window projection is a disjoint id space (Dtos.cs). They return "no window" / empty rather
-/// than silently succeeding, so a caller gets a clear result. Forwarding <c>select</c> to a running
-/// Explorer is deferred to a follow-up taskbar→Explorer control channel.</para>
+/// window/selection queries — are FORWARDED to the running Explorer processes over the
+/// taskbar↔Explorer control channel (<see cref="TaskbarExplorerControlClient"/>, bevel-uldj): the
+/// query verbs aggregate across every registered Explorer (frontmost-first) and <c>select</c> routes
+/// back to the Explorer that owns the composite <see cref="WindowRef"/>. When that channel isn't wired
+/// or no Explorer is registered, they fall back to the clear empty / "no window" result — never a
+/// silent success and never a crash.</para>
 /// </summary>
 public sealed class SpawningShellSurface : IShellSurface
 {
@@ -50,8 +51,17 @@ public sealed class SpawningShellSurface : IShellSurface
     private static readonly WindowRef Spawned = new(0);
 
     private readonly IExplorerSpawner _spawner;
+    // The taskbar↔Explorer channel (bevel-uldj) that lets the window-coupled verbs reach the live
+    // Explorer processes. Null when the channel isn't wired (e.g. a non-taskbar role that still binds
+    // this surface, or a test that only exercises open/reveal) — the verbs then degrade to the same
+    // clear empty / "no window" result the persistent host returned before the channel existed.
+    private readonly TaskbarExplorerControlClient? _explorers;
 
-    public SpawningShellSurface(IExplorerSpawner spawner) => _spawner = spawner;
+    public SpawningShellSurface(IExplorerSpawner spawner, TaskbarExplorerControlClient? explorers = null)
+    {
+        _spawner = spawner;
+        _explorers = explorers;
+    }
 
     public Task<WindowRef> OpenAsync(VfsPath container, ViewMode? view, CancellationToken ct)
     {
@@ -67,17 +77,28 @@ public sealed class SpawningShellSurface : IShellSurface
         return Task.FromResult(Spawned);
     }
 
-    // ── Deferred: these need a live, addressable Explorer the persistent host doesn't have ──────────
+    // ── Forwarded to the live Explorers over the taskbar↔Explorer channel (bevel-uldj) ─────────────
+    //
+    // With the channel wired, these reach the running --role=explorer processes: query verbs aggregate
+    // across every registered Explorer (frontmost-first), and select routes back to the Explorer that
+    // owns the composite WindowRef. With NO Explorer registered (or the channel absent) they return the
+    // same clear empty / "no window" the persistent host returned before — never a crash.
 
     public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) =>
-        Task.FromException(new AutomationException(
-            "selecting in an existing window is not available from the taskbar host — no live file-manager window to address."));
+        _explorers is null
+            ? Task.FromException(new AutomationException(
+                "selecting in an existing window is not available from the taskbar host — no live file-manager window to address."))
+            : _explorers.SelectAsync(window, items, ct);
 
     public Task<IReadOnlyList<WindowRef>> QueryWindowsAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<WindowRef>>(Array.Empty<WindowRef>());
+        _explorers is null
+            ? Task.FromResult<IReadOnlyList<WindowRef>>(Array.Empty<WindowRef>())
+            : _explorers.AggregateWindowsAsync(ct);
 
     public Task<IReadOnlyList<VfsPath>> QuerySelectionAsync(WindowRef? window, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<VfsPath>>(Array.Empty<VfsPath>());
+        _explorers is null
+            ? Task.FromResult<IReadOnlyList<VfsPath>>(Array.Empty<VfsPath>())
+            : _explorers.QuerySelectionAsync(window, ct);
 
     public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) =>
         Task.FromException(new AutomationException($"'set {prop}' is not supported from the taskbar host."));

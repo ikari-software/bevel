@@ -190,8 +190,24 @@ public static class CompositionRoot
         if (role is ShellRole.Explorer)
             services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
         else
+            // The persistent host's surface (bevel-e7a7): open/reveal spawn an Explorer; the
+            // window-coupled verbs are forwarded to the live Explorers over the taskbar↔Explorer channel
+            // (bevel-uldj) when its client is registered (Taskbar role, below). SpawningShellSurface's
+            // channel-client ctor parameter is optional (defaults to null), so the Desktop/Core roles
+            // that also bind this surface but never wire the channel keep the clear "no window" fallback.
             services.AddSingleton<Bevel.Interop.IShellSurface, SpawningShellSurface>();
         services.AddSingleton<IExplorerSpawner, ProcessExplorerSpawner>();
+
+        // Taskbar↔Explorer automation channel (bevel-uldj). The Explorer process REGISTERS by hosting a
+        // control server that answers forwarded select/query against its own in-process
+        // FileManagerShellSurface; the Taskbar process resolves the client that discovers + dials those
+        // Explorers. Both reuse the shell-core UDS transport + HMAC-nonce auth (ExplorerControlEndpoint).
+        if (role is ShellRole.Explorer)
+            services.AddHostedService<ExplorerControlServer>();
+        else if (role is ShellRole.Taskbar)
+            services.AddSingleton(_ => new TaskbarExplorerControlClient(
+                ShellCore.ExplorerControlEndpoint.Dir,
+                ShellCore.ExplorerControlEndpoint.ResolveNonce()));
         services.AddSingleton<Bevel.Interop.IProgramSurface, AppEnvironmentProgramSurface>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
         // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
