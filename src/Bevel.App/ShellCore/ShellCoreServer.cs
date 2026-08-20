@@ -117,6 +117,16 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 apply();
             _seedBuffer = null;
         }
+
+        // Re-push the now-seeded projection to EVERY already-connected client. _server.Start() runs before
+        // the (helper-dependent, ~2-10s) seed above so peers get settings promptly — but that means a
+        // cold-boot peer connects DURING seeding and its on-connect PushSnapshot carried an EMPTY tray, and
+        // ItemAdded/window deltas that fired during seeding were buffered (replayed into the projection
+        // above) but never broadcast. Windows/apps self-heal via their reconcile backstops; the TRAY has
+        // none ("the stream is the source of truth"), so without this a split taskbar strands on an empty
+        // tray. Snapshots are idempotent — a client replaces its projection, settings dedups by version —
+        // so a client that connected after seeding (already has the full snapshot) is unaffected.
+        BroadcastSnapshot();
     }
 
     /// <summary>Runs <paramref name="enumerate"/>, tolerating the "Helper not connected" race at startup:
@@ -141,8 +151,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    // ── Snapshot on connect (synchronous — see the field comment) ────────
-    private void PushSnapshot(Func<ReadOnlyMemory<byte>, ValueTask> sendToClient)
+    /// <summary>Builds the four projection snapshots (windows/apps/tray/settings) as of now. Shared by the
+    /// on-connect push and the post-seed re-broadcast so both send an identical, consistent set.</summary>
+    private (CoreEvent Windows, CoreEvent Apps, CoreEvent Tray, CoreEvent Settings) BuildSnapshots()
     {
         CoreEvent windowSnapshot, appSnapshot, traySnapshot;
         lock (_gate)
@@ -155,13 +166,30 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // projection, so it is snapshotted outside the lock. SnapshotJson/Version are cheap in-memory reads.
         var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
             SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version);
+        return (windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot);
+    }
+
+    // ── Snapshot on connect (synchronous — see the field comment) ────────
+    private void PushSnapshot(Func<ReadOnlyMemory<byte>, ValueTask> sendToClient)
+    {
+        var (windows, apps, tray, settings) = BuildSnapshots();
         // Fire-and-forget: the transport funnels these through the client's ordered write channel,
         // so the snapshots (and any later broadcast) stay in order; a dead client is the
         // transport's problem, not ours.
-        _ = sendToClient(CoreProtocol.Serialize(windowSnapshot));
-        _ = sendToClient(CoreProtocol.Serialize(appSnapshot));
-        _ = sendToClient(CoreProtocol.Serialize(traySnapshot));
-        _ = sendToClient(CoreProtocol.Serialize(settingsSnapshot));
+        _ = sendToClient(CoreProtocol.Serialize(windows));
+        _ = sendToClient(CoreProtocol.Serialize(apps));
+        _ = sendToClient(CoreProtocol.Serialize(tray));
+        _ = sendToClient(CoreProtocol.Serialize(settings));
+    }
+
+    /// <summary>Re-push the full projection to EVERY connected client (see the call site in StartAsync).</summary>
+    private void BroadcastSnapshot()
+    {
+        var (windows, apps, tray, settings) = BuildSnapshots();
+        _server.Broadcast(CoreProtocol.Serialize(windows));
+        _server.Broadcast(CoreProtocol.Serialize(apps));
+        _server.Broadcast(CoreProtocol.Serialize(tray));
+        _server.Broadcast(CoreProtocol.Serialize(settings));
     }
 
     // ── PAL events -> projection update + delta broadcast ────────────────
