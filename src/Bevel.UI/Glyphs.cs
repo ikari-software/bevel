@@ -34,9 +34,19 @@ public static class Glyphs
         return Color.Parse(fallbackHex);
     }
 
-    /// <summary>Vertical gradient from two theme token keys.</summary>
-    private static LinearGradientBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
-        new()
+    // Brushes are resolved from theme resources on EVERY icon build, once per glyph part — a hot
+    // path when a large folder listing realizes hundreds of ItemView containers. Cache them per
+    // token; the immutable brushes are safe to share across icons. InvalidateThemeCache() drops the
+    // cache when a theme/scheme/variant swap changes the underlying tokens (ce-review bevel-lha4).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IBrush> _brushCache = new();
+
+    /// <summary>Drop the resolved-brush cache. Called by the theme/scheme/variant engines after they
+    /// change the token values so the next icon build re-resolves against the new palette.</summary>
+    public static void InvalidateThemeCache() => _brushCache.Clear();
+
+    /// <summary>Vertical gradient from two theme token keys (cached per token pair).</summary>
+    private static IBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>
+        _brushCache.GetOrAdd(topKey + "|" + bottomKey, _ => new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
             EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
@@ -45,11 +55,11 @@ public static class Glyphs
                 new GradientStop(ResolveColor(topKey, topFallback), 0),
                 new GradientStop(ResolveColor(bottomKey, bottomFallback), 1),
             },
-        };
+        });
 
-    /// <summary>Solid brush from theme token key.</summary>
-    private static SolidColorBrush S(string tokenKey, string fallbackHex) =>
-        new(ResolveColor(tokenKey, fallbackHex));
+    /// <summary>Solid brush from theme token key (cached per token).</summary>
+    private static IBrush S(string tokenKey, string fallbackHex) =>
+        _brushCache.GetOrAdd(tokenKey, _ => new SolidColorBrush(ResolveColor(tokenKey, fallbackHex)));
 
     // ── Semantic color mappings (icon-specific tokens) ─────────────────────
     // Each icon part has its own Bevel.Color.Icon* token so schemes can adapt
@@ -294,7 +304,7 @@ public static class Glyphs
         c.Children.Add(Vec(DocPageData, PaperFill, PaperEdge));
         c.Children.Add(Vec("M10,1.5 V4.1 H12.6 Z", PaperFold, PaperEdge, 0.4));
         for (var i = 0; i < 3; i++)
-            c.Children.Add(Vec($"M5,{7.0 + i * 2.0} H10.6", null, PaperLine, 0.7));
+            c.Children.Add(Vec(FormattableString.Invariant($"M5,{7.0 + i * 2.0} H10.6"), null, PaperLine, 0.7));
     }
 
     static void ExeGlyph(Canvas c)
@@ -387,8 +397,11 @@ public static class Glyphs
         for (var i = 0; i < 6; i++)
         {
             var x = 2.5 + i * 2.0;   // 6 holes, pitch 2, symmetric in the 2..14 strip
-            c.Children.Add(Vec($"M{x:0.##},4.35 h1 v1 h-1 Z", Brushes.White));   // top holes
-            c.Children.Add(Vec($"M{x:0.##},10.65 h1 v1 h-1 Z", Brushes.White));  // bottom holes
+            // Invariant, like every other computed path in this file: under a comma-decimal locale
+            // (pl_PL!) culture-sensitive interpolation emits "2,5" and PathMarkupParser throws on
+            // the UI thread — one video file in an Explorer folder crashed the whole shell.
+            c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},4.35 h1 v1 h-1 Z"), Brushes.White));   // top holes
+            c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},10.65 h1 v1 h-1 Z"), Brushes.White));  // bottom holes
         }
         c.Children.Add(Vec("M7.1,6.7 L9.8,8 L7.1,9.3 Z", Brushes.White));        // play (centred on 8,8)
     }

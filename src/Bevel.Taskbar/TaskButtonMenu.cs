@@ -4,7 +4,9 @@ using System.Linq;
 using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
 
@@ -21,14 +23,47 @@ public static class TaskButtonMenu
     /// flyout so the caller can dismiss it on app-deactivation (the taskbar is a non-activating window, so
     /// popups don't light-dismiss on app switch — TaskbarView hides this from OnAppDeactivated), or null
     /// for an unrecognized context.</summary>
-    public static MenuFlyout? TryShow(Control button)
+    /// <summary>Height cap for the Tabs submenu — an Arc-style sidebar holds hundreds of tabs, so
+    /// past ~24 rows the list SCROLLS (the Classic submenu template's SimpleMenuScrollViewer with
+    /// its Win2000 repeat-arrow buttons engages as soon as content exceeds this).</summary>
+    private const double TabListMaxHeight = 480;
+
+    /// <summary>Sanity ceiling above the scroll cap: the Classic submenu panel is a plain
+    /// non-virtualizing StackPanel, so every row REALIZES when the submenu opens — hundreds of
+    /// MenuItems would turn the right-click into a visible hitch. Rows past this collapse into
+    /// the disabled "… N more" tail.</summary>
+    private const int MaxTabRows = 300;
+
+    /// <summary>Upper bound on one tab activation against a foreign app (4 s mirrors the osascript
+    /// child timeout; the AX path's walk observes the token cooperatively).</summary>
+    private static readonly TimeSpan TabActivateBudget = TimeSpan.FromSeconds(4);
+
+    /// <summary>One prefetched tab plus its favicon, decoded OFF the UI thread by the caller —
+    /// Build runs on the UI thread and must only compose already-decoded bitmaps.</summary>
+    public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon);
+
+    public static MenuFlyout? TryShow(
+        Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
+        Action? onActivateForeign = null)
     {
-        if (Build(button.DataContext) is not { } flyout) return null;
+        // dc is passed in (not re-read from button.DataContext): the caller captured it before an
+        // async tab prefetch and has verified the button still binds it — re-reading here would
+        // reopen the race the caller just closed.
+        if (Build(dc, tabs, tabProvider, onActivateForeign) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
 
-    private static MenuFlyout? Build(object? dc)
+    /// <summary>Whether <paramref name="dc"/> is a context this menu understands — lets the caller
+    /// decide (and mark the event handled) SYNCHRONOUSLY before any async tab prefetch.</summary>
+    public static bool Recognizes(object? dc) => dc is TaskGroupViewModel or TaskItemViewModel;
+
+    // internal (not private) so headless tests can assert the built shape without ShowAt.
+    // onActivateForeign (bevel-nxic): invoked the instant a menu item that brings a FOREIGN window/app
+    // to the front is chosen (window Activate, a Tab, or Quit/Force Quit) — the taskbar uses it to cancel
+    // the key-focus handback so the menu's Closed doesn't re-raise the prior app over the new front.
+    internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
+        Action? onActivateForeign = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -45,12 +80,54 @@ public static class TaskButtonMenu
             foreach (var win in model.Windows)
             {
                 var per = new MenuItem { Header = string.IsNullOrEmpty(win.Title) ? model.AppName : win.Title };
-                per.Items.Add(new MenuItem { Header = "_Activate", Command = win.ActivateCommand });
+                var activate = new MenuItem { Header = "_Activate", Command = win.ActivateCommand };
+                if (onActivateForeign is not null) activate.Click += (_, _) => onActivateForeign();
+                per.Items.Add(activate);
                 per.Items.Add(new MenuItem { Header = "Mi_nimize", Command = win.MinimizeCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
                 windows.Items.Add(per);
             }
             items.Add(windows);
+            items.Add(new Separator());
+        }
+
+        // Tabs (bevel-a40b): prefetched by the caller BEFORE the flyout opens — an open MenuFlyout
+        // popup never repaints (see the Force Quit note below), so late-arriving rows would not show.
+        if (tabs is { Count: > 0 } && tabProvider is not null)
+        {
+            var tabMenu = new MenuItem { Header = "_Tabs" };
+            // Cap the submenu height so a hundreds-of-tabs sidebar scrolls (bevel-l17f) instead of
+            // spanning the screen — the template's own menu scroll viewer takes it from there.
+            // NOT x.Nesting(): a Style added to Control.Styles has no parent style, and the `^`
+            // selector THROWS during template application — which the async click handler then
+            // swallows, so the whole menu silently never opens (caught in review, reproduced live).
+            tabMenu.Styles.Add(new Style(x => x.OfType<MenuItem>().Template().OfType<ScrollViewer>())
+            {
+                Setters = { new Setter(Avalonia.Layout.Layoutable.MaxHeightProperty, TabListMaxHeight) },
+            });
+            foreach (var row in tabs.Take(MaxTabRows))
+            {
+                var captured = row.Tab;
+                var tabItem = new MenuItem
+                {
+                    Header = EscapeHeader(Ellipsize(captured.Title)),
+                    Icon = row.Icon is { } fav ? new Image { Source = fav, Width = 16, Height = 16 } : null,
+                    // Budgeted: activation walks a foreign app (AX tree / Apple Events) and a wedged
+                    // target must cost a bounded threadpool wait, not an open-ended one.
+                    Command = new AsyncRelayCommand(async () =>
+                    {
+                        using var cts = new System.Threading.CancellationTokenSource(TabActivateBudget);
+                        await tabProvider.ActivateAsync(captured, cts.Token);
+                    }),
+                };
+                // Activating a tab raises its window + activates the app — a foreign front change, so
+                // cancel the handback too (bevel-nxic).
+                if (onActivateForeign is not null) tabItem.Click += (_, _) => onActivateForeign();
+                tabMenu.Items.Add(tabItem);
+            }
+            if (tabs.Count > MaxTabRows)
+                tabMenu.Items.Add(new MenuItem { Header = $"… {tabs.Count - MaxTabRows} more", IsEnabled = false });
+            items.Add(tabMenu);
             items.Add(new Separator());
         }
 
@@ -61,11 +138,15 @@ public static class TaskButtonMenu
         // the modifier at open (TaskbarNative.OptionKeyDown, focus-independent) sets the single correct
         // item BEFORE the popup renders, so it's always right and needs no repaint.
         var force = TaskbarNative.OptionKeyDown();
-        items.Add(new MenuItem
+        var quit = new MenuItem
         {
             Header = force ? "_Force Quit" : "_Quit",
             Command = force ? model.ForceQuitCommand : model.QuitCommand,
-        });
+        };
+        // Quitting the target hands the front to whatever the OS surfaces next; don't fight it by
+        // re-raising the app that was frontmost when the menu opened (bevel-nxic).
+        if (onActivateForeign is not null) quit.Click += (_, _) => onActivateForeign();
+        items.Add(quit);
 
         var flyout = new MenuFlyout { ItemsSource = items };
 
@@ -101,4 +182,19 @@ public static class TaskButtonMenu
 
     private static WindowRow Row(TaskItemViewModel w) =>
         new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.CloseCommand);
+
+    /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
+    /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>
+    internal static string EscapeHeader(string title) => title.Replace("_", "__");
+
+    /// <summary>Single-line cap for foreign tab titles so one verbose page can't stretch the menu.
+    /// The cut backs off a high surrogate so an emoji-leading title never leaves half a pair
+    /// (a lone surrogate renders as a replacement glyph).</summary>
+    internal static string Ellipsize(string title, int max = 70)
+    {
+        if (title.Length <= max) return title;
+        var cut = max - 1;
+        if (char.IsHighSurrogate(title[cut - 1])) cut--;
+        return title[..cut].TrimEnd() + "…";
+    }
 }

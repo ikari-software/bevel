@@ -21,8 +21,16 @@ PKG="$ROOT/packaging/macos"
 # loose managed .dll / .json, which codesign otherwise flags as unsigned "code" in an .app's MacOS
 # dir. DebugType=none drops PDBs (not shippable, and also flagged). Native libs self-extract at run
 # time; the hardened-runtime disable-library-validation entitlement permits that.
-PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true
+# BevelPackaging=true is REQUIRED here: Directory.Build.targets sets UseAppHost=false for every Exe on a
+# normal build/test (the Launch/TCC-hygiene fix — no apphosts pollute Spotlight). The packaging path is
+# the sole exception; without this flag PublishSingleFile would conflict with UseAppHost=false and the
+# publish would fail (and dist/Bevel.app would have no native Mach-O to rename to CFBundleExecutable).
+# PublishReadyToRun (bevel-k93j): crossgen the IL to native ahead-of-time for $RID so each role process
+# (launcher/core/taskbar/explorer) doesn't JIT the framework + Avalonia graph cold on startup — the biggest
+# multi-process startup cost, paid N×. Slower to build, faster to start. Works with single-file/self-contained.
+PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true -p:BevelPackaging=true
 	-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+	-p:PublishReadyToRun=true
 	-p:DebugType=none -p:DebugSymbols=false -v quiet)
 
 echo "==> Publishing Bevel.App ($CONFIG / $RID, single-file)"
@@ -60,5 +68,12 @@ plutil -lint "$APP/Contents/Info.plist"
 test -x "$APP/Contents/MacOS/Bevel"
 test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
+
+# Keep the repo's build output OUT of Spotlight/Launchpad so it doesn't shadow the canonical
+# /Applications/Bevel.app in the "Bevel" app list (bevel-5yx5). A .metadata_never_index marker in
+# OUT (dist/) — NOT inside the .app bundle, which would break the signature — makes Spotlight skip
+# dist/Bevel.app AND the dist/publish-app intermediate. rm -rf above only clears $APP, so this marker
+# in $OUT survives rebuilds.
+: > "$OUT/.metadata_never_index"
 
 echo "==> Built $APP (unsigned). Next: sign-app.sh (Developer ID + notarytool profile 'bevel')."

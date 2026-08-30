@@ -179,6 +179,90 @@ public sealed class RoleProcessSupervisorTests
     }
 
     [Fact]
+    public async Task SpawnRoleAsync_adds_and_supervises_a_new_child()
+    {
+        // bevel-gdie: Start ▸ "Show Desktop" appends a desktop child at runtime. It must start AND be
+        // picked up by the crash-monitor like any boot-time child.
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core, taskbar }, Poll);
+        await sup.StartAsync();
+        Assert.False(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+
+        var desktop = new FakeRoleProcess(ShellRole.Desktop, log);
+        await sup.SpawnRoleAsync(ShellRole.Desktop, () => desktop);
+
+        Assert.True(desktop.IsAlive);
+        Assert.Equal(1, desktop.StartCount);
+        Assert.True(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+
+        // Supervised: a crash is respawned by the monitor (proves it joined the set, not a detached spawn).
+        desktop.Alive = false;
+        await WaitFor(() => desktop.StartCount == 2, "the monitor should respawn the runtime-added desktop");
+    }
+
+    [Fact]
+    public async Task SpawnRoleAsync_is_idempotent()
+    {
+        // A double-click on "Show Desktop" must not spawn two desktops.
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core }, Poll);
+        await sup.StartAsync();
+
+        var first = new FakeRoleProcess(ShellRole.Desktop, log);
+        var secondFactoryCalls = 0;
+        await sup.SpawnRoleAsync(ShellRole.Desktop, () => first);
+        await sup.SpawnRoleAsync(ShellRole.Desktop, () => { secondFactoryCalls++; return new FakeRoleProcess(ShellRole.Desktop, log); });
+
+        Assert.Equal(0, secondFactoryCalls);            // second request ignored — factory never invoked
+        Assert.Equal(1, first.StartCount);              // the one desktop wasn't restarted
+        Assert.True(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+    }
+
+    [Fact]
+    public async Task CloseRoleAsync_removes_the_child_and_never_respawns_it()
+    {
+        // bevel-gdie: "Hide Desktop" tears the desktop down AND de-supervises it — a user-hidden surface
+        // must stay hidden, not be auto-restarted by the crash-monitor.
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core }, Poll);
+        await sup.StartAsync();
+
+        var desktop = new FakeRoleProcess(ShellRole.Desktop, log);
+        await sup.SpawnRoleAsync(ShellRole.Desktop, () => desktop);
+        Assert.True(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+
+        await sup.CloseRoleAsync(ShellRole.Desktop);
+        Assert.False(desktop.IsAlive);
+        Assert.True(desktop.KillCount >= 1);
+        Assert.False(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+
+        // Several monitor ticks pass — the removed desktop must NOT be respawned (StartCount frozen at 1).
+        var startsAtClose = desktop.StartCount;
+        await Task.Delay(Poll * 8);
+        Assert.Equal(startsAtClose, desktop.StartCount);
+        Assert.False(await sup.IsRoleRunningAsync(ShellRole.Desktop));
+
+        // The core (untouched) is still supervised — closing one child doesn't disturb the rest.
+        Assert.True(await sup.IsRoleRunningAsync(ShellRole.Core));
+    }
+
+    [Fact]
+    public async Task CloseRoleAsync_is_a_noop_for_an_unsupervised_role()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core }, Poll);
+        await sup.StartAsync();
+
+        await sup.CloseRoleAsync(ShellRole.Desktop);   // never spawned — must not throw
+        Assert.True(await sup.IsRoleRunningAsync(ShellRole.Core));
+    }
+
+    [Fact]
     public async Task Keeps_retrying_a_child_that_fails_to_launch()
     {
         var log = new List<string>();

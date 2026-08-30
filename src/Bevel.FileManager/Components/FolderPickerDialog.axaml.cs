@@ -18,6 +18,7 @@ public partial class FolderPickerDialog : BevelWindow
 {
     private readonly VfsRoot _vfsRoot;
     private VfsPath? _selectedPath;
+    private readonly CancellationTokenSource _cts = new();   // cancels in-flight tree expansion on close
 
     /// <summary>Parameterless constructor for the XAML previewer only — never used at runtime.</summary>
     public FolderPickerDialog() : this(new VfsRoot(), null)
@@ -36,6 +37,15 @@ public partial class FolderPickerDialog : BevelWindow
 
         var start = rootPath ?? new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         BuildTree(start);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // Stop any in-flight tree expansion so it doesn't outlive the dialog (ce-review: the
+        // expansion enumerations ran with CancellationToken.None; same pattern PropertiesDialog uses).
+        _cts.Cancel();
+        _cts.Dispose();
+        base.OnClosed(e);
     }
 
     /// <summary>Exposed for tests (InternalsVisibleTo Bevel.FileManager.Tests).</summary>
@@ -91,7 +101,7 @@ public partial class FolderPickerDialog : BevelWindow
 
         try
         {
-            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), CancellationToken.None))
+            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), _cts.Token))
             {
                 if (child.Kind is not (VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot))
                     continue;

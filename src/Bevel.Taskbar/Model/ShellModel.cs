@@ -430,6 +430,9 @@ public sealed class ShellModel : IDisposable
                 // A near-simultaneous second window with the same icon may also be decoding; TryAdd keeps
                 // the first published bitmap and the loser's copy is simply dropped — both assign a valid image.
                 var winner = _windowIconCache.GetOrAdd(key, bmp);
+                // If another decode won the race, our bitmap is now unreachable — dispose it so the
+                // loser's unmanaged Skia memory is released immediately, not at finalization (ce-review).
+                if (!ReferenceEquals(winner, bmp)) bmp.Dispose();
                 Dispatcher.UIThread.Post(() => vm.IconSource = winner);
             }
             catch (Exception ex) { TaskbarLog.Swallowed("LoadWindowIcon", ex); } // invalid PNG — icon-less

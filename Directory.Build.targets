@@ -1,0 +1,33 @@
+<Project>
+
+  <!-- Launch/TCC hygiene (bevel Launch/TCC) — see the matching note in Directory.Build.props.
+       Evaluated after the project body, so OutputType (set in each .csproj) is visible here.
+
+       Rule: outside the packaging path (BevelPackaging != true), no Exe project emits a native apphost.
+       This kills the `Bevel.App` apphost at its source — with it gone, nothing named `Bevel.App` is
+       copied into the test/tool projects that ProjectReference it — and, belt-and-suspenders, keeps the
+       dev tools (BevelShot, ThemeGen/ThemeStudio, Bevel.IconPreview, bevelctl) from leaving apphosts in
+       bin/ too. They all run via `dotnet run` in dev, and `dotnet run` launches `dotnet <dll>` fine
+       without an apphost. `dotnet test` runs through the test host, also unaffected.
+
+       Packaging flips this by passing -p:BevelPackaging=true (build-app.sh), so dist/Bevel.app's
+       single-file publish still bakes its native Mach-O. Note PublishSingleFile requires UseAppHost, so
+       the packaging path MUST set BevelPackaging=true (it does) to avoid a UseAppHost=false conflict. -->
+  <PropertyGroup Condition="'$(BevelPackaging)' != 'true' and '$(OutputType)' == 'Exe'">
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <!-- Belt-and-suspenders: drop a `.metadata_never_index` marker into every build OutDir so that even if
+       an apphost ever reappears (a stray -p:BevelPackaging=true build, a future SDK change), Spotlight
+       skips the whole directory and never indexes it as an Application. Cheap: writes once, skipped if
+       already present, and only when OutDir exists. -->
+  <Target Name="BevelWriteNeverIndexMarker"
+          AfterTargets="Build"
+          Condition="'$(OutDir)' != '' and Exists('$(OutDir)')">
+    <WriteLinesToFile File="$(OutDir).metadata_never_index"
+                      Lines=""
+                      Overwrite="false"
+                      Condition="!Exists('$(OutDir).metadata_never_index')" />
+  </Target>
+
+</Project>

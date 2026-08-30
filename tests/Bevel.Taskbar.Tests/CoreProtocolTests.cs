@@ -79,6 +79,15 @@ public sealed class CoreProtocolTests
     }
 
     [Fact]
+    public void RestoreAndActivate_command_round_trips(/* bevel-nxic */)
+    {
+        var back = RoundTrip(new CoreCommand(CoreCommandKind.RestoreAndActivate, WindowId: "cg-1618"));
+
+        Assert.Equal(CoreCommandKind.RestoreAndActivate, back.Kind);
+        Assert.Equal("cg-1618", back.WindowId);
+    }
+
+    [Fact]
     public void Response_carries_query_results_and_failure()
     {
         var ok = RoundTrip(new CoreResponse(Ok: true, RunningApps: new[] { new RunningApp("com.a", "Alpha", 42) }));
@@ -88,5 +97,28 @@ public sealed class CoreProtocolTests
         var fail = RoundTrip(CoreResponse.Fail("helper unavailable"));
         Assert.False(fail.Ok);
         Assert.Equal("helper unavailable", fail.Error);
+    }
+
+    [Fact]
+    public void Settings_envelopes_round_trip_json_blob_and_version(/* bevel-6nve */)
+    {
+        const string blob = """{ "themeId": "luna", "taskbarOpacity": 70 }""";
+
+        // core→UI snapshot / change event
+        var evt = RoundTrip(new CoreEvent(CoreEventKind.SettingsSnapshot, SettingsJson: blob, SettingsVersion: 42));
+        Assert.Equal(CoreEventKind.SettingsSnapshot, evt.Kind);
+        Assert.Equal(blob, evt.SettingsJson);
+        Assert.Equal(42, evt.SettingsVersion);
+
+        // UI→core apply-update command
+        var cmd = RoundTrip(new CoreCommand(CoreCommandKind.ApplySettingsUpdate, SettingsPatchJson: blob));
+        Assert.Equal(CoreCommandKind.ApplySettingsUpdate, cmd.Kind);
+        Assert.Equal(blob, cmd.SettingsPatchJson);
+
+        // core→UI GetSettings reply
+        var resp = RoundTrip(new CoreResponse(Ok: true, SettingsJson: blob, SettingsVersion: 42));
+        Assert.True(resp.Ok);
+        Assert.Equal(blob, resp.SettingsJson);
+        Assert.Equal(42, resp.SettingsVersion);
     }
 }

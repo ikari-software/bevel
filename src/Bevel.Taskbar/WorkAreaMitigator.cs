@@ -30,7 +30,7 @@ public sealed class WorkAreaMitigator : IDisposable
     private static readonly TimeSpan SafetyPollInterval = TimeSpan.FromSeconds(3);
 
     private readonly IWindowManager _windowManager;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly Func<PalRect?> _taskbarBand;
     private readonly TimeProvider _time;
     private readonly TimeSpan _rateLimit = TimeSpan.FromSeconds(2);
@@ -51,7 +51,7 @@ public sealed class WorkAreaMitigator : IDisposable
     /// so display reconfigurations are picked up live.</param>
     /// <param name="timeProvider">Clock for rate-limiting; defaults to the system clock.
     /// Injectable so tests can advance time deterministically.</param>
-    public WorkAreaMitigator(IWindowManager windowManager, SettingsService settings,
+    public WorkAreaMitigator(IWindowManager windowManager, ISettingsService settings,
         Func<PalRect?> taskbarBand, TimeProvider? timeProvider = null)
     {
         _windowManager = windowManager;
@@ -97,8 +97,10 @@ public sealed class WorkAreaMitigator : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
-            _settleCts?.Cancel();
+            var prev = _settleCts;
             _settleCts = cts = new CancellationTokenSource();
+            prev?.Cancel();
+            prev?.Dispose();   // the superseded source was never disposed — one leaked per re-arm (ce-review)
         }
         _ = SettleAndMitigateAsync(cts.Token);
     }

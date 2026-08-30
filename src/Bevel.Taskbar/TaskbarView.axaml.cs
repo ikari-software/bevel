@@ -19,11 +19,14 @@ public partial class TaskbarView : UserControl
     private StartMenu? _startMenu;
     private IAppEnvironment? _appEnv;
     private IIconProvider? _iconProvider;
+    private ITabProvider? _tabProvider;
     private Action? _quit;
     private Action? _restart;
     private Action? _openSettings;
     private Action<Bevel.Core.Vfs.VfsPath>? _openFolder;
     private Action? _openSearch;
+    private Action? _toggleDesktop;
+    private Func<bool?>? _desktopRunning;
     private Action? _toggleLock;
     private int _maxButtonWidth = 160;
     private int _minButtonWidth = 80;
@@ -54,6 +57,13 @@ public partial class TaskbarView : UserControl
     private bool _wired;
     private bool _layoutQueued;
 
+    // Menu-scoped key focus (bevel-vk4n): the taskbar becomes key ONLY while a menu/popover it owns is
+    // open. A depth counter lets nested/overlapping menus (Start menu + a task menu) coexist without one
+    // closing dropping key focus the other still needs. Flyouts are wired once each (deduped).
+    private int _menuScopeDepth;
+    private readonly HashSet<Avalonia.Controls.Primitives.FlyoutBase> _scopedFlyouts = new();
+    private IntPtr _startHotkeyMonitor;   // native global Ctrl+Esc / Option+Esc monitor token (macOS)
+
     public TaskbarView() => InitializeComponent();
 
     public Button StartButtonControl => StartButton;
@@ -75,16 +85,22 @@ public partial class TaskbarView : UserControl
         Action? openSettings = null,
         Action? toggleLock = null,
         Action<Bevel.Core.Vfs.VfsPath>? openFolder = null,
-        Action? openSearch = null)
+        Action? openSearch = null,
+        Action? toggleDesktop = null,
+        Func<bool?>? desktopRunning = null,
+        ITabProvider? tabProvider = null)
     {
         // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
         _iconProvider = iconProvider;
+        _tabProvider = tabProvider;
         _quit = quit;
         _restart = restart;
         _openSettings = openSettings;
         _openFolder = openFolder;
         _openSearch = openSearch;
+        _toggleDesktop = toggleDesktop;
+        _desktopRunning = desktopRunning;
         _toggleLock = toggleLock;
 
         // Every persisted setting flows from the one BevelSettings (bevel-ccs) — no more 25-param call.
@@ -237,10 +253,26 @@ public partial class TaskbarView : UserControl
     /// deferred so activation is fully underway first (hiding the popup mid-gesture would cancel it).
     /// A Border+Tapped (not a Button+Command) so the row shares the flyoutrow hover-highlight with the
     /// stack flyout — one style-driven hover mechanism, not a per-list re-implementation (bevel-cust).</summary>
-    private void OnGroupWindowTapped(object? sender, TappedEventArgs e)
+    private void OnGroupWindowTapped(object? sender, TappedEventArgs e) => ActivateGroupWindowRow(sender);
+
+    /// <summary>Keyboard operability for a grouped-window flyout row (bevel-vk4n): Enter/Space activates
+    /// the window, mirroring the row's Tapped gesture so a keyboard/AT user can pick a window.</summary>
+    private void OnGroupWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        ActivateGroupWindowRow(sender);
+        e.Handled = true;
+    }
+
+    private void ActivateGroupWindowRow(object? sender)
     {
         if ((sender as Control)?.DataContext is TaskItemViewModel vm)
+        {
             vm.ActivateCommand.Execute(null);
+            // This flyout's Closed will fire ExitMenuScope → the key-focus handback; cancel it so we don't
+            // re-raise the previously-frontmost app back OVER the window we just activated (bevel-nxic).
+            _window?.CancelKeyFocusHandback();
+        }
         Dispatcher.UIThread.Post(() =>
         {
             foreach (var toggle in WindowButtonArea.GetVisualDescendants().OfType<ToggleButton>())
@@ -272,6 +304,18 @@ public partial class TaskbarView : UserControl
     {
         if ((sender as Control)?.DataContext is StackFileViewModel vm)
             vm.OpenCommand.Execute(null);
+    }
+
+    /// <summary>Keyboard operability for a stack-flyout row (bevel-vk4n): Enter/Space opens the file, the
+    /// same action as a click/tap.</summary>
+    private void OnStackFileKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        if ((sender as Control)?.DataContext is StackFileViewModel vm)
+        {
+            vm.OpenCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     /// <summary>On press we record the row and START resolving its IStorageFile, so that by the time the
@@ -328,7 +372,7 @@ public partial class TaskbarView : UserControl
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch);
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.
@@ -356,6 +400,23 @@ public partial class TaskbarView : UserControl
             StartLogoHost.Content = StartLogo.For(16);
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
+
+            // Menu-scoped key focus (bevel-vk4n): the Start menu's popup opening/closing drives the
+            // become-key flip, so its arrow-key navigation and Escape actually reach the bar. The menu
+            // also focuses its first item on open (StartMenu.OpenAsync).
+            if (_startMenu is not null)
+            {
+                _startMenu.MenuPopupControl.Opened += (_, _) => EnterMenuScope();
+                _startMenu.MenuPopupControl.Closed += (_, _) => ExitMenuScope();
+            }
+
+            WireFlyoutScope(TrayOverflowButton.Flyout);   // the "show hidden icons" tray overflow popover
+
+            // Native global Ctrl+Esc / Option+Esc summon (bevel-vk4n). Installed only when a REAL native
+            // window backs the taskbar — never in headless tests (where every TaskbarView would otherwise
+            // register a process-global AppKit monitor). Gated to macOS via HasNativeWindow.
+            if (_window?.HasNativeWindow == true)
+                _startHotkeyMonitor = TaskbarNative.AddGlobalKeyDownMonitor(OnGlobalStartHotkey);
             AddHandler(PointerPressedEvent, OnWindowButtonMiddleClick, RoutingStrategies.Tunnel);
 
             // Re-flow button widths when the strip resizes, the row count changes, or the window
@@ -406,6 +467,18 @@ public partial class TaskbarView : UserControl
         // width (they start at 0) even if their SizeChanged fired before we subscribed. Also wires
         // pointer handlers for containers realized before ContainerPrepared was subscribed.
         QueueLayout();
+    }
+
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        // Release the process-global hotkey monitor with the view (bevel-vk4n) so a torn-down taskbar
+        // doesn't leave a dangling AppKit monitor pointing at freed managed state.
+        if (_startHotkeyMonitor != IntPtr.Zero)
+        {
+            TaskbarNative.RemoveMonitor(_startHotkeyMonitor);
+            _startHotkeyMonitor = IntPtr.Zero;
+        }
+        base.OnUnloaded(e);
     }
 
     /// <summary>
@@ -487,6 +560,9 @@ public partial class TaskbarView : UserControl
         button.PointerExited += OnTaskButtonPointerExited;
         button.Click -= OnTaskButtonClick;
         button.Click += OnTaskButtonClick;
+        // A grouped-app button carries a windows-list Flyout; bind its open/close to the key-focus scope
+        // so keyboard users can arrow through the group's windows (bevel-vk4n). Idempotent per flyout.
+        WireFlyoutScope(button.Flyout);
     }
 
     /// <summary>
@@ -510,12 +586,27 @@ public partial class TaskbarView : UserControl
         await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
     }
 
+    /// <summary>Keyboard operability for a mirrored tray icon (bevel-vk4n): Enter/Space forwards a left
+    /// activation (Shift/Ctrl/Alt/Cmd carried through), the same as a left-click on the icon. Tray icons
+    /// are plain Images, so without this a keyboard/AT user could never operate the notification area.</summary>
+    private async void OnTrayIconKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
+        e.Handled = true;
+        await _vm.Tray.Forward(item.Id, TrayButton.Left, ToTrayModifiers(e.KeyModifiers));
+    }
+
     /// <summary>Refreshes a folder stack's recent-contents list (and clears its new-item cue) as its
     /// button is clicked, so the flyout that opens right after shows the current folder (bevel-12g).</summary>
     private void OnStackButtonClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control c && c.DataContext is StackViewModel stack)
             stack.Refresh();
+        // Bind this stack's recent-contents flyout to the key-focus scope (idempotent), so its rows are
+        // keyboard-navigable while open (bevel-vk4n).
+        if (sender is Button b)
+            WireFlyoutScope(b.Flyout);
     }
 
     private static TrayModifiers ToTrayModifiers(KeyModifiers mods)
@@ -663,16 +754,127 @@ public partial class TaskbarView : UserControl
     /// Quit/Force-Quit — built in code so the Alt swap + nesting stay simple.</summary>
     private Avalonia.Controls.MenuFlyout? _openTaskMenu;
 
-    private void OnTaskButtonContextRequested(object? sender, ContextRequestedEventArgs e)
+    /// <summary>Serializes OnTaskButtonContextRequested: a second right-click landing inside the
+    /// prefetch window would otherwise open a second flyout and orphan the first's global monitor.</summary>
+    private bool _taskMenuOpenInFlight;
+
+    private async void OnTaskButtonContextRequested(object? sender, ContextRequestedEventArgs e)
     {
-        if (sender is not Control c) return;
-        if (TaskButtonMenu.TryShow(c) is { } menu)
+        if (sender is not Control c || !TaskButtonMenu.Recognizes(c.DataContext)) return;
+        e.Handled = true;   // decided synchronously — must precede the first await
+
+        if (_taskMenuOpenInFlight) return;
+        _taskMenuOpenInFlight = true;
+        try
         {
-            _openTaskMenu = menu;
-            menu.Closed += (_, _) => { if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null; };
-            e.Handled = true;
+            // Tab prefetch (bevel-a40b): an open MenuFlyout never repaints, so tabs must exist BEFORE
+            // TryShow. The await keeps the UI thread free; the budget caps how long the menu can lag
+            // behind the right-click when the target app answers slowly (no tabs beats a stalled menu).
+            var dc = c.DataContext;
+            var tabs = await PrefetchTabsAsync(dc);
+
+            // The projector mutates the strip in place during the await (remove/move/insert on the
+            // very events a right-click races with — target app quitting, windows re-ordering). A
+            // rebound container would show app B's menu with app A's tabs; a detached one would
+            // ShowAt a control with no visual root. Both invalidate this click — drop it.
+            if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
+            {
+                DisposeTabRows(tabs);
+                return;
+            }
+
+            // Dismiss any still-open prior menu BEFORE opening the new one, so its Closed handler
+            // (which removes its global mouse monitor) runs first. The monitors are now per-token
+            // (ce-review P0 fix in TaskbarWindow), but keeping the ordering clean avoids two
+            // monitors briefly both firing on the same outside click.
+            _openTaskMenu?.Hide();
+            _openTaskMenu = null;
+
+            if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider,
+                    onActivateForeign: () => _window?.CancelKeyFocusHandback()) is { } menu)
+            {
+                _openTaskMenu = menu;
+                // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
+                // close, so its arrow/Enter/Escape navigation reaches the bar (bevel-vk4n).
+                EnterMenuScope();
+                menu.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null;
+                    ExitMenuScope();
+                    // Skia-backed favicon bitmaps are unmanaged memory the GC can't see — release
+                    // them with the menu (same pattern as the hover preview's bitmap swap).
+                    DisposeTabRows(tabs);
+                };
+            }
+            else
+            {
+                DisposeTabRows(tabs);
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void has no other backstop — an escape here is an unhandled dispatcher
+            // exception, i.e. a dead taskbar over a context menu.
+            TaskbarLog.Debug($"TASKMENU open failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _taskMenuOpenInFlight = false;
         }
     }
+
+    private async Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>?> PrefetchTabsAsync(object? dc)
+    {
+        var bundleId = dc switch
+        {
+            TaskGroupViewModel g => g.BundleId,
+            TaskItemViewModel t => t.BundleId,
+            _ => null,
+        };
+        if (_tabProvider is null || !_tabProvider.SupportsApp(bundleId)) return null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TabPrefetchBudget);
+            var tabs = await _tabProvider.GetTabsAsync(bundleId!, cts.Token);
+            // Favicon PNGs decode into bitmaps OFF the UI thread (never-block rule) — Build then
+            // only composes ready Image sources. DecodeToWidth(16) keeps a 192px cache blob from
+            // decoding at full size for a 16px row. A blob that fails to decode is an icon-less row.
+            var rows = await Task.Run(() => tabs.Select(t =>
+            {
+                Avalonia.Media.Imaging.Bitmap? icon = null;
+                if (t.IconPng is { Length: > 0 } png)
+                {
+                    try { icon = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(new System.IO.MemoryStream(png), 16); }
+                    catch { /* malformed cache blob */ }
+                }
+                return new TaskButtonMenu.TabMenuRow(t, icon);
+            }).ToList());
+            // Enumeration over budget is killed in the provider (empty list); enrichment over
+            // budget is abandoned there (unenriched list). Neither throws — log every outcome so
+            // "0 tabs in ~budget ms" is readable as a timeout. Elapsed includes icon decode.
+            TaskbarLog.Debug($"TABS prefetch {bundleId}: {tabs.Count} in {sw.ElapsedMilliseconds}ms");
+            return rows;
+        }
+        catch (Exception ex)
+        {
+            TaskbarLog.Debug($"TABS prefetch failed for {bundleId}: {ex.GetType().Name} after {sw.ElapsedMilliseconds}ms");
+            return null;   // timeout / target app gone — the menu just opens without a Tabs section
+        }
+    }
+
+    private static void DisposeTabRows(IReadOnlyList<TaskButtonMenu.TabMenuRow>? rows)
+    {
+        if (rows is null) return;
+        foreach (var row in rows) row.Icon?.Dispose();
+    }
+
+    /// <summary>How long a right-click may wait for the target app's tab list before the menu opens
+    /// without one. Sized to the slowest live measurement: a batched enumeration of Arc's ~100-tab
+    /// sidebar takes ~0.65 s of Apple Events alone (plus osascript spawn), so 700 ms starved it and
+    /// the menu permanently lost its Tabs section on big browsers. iTerm-sized apps answer in
+    /// 100–300 ms regardless.</summary>
+    private static readonly TimeSpan TabPrefetchBudget = TimeSpan.FromMilliseconds(1500);
 
     private void ApplyRowLayout()
     {
@@ -838,21 +1040,27 @@ public partial class TaskbarView : UserControl
 
     // ── Start menu ──────────────────────────────────────────────────────
 
-    private async void OnStartButtonClick(object? sender, RoutedEventArgs e)
+    private void OnStartButtonClick(object? sender, RoutedEventArgs e) => ToggleStartMenu();
+
+    /// <summary>Opens the Start menu if closed, closes it if open. Shared by the Start button click, the
+    /// in-window Ctrl+Esc handler, and the native global hotkey (bevel-vk4n).</summary>
+    private void ToggleStartMenu()
     {
         if (_startMenu is null) return;
         if (_startMenu.IsOpen) _startMenu.Close();
-        else await _startMenu.OpenAsync(StartButton);
+        else _ = _startMenu.OpenAsync(StartButton);
     }
 
-    private async void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
+    private void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
     {
-        // Ctrl+Esc (Win2000 standard) or Option+Esc (macOS-friendly) opens the menu.
+        // Ctrl+Esc (Win2000 standard) or Option+Esc (macOS-friendly) opens the menu. This handler is now
+        // genuinely reachable: a menu open makes the taskbar key (SetKeyFocusAllowed), and the native
+        // global monitor summons the menu from idle when the bar isn't key yet (bevel-vk4n).
         if (e.Key == Key.Escape && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Alt)))
         {
             if (_startMenu is not null && !_startMenu.IsOpen)
             {
-                await _startMenu.OpenAsync(StartButton);
+                _ = _startMenu.OpenAsync(StartButton);
                 e.Handled = true;
             }
         }
@@ -861,5 +1069,45 @@ public partial class TaskbarView : UserControl
             _startMenu.Close();
             e.Handled = true;
         }
+    }
+
+    // ── Menu-scoped key focus (bevel-vk4n) ───────────────────────────────
+
+    /// <summary>Marks a menu/popover the taskbar owns as open: on the first one, flip the window to allow
+    /// key focus so its keystrokes (arrows / Enter / Escape) land on the bar.</summary>
+    private void EnterMenuScope()
+    {
+        if (_menuScopeDepth++ == 0)
+            _window?.SetKeyFocusAllowed(true);
+    }
+
+    /// <summary>Marks one owned menu/popover as closed: on the last one, flip the window back to non-key so
+    /// focus returns to the app that had it.</summary>
+    private void ExitMenuScope()
+    {
+        if (_menuScopeDepth > 0 && --_menuScopeDepth == 0)
+            _window?.SetKeyFocusAllowed(false);
+    }
+
+    /// <summary>Idempotently binds a flyout's open/close to the key-focus scope, so a task/tray/stack/group
+    /// popover drives the become-key flip just like the Start menu does.</summary>
+    private void WireFlyoutScope(Avalonia.Controls.Primitives.FlyoutBase? flyout)
+    {
+        if (flyout is null || !_scopedFlyouts.Add(flyout)) return;
+        flyout.Opened += (_, _) => EnterMenuScope();
+        flyout.Closed += (_, _) => ExitMenuScope();
+    }
+
+    /// <summary>Handles the native global Ctrl+Esc / Option+Esc summon (bevel-vk4n). Called off the AppKit
+    /// monitor thread, so it marshals the toggle back to the UI thread. Escape's macOS virtual key is 53;
+    /// Control = 1&lt;&lt;18, Option = 1&lt;&lt;19 in NSEvent.modifierFlags.</summary>
+    private void OnGlobalStartHotkey(ulong keyCode, ulong modifierFlags)
+    {
+        const ulong escKeyCode = 53;
+        const ulong controlFlag = 1UL << 18;
+        const ulong optionFlag = 1UL << 19;
+        if (keyCode != escKeyCode) return;
+        if ((modifierFlags & (controlFlag | optionFlag)) == 0) return;
+        Dispatcher.UIThread.Post(ToggleStartMenu);
     }
 }

@@ -102,9 +102,24 @@ public sealed class AutomationCommandRouter
     {
         if (string.IsNullOrEmpty(cmd.AppId))
             return new CommandResult(ExitCodes.BadArgs, "launch needs an application id");
+        // Security (bevel-318a): the launch verb is reachable from the WEB-registered, unauthenticated
+        // bevel:// scheme, and the platform launcher would LSOpen ANY rooted .app path — so a drive-by
+        // page plus a planted bundle could run arbitrary code. Accept only a BUNDLE IDENTIFIER (which
+        // LaunchServices resolves against INSTALLED apps), never a filesystem path. Bundle ids never
+        // look like paths, so this rejects the attack shape without touching legitimate launches.
+        if (LooksLikePath(cmd.AppId))
+            return new CommandResult(ExitCodes.BadArgs, "launch takes an application bundle id, not a path");
         await _automation.LaunchAsync(cmd.AppId, ct);
         return cmd.Json ? Ok($"{{\"launched\":{JsonStr(cmd.AppId)}}}") : Ok($"launched {cmd.AppId}");
     }
+
+    /// <summary>A launch target that is rooted, contains a path separator, or is a ".app" is a
+    /// filesystem path, not a bundle id — refused so no absolute path reaches the platform launcher.</summary>
+    internal static bool LooksLikePath(string appId) =>
+        System.IO.Path.IsPathRooted(appId)
+        || appId.Contains('/') || appId.Contains('\\')
+        || appId.StartsWith('~')
+        || appId.EndsWith(".app", StringComparison.OrdinalIgnoreCase);
 
     private async Task<CommandResult> QueryAsync(ParsedCommand cmd, CancellationToken ct)
     {

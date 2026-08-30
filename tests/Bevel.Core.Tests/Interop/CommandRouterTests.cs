@@ -139,6 +139,22 @@ public class AutomationCommandRouterTests
         Assert.Empty(_auto.Calls);
     }
 
+    [Theory]
+    [InlineData("/Applications/Evil.app")]     // absolute path
+    [InlineData("/tmp/planted.app")]
+    [InlineData("Evil.app")]                    // relative .app
+    [InlineData("~/Downloads/x.app")]           // tilde
+    [InlineData("../../Applications/Safari.app")]
+    [InlineData("some/relative/path")]
+    public async Task Launch_refuses_a_filesystem_path_and_does_not_hit_the_seam(string target)
+    {
+        // bevel-318a: the web-reachable bevel://launch must not LSOpen an arbitrary rooted path —
+        // only a bundle id (LaunchServices resolves those against installed apps).
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Launch, AppId = target });
+        Assert.Equal(ExitCodes.BadArgs, res.ExitCode);
+        Assert.Empty(_auto.Calls);   // never reached the launcher
+    }
+
     [Fact]
     public async Task Query_programs_lists_ids_and_names()
     {

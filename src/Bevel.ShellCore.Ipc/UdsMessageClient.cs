@@ -60,8 +60,10 @@ public sealed class UdsMessageClient : IAsyncDisposable
         _capability = capability ?? throw new ArgumentNullException(nameof(capability));
     }
 
-    /// <summary>True once the handshake has completed and the receive loop is running.</summary>
-    public bool IsConnected => _receiveLoop is not null;
+    /// <summary>True while the handshake has completed AND the receive loop is still running. Goes
+    /// false the moment the loop faults (server drop, protocol error) — a bare non-null check stayed
+    /// true forever after a fault, so callers polled a dead connection as live.</summary>
+    public bool IsConnected => _receiveLoop is { IsCompleted: false };
 
     /// <summary>
     /// Opens the UDS and performs the handshake. Throws <see cref="IOException"/> if the server
@@ -164,7 +166,12 @@ public sealed class UdsMessageClient : IAsyncDisposable
                 switch (frame.Kind)
                 {
                     case FrameKind.Broadcast:
-                        BroadcastReceived?.Invoke(frame.Payload);
+                        // Isolate the subscriber: a throwing handler (poison payload, version skew)
+                        // must NOT fall through to the outer catch and tear down a healthy
+                        // connection — only genuine stream I/O faults should. Mirrors the server's
+                        // per-request handler isolation.
+                        try { BroadcastReceived?.Invoke(frame.Payload); }
+                        catch { /* handler fault must not drop the connection — swallow like the server does */ }
                         break;
                     case FrameKind.Response:
                         if (_pending.TryRemove(frame.CorrelationId, out var tcs))

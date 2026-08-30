@@ -197,7 +197,18 @@ file sealed class LazyFsNode : IVfsNode
     FileSystemInfo? _info;
     FileSystemInfo Info => _info ??= Directory.Exists(FullPath) ? new DirectoryInfo(FullPath) : new FileInfo(FullPath);
 
-    public long? Size => Kind != VfsNodeKind.Folder && Info is FileInfo fi ? fi.Length : null;
+    // fi.Length throws if the file vanished between the FileInfo snapshot and this read — routine
+    // when browsing a live directory. Return null rather than let it escape enumeration (ce-review;
+    // mirrors LocalFsNode.Size's guard).
+    public long? Size
+    {
+        get
+        {
+            if (Kind == VfsNodeKind.Folder || Info is not FileInfo fi) return null;
+            try { return fi.Length; }
+            catch (Exception ex) when (ex is FileNotFoundException or IOException or UnauthorizedAccessException) { return null; }
+        }
+    }
     public DateTimeOffset? Modified => Info.LastWriteTimeUtc > DateTime.MinValue ? Info.LastWriteTimeUtc : null;
     public DateTimeOffset? Created => Info.CreationTimeUtc > DateTime.MinValue ? Info.CreationTimeUtc : null;
     public DateTimeOffset? Accessed => Info.LastAccessTimeUtc > DateTime.MinValue ? Info.LastAccessTimeUtc : null;

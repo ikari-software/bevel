@@ -178,15 +178,22 @@ internal sealed class HelperProcessHost : IHelperProcessHost
             delay = Math.Min(delay * 2, 500);
         }
 
+        // Reading .ExitCode on a still-RUNNING process throws — the timeout can fire while the
+        // helper lives, so this diagnostic would itself throw over the real TimeoutException.
+        var exit = _helperProcess is { HasExited: true } p ? p.ExitCode.ToString() : "still running";
         throw new TimeoutException(
             $"Helper did not become ready within {timeout.TotalSeconds}s. " +
-            $"Socket: {SocketPath}. Process exit code: {_helperProcess?.ExitCode}");
+            $"Socket: {SocketPath}. Process exit: {exit}");
     }
 
     private void OnHelperExited(object? sender, EventArgs e)
     {
-        // The monitor loop handles restart. This callback just logs.
-        _logger.LogWarning("HelperLifecycle: OnHelperExited fired (code={Code})", _helperProcess?.ExitCode);
+        // The monitor loop handles restart. This callback just logs. The Exited event can race
+        // Kill()'s Process.Dispose, so reading .ExitCode here can throw ObjectDisposedException —
+        // on a threadpool callback that would be UNHANDLED and terminate the shell.
+        int? code = null;
+        try { if (_helperProcess is { HasExited: true } p) code = p.ExitCode; } catch { /* disposed/racing */ }
+        _logger.LogWarning("HelperLifecycle: OnHelperExited fired (code={Code})", code);
     }
 
     public void Kill()

@@ -12,7 +12,7 @@ namespace Bevel.FileManager;
 /// </summary>
 public partial class FolderOptionsWindow : UI.BevelWindow
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
 
     // Display label ↔ persisted ViewMode name. Kept in sync with Components.ViewMode.
     private static readonly (string Label, string Mode)[] Views =
@@ -36,7 +36,7 @@ public partial class FolderOptionsWindow : UI.BevelWindow
 
     public FolderOptionsWindow() : this(null!) { }
 
-    public FolderOptionsWindow(SettingsService settings)
+    public FolderOptionsWindow(ISettingsService settings)
     {
         _settings = settings;
         InitializeComponent();

@@ -118,4 +118,28 @@ public class TrashProviderTest : IDisposable
         }
         finally { try { Directory.Delete(destDir, true); } catch { } }
     }
+
+    [Fact]
+    public async Task Restore_onto_an_existing_name_errors_instead_of_merge_deleting_the_source()
+    {
+        // bevel-lha4: a same-volume name collision was misread as cross-volume and "recovered" by
+        // copy-merge + source delete. It must now be an explicit error, and the trashed source
+        // must survive untouched.
+        Directory.CreateDirectory(Path.Combine(_trashDir, "folder"));
+        File.WriteAllText(Path.Combine(_trashDir, "folder", "inside.txt"), "keep");
+        var destDir = Path.Combine(Path.GetTempPath(), "bevel-restore-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(destDir, "folder"));   // a "folder" already exists at the dest
+        try
+        {
+            var mutator = await _provider.GetMutatorAsync(VfsPath.Root("trash"), default);
+            var itemPath = VfsPath.Combine(VfsPath.Root("trash"), "folder");
+
+            await Assert.ThrowsAsync<IOException>(async () =>
+                await mutator!.MoveAsync(itemPath, new VfsPath("file", destDir), default));
+
+            Assert.True(File.Exists(Path.Combine(_trashDir, "folder", "inside.txt")),
+                "the trashed source must be untouched after a collision");
+        }
+        finally { try { Directory.Delete(destDir, true); } catch { } }
+    }
 }

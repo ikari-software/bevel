@@ -12,6 +12,8 @@ using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
@@ -38,6 +40,8 @@ public partial class StartMenu : UserControl
     private readonly Action _openSettings;
     private readonly Action<VfsPath> _openFolder;
     private readonly Action _openSearch;
+    private readonly Action _toggleDesktop;
+    private readonly Func<bool?>? _desktopRunning;
 
     public StartMenu() : this(null, null) { }
 
@@ -52,7 +56,9 @@ public partial class StartMenu : UserControl
         StartMenuViewModel? programs = null,
         Action? openSettings = null,
         Action<VfsPath>? openFolder = null,
-        Action? openSearch = null)
+        Action? openSearch = null,
+        Action? toggleDesktop = null,
+        Func<bool?>? desktopRunning = null)
     {
         InitializeComponent();
         _programsVm = programs;
@@ -61,6 +67,15 @@ public partial class StartMenu : UserControl
         _openSettings = openSettings ?? (() => { });
         _openFolder = openFolder ?? (_ => { });
         _openSearch = openSearch ?? (() => { });
+        _toggleDesktop = toggleDesktop ?? (() => { });
+        _desktopRunning = desktopRunning;
+        // No host wiring for the desktop toggle (parameterless test construction / all-in-one) → disable
+        // the item so it never looks live-but-dead: it degrades to a visibly-disabled entry, not a no-op.
+        if (toggleDesktop is null)
+        {
+            DesktopItem.IsEnabled = false;
+            LunaDesktopButton.IsEnabled = false;
+        }
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
@@ -78,9 +93,34 @@ public partial class StartMenu : UserControl
     public Task OpenAsync(Control placementTarget)
     {
         ApplyThemeLayout();
+        RefreshDesktopLabel();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
+        // Move keyboard focus INTO the menu so arrow keys work immediately (bevel-vk4n). The popup is a
+        // separate visual tree with its own TopLevel that only exists once open, so focusing is posted
+        // (Loaded priority) to run after the popup root is realized — the avalonia-popup-needs-visual-tree
+        // gotcha. The taskbar host flips itself key while the menu is open (SetKeyFocusAllowed), so this
+        // focus can actually receive keystrokes.
+        Dispatcher.UIThread.Post(FocusFirstItem, DispatcherPriority.Loaded);
         return Task.CompletedTask;
+    }
+
+    /// <summary>Focuses the first actionable row of the active layout so the menu is arrow-navigable the
+    /// instant it opens. Classic → the first top-level MenuItem; Luna → the first pinned/place row.</summary>
+    private void FocusFirstItem()
+    {
+        if (!MenuPopup.IsOpen) return;
+        if (LunaLayout.IsVisible)
+        {
+            var firstRow = LunaLayout.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(b => b.Classes.Contains("lunarow") && b.IsEffectivelyVisible);
+            firstRow?.Focus(NavigationMethod.Tab);
+        }
+        else
+        {
+            ItemsMenu.Items.OfType<MenuItem>().FirstOrDefault()?.Focus(NavigationMethod.Tab);
+        }
     }
 
     private bool _lunaWired;
@@ -441,6 +481,41 @@ public partial class StartMenu : UserControl
     {
         Close();
         _restart();
+    }
+
+    /// <summary>Start ▸ Show/Hide Desktop (bevel-gdie). Shared by the Win2000 leaf and the Luna row: close
+    /// the menu, then flip the desktop child via the host callback (which does the launcher round-trip off
+    /// the UI thread). The label refreshes on the NEXT open — a single toggle can't know the new state
+    /// synchronously (the process spawn/kill is async under the launcher).</summary>
+    private void OnToggleDesktopClick(object? sender, RoutedEventArgs e)
+    {
+        Close();
+        _toggleDesktop();
+    }
+
+    /// <summary>Sets the "Show Desktop" / "Hide Desktop" label on both layouts to match the launcher's
+    /// current state, computed at open-time (not cached) so a RestartAll or a desktop crash can't leave a
+    /// stale label. The query is a bounded UDS round-trip, so it runs OFF the UI thread and the result is
+    /// posted back; until it lands the label defaults to "Show Desktop" (the desktop is OFF by default).
+    /// Unsupervised (query is null / returns null) keeps the default — the item is already disabled.</summary>
+    private void RefreshDesktopLabel()
+    {
+        SetDesktopLabel(false); // safe default while the async probe is in flight (desktop is off by default)
+        var query = _desktopRunning;
+        if (query is null) return;
+        Task.Run(() =>
+        {
+            var running = query();   // bounded off-UI-thread launcher probe; null when unreachable
+            if (running is not bool r) return;
+            Dispatcher.UIThread.Post(() => SetDesktopLabel(r));
+        });
+    }
+
+    private void SetDesktopLabel(bool running)
+    {
+        var text = running ? "Hide Desktop" : "Show Desktop";
+        DesktopItem.Header = running ? "Hide _Desktop" : "Show _Desktop";
+        LunaDesktopText.Text = text;
     }
 
     private void OnQuitClick(object? sender, RoutedEventArgs e)

@@ -61,7 +61,23 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     public async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
         if (_connected) return;
-        await ConnectOnceAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await ConnectOnceAsync(ct).ConfigureAwait(false);
+        }
+        catch when (!ct.IsCancellationRequested)
+        {
+            // The FIRST connect can fail if a client dials before the core's socket is bound — e.g. the
+            // settings client connects in RemoteSettingsService.LoadAsync at startup, racing core boot, and
+            // gets EADDRNOTAVAIL. The reconnect supervisor is otherwise only armed by the DROP of an
+            // ESTABLISHED link (OnTransportDisconnected), so a client that never connected once would retry
+            // NEVER and stay stuck disconnected forever (the taskbar then boots on DEFAULT settings — the
+            // core's real snapshot never reaches it). Wake the supervisor so it keeps re-dialing in the
+            // background; still rethrow so the caller's immediate fallback runs, and the core's on-connect
+            // snapshot corrects state once the supervisor gets through.
+            if (!_connected) _reconnectSignal.Release();
+            throw;
+        }
     }
 
     /// <summary>Sends a command and awaits the core's correlated response, connecting first if needed.</summary>

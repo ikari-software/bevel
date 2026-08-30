@@ -23,12 +23,12 @@ namespace Bevel.App;
 public sealed class FileManagerWindowFactory
 {
     private readonly VfsRoot _vfsRoot;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly IConflictHandler _conflictHandler;
     private readonly FileManagerWindowRegistry _registry;
     private readonly IFileOpener _fileOpener;
 
-    public FileManagerWindowFactory(VfsRoot vfsRoot, SettingsService settings, IConflictHandler conflictHandler,
+    public FileManagerWindowFactory(VfsRoot vfsRoot, ISettingsService settings, IConflictHandler conflictHandler,
         FileManagerWindowRegistry registry, IFileOpener fileOpener)
     {
         _vfsRoot = vfsRoot;

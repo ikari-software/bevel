@@ -15,6 +15,17 @@ public interface IWindowManager
     Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default);
     Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);
     Task CloseAsync(ForeignWindowId id, CancellationToken ct = default);
+
+    /// <summary>De-miniaturize (if minimized) and activate in ONE atomic operation (bevel-nxic): the
+    /// taskbar's minimized→click path. Backends that own the real activation collapse this into a single
+    /// helper round-trip whose order is "raise the clicked window LAST", so it reliably ends frontmost
+    /// instead of a two-RPC <see cref="RestoreAsync"/>+<see cref="ActivateAsync"/> racing the
+    /// de-miniaturize animation. Default: the sequential fallback, correct for in-memory/test backends.</summary>
+    async Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        await RestoreAsync(id, ct).ConfigureAwait(false);
+        await ActivateAsync(id, ct).ConfigureAwait(false);
+    }
     Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default);
 
     /// <summary>Capture a PNG thumbnail of a window's current pixels for hover previews (bevel-cust).
@@ -153,6 +164,30 @@ public interface IFileOpener
     /// default handler first. Empty when the backend can't enumerate (Fake PAL, headless).</summary>
     ValueTask<IReadOnlyList<OpenWithHandler>> GetHandlersAsync(string path, CancellationToken ct = default)
         => ValueTask.FromResult<IReadOnlyList<OpenWithHandler>>(System.Array.Empty<OpenWithHandler>());
+}
+
+/// <summary>Per-app tab enumeration and activation for tab-capable apps — browsers and terminals
+/// (bevel-a40b). Purely process-local (like <see cref="IFileOpener"/>): the macOS backend talks
+/// Apple Events to the target app, so no shell-core round-trip and no helper involvement. The
+/// first query per target app triggers the OS Automation consent prompt ("Bevel wants to control
+/// iTerm2"); a denial surfaces as an empty tab list, never an error.</summary>
+public interface ITabProvider
+{
+    Capabilities Capabilities { get; }
+
+    /// <summary>Whether this provider speaks <paramref name="bundleId"/>'s dialect. Callers gate on
+    /// this BEFORE <see cref="GetTabsAsync"/> so unsupported apps never pay a query (or a consent
+    /// prompt) for a guaranteed-empty answer.</summary>
+    bool SupportsApp(string? bundleId);
+
+    /// <summary>All tabs across all of the app's windows, in window-then-tab order. Empty when the
+    /// app is not running, has no tabs, or Automation consent is denied. Never throws for those —
+    /// the taskbar menu treats "no tabs" and "can't ask" identically.</summary>
+    ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default);
+
+    /// <summary>Focuses <paramref name="tab"/>: selects it inside its window, raises the window,
+    /// activates the app. Best-effort — a tab closed since enumeration is a silent no-op.</summary>
+    Task ActivateAsync(AppTab tab, CancellationToken ct = default);
 }
 
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>

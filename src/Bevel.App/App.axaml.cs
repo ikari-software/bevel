@@ -15,9 +15,10 @@ public partial class App : Application
 {
     public static IServiceProvider? Services { get; set; }
 
-    /// <summary>Which surface(s) this process hosts. Set in <see cref="Program"/> before the lifetime
-    /// starts; <see cref="ShellRole.All"/> (the default) is the classic single-process shell.</summary>
-    public static ShellRole Role { get; set; } = ShellRole.All;
+    /// <summary>Which surface this process hosts. Always set in <see cref="Program"/> from the resolved
+    /// <c>--role</c> before the lifetime starts; each surface process runs exactly one role. The Taskbar
+    /// default is just a placeholder for the never-used unset case — Program always overwrites it.</summary>
+    public static ShellRole Role { get; set; } = ShellRole.Taskbar;
 
     /// <summary>Captured desktop lifetime, used to drive a clean shutdown from a signal handler.</summary>
     private static IClassicDesktopStyleApplicationLifetime? _lifetime;
@@ -83,6 +84,25 @@ public partial class App : Application
         RequestExit();
     }
 
+    /// <summary>
+    /// Start ▸ "Show/Hide Desktop" (bevel-gdie): flip the desktop child on demand via the launcher control
+    /// socket. Runs entirely OFF the UI thread — both the state query and the spawn/close command do a
+    /// bounded synchronous UDS round-trip (up to a few seconds each), and the caller is a Start-menu click
+    /// on the UI thread. Fire-and-forget: the desktop process appears/disappears under the launcher's
+    /// supervision, nothing here awaits it. Unsupervised (all-in-one / no launcher): the query returns null
+    /// and the send returns false, so this degrades to a harmless no-op instead of crashing.
+    /// </summary>
+    public static void ToggleDesktop()
+    {
+        Task.Run(() =>
+        {
+            var running = Supervision.LauncherControl.QueryDesktopRunning() ?? false;
+            Supervision.LauncherControl.TrySend(running
+                ? Supervision.LauncherControl.Command.CloseDesktop
+                : Supervision.LauncherControl.Command.SpawnDesktop);
+        });
+    }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -97,32 +117,43 @@ public partial class App : Application
             // UI thread, so nothing blocks the dispatcher here (core rule: never block the UI
             // thread). Apply the whitelisted theme overrides (bevel-wym) from the loaded snapshot.
             // All roles render themed UI, so this is common to every surface.
-            var settings = services.GetRequiredService<SettingsService>();
+            var settings = services.GetRequiredService<ISettingsService>();
             // Theme token bundle first (PKG-03) — the baseline the user overrides layer on top of.
-            UI.ThemeService.Apply(settings.Current.ThemeId);
-            UI.ThemeOptions.ApplyCrispBevels(
-                this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
-            // The active theme's appearance variant (W2K-01 colour scheme / Luna colour+gloss). The
-            // theme owns its options via ThemeVariants, which routes to the right engine and clears the
-            // others so shared chrome keys don't bleed across themes.
-            UI.ThemeVariants.Apply(settings.Current);
-            // UI font override (FNT-01) — top-level, so it wins over the theme's default face.
+            // Gate the theme-COUPLED engines (colour variant + crisp bevels) on the template swap
+            // actually succeeding: applying a theme's colour variant while its template failed to load
+            // leaves the two recolour engines disagreeing about the active theme (ce-review).
+            if (UI.ThemeService.Apply(settings.Current.ThemeId))
+            {
+                UI.ThemeOptions.ApplyCrispBevels(
+                    this, settings.ThemeOverridesFor(settings.Current.ThemeId).CrispBevels ?? false);
+                // The active theme's appearance variant (W2K-01 colour scheme / Luna colour+gloss). The
+                // theme owns its options via ThemeVariants, which routes to the right engine and clears
+                // the others so shared chrome keys don't bleed across themes.
+                UI.ThemeVariants.Apply(settings.Current);
+            }
+            // UI font override (FNT-01) — orthogonal to the theme, so applied regardless.
             UI.FontService.Apply(settings.Current.UiFontFamily);
 
-            // Cross-process live re-theming (bevel-dob): the Settings window persists ThemeId and bumps
-            // the settings-DB version in ITS process; every OTHER role polls the shared DB for that
-            // external write and re-applies theme/scheme/font live — so a theme switch reskins every
-            // shell surface (taskbar, desktop, …), not just the process that owns Settings.
+            // Cross-process live re-theming (bevel-dob / core-owns-settings bevel-6nve): a peer role's
+            // Settings/Onboarding dialog sends its change to the shell core (sole writer), which applies it
+            // and BROADCASTS a fresh snapshot to every UI process; RemoteSettingsService decodes it and
+            // raises Changed here, so a theme switch reskins every shell surface (taskbar, desktop, …), not
+            // just the process that owns the dialog. The 750 ms DB poll this used to ride is retired —
+            // the push replaces it.
             // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
             // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
             Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = settings.Current.HideKnownExtensions;
             settings.Changed += () =>
             {
                 var s = settings.Current;
-                UI.ThemeService.Apply(s.ThemeId);
-                UI.ThemeVariants.Apply(s);
+                // Gate the theme-coupled engines on the template swap succeeding (see the startup
+                // apply above) so a failed live re-template can't desync the recolour engines.
+                if (UI.ThemeService.Apply(s.ThemeId))
+                {
+                    UI.ThemeVariants.Apply(s);
+                    UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
+                }
                 UI.FontService.Apply(s.UiFontFamily);
-                UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
 
                 // Folder Options → apply live to every open file-manager window: update the app-wide
                 // extension-hiding flag and re-list each window (also re-runs the hidden-file filter).
@@ -132,31 +163,15 @@ public partial class App : Application
                     foreach (var w in fmReg.All())
                         w.ApplyFolderOptions();   // info-pane style + column + re-list
             };
-            var reloadTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
-            var reloadInFlight = false;
-            reloadTimer.Tick += async (_, _) =>
-            {
-                // A DB read that overruns the 750ms interval must not overlap the next tick — two
-                // ReloadIfChangedAsync calls would race on the service's _version/_raw. Tick runs on the
-                // UI thread, so this plain-bool gate is single-threaded and race-free. (The read itself is
-                // cheap now: ReloadIfChangedAsync probes only the version int on the no-change tick — bevel-6nve.)
-                if (reloadInFlight) return;
-                reloadInFlight = true;
-                try { await settings.ReloadIfChangedAsync(); }   // raises Changed on an external write
-                catch { /* transient DB contention; the next tick retries */ }
-                finally { reloadInFlight = false; }
-            };
-            reloadTimer.Start();
-            // Stop the poll before the container tears the SettingsService (+ its SQLite connection)
-            // down — same shutdown discipline as shellModel/mitigator below (bevel-fu5).
-            desktop.Exit += (_, _) => reloadTimer.Stop();
+            // The 750 ms settings-DB poll (ReloadIfChangedAsync tick) is RETIRED (core-owns-settings,
+            // bevel-6nve): live updates now arrive as a shell-core broadcast that RemoteSettingsService
+            // turns into the Changed event above (peer roles), or applied by the core itself. No
+            // process polls settings.db any more.
 
-            // Create only this process's surface(s). In the default all-in-one role every block
-            // runs (unchanged single-process shell); a split launch (--role=…) runs exactly one.
-            // Creation order for All matches the pre-split app: desktop behind, then taskbar, then
-            // the file manager, which is set last as MainWindow. Each single role sets MainWindow to
-            // its own window. Only the taskbar role resolves the window manager / app environment, so
-            // in the other roles those singletons (and the helper) are never constructed.
+            // Create only this process's surface. The shell always runs split (--role=…), so exactly
+            // one block below runs and sets MainWindow to its own window. Only the taskbar role resolves
+            // the window manager / app environment, so in the other roles those singletons (and the
+            // helper) are never constructed.
             var role = Role;
 
             // Split-mode chrome (the taskbar and desktop processes) is the environment, not an app:
@@ -164,22 +179,32 @@ public partial class App : Application
             // fixes bevel-nji — the Swift helper enumerates only .regular apps' windows, so the
             // chrome's own transient popups (tooltips, menus) stop leaking into the taskbar's
             // foreign-window list (where they registered as windows, shifted the bar, and dismissed
-            // themselves). NOT applied to All: that single process also hosts the file-manager window,
-            // which SHOULD appear in the taskbar, and activation policy can't distinguish it from a
-            // tooltip in the same process.
+            // themselves). NOT applied to the Explorer role: its file-manager window SHOULD appear in
+            // the taskbar.
             if (OperatingSystem.IsMacOS() && role is ShellRole.Taskbar or ShellRole.Desktop)
                 Pal.MacOS.ShellActivation.HideFromDock();
 
-            if (role is ShellRole.All or ShellRole.Desktop)
+            if (role is ShellRole.Desktop)
                 CreateDesktopSurface(desktop);
-            if (role is ShellRole.All or ShellRole.Taskbar)
+            if (role is ShellRole.Taskbar)
+            {
+                // Publish the taskbar↔Explorer channel's rendezvous dir + shared nonce into this
+                // process's env BEFORE any Explorer is spawned (Start-menu places, open/reveal), so every
+                // spawned Explorer inherits the same discovery root + secret and its control server binds
+                // where this taskbar's client will look (bevel-uldj).
+                ShellCore.ExplorerControlEndpoint.PublishForChildren();
                 CreateTaskbarSurface(services, settings, desktop);
-            if (role is ShellRole.All or ShellRole.Explorer)
+            }
+            if (role is ShellRole.Explorer)
                 CreateExplorerSurface(services, desktop);
 
-            // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376):
-            // only in the FM-hosting roles, where the router's window verbs resolve to a live surface.
-            if (role is ShellRole.All or ShellRole.Explorer)
+            // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376): wired
+            // in the PERSISTENT host — the always-up TASKBAR that also serves the bevelctl socket
+            // (bevel-e7a7) — so both funnel through the one AutomationCommandRouter with NO Explorer
+            // window required. The router's window verbs resolve to SpawningShellSurface here (open/reveal
+            // spawn an Explorer); filesystem/program verbs run directly. Wiring these only in the taskbar
+            // (never the on-demand Explorer) keeps exactly one process handling inbound automation.
+            if (role is ShellRole.Taskbar)
             {
                 UrlActivation.Wire(this, services);
                 AppleEventBridge.Wire(services);
@@ -201,7 +226,7 @@ public partial class App : Application
     /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
     /// bar (bevel-cust.ctxmenu). async void, so the settings I/O is guarded — a SaveAsync failure must
     /// not crash the shell from a context-menu click (review: reliability).</summary>
-    private static async void ToggleTaskbarLock(SettingsService settings, Taskbar.TaskbarView taskbarView)
+    private static async void ToggleTaskbarLock(ISettingsService settings, Taskbar.TaskbarView taskbarView)
     {
         try
         {
@@ -212,6 +237,14 @@ public partial class App : Application
         {
             Console.Error.WriteLine($"[app] ToggleTaskbarLock failed (swallowed): {ex.Message}");
         }
+    }
+
+    /// <summary>Persist the taskbar row count off a resize drag. async void, guarded — a SaveAsync
+    /// fault must not surface as an unobserved task exception (ce-review: reliability).</summary>
+    private static async void PersistRows(ISettingsService settings, int rows)
+    {
+        try { await settings.UpdateAsync(s => s.TaskbarRows = rows); }
+        catch (Exception ex) { Console.Error.WriteLine($"[app] persist TaskbarRows failed (swallowed): {ex.Message}"); }
     }
 
     /// <summary>Opens the Taskbar Properties dialog (Start ▸ Settings ▸ Taskbar and Start Menu…),
@@ -240,7 +273,7 @@ public partial class App : Application
     /// role that resolves <c>IWindowManager</c>/<c>IAppEnvironment</c>, so only here does the helper
     /// spin up.</summary>
     private static void CreateTaskbarSurface(
-        IServiceProvider services, SettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
+        IServiceProvider services, ISettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {
         // Apply the button-height tier before any TaskbarWindow/HeightForRows geometry is computed
         // (bevel-m2.10.1) — it's a startup-wide metric read by the window and the work-area band.
@@ -268,7 +301,13 @@ public partial class App : Application
             // process in a split launch (the taskbar process has no explorer surface).
             openFolder: path => OpenExplorerAt(services, path),
             // Start ▸ Search → open a Bevel Explorer already in Find mode (bevel-x6pv).
-            openSearch: () => OpenExplorerSearch(services));
+            openSearch: () => OpenExplorerSearch(services),
+            // Start ▸ Show/Hide Desktop (bevel-gdie): spawn/kill the --role=desktop child via the launcher,
+            // and a state probe so the item labels itself "Show" (hidden) vs "Hide" (shown) on each open.
+            toggleDesktop: ToggleDesktop,
+            desktopRunning: Supervision.LauncherControl.QueryDesktopRunning,
+            // Tab enumeration for the task-button menu's Tabs section (bevel-a40b).
+            tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>());
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.
@@ -292,8 +331,10 @@ public partial class App : Application
         {
             Content = taskbarView,
         };
-        // Persist the row count when the user drags the bar taller/shorter (bevel-0ml).
-        taskbarWin.RowsChanged += rows => _ = settings.UpdateAsync(s => s.TaskbarRows = rows);
+        // Persist the row count when the user drags the bar taller/shorter (bevel-0ml). Guarded like
+        // ToggleTaskbarLock — a bare `_ = UpdateAsync(...)` swallowed a SaveAsync fault into an
+        // unobserved task exception (ce-review: reliability).
+        taskbarWin.RowsChanged += rows => PersistRows(settings, rows);
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
 
@@ -325,7 +366,7 @@ public partial class App : Application
     /// menu setup) instead of building a malformed window in the taskbar process.</summary>
     private static void OpenExplorerAt(IServiceProvider services, VfsPath path)
     {
-        if (Role is ShellRole.All or ShellRole.Explorer)
+        if (Role is ShellRole.Explorer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(path);
         else
             Program.SpawnExplorer(path.Value);
@@ -337,7 +378,7 @@ public partial class App : Application
     private static void OpenExplorerSearch(IServiceProvider services)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (Role is ShellRole.All or ShellRole.Explorer)
+        if (Role is ShellRole.Explorer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(new VfsPath("file", home)).BeginSearch();
         else
             Program.SpawnExplorer(home, search: true);
@@ -358,6 +399,14 @@ public partial class App : Application
         // Spawned via Start ▸ Search → open straight into Find mode (bevel-x6pv).
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--search", StringComparison.OrdinalIgnoreCase)))
             fm.BeginSearch();
+        // Spawned by the automation `reveal` verb (bevel-e7a7): --select=<item> queues a selection that
+        // the FileManagerWindow applies once the target folder's listing finishes (SelectAfterLoad) —
+        // the same model→view highlight the in-process reveal uses. Split-mode `reveal` is thus a plain
+        // Explorer spawn: no live in-process window required, no cross-process IPC.
+        var selectArg = Environment.GetCommandLineArgs()
+            .FirstOrDefault(a => a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(selectArg))
+            fm.SelectAfterLoad(new[] { new VfsPath("file", selectArg.Substring("--select=".Length)) });
         desktop.MainWindow = fm;
 
         // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which
@@ -366,8 +415,8 @@ public partial class App : Application
         // open at (its current directory); every window's request is served by the same
         // factory, reusing the shared VfsRoot/SettingsService with fresh per-window
         // navigation/undo state. (Cross-process Ctrl+N — spawning a new explorer PROCESS — is
-        // wired in the supervision phase; in-process spawning stays correct for the all-in-one
-        // and single-explorer-process roles.) New Tab (Ctrl+T) is out of scope.
+        // wired in the supervision phase; in-process spawning stays correct within the explorer
+        // process.) New Tab (Ctrl+T) is out of scope.
         FileManagerWindow.NewWindowRequested += path => factory.Create(path);
     }
 }

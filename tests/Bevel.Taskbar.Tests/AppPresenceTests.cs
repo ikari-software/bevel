@@ -150,6 +150,23 @@ public class AppPresenceTests
     }
 
     [Fact]
+    public void Minimized_click_issues_one_RestoreAndActivate_not_two_RPCs()
+    {
+        // bevel-nxic: the minimized→click path must collapse into ONE atomic op so the helper can
+        // de-miniaturize then raise the window LAST, rather than a Restore RPC racing an Activate RPC.
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "TextEdit", true, false, default), wm);
+
+        vm.ActivateCommand.Execute(null);   // RecordingWm completes synchronously → toggle runs to completion
+
+        Assert.Equal(new[] { "w1" }, wm.RestoredAndActivated);   // exactly one atomic call
+        Assert.Empty(wm.Restored);                               // NOT the old two-RPC dance
+        Assert.Empty(wm.Activated);
+        Assert.False(vm.IsMinimized);                            // optimistic flip preserved
+    }
+
+    [Fact]
     public void Presence_bundle_id_is_parsed_from_the_app_prefixed_id()
     {
         // An app-presence entry with no explicit BundleId still quits — the id is "app:<bundle>".
@@ -166,6 +183,8 @@ public class AppPresenceTests
     {
         public List<string> Activated { get; } = new();
         public List<string> Minimized { get; } = new();
+        public List<string> Restored { get; } = new();
+        public List<string> RestoredAndActivated { get; } = new();
         public List<string> Terminated { get; } = new();
         public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
@@ -173,7 +192,8 @@ public class AppPresenceTests
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
         public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) { Terminated.Add($"{bundleId}:{force.ToString().ToLowerInvariant()}"); return Task.CompletedTask; }
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) { Restored.Add(id.Value); return Task.CompletedTask; }
+        public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) { RestoredAndActivated.Add(id.Value); return Task.CompletedTask; }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
         public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }

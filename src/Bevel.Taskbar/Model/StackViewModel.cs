@@ -137,7 +137,12 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     }
 
     private void OnFolderChanged(object? sender, FileSystemEventArgs e)
-        => Dispatcher.UIThread.Post(() => HasNew = true);
+    {
+        // Coalesce a change storm: once the "new items" cue is set, further events add nothing, so
+        // don't flood the dispatcher with a Post per filesystem event (ce-review). The read is a
+        // cheap racy check — a redundant Post at worst, never a missed cue (Post re-sets true).
+        if (!HasNew) Dispatcher.UIThread.Post(() => HasNew = true);
+    }
 
     private static string FriendlyName(string folderPath)
     {

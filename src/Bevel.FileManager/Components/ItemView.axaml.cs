@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
@@ -140,6 +141,11 @@ public partial class ItemView : UserControl
         PointerReleased += OnBgPointerReleased;
         KeyDown += OnKeyDown;
         TextInput += OnTextInput;   // type-ahead reads real characters (digits/accents), not Key decoding
+        // Focus-visible cue: a low-vision keyboard user needs to see WHERE focus is even before they
+        // move the selection. Show a subtle dotted rectangle whenever the list holds focus with nothing
+        // selected; it disappears the moment a selection exists (the navy highlight then shows focus).
+        GotFocus += (_, _) => UpdateFocusCue();
+        LostFocus += (_, _) => UpdateFocusCue();
         _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
@@ -286,13 +292,26 @@ public partial class ItemView : UserControl
         return highlight;
     }
 
+    /// <summary>Wrap a row template's visual root in an <see cref="ItemRow"/> so the row exposes a
+    /// ListItem automation role, an accessible name (bound to DisplayName), and a SelectionItem pattern
+    /// (IsSelected) to screen readers. Decorator is layout-transparent, so the template's visuals,
+    /// marquee/Hit rect-testing, and rename are unaffected (bevel-6zs6).</summary>
+    static Control Row(Control content)
+    {
+        var row = new ItemRow { Child = content };
+        // DataContext is the ItemViewModel (inherited from the container), so this tracks live
+        // DisplayName changes (rename / hide-extensions) without rebuilding the row.
+        row.Bind(AutomationProperties.NameProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.DisplayName)));
+        return row;
+    }
+
     static readonly FuncDataTemplate<ItemViewModel> LargeIconTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(4) };
         s.Children.Add(Glyphs.Icon(32, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
-        return s;
+        return Row(s);
     });
 
     static readonly FuncDataTemplate<ItemViewModel> SmallIconTpl = new((vm, _) =>
@@ -301,7 +320,7 @@ public partial class ItemView : UserControl
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
         s.Children.Add(Glyphs.Icon(16, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName));
-        return s;
+        return Row(s);
     });
 
     static readonly FuncDataTemplate<ItemViewModel> ListTpl = new((vm, _) =>
@@ -310,7 +329,7 @@ public partial class ItemView : UserControl
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
         s.Children.Add(Glyphs.Icon(16, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName));
-        return s;
+        return Row(s);
     });
 
     // Instance (not static) so each row's Size/Type/Date columns bind to the shared column
@@ -333,7 +352,7 @@ public partial class ItemView : UserControl
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 3, Text = vm.ModifiedDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         row.Child = g;
-        return row;
+        return Row(row);
     });
 
     /// <summary>A details-view column whose width tracks a shared ItemView property (live).</summary>
@@ -352,7 +371,7 @@ public partial class ItemView : UserControl
         s.Children.Add(Glyphs.Icon(96, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
         b.Child = s;
-        return b;
+        return Row(b);
     });
 
     // ── Rebuild ───────────────────────────────────────────────────────
@@ -551,9 +570,12 @@ public partial class ItemView : UserControl
         // have transparent/empty gaps (between a row's icon and its text, or a details row's
         // empty cells) that GetVisualAt falls through, which made most clicks miss. Same
         // coordinate transform the marquee uses.
+        // No _viewModels.Contains(vm) guard: a realized container's DataContext is always a current
+        // ItemViewModel once ItemsSource is set, and the Contains was an O(n) scan INSIDE this O(n)
+        // container loop — O(n²) per click in a large folder (ce-review: performance).
         foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
-            if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm || !_viewModels.Contains(vm))
+            if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm)
                 continue;
             var pos = ctl.TranslatePoint(default, ItemsPresenter) ?? default;
             if (new Rect(pos, ctl.Bounds.Size).Contains(pt)) return vm;
@@ -594,7 +616,15 @@ public partial class ItemView : UserControl
 
     /// <summary>Raised whenever the selection set changes (drives the info pane).</summary>
     public event Action? SelectionChanged;
-    void RaiseSelection() => SelectionChanged?.Invoke();
+    void RaiseSelection() { UpdateFocusCue(); SelectionChanged?.Invoke(); }
+
+    /// <summary>The dotted focus rectangle is visible only while the list is focused, holds items, and
+    /// has an empty selection — otherwise the selection highlight itself communicates focus.</summary>
+    void UpdateFocusCue()
+    {
+        if (FocusCue is null) return;
+        FocusCue.IsVisible = IsFocused && _selected.Count == 0 && _viewModels.Count > 0;
+    }
 
     // ── Pointer ──────────────────────────────────────────────────────
 
@@ -882,8 +912,11 @@ public partial class ItemView : UserControl
 
         // Commit through the controller (which drives FileOperationService); the optimistic
         // EditName is only a visual echo until the directory reloads with the real name.
+        // Compare against RealName — the box was seeded with RealName (line ~864), not the possibly
+        // extension-hidden DisplayName. Comparing to DisplayName fired a spurious rename when the
+        // name was left unchanged, and DROPPED a real "x.txt"→"x" edit (ce-review: correctness).
         if (commit && !string.IsNullOrWhiteSpace(newName)
-            && !string.Equals(newName, vm.DisplayName, StringComparison.Ordinal))
+            && !string.Equals(newName, vm.RealName, StringComparison.Ordinal))
         {
             vm.EditName = newName;
             RenameCommitted?.Invoke(this, new RenameCommittedEventArgs(vm.Path, newName));

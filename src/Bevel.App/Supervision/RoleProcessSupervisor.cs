@@ -21,7 +21,10 @@ namespace Bevel.App.Supervision;
 /// </summary>
 internal sealed class RoleProcessSupervisor : IAsyncDisposable
 {
-    private readonly IReadOnlyList<IRoleProcess> _processes; // dependency order: core first, UIs after
+    // Dependency order: core first, UIs after. MUTABLE so a surface can be added/removed at runtime —
+    // the Start-menu "Show/Hide Desktop" toggle (bevel-gdie) appends/removes the desktop child. Every
+    // read AND every mutation happens under _gate, so the monitor loop can never see it mid-edit.
+    private readonly List<IRoleProcess> _processes;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _maxBackoff;
     private readonly Func<CancellationToken, Task>? _coreReadyProbe;
@@ -49,7 +52,7 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         Action<string>? log = null)
     {
         if (processes.Count == 0) throw new ArgumentException("Supervise at least one process.", nameof(processes));
-        _processes = processes;
+        _processes = processes.ToList(); // own a private, mutable copy — runtime add/remove edits this list, not the caller's
         _pollInterval = pollInterval;
         _coreReadyProbe = coreReadyProbe;
         _delay = delay ?? Task.Delay;
@@ -110,6 +113,73 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Adds a role to the supervised set at runtime and starts it (bevel-gdie: Start ▸ "Show Desktop").
+    /// Idempotent — a second request while the role is already supervised is a no-op, so a double-click
+    /// can't spawn two. The child is APPENDED (after core+taskbar), so the crash-monitor picks it up and
+    /// keeps it alive like any other; z-order is owned by the window's own level, not spawn order. If the
+    /// initial <see cref="IRoleProcess.Start"/> throws it stays in the set so the monitor retries it with
+    /// backoff (same policy as a crashed core), rather than silently dropping a requested surface.
+    /// </summary>
+    public async Task SpawnRoleAsync(ShellRole role, Func<IRoleProcess> factory, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_processes.Any(p => p.Role == role))
+            {
+                _log?.Invoke($"supervisor: {role} already supervised — spawn request ignored");
+                return;
+            }
+            _log?.Invoke($"supervisor: spawning {role} on demand");
+            var proc = factory();
+            _processes.Add(proc);
+            _cooldown.Remove(role);
+            _backoffTicks.Remove(role);
+            try { proc.Start(); }
+            catch (Exception ex)
+            {
+                // Leave it supervised so the monitor retries with backoff — don't drop a requested surface.
+                _log?.Invoke($"supervisor: {role} initial start failed ({ex.Message}); monitor will retry");
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Removes a role from the supervised set and terminates it (bevel-gdie: Start ▸ "Hide Desktop").
+    /// The list entry is dropped BEFORE the kill so the 1s monitor tick can't respawn it in the window
+    /// between kill and edit (the same race the _stopped latch guards for whole-shell teardown) — a
+    /// user-hidden surface must stay hidden, never auto-restart. No-op when the role isn't supervised.
+    /// </summary>
+    public async Task CloseRoleAsync(ShellRole role, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var proc = _processes.FirstOrDefault(p => p.Role == role);
+            if (proc is null) { _log?.Invoke($"supervisor: no {role} process to close"); return; }
+            _log?.Invoke($"supervisor: closing {role} on demand");
+            _processes.Remove(proc);      // de-supervise FIRST so the monitor can't respawn it mid-kill
+            _cooldown.Remove(role);
+            _backoffTicks.Remove(role);
+            proc.Kill();
+            proc.Dispose();
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>True when a live process for <paramref name="role"/> is currently supervised. Taken under
+    /// _gate so it never enumerates the list mid-edit (a concurrent Spawn/Close mutates it): the toggle's
+    /// Show/Hide label reads this. A stale-by-a-moment answer is harmless (the label recomputes on next
+    /// open); a torn enumeration would not be, hence the gate.</summary>
+    public async Task<bool> IsRoleRunningAsync(ShellRole role, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try { return _processes.Any(p => p.Role == role && p.IsAlive); }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Stops the monitor loop and kills every process (reverse order). Idempotent.</summary>
     /// <summary>Latches the supervisor into the stopping state and halts child respawns IMMEDIATELY —
     /// safe to call synchronously from a signal handler, before the async <see cref="StopAsync"/>
@@ -155,10 +225,23 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         // so overlapping the two cold starts removes the core's entire startup from time-to-taskbar-
         // visible. Core readiness is still awaited AFTER spawning, so callers can assume a reachable
         // core — but the taskbar has already forked in parallel by then.
-        foreach (var p in _processes)
+        var started = new List<IRoleProcess>();
+        try
         {
-            _log?.Invoke($"supervisor: starting {p.Role}");
-            p.Start();
+            foreach (var p in _processes)
+            {
+                _log?.Invoke($"supervisor: starting {p.Role}");
+                p.Start();
+                started.Add(p);
+            }
+        }
+        catch
+        {
+            // A mid-fan-out Start() failure must not orphan the children already spawned — kill
+            // them in reverse before propagating (mirrors StopAsync's teardown; ce-review: reliability).
+            for (var i = started.Count - 1; i >= 0; i--)
+                try { started[i].Kill(); } catch { /* best-effort */ }
+            throw;
         }
         if (_coreReadyProbe is not null)
             await _coreReadyProbe(ct).ConfigureAwait(false);
@@ -206,11 +289,18 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                         // that never gets the signal — the shell "won't die" without SIGKILL (bevel-ply).
                         if (_stopped || ct.IsCancellationRequested) break;
                         _log?.Invoke($"supervisor: {p.Role} died — respawning");
+                        // Escalate BEFORE spawning: a successful Process.Start() is NOT proof of
+                        // health — a child that dies WITHIN the poll interval (bad config, crash on
+                        // init) would otherwise reset its backoff here and respawn hot forever. A
+                        // child still carrying a backoff entry died again without ever being seen
+                        // alive, so it accumulates like a failed spawn; the top-of-loop IsAlive check
+                        // (survived a full tick) is now the SOLE reset (ce-review: adversarial).
+                        _backoffTicks[p.Role] = _backoffTicks.TryGetValue(p.Role, out var prev)
+                            ? Math.Min(prev * 2, maxCooldown) : 1;
+                        _cooldown[p.Role] = _backoffTicks[p.Role];
                         p.Start();
                         if (p.Role == ShellRole.Core && _coreReadyProbe is not null)
                             await _coreReadyProbe(ct).ConfigureAwait(false);
-                        _cooldown.Remove(p.Role);      // healthy again — reset backoff
-                        _backoffTicks.Remove(p.Role);
                     }
                     catch (Exception ex)
                     {

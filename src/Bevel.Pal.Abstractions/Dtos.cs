@@ -149,3 +149,22 @@ public sealed record PalImage(
     int Width,
     int Height,
     byte[] Bgra);
+
+/// <summary>One tab inside a tab-capable app (browser window, terminal window) as enumerated by
+/// <see cref="ITabProvider"/> (bevel-a40b). <see cref="WindowRef"/> is the provider's own opaque
+/// window token (an AppleScript window id or index on macOS) — it is NOT a
+/// <see cref="ForeignWindowId"/>; scripting window identity and the window server's never align,
+/// so tabs attach to the app, not to a specific taskbar button's window. Refs are only guaranteed
+/// valid short-term (menu-open to click), not across enumerations.</summary>
+/// <param name="IconPng">The tab's favicon as an encoded PNG, when the platform can source one
+/// (browser on-disk favicon caches; bevel-l17f) — raster because favicons ARE raster sources,
+/// like app icons. Null when the app has no favicon store or the page has no cached icon.
+/// Note: as a byte[] this field gives the record REFERENCE semantics for equality/hashing —
+/// don't compare AppTabs by value.</param>
+public sealed record AppTab(
+    string BundleId,
+    string WindowRef,
+    int TabIndex,
+    string Title,
+    string? Url = null,
+    byte[]? IconPng = null);

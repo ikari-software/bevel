@@ -124,6 +124,23 @@ public class TrayViewModelTests
         Assert.All(vm.VisibleItems, i => Assert.Equal(36, i.IconW));
     }
 
+    [AvaloniaFact]
+    public void SetConsolidated_dedups_unchanged_values()
+    {
+        // The dedup lives in SetConsolidated itself so BOTH callers (settings poll + live settings)
+        // benefit — an unchanged value must not re-fire the native hide (ce-review: maintainability).
+        var host = new StubTray();
+        var vm = new TrayViewModel(host);
+
+        vm.SetConsolidated(true);
+        vm.SetConsolidated(true);    // unchanged — no second native call
+        vm.SetConsolidated(false);
+        vm.SetConsolidated(false);   // unchanged
+        vm.SetConsolidated(true);
+
+        Assert.Equal(new[] { true, false, true }, host.HiddenCalls);
+    }
+
     private sealed class StubTray : ISystemTrayHost
     {
         private readonly List<TrayItem> _items;
@@ -131,10 +148,16 @@ public class TrayViewModelTests
 
         public (TrayItemId Id, TrayButton Button, TrayModifiers Modifiers)? LastForward { get; private set; }
 
+        public List<bool> HiddenCalls { get; } = new();
+
         public Capabilities Capabilities => Capabilities.None;
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<TrayItem>>(_items.ToArray());
-        public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
+        public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
+        {
+            HiddenCalls.Add(hidden);
+            return Task.CompletedTask;
+        }
         public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
         {
             LastForward = (id, button, modifiers);

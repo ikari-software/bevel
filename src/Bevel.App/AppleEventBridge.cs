@@ -36,9 +36,19 @@ public static class AppleEventBridge
         AppleEventInbound.Install();
     }
 
-    /// <summary>Synchronously answers a get/count (bevel-3i4). Reads only synchronously-available
+    /// <summary>Synchronously answers a get/count/exists (bevel-3i4). Reads only synchronously-available
     /// state — known folders, the window registry, the active controller's selection — plus a blocking
-    /// resolve for filesystem specifiers (VFS I/O, no UI-thread round-trip, so no deadlock).</summary>
+    /// resolve for filesystem specifiers (VFS I/O, no UI-thread round-trip, so no deadlock).
+    ///
+    /// <para>Deadlock-safety is NOT the same as boundedness: this runs on Avalonia's AE dispatch (UI)
+    /// thread, so an unbounded <c>count of every file of folder &lt;hugeDir&gt;</c> would freeze the whole
+    /// shell for the length of the directory walk (bevel-o3sa). The resolve is therefore hard-capped at
+    /// <see cref="AppleEventObjectResolver.UiThreadEnumerationCap"/> entries per container, and
+    /// <c>exists</c> uses the short-circuiting <see cref="AppleEventObjectResolver.ExistsAsync"/>. Net
+    /// semantics under the cap: <c>count</c> returns at most the cap, <c>get</c> returns at most the cap,
+    /// <c>exists</c> short-circuits on the first match (so it is exact whenever the target lies within
+    /// the first cap entries — a match beyond the cap position reads as false). The async command path
+    /// (DispatchAsync) stays unbounded — it doesn't run on the UI thread.</para></summary>
     private static AeResult? Answer(AeQuery query, IKnownFolders known, FileManagerWindowRegistry? registry, AppleEventObjectResolver resolver)
     {
         // `exists <application property>` (home/desktop/…) is always true.
@@ -61,9 +71,11 @@ public static class AppleEventBridge
             case AeQueryKind.ResolvePaths when query.Specifier is not null:
                 try
                 {
+                    // Bounded on the UI thread (bevel-o3sa): cap the walk, and let exists short-circuit.
+                    const int cap = AppleEventObjectResolver.UiThreadEnumerationCap;
                     if (query.Op == QueryOp.Exists)
-                        return new AeBool(resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult().Count > 0);
-                    var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier)).GetAwaiter().GetResult();
+                        return new AeBool(resolver.ExistsAsync(ConvertSpec(query.Specifier), default, cap).GetAwaiter().GetResult());
+                    var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier), default, cap).GetAwaiter().GetResult();
                     return query.Op == QueryOp.Count
                         ? new AeCount(paths.Count)
                         : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());

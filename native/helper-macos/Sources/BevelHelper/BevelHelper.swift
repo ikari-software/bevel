@@ -3,6 +3,7 @@ import ApplicationServices   // AXIsProcessTrustedWithOptions + kAXTrustedCheckO
 import Foundation
 import GRPCCore
 import GRPCNIOTransportHTTP2
+import ScreenCaptureKit       // SCShareableContent — pre-warm the CGS/SCK connection off-thread (bevel-1275)
 
 /// Socket path for the atexit cleanup hook. A C `atexit` callback cannot capture context,
 /// so the path lives at file scope. Removing the socket on every exit path (including the
@@ -132,6 +133,24 @@ enum BevelHelper {
         let supervision = SupervisionServiceImpl(helperVersion: version, expectedKey: args.token)
         let windowService = WindowServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
         let trayService = TrayServiceImpl(expectedKey: args.token, parentPID: args.parentPID)
+
+        // Pre-warm ScreenCaptureKit off the main thread (bevel-1275). The FIRST SCShareableContent call
+        // is slow cold — it establishes the CGS/WindowServer connection SCK needs — and today that cost
+        // is paid lazily on the user's first taskbar hover / window minimize after Screen Recording is
+        // granted, causing a one-off UI hitch. Warming it here pays that cost up front. DETACHED so it
+        // never blocks the gRPC server coming up; guarded on CGPreflight so it NEVER prompts and is a
+        // pure no-op until the grant exists; it polls for the grant so a grant that arrives AFTER the
+        // helper started (the exact bevel-1275 case) is warmed too, then stops. One successful call is
+        // enough — the CGS connection persists for the process lifetime.
+        Task.detached {
+            for _ in 0..<150 {   // ~5 min at a 2s cadence, then give up (first real capture pays it if still cold)
+                if CGPreflightScreenCaptureAccess() {
+                    _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
 
         let server = GRPCServer(
             transport: .http2NIOPosix(

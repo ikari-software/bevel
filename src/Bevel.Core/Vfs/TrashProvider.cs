@@ -213,28 +213,15 @@ internal sealed class TrashMutator : IVfsMutator
         Directory.CreateDirectory(destDir);
         var dest = Path.Combine(destDir, name);
 
-        try
-        {
-            if (Directory.Exists(src)) Directory.Move(src, dest);
-            else File.Move(src, dest);
-        }
-        catch (IOException)
-        {
-            // Cross-volume: Directory/File.Move can't rename across devices — copy then delete.
-            if (Directory.Exists(src)) { CopyDirectory(src, dest); Directory.Delete(src, recursive: true); }
-            else { File.Copy(src, dest, overwrite: false); File.Delete(src); }
-        }
+        // Delegate to the shared relocate helper rather than a private copy: this restore path had
+        // TWO bugs the helper already guards (ce-review bevel-lha4) — a same-volume NAME COLLISION
+        // was misread as cross-volume EXDEV and "recovered" by copy-merge + source delete (silent
+        // data loss), and its CopyDirectory FOLLOWED directory symlinks (copying the target's bytes,
+        // or looping on an ancestor link). LocalTrash.MoveToTrash makes a collision an explicit
+        // IOException and recreates symlinks as links.
+        LocalTrash.MoveToTrash(src, dest);
 
         return ValueTask.FromResult(new VfsPath("file", dest));
-    }
-
-    private static void CopyDirectory(string src, string dest)
-    {
-        Directory.CreateDirectory(dest);
-        foreach (var file in Directory.EnumerateFiles(src))
-            File.Copy(file, Path.Combine(dest, Path.GetFileName(file)), overwrite: false);
-        foreach (var dir in Directory.EnumerateDirectories(src))
-            CopyDirectory(dir, Path.Combine(dest, Path.GetFileName(dir)));
     }
 
     public ValueTask<VfsPath> CreateFolderAsync(VfsPath parent, string name, CancellationToken ct)

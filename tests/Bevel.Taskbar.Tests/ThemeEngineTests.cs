@@ -61,6 +61,23 @@ public class ThemeEngineTests
     }
 
     [AvaloniaFact]
+    public void Apply_returns_true_on_a_successful_swap_and_on_a_noop_reapply()
+    {
+        // The return value gates the theme-coupled colour engine in App: true means "template is on
+        // this theme, safe to apply its variant" (ce-review theme-swap atomicity).
+        try
+        {
+            Assert.True(Bevel.UI.ThemeService.Apply("flat"));    // real swap
+            Assert.True(Bevel.UI.ThemeService.Apply("flat"));    // no-op re-apply is still "in place" = true
+            Assert.True(Bevel.UI.ThemeService.Apply("win2000")); // swap back
+        }
+        finally
+        {
+            Bevel.UI.ThemeService.Apply("win2000");
+        }
+    }
+
+    [AvaloniaFact]
     public void Text_is_always_antialiased_even_under_win2000()
     {
         // never-disable-AA rule: text stays smooth in EVERY skin. Win2000 used to inherit the Classic base's

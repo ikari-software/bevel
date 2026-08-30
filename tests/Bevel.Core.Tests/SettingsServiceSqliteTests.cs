@@ -9,6 +9,12 @@ namespace Bevel.Core.Tests;
 /// monotonic <c>version</c>, that external writes are DETECTABLE via <see cref="SettingsService.ReloadIfChangedAsync"/>,
 /// that concurrent readers/writers don't hit "database is locked" (WAL + busy timeout), and that a
 /// legacy settings.json is imported once. Each test gets a throwaway temp dir (its own settings.db).
+///
+/// <para>Under core-owns-settings (bevel-6nve) the DB now has a SINGLE writer (the shell core), so the
+/// cross-process compare-and-swap merge (beads y7r4/ha3x) is dissolved. The delta-merge that survives —
+/// and that peers rely on through the core — is the SINGLE-WRITER one: an <c>UpdateAsync</c> delta merges
+/// onto the current in-memory state without dropping other explicit keys (asserted below). The WAL /
+/// busy-timeout robustness test is kept as a lower-level guard on the storage layer.</para>
 /// </summary>
 public sealed class SettingsServiceSqliteTests : IDisposable
 {
@@ -49,6 +55,32 @@ public sealed class SettingsServiceSqliteTests : IDisposable
         Assert.Equal(3, reader.Current.TaskbarRows);
         Assert.Equal(WorkAreaStrategy.DockShim, reader.Current.WorkAreaStrategy);
         Assert.True(reader.ThemeOverridesFor("luna").CrispBevels);
+    }
+
+    [Fact]
+    public async Task Corrupt_blob_degrades_to_defaults_instead_of_crashing()
+    {
+        // A torn write or a hand-edited settings.db must NOT throw JsonException out of LoadAsync
+        // (called via GetResult() before the UI starts) and hard-crash every process at boot
+        // (ce-review). It should degrade to defaults, the same as a missing file.
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            await writer.UpdateAsync(s => s.TaskbarRows = 4);   // creates the row
+        }
+
+        // Corrupt the single JSON blob directly.
+        await using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={System.IO.Path.Combine(_dir, "settings.db")}"))
+        {
+            await conn.OpenAsync();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE settings SET json = '{ this is not valid json ' WHERE id = 1;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();   // must not throw
+        Assert.Equal(new BevelSettings().TaskbarRows, reader.Current.TaskbarRows);   // fell back to defaults
     }
 
     [Fact]
@@ -191,6 +223,48 @@ public sealed class SettingsServiceSqliteTests : IDisposable
         using var final = new SettingsService(_dir);
         await final.LoadAsync();
         Assert.Equal(start + writesEach * 2, final.Version);
+    }
+
+    [Fact]
+    public async Task Delta_updates_to_different_keys_merge_onto_current_state()
+    {
+        // bevel-ha3x dissolved: the cross-process CAS-merge is gone now the shell core is the SOLE writer
+        // (core-owns-settings, bevel-6nve). The guarantee that survives — and that every peer relies on
+        // through the core — is the SINGLE-WRITER delta-merge: an UpdateAsync delta merges onto the CURRENT
+        // in-memory state, so changing key Y must NOT drop an earlier explicit key X. Two sequential deltas
+        // to different keys on the one writer; both survive a reload.
+        using var writer = new SettingsService(_dir);
+        await writer.LoadAsync();
+        var seeded = writer.Version;
+
+        await writer.UpdateAsync(s => s.TaskbarStartLabel = "Menu"); // key X
+        await writer.UpdateAsync(s => s.ShowHiddenFiles = true);     // key Y — must not clobber X
+
+        // Each write advanced the version monotonically (no write lost).
+        Assert.Equal(seeded + 2, writer.Version);
+
+        // A fresh instance (a stand-in for a reader process) sees BOTH keys.
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal("Menu", reader.Current.TaskbarStartLabel); // key X survived the key-Y write (the merge)
+        Assert.True(reader.Current.ShowHiddenFiles);            // key Y is present too
+    }
+
+    [Fact]
+    public async Task Setting_and_theme_override_deltas_merge_onto_current_state()
+    {
+        // The other delta path (UpdateThemeOverridesAsync) merges onto current in-memory state the same way:
+        // a plain-setting write followed by a per-theme-override write keeps both, under the single writer.
+        using var writer = new SettingsService(_dir);
+        await writer.LoadAsync();
+
+        await writer.UpdateAsync(s => s.ThemeId = "luna");
+        await writer.UpdateThemeOverridesAsync("luna", o => o.CrispBevels = true); // must not drop themeId
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal("luna", reader.Current.ThemeId);              // the plain setting survived
+        Assert.True(reader.ThemeOverridesFor("luna").CrispBevels); // the override survived
     }
 
     [Fact]

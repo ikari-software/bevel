@@ -320,6 +320,16 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
 
     private static IReadOnlyList<RunningApp> QueryRunningApps()
     {
+        // Runs on threadpool threads (the debounced FS-watcher refresh) — no ambient autorelease
+        // pool, and NSWorkspace/NSRunningApplication return autoreleased objects, so drain them per
+        // call instead of leaking until the thread dies (bevel-fo2 class).
+        var pool = AppKitInterop.objc_autoreleasePoolPush();
+        try { return QueryRunningAppsCore(); }
+        finally { AppKitInterop.objc_autoreleasePoolPop(pool); }
+    }
+
+    private static IReadOnlyList<RunningApp> QueryRunningAppsCore()
+    {
         var workspace = AppKitInterop.SharedWorkspace();
         var appsArray = AppKitInterop.RunningApplications(workspace);
         if (appsArray == IntPtr.Zero)
@@ -492,15 +502,12 @@ public sealed class MacOSAppEnvironment : IAppEnvironment, IDisposable
             if (url == IntPtr.Zero)
                 return null;
 
-            try
-            {
-                var path = AppKitInterop.NSURLPath(url);
-                return AppKitInterop.NSStringToString(path);
-            }
-            finally
-            {
-                AppKitInterop.SendVoid(url, AppKitInterop.Sel("release"));
-            }
+            // URLForApplicationWithBundleIdentifier: returns an AUTORELEASED NSURL (a non
+            // alloc/new/copy method — same ownership rule AppKitInterop documents for
+            // URLsForApplicationsToOpenURL). We do NOT own it; releasing it is an over-release that
+            // corrupts the autorelease pool (the bevel-fo2 double-free class). Just read it.
+            var path = AppKitInterop.NSURLPath(url);
+            return AppKitInterop.NSStringToString(path);
         }
         catch
         {

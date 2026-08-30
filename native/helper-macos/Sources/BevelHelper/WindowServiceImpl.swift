@@ -35,7 +35,7 @@ private func axObserverCallback(
 
 // MARK: - AXNotification → WindowChange.Kind helper
 
-private func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_V1_WindowChange.Kind? {
+func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_V1_WindowChange.Kind? {
     switch notification {
     case kAXFocusedWindowChangedNotification: return .focused
     case kAXTitleChangedNotification:         return .titleChanged
@@ -47,6 +47,16 @@ private func axNotificationToChangeKind(_ notification: String) -> Bevel_Helper_
     case kAXUIElementDestroyedNotification:   return .closed
     default: return nil
     }
+}
+
+// MARK: - Geometry sanitizer
+
+/// Clamp a foreign-process-supplied CGFloat to Int32. A plain `Int32(...)` cast TRAPS on NaN,
+/// infinity, or out-of-range values — and window geometry here comes from other apps' AX servers
+/// and CGWindowList entries, so one hostile/buggy app reporting absurd geometry would crash-loop
+/// the helper (review: adversarial, validated).
+private func clampToInt32(_ v: CGFloat) -> Int32 {
+    v.isFinite ? Int32(clamping: Int64(v.rounded())) : 0
 }
 
 // MARK: - WindowServiceImpl
@@ -116,6 +126,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// another app's window), so the taskbar pressed-state can follow focus that didn't originate
     /// from a taskbar click. Same lifetime/threading contract as `launchObserverToken`.
     private var activateObserverToken: NSObjectProtocol?
+    /// NSWorkspace active-Space-change hook token. Fires when the user switches macOS Spaces
+    /// (desktops). Each Space shows a different on-screen window set, but AX/CGWindowList emit no
+    /// per-window notification for the switch, so without this the taskbar could only converge on
+    /// the 500ms poll — and a poll that lands mid-animation reads the transient on-screen set, so it
+    /// took "a few rounds" to settle. Same lifetime/threading contract as `launchObserverToken`.
+    private var spaceObserverToken: NSObjectProtocol?
+    /// Pending settle-delayed reconcile scheduled by the Space-change hook. Cancelled and replaced
+    /// on each notification so a burst of rapid Space flips coalesces into ONE trailing reconcile.
+    /// Guarded by `observerLock` (assigned on the main-thread handler, cleared on a global queue).
+    private var spaceReconcileWork: DispatchWorkItem?
     /// Serializes observer registration, which can now come from two threads (the poll's
     /// `ensureObservers` and the launch hook's `addObserver`).
     private let observerLock = NSLock()
@@ -169,6 +189,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
             activateObserverToken = nil
         }
+        // Remove the Space-change hook and cancel any pending settle-delayed reconcile so it
+        // can't fire a reconcile after teardown.
+        if let token = spaceObserverToken {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+            spaceObserverToken = nil
+        }
+        observerLock.lock()
+        spaceReconcileWork?.cancel()
+        spaceReconcileWork = nil
+        observerLock.unlock()
 
         // Tear down AXObservers (and their run-loop sources) BEFORE the run loop is
         // stopped and before the instance can be deallocated — see removeAllObservers.
@@ -266,6 +296,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 try self.restoreWindow(windowID: req.message.windowID)
                 return StreamingServerResponse(
                     single: ServerResponse(message: Bevel_Helper_V1_RestoreReply())
+                )
+            }
+        )
+
+        // ── RestoreAndActivate (bevel-nxic) ────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "RestoreAndActivate"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_WindowRef>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_ActivateReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                try self.restoreAndActivate(windowID: req.message.windowID)
+                return StreamingServerResponse(
+                    single: ServerResponse(message: Bevel_Helper_V1_ActivateReply())
                 )
             }
         )
@@ -425,29 +477,52 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// (no Screen Recording permission, window gone, or capture error) — the caller shows no preview.
     private func captureWindowThumbnail(windowID: CGWindowID, maxWidth: Int, maxHeight: Int) async -> Data {
         guard CGPreflightScreenCaptureAccess() else { return Data() }
-        // onScreenWindowsOnly:false so MINIMIZED windows are still capturable — the rest of the helper
-        // deliberately supports minimized windows (bevel-m2.3), and the taskbar hovers them too. Otherwise
-        // hovering a minimized item silently falls back to title-only (review: swift-ios).
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
-              let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
-            return Data()
+        // Bound the whole capture (cold SCShareableContent + screenshot) so a slow first-call CGS/SCK
+        // init after a Screen-Recording grant can never hang the RPC (bevel-1275). On timeout the caller
+        // keeps the limited-mode app icon — identical to any other capture failure. The .NET side carries
+        // its own deadline too; this is the belt-and-suspenders leg inside the helper.
+        let result = await Self.withTimeout(seconds: 2.5) {
+            // onScreenWindowsOnly:false so MINIMIZED windows are still capturable — the rest of the helper
+            // deliberately supports minimized windows (bevel-m2.3), and the taskbar hovers them too. Otherwise
+            // hovering a minimized item silently falls back to title-only (review: swift-ios).
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+                  let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
+                return Data()
+            }
+            let w = scWindow.frame.width, h = scWindow.frame.height
+            guard w > 1, h > 1 else { return Data() }
+            let maxW = maxWidth > 0 ? Double(maxWidth) : 240
+            let maxH = maxHeight > 0 ? Double(maxHeight) : 160
+            let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
+            let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
+            let config = SCStreamConfiguration()
+            config.width = max(2, Int(w * scale))
+            config.height = max(2, Int(h * scale))
+            config.showsCursor = false
+            config.ignoreShadowsSingleWindow = true
+            let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+            guard let cgImage = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else {
+                return Data()
+            }
+            return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
         }
-        let w = scWindow.frame.width, h = scWindow.frame.height
-        guard w > 1, h > 1 else { return Data() }
-        let maxW = maxWidth > 0 ? Double(maxWidth) : 240
-        let maxH = maxHeight > 0 ? Double(maxHeight) : 160
-        let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
-        let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
-        let config = SCStreamConfiguration()
-        config.width = max(2, Int(w * scale))
-        config.height = max(2, Int(h * scale))
-        config.showsCursor = false
-        config.ignoreShadowsSingleWindow = true
-        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
-        guard let cgImage = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) else {
-            return Data()
+        return result ?? Data()
+    }
+
+    /// Runs `operation` but returns nil if it hasn't finished within `seconds` — a bound around a
+    /// cold/wedged ScreenCaptureKit init so a slow first capture can't hang the RPC (bevel-1275). The
+    /// losing branch is cancelled; the caller treats nil as "capture unavailable" (limited-mode icon).
+    static func withTimeout<T: Sendable>(seconds: Double, _ operation: @escaping @Sendable () async -> T?) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
     }
 
     private func layer0Entries(options: CGWindowListOption) -> [[String: Any]] {
@@ -509,10 +584,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         if let bounds = entry[kCGWindowBounds as String] as? NSDictionary {
             var rect = Bevel_Helper_V1_PixelRect()
-            rect.x = Int32((bounds["X"] as? CGFloat) ?? 0)
-            rect.y = Int32((bounds["Y"] as? CGFloat) ?? 0)
-            rect.width = Int32((bounds["Width"] as? CGFloat) ?? 0)
-            rect.height = Int32((bounds["Height"] as? CGFloat) ?? 0)
+            rect.x = clampToInt32((bounds["X"] as? CGFloat) ?? 0)
+            rect.y = clampToInt32((bounds["Y"] as? CGFloat) ?? 0)
+            rect.width = clampToInt32((bounds["Width"] as? CGFloat) ?? 0)
+            rect.height = clampToInt32((bounds["Height"] as? CGFloat) ?? 0)
             win.frame = rect
         }
 
@@ -906,6 +981,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // can fail for one tick while the window is still the real foreground surface.
         var focused: CFTypeRef?
         let axApp = AXUIElementCreateApplication(pid)
+        // R18 convention: bound the AX round-trip — this runs per window per 500ms reconcile tick,
+        // and without the cap a beachballing frontmost app stalls each query for the default AX
+        // timeout (~6s), freezing the poll (review: correctness+adversarial, validated).
+        _ = _AXUIElementSetMessagingTimeout(axApp, 1.0)
         let result = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused)
         guard result == .success, let focusedElem = focused else { return false }
         // A misbehaving app's AX server can return an unexpected CFType here; verify the
@@ -969,7 +1048,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Distinguish `.invalidUIElement` from `.cannotComplete` — the former
     /// means the window no longer exists, the latter is a transient failure.
-    private func axErrorToRPC(_ error: AXError, windowID: String) -> RPCError {
+    func axErrorToRPC(_ error: AXError, windowID: String) -> RPCError {
         switch error {
         case .invalidUIElement:
             return RPCError(code: .notFound, message: "Window \(windowID) no longer exists")
@@ -993,32 +1072,57 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 throw RPCError(code: .notFound, message: "app-presence target not running: \(bundle)")
             }
             let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
             AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             app.activate()
             return
         }
 
         let (pid, axWin) = try resolveWindow(windowID: windowID)
+        raiseAppThenWindow(pid: pid, axWin: axWin)
+    }
 
-        // AXRaise reorders the window WITHIN its own app. Best-effort: some apps (Apple Music) expose
-        // no correlated window element, so skip the raise there rather than failing the whole
-        // activation — the app-frontmost step below still brings the app (and its window) forward.
+    /// Bring `pid`'s app frontmost, THEN raise the specific window LAST (bevel-nxic). Order matters:
+    ///
+    /// 1. App activation FIRST — `kAXFrontmostAttribute` is the accessibility-native activation and the
+    ///    ONLY step available for apps without a window AX element; `NSRunningApplication.activate` is the
+    ///    belt-and-suspenders for apps whose app-level AX is ALSO restricted (Apple Music — no window AX
+    ///    element AND no app-AX activation), since it isn't accessibility-dependent. This is what actually
+    ///    brings a window up when Bevel's taskbar sits at a high window level holding key focus.
+    /// 2. `AXRaise` the target window LAST — it only reorders WITHIN the app, and app activation preserves
+    ///    the app's internal window order, so raising AFTER the app comes forward guarantees the clicked
+    ///    window ends topmost, with no sibling window landing on top afterward. `axWin == nil` (Apple
+    ///    Music: no correlated window element) simply skips the raise — the app-frontmost step still
+    ///    brought the app (and its window) forward.
+    func raiseAppThenWindow(pid: pid_t, axWin: AXUIElement?) {
+        let appElement = AXUIElementCreateApplication(pid)
+        _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
+        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        NSRunningApplication(processIdentifier: pid)?.activate()
+
         if let axWin {
             _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
         }
+    }
 
-        // Make the owning app frontmost. This is what actually brings a window up when Bevel's taskbar
-        // sits at a high window level (holding key focus after the click) — and it is the ONLY step
-        // available for apps without a window AX element. kAXFrontmostAttribute is the
-        // accessibility-native activation and works for most apps.
-        let appElement = AXUIElementCreateApplication(pid)
-        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    /// De-miniaturize (only if minimized) THEN activate, as one op (bevel-nxic). Collapsing the taskbar's
+    /// old Restore-then-Activate two-RPC dance removes the round-trip gap where the second call could
+    /// `AXRaise` before the window finished materializing and land it mid-stack. Clearing `kAXMinimized`
+    /// kicks off the de-miniaturize; `raiseAppThenWindow` then activates the app and raises the window
+    /// LAST, so the clicked window reliably ends frontmost.
+    func restoreAndActivate(windowID: String) throws {
+        // App-presence entry ("app:<bundle>"): no window — activating the app IS the reopen (shared path).
+        if windowID.hasPrefix("app:") {
+            try activateWindow(windowID: windowID)
+            return
+        }
 
-        // Belt-and-suspenders for apps whose app-level AX is ALSO restricted, so kAXFrontmostAttribute
-        // silently no-ops (Apple Music is the canonical case — no window AX element AND no app-AX
-        // activation). NSRunningApplication.activate is not accessibility-dependent, so it brings such
-        // apps forward when the AX path can't. Harmless for the apps AX already handled.
-        NSRunningApplication(processIdentifier: pid)?.activate()
+        let (pid, axWin) = try resolveWindow(windowID: windowID)
+        // Best-effort de-miniaturize: a non-minimized window no-ops here and still activates below.
+        if let axWin {
+            AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+        }
+        raiseAppThenWindow(pid: pid, axWin: axWin)
     }
 
     /// Quit (or force-quit) every running instance of an app by bundle id (bevel-ww71). Graceful
@@ -1146,7 +1250,14 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     }
                     done.signal()
                 }
-                done.wait()
+                // BOUNDED wait: a subscriber that stalls without throwing (suspended client,
+                // exhausted HTTP/2 flow control) would otherwise park this serial-queue slot
+                // forever and wedge every future broadcast for every subscriber (review:
+                // reliability+adversarial, validated). A client that cannot drain one write in
+                // 5s is evicted like a dead one — the C# side resubscribes on stream loss.
+                if done.wait(timeout: .now() + 5) == .timedOut {
+                    self?.removeSubscriber(id)
+                }
             }
         }
     }
@@ -1318,6 +1429,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             dbg("event-drop cg=\(cgID) '\(win.appName)' reason=no-title")
             return nil
         }
+        // Mirror describe()'s shell-chrome gate too (review: maintainability, validated — this
+        // path lacked it, the third recurrence of the two-paths-drift bug class): without it a
+        // shell chrome window can flash as a phantom button until the snapshot prunes it.
+        if isShellChrome(pid: pid, title: win.title) {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=shell-chrome")
+            return nil
+        }
 
         var position: CFTypeRef?
         var size: CFTypeRef?
@@ -1329,17 +1447,25 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             if let posVal = position, CFGetTypeID(posVal) == AXValueGetTypeID() {
                 var pt = CGPoint.zero
                 AXValueGetValue(posVal as! AXValue, .cgPoint, &pt)
-                rect.x = Int32(pt.x)
-                rect.y = Int32(pt.y)
+                rect.x = clampToInt32(pt.x)
+                rect.y = clampToInt32(pt.y)
             }
             if let sizeVal = size, CFGetTypeID(sizeVal) == AXValueGetTypeID() {
                 var sz = CGSize.zero
                 AXValueGetValue(sizeVal as! AXValue, .cgSize, &sz)
-                rect.width = Int32(sz.width)
-                rect.height = Int32(sz.height)
+                rect.width = clampToInt32(sz.width)
+                rect.height = clampToInt32(sz.height)
             }
         }
         win.frame = rect
+
+        // Mirror describe()'s transient gate (same review finding), now that the frame is known:
+        // the shell's own tooltip/menu popups must never become taskbar buttons via the fast path.
+        if isBevelTransient(pid: pid, cgID: cgID, axMap: [cgID: element], isMinimized: false,
+                            frameWidth: Int(rect.width), frameHeight: Int(rect.height)) {
+            dbg("event-drop cg=\(cgID) '\(win.appName)' reason=bevel-transient")
+            return nil
+        }
 
         return win
     }
@@ -1378,6 +1504,27 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                       let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 else { return }
                 self.broadcastFocusForApp(pid: app.processIdentifier)
+            }
+
+            // Active-Space-change hook: the user switched Spaces (desktops). Schedule a SINGLE
+            // debounced reconcile after a settle delay so it runs AFTER the Space-switch animation,
+            // not during — a mid-animation enumeration reads the transient on-screen set and takes
+            // several poll rounds to converge. Cancel any pending work so a burst of rapid switches
+            // collapses to one trailing refresh. The notification is delivered on the MAIN thread;
+            // `reconcile()` does CGWindowList + AX round-trips, so we hop to a global queue via
+            // `asyncAfter` — that both delays past the animation and keeps the heavy work off the
+            // main thread (reconcile is thread-agnostic: all shared state goes through stateLock).
+            self.spaceObserverToken = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.activeSpaceDidChangeNotification,
+                object: nil, queue: nil
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.observerLock.lock()
+                self.spaceReconcileWork?.cancel()
+                let work = DispatchWorkItem { [weak self] in self?.reconcile() }
+                self.spaceReconcileWork = work
+                self.observerLock.unlock()
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.30, execute: work)
             }
 
             self.axRunLoopReady.signal()

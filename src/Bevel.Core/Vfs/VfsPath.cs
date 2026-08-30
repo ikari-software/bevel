@@ -78,6 +78,20 @@ public readonly record struct VfsPath
         }
     }
 
+    /// <summary>True when this path IS <paramref name="ancestor"/> or lies anywhere beneath it in the
+    /// same scheme. Used to reject moving/copying a folder into itself or its own subtree (which would
+    /// otherwise loop / destroy the source). Comparison is ordinal-case-insensitive to match the
+    /// case-insensitive filesystems Bevel targets; a root ancestor (empty Value) contains its scheme.</summary>
+    public bool IsAtOrUnder(VfsPath ancestor)
+    {
+        if (!string.Equals(Scheme, ancestor.Scheme, StringComparison.Ordinal)) return false;
+        if (ancestor.Value.Length == 0) return true;   // scheme root contains everything
+        if (Value.Length < ancestor.Value.Length) return false;
+        if (!Value.StartsWith(ancestor.Value, StringComparison.OrdinalIgnoreCase)) return false;
+        // Exact match, or a real path boundary follows (so "/a/bc" is NOT under "/a/b").
+        return Value.Length == ancestor.Value.Length || Value[ancestor.Value.Length] == '/';
+    }
+
     public override string ToString() => $"{UriPrefix}{Scheme}/{Value}";
 
     /// <summary>

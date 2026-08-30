@@ -67,12 +67,11 @@ dotnet build Bevel.sln -clp:ErrorsOnly          # build everything
 dotnet test  Bevel.sln                          # full test suite (xUnit + Avalonia.Headless)
 dotnet test  tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj   # one project
 
-# Run the shell (single-process, Fake PAL — safe for dev, no helper/AX prompts):
+# Run the shell for dev (Fake PAL — safe, no helper/AX prompts). Split is the ONLY mode: an
+# argument-less launch boots --role=launcher, which spawns core + taskbar (+ explorer per window):
 dotnet run --project src/Bevel.App -- --pal=fake
-
-# Run against the real macOS PAL, split multi-process:
-dotnet run --project src/Bevel.App -- --role=launcher            # launcher supervises core + taskbar
-dotnet run --project src/Bevel.App -- --role=explorer --open-path ~/Documents
+dotnet run --project src/Bevel.App -- --role=launcher            # explicit; same as no --role
+dotnet run --project src/Bevel.App -- --role=explorer --open-path ~/Documents   # a single surface
 
 # Package + code-sign a dev .app (re-run after each build so TCC grants stick — ad-hoc
 # cdhash churn otherwise forces re-granting Accessibility/Screen Recording every rebuild):
@@ -87,11 +86,14 @@ build/run explicitly). See `docs/perf.md`.
 
 ## Architecture Overview
 
-**Multi-process shell.** The shipped `.app` boots `--role=all` (single process). Passing
-`--role=launcher` splits it: a **launcher** supervises a **core** process and a **taskbar**
-process, and each Explorer window spawns as its own `--role=explorer` process (`--open-path`).
-`RoleProcessSupervisor` (in `Bevel.App/Supervision`) owns spawn/restart; SIGTERM handlers must
-set `ctx.Cancel` or children orphan.
+**Multi-process shell (the ONLY mode).** An argument-less launch boots `--role=launcher`: a **launcher**
+supervises a headless **core** process and a **taskbar** process (and a **desktop** process only when
+shown from the Start menu — off by default, bevel-gdie/dwhy), and each Explorer window spawns as its own
+`--role=explorer` process (`--open-path`). There is **no single-process mode** — `role=all` was removed
+(bevel-dwhy). The **core** owns the Swift helper + `settings.db` and serves both to the peer processes over
+the shell-core IPC (bevel-6nve); peers never open the DB or the helper directly. `RoleProcessSupervisor`
+(in `Bevel.App/Supervision`) owns spawn/restart (and runtime add/remove for the desktop); SIGTERM handlers
+must set `ctx.Cancel` or children orphan.
 
 **Projects:**
 - `Bevel.Core` — domain, services, settings, VFS. **Must not reference Avalonia** (ARCH-02).

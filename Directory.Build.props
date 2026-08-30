@@ -17,4 +17,17 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
+  <!-- Launch/TCC hygiene (bevel Launch/TCC): a normal `dotnet build`/`dotnet test` must NOT emit any
+       native apphost. The macOS apphost bakes an embedded __TEXT,__info_plist into every Exe output, so
+       Spotlight indexes each `Bevel.App` build output as kMDItemKind=Application — and because test/tool
+       projects ProjectReference the Bevel.App Exe, its apphost gets copied into their output too, so ~14
+       unsigned/ad-hoc headless `Bevel.App` launchables end up polluting the Applications menu. Launching
+       one opens no shell and triggers a Screen-Recording prompt that never persists. The definitive fix
+       is to produce NO apphost outside the packaging path. BevelPackaging (default false) gates it; the
+       packaging scripts pass -p:BevelPackaging=true so dist/Bevel.app still gets its native binary. The
+       actual UseAppHost switch lives in Directory.Build.targets (needs OutputType, set in the body). -->
+  <PropertyGroup>
+    <BevelPackaging Condition="'$(BevelPackaging)' == ''">false</BevelPackaging>
+  </PropertyGroup>
+
 </Project>

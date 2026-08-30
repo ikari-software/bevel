@@ -246,9 +246,22 @@ public partial class InfoPane : UserControl
 
         if (!withArrow && !modernRow)
         {
+            // Win2000 "See also" link. A bare TextBlock is unfocusable and invisible to assistive
+            // tech, so make it keyboard-reachable (Focusable + Enter/Space) and give it an accessible
+            // name, matching the XP chevron pattern (AutomationProperties.SetName).
             link.Cursor = new Cursor(StandardCursorType.Hand);
             link.Margin = new Thickness(0, 1);
+            link.Focusable = true;
+            AutomationProperties.SetName(link, text);
             link.PointerPressed += (_, _) => onClick();
+            link.KeyDown += (_, e) =>
+            {
+                if (e.Key is Key.Enter or Key.Space)
+                {
+                    onClick();
+                    e.Handled = true;
+                }
+            };
             host.Children.Add(link);
             return;
         }
@@ -262,6 +275,9 @@ public partial class InfoPane : UserControl
             Focusable = true,
             Tag = onClick,
         };
+        // The interactive row is focusable but its child glyph/label carry no accessible name, so name
+        // the row itself (matching the XP chevron pattern) — otherwise a screen reader announces "group".
+        AutomationProperties.SetName(row, text);
         var content = new Grid { ColumnDefinitions = new ColumnDefinitions("14,*") };
         var glyph = withArrow ? CreateXpTaskGlyph(arrowBrush) : CreateModernPlaceGlyph(text);
         content.Children.Add(glyph);

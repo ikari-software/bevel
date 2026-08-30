@@ -67,6 +67,12 @@ public enum CoreEventKind
     TrayItemAdded,
     TrayItemRemoved,
     TrayItemUpdated,
+    /// <summary>Full settings blob, pushed once when a UI process connects (core-owns-settings, bevel-6nve).
+    /// Carries <see cref="CoreEvent.SettingsJson"/> + <see cref="CoreEvent.SettingsVersion"/>.</summary>
+    SettingsSnapshot,
+    /// <summary>Settings changed in the core (its own write, or an applied UI update); pushed to every UI
+    /// process so peers re-project without opening the DB. Same payload slots as the snapshot.</summary>
+    SettingsChanged,
 }
 
 /// <summary>
@@ -80,7 +86,11 @@ public sealed record CoreEvent(
     RunningApp? App = null,
     IReadOnlyList<InstalledApp>? InstalledApps = null,
     TrayItem? TrayItem = null,
-    IReadOnlyList<TrayItem>? TrayItems = null);
+    IReadOnlyList<TrayItem>? TrayItems = null,
+    /// <summary>SettingsSnapshot / SettingsChanged: the canonical settings JSON blob (bevel-6nve).</summary>
+    string? SettingsJson = null,
+    /// <summary>SettingsSnapshot / SettingsChanged: the settings store version the blob was read at.</summary>
+    int? SettingsVersion = null);
 
 /// <summary>Which <c>IWindowManager</c>/<c>IAppEnvironment</c> action a <see cref="CoreCommand"/> requests.</summary>
 public enum CoreCommandKind
@@ -89,6 +99,8 @@ public enum CoreCommandKind
     Activate,
     Minimize,
     Restore,
+    /// <summary>Atomic restore-if-minimized + activate (bevel-nxic): one core round-trip, one helper op.</summary>
+    RestoreAndActivate,
     Close,
     Reposition,
     EnumerateInstalledApps,
@@ -97,6 +109,12 @@ public enum CoreCommandKind
     ForwardTrayClick,
     CaptureWindow,
     TerminateApp,
+    /// <summary>UI→core: fetch the current settings blob (the on-connect bootstrap, bevel-6nve). The reply
+    /// carries <see cref="CoreResponse.SettingsJson"/> + <see cref="CoreResponse.SettingsVersion"/>.</summary>
+    GetSettings,
+    /// <summary>UI→core: apply a changed-keys merge patch to settings; the core is the sole writer. The
+    /// patch rides <see cref="CoreCommand.SettingsPatchJson"/>.</summary>
+    ApplySettingsUpdate,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -112,7 +130,9 @@ public sealed record CoreCommand(
     int? MaxWidth = null,
     int? MaxHeight = null,
     /// <summary>TerminateApp: force-quit (true) vs graceful quit (false). Bundle id rides AppIdOrPath.</summary>
-    bool Force = false);
+    bool Force = false,
+    /// <summary>ApplySettingsUpdate: the changed-keys merge patch (top-level settings keys) to apply (bevel-6nve).</summary>
+    string? SettingsPatchJson = null);
 
 /// <summary>The core's reply to a <see cref="CoreCommand"/>. <see cref="Ok"/>=false carries <see cref="Error"/>;
 /// the query commands fill the matching list.</summary>
@@ -123,7 +143,11 @@ public sealed record CoreResponse(
     IReadOnlyList<InstalledApp>? InstalledApps = null,
     IReadOnlyList<RunningApp>? RunningApps = null,
     bool? Delivered = null,
-    byte[]? Png = null)
+    byte[]? Png = null,
+    /// <summary>GetSettings: the current settings JSON blob (bevel-6nve).</summary>
+    string? SettingsJson = null,
+    /// <summary>GetSettings: the settings store version the blob was read at.</summary>
+    int? SettingsVersion = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 
 namespace Bevel.FileManager.Components;
@@ -10,24 +11,32 @@ public partial class Toolbar : UserControl
         ApplyIcons();
     }
 
-    /// <summary>Assign the self-drawn vector glyphs to each toolbar button's SmallIcon slot.</summary>
+    /// <summary>Assign the self-drawn vector glyph AND a screen-reader name to each toolbar button.
+    /// The buttons are icon-only, so without an explicit AutomationProperties.Name a screen reader
+    /// announces "button" 15 times (ToolTip.Tip is not surfaced as the accessible name; bevel-6zs6).</summary>
     private void ApplyIcons()
     {
-        NavBack.SmallIcon = ToolbarIcons.Back();
-        NavForward.SmallIcon = ToolbarIcons.Forward();
-        NavUp.SmallIcon = ToolbarIcons.Up();
-        SearchBtn.SmallIcon = ToolbarIcons.Search();
-        FoldersBtn.SmallIcon = ToolbarIcons.Folders();
-        HistoryBtn.SmallIcon = ToolbarIcons.History();
-        MoveToBtn.SmallIcon = ToolbarIcons.MoveTo();
-        CopyToBtn.SmallIcon = ToolbarIcons.CopyTo();
-        CutBtn.SmallIcon = ToolbarIcons.Cut();
-        CopyBtn.SmallIcon = ToolbarIcons.Copy();
-        PasteBtn.SmallIcon = ToolbarIcons.Paste();
-        UndoBtn.SmallIcon = ToolbarIcons.Undo();
-        DeleteBtn.SmallIcon = ToolbarIcons.Delete();
-        PropertiesBtn.SmallIcon = ToolbarIcons.Properties();
-        ViewsBtn.SmallIcon = ToolbarIcons.Views();
+        Set(NavBack, ToolbarIcons.Back(), "Back");
+        Set(NavForward, ToolbarIcons.Forward(), "Forward");
+        Set(NavUp, ToolbarIcons.Up(), "Up one level");
+        Set(SearchBtn, ToolbarIcons.Search(), "Search");
+        Set(FoldersBtn, ToolbarIcons.Folders(), "Folders");
+        Set(HistoryBtn, ToolbarIcons.History(), "History");
+        Set(MoveToBtn, ToolbarIcons.MoveTo(), "Move to");
+        Set(CopyToBtn, ToolbarIcons.CopyTo(), "Copy to");
+        Set(CutBtn, ToolbarIcons.Cut(), "Cut");
+        Set(CopyBtn, ToolbarIcons.Copy(), "Copy");
+        Set(PasteBtn, ToolbarIcons.Paste(), "Paste");
+        Set(UndoBtn, ToolbarIcons.Undo(), "Undo");
+        Set(DeleteBtn, ToolbarIcons.Delete(), "Delete");
+        Set(PropertiesBtn, ToolbarIcons.Properties(), "Properties");
+        Set(ViewsBtn, ToolbarIcons.Views(), "Change view");
+
+        static void Set(Classic.CommonControls.ToolBarButton button, Avalonia.Media.Imaging.Bitmap? icon, string name)
+        {
+            button.SmallIcon = icon;
+            AutomationProperties.SetName(button, name);
+        }
     }
 
     // Navigation

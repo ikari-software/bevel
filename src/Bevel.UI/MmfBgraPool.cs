@@ -79,26 +79,33 @@ public sealed class MmfBgraPool : IDisposable
     private const int EKeyBytes = 24;
     private const int EntrySize = EKeyBytes + KeyField; // 280
 
-    private readonly MemoryMappedFile _mmf;
-    private readonly MemoryMappedViewAccessor _accessor;
+    private readonly MemoryMappedFile? _mmf;
+    private readonly MemoryMappedViewAccessor? _accessor;
     private readonly int _slotCapacity;
     private readonly int _maxBgraBytes;
     private readonly long _dirBase;
     private readonly long _blobBase;
+    private readonly bool _isWriter;
+
+    // A reader that couldn't attach (writer hasn't created the pool yet, or geometry mismatch) is
+    // DETACHED: null accessor, every TryGet misses. A reader must never create/resize/init the shared
+    // file — that could zero a pool the writer just published (ce-review; see mmf-icon-pool-invariants).
+    private bool Detached => _accessor is null;
 
     private MmfBgraPool(
-        MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, int slotCapacity, int maxBgraBytes)
+        MemoryMappedFile? mmf, MemoryMappedViewAccessor? accessor, int slotCapacity, int maxBgraBytes, bool isWriter)
     {
         _mmf = mmf;
         _accessor = accessor;
         _slotCapacity = slotCapacity;
         _maxBgraBytes = maxBgraBytes;
+        _isWriter = isWriter;
         _dirBase = HeaderSize;
         _blobBase = _dirBase + (long)slotCapacity * EntrySize;
     }
 
     /// <summary>Number of icons published so far (the append cursor). Diagnostic; races with the writer.</summary>
-    public long PublishedCount => ReadPublishedCountAcquire();
+    public long PublishedCount => Detached ? 0 : ReadPublishedCountAcquire();
 
     /// <summary>Per-slot count and blob ceiling this pool was created with.</summary>
     public int SlotCapacity => _slotCapacity;
@@ -118,18 +125,21 @@ public sealed class MmfBgraPool : IDisposable
     /// </summary>
     /// <param name="slotCapacity">Maximum number of distinct icons the pool can hold.</param>
     /// <param name="maxBgraBytes">Maximum BGRA byte length any single icon may occupy.</param>
-    public static MmfBgraPool CreateOrOpen(string path, int slotCapacity, int maxBgraBytes)
+    public static MmfBgraPool CreateOrOpen(string path, int slotCapacity, int maxBgraBytes, bool isWriter = true)
     {
         if (slotCapacity <= 0) throw new ArgumentOutOfRangeException(nameof(slotCapacity));
         if (maxBgraBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxBgraBytes));
 
-        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
-
         long fileSize = HeaderSize
             + (long)slotCapacity * EntrySize
             + (long)slotCapacity * maxBgraBytes;
+
+        if (!isWriter)
+            return OpenReadOnly(path, slotCapacity, maxBgraBytes, fileSize);
+
+        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
 
         // FileShare.ReadWrite so reader processes can map the same file while the writer holds it.
         var fs = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
@@ -176,7 +186,53 @@ public sealed class MmfBgraPool : IDisposable
             throw;
         }
 
-        return new MmfBgraPool(mmf, accessor, slotCapacity, maxBgraBytes);
+        return new MmfBgraPool(mmf, accessor, slotCapacity, maxBgraBytes, isWriter: true);
+    }
+
+    /// <summary>Reader-role open: attach to an EXISTING, correctly-sized, matching-geometry pool
+    /// READ-ONLY, or return a detached (always-misses) pool. Never creates, resizes, or initializes
+    /// the file — only the writer role owns the pool's lifecycle (ce-review bevel-lha4).</summary>
+    private static MmfBgraPool OpenReadOnly(string path, int slotCapacity, int maxBgraBytes, long fileSize)
+    {
+        MmfBgraPool Detached() => new(null, null, slotCapacity, maxBgraBytes, isWriter: false);
+
+        FileStream fs;
+        try
+        {
+            if (!File.Exists(path)) return Detached();
+            fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        }
+        catch { return Detached(); }
+
+        if (fs.Length != fileSize) { fs.Dispose(); return Detached(); }
+
+        MemoryMappedFile? mmf = null;
+        MemoryMappedViewAccessor? accessor = null;
+        try
+        {
+            mmf = MemoryMappedFile.CreateFromFile(
+                fs, mapName: null, fileSize, MemoryMappedFileAccess.Read,
+                HandleInheritability.None, leaveOpen: false);
+            accessor = mmf.CreateViewAccessor(0, fileSize, MemoryMappedFileAccess.Read);
+            // Attach only when the header describes exactly THIS geometry; otherwise detach and let
+            // the writer (re)create it — a reader must never re-init.
+            if (accessor.ReadInt32(OffMagic) != Magic
+                || accessor.ReadInt32(OffVersion) != FormatVersion
+                || accessor.ReadInt32(OffCapacity) != slotCapacity
+                || accessor.ReadInt32(OffMaxBgra) != maxBgraBytes)
+            {
+                accessor.Dispose();
+                mmf.Dispose();
+                return Detached();
+            }
+            return new MmfBgraPool(mmf, accessor, slotCapacity, maxBgraBytes, isWriter: false);
+        }
+        catch
+        {
+            accessor?.Dispose();
+            mmf?.Dispose();
+            return Detached();
+        }
     }
 
     /// <summary>
@@ -193,6 +249,8 @@ public sealed class MmfBgraPool : IDisposable
     /// </summary>
     public bool TryAdd(string key, PalImage image)
     {
+        if (!_isWriter)
+            throw new InvalidOperationException("This MmfBgraPool was opened read-only (reader role); it cannot publish.");
         if (key is null) throw new ArgumentNullException(nameof(key));
         if (image.Bgra is null) return false;
         if (image.Bgra.Length > _maxBgraBytes) return false;
@@ -213,19 +271,19 @@ public sealed class MmfBgraPool : IDisposable
         // (1) Write the blob into slot `slot`'s region.
         long blobOff = _blobBase + (long)slot * _maxBgraBytes;
         if (image.Bgra.Length > 0)
-            _accessor.WriteArray(blobOff, image.Bgra, 0, image.Bgra.Length);
+            _accessor!.WriteArray(blobOff, image.Bgra, 0, image.Bgra.Length);
 
         // (1) Write the directory entry. Key bytes are stored truncated to KeyField; the FULL length
         //     and FULL hash are also stored so lookup can reject a same-prefix/different-length key.
         long e = _dirBase + (long)slot * EntrySize;
         int keyStore = Math.Min(keyBytes.Length, KeyField);
-        _accessor.Write(e + EHash, keyHash);
-        _accessor.Write(e + EKeyLen, keyBytes.Length);
-        _accessor.Write(e + EWidth, image.Width);
-        _accessor.Write(e + EHeight, image.Height);
-        _accessor.Write(e + EBgraLen, image.Bgra.Length);
+        _accessor!.Write(e + EHash, keyHash);
+        _accessor!.Write(e + EKeyLen, keyBytes.Length);
+        _accessor!.Write(e + EWidth, image.Width);
+        _accessor!.Write(e + EHeight, image.Height);
+        _accessor!.Write(e + EBgraLen, image.Bgra.Length);
         if (keyStore > 0)
-            _accessor.WriteArray(e + EKeyBytes, keyBytes, 0, keyStore);
+            _accessor!.WriteArray(e + EKeyBytes, keyBytes, 0, keyStore);
 
         // (2) release + (3) publish: any reader that sees `slot+1` sees the blob+entry above, whole.
         WritePublishedCountRelease(count + 1);
@@ -242,7 +300,7 @@ public sealed class MmfBgraPool : IDisposable
     public bool TryGet(string key, out PalImage image)
     {
         image = default!;
-        if (key is null) return false;
+        if (key is null || Detached) return false;   // detached reader: the writer hasn't published yet
 
         var keyBytes = Encoding.UTF8.GetBytes(key);
         long keyHash = Fnv1a64(keyBytes);
@@ -253,16 +311,22 @@ public sealed class MmfBgraPool : IDisposable
             return false;
 
         long e = _dirBase + (long)slot * EntrySize;
-        int width = _accessor.ReadInt32(e + EWidth);
-        int height = _accessor.ReadInt32(e + EHeight);
-        int bgraLen = _accessor.ReadInt32(e + EBgraLen);
+        int width = _accessor!.ReadInt32(e + EWidth);
+        int height = _accessor!.ReadInt32(e + EHeight);
+        int bgraLen = _accessor!.ReadInt32(e + EBgraLen);
+
+        // These fields come straight out of a SHARED, cross-process file that a corrupt/truncated
+        // pool — or a hostile same-UID mapper — can populate with garbage. The writer validates on
+        // TryAdd; the reader must fail closed too, or `new byte[bgraLen]` OOMs / throws on the
+        // off-thread icon path (ce-review: security). Reject anything the writer couldn't have
+        // legitimately stored.
+        if (width <= 0 || height <= 0 || bgraLen <= 0
+            || bgraLen > _maxBgraBytes || bgraLen < (long)width * height * 4)
+            return false;
 
         var bgra = new byte[bgraLen];
-        if (bgraLen > 0)
-        {
-            long blobOff = _blobBase + (long)slot * _maxBgraBytes;
-            _accessor.ReadArray(blobOff, bgra, 0, bgraLen);
-        }
+        long blobOff = _blobBase + (long)slot * _maxBgraBytes;
+        _accessor!.ReadArray(blobOff, bgra, 0, bgraLen);
 
         image = new PalImage(width, height, bgra);
         return true;
@@ -286,14 +350,14 @@ public sealed class MmfBgraPool : IDisposable
         for (long i = 0; i < count; i++)
         {
             long e = _dirBase + i * EntrySize;
-            if (_accessor.ReadInt64(e + EHash) != keyHash)
+            if (_accessor!.ReadInt64(e + EHash) != keyHash)
                 continue;
-            if (_accessor.ReadInt32(e + EKeyLen) != keyBytes.Length)
+            if (_accessor!.ReadInt32(e + EKeyLen) != keyBytes.Length)
                 continue;
             if (cmpLen == 0)
                 return (int)i; // both empty keys, hashes matched
 
-            _accessor.ReadArray(e + EKeyBytes, scratch, 0, cmpLen);
+            _accessor!.ReadArray(e + EKeyBytes, scratch, 0, cmpLen);
             if (scratch.AsSpan().SequenceEqual(keyBytes.AsSpan(0, cmpLen)))
                 return (int)i;
         }
@@ -308,7 +372,7 @@ public sealed class MmfBgraPool : IDisposable
 
     private long ReadPublishedCountAcquire()
     {
-        long v = _accessor.ReadInt64(OffPublished);
+        long v = _accessor!.ReadInt64(OffPublished);
         Interlocked.MemoryBarrier(); // acquire: keep later entry reads below this load
         return v;
     }
@@ -316,7 +380,7 @@ public sealed class MmfBgraPool : IDisposable
     private void WritePublishedCountRelease(long value)
     {
         Interlocked.MemoryBarrier(); // release: keep earlier blob/entry writes above this store
-        _accessor.Write(OffPublished, value);
+        _accessor!.Write(OffPublished, value);
     }
 
     /// <summary>FNV-1a 64-bit — a small, stable, non-crypto hash over the UTF-8 key bytes.</summary>
@@ -335,7 +399,7 @@ public sealed class MmfBgraPool : IDisposable
 
     public void Dispose()
     {
-        _accessor.Dispose();
-        _mmf.Dispose();
+        _accessor?.Dispose();   // null on a detached reader
+        _mmf?.Dispose();
     }
 }

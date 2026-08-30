@@ -55,7 +55,7 @@ internal static class Program
         // THIS thread, before the dispatcher pumps — so it's loaded by the time theme apply reads it, and
         // nothing else touches the service until then (no concurrency, no UI-thread block).
         var settingsLoad = Task.Run(() =>
-            host.Services.GetRequiredService<Bevel.Core.SettingsService>().LoadAsync());
+            host.Services.GetRequiredService<Bevel.Core.ISettingsService>().LoadAsync());
 
         // Let a termination signal (SIGTERM / SIGINT / Ctrl-C) drive a clean Avalonia
         // shutdown so window OnClosed handlers and hosted-service Dispose run (e.g. the
@@ -68,8 +68,13 @@ internal static class Program
         // A SIGTERM here means "shut THIS process down" — from the launcher tearing the shell down, or
         // a bare kill. Shut down locally (don't fan back out to the launcher, which sent it): the child
         // must run its own window teardown so the Dock is restored and the helper stopped.
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, _ => App.ShutdownLocal());
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, _ => App.ShutdownLocal());
+        // ctx.Cancel = true is REQUIRED (matching the headless sites below): it cancels .NET's
+        // default SIGTERM action, which would otherwise terminate the process right after this
+        // handler returns — BEFORE Avalonia's dispatcher processes the Shutdown() that ShutdownLocal
+        // posts, so window OnClosed / hosted-service Dispose (Dock restore, helper stop) never run
+        // (sigterm-poll-signal-cancel; this UI-process handler was the one site missing it).
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
 
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
@@ -122,6 +127,12 @@ internal static class Program
         var apps = services.GetRequiredService<Bevel.Pal.Abstractions.IAppEnvironment>();
         var tray = services.GetRequiredService<Bevel.Pal.Abstractions.ISystemTrayHost>();
 
+        // The core is the sole opener of settings.db (core-owns-settings, bevel-6nve): load it here so the
+        // server can hand every UI process a settings snapshot on connect and apply their write patches as
+        // the single writer. Blocking is safe — this is the headless core's main thread, no dispatcher.
+        var settings = services.GetRequiredService<Bevel.Core.ISettingsService>();
+        settings.LoadAsync().GetAwaiter().GetResult();
+
         // Warm the window + tray streams BEFORE the server enumerates (same ordering as all-in-one):
         // the polls subscribe to the helper and prime the first enumerate.
         if (windows is Pal.MacOS.MacOSWindowManager macWm)
@@ -130,7 +141,7 @@ internal static class Program
             _ = macTray.StartPollAsync();
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
-        var server = new ShellCore.ShellCoreServer(windows, apps, tray, socketPath, nonce);
+        var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
         server.StartAsync().GetAwaiter().GetResult();
 
         // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
@@ -171,14 +182,13 @@ internal static class Program
         };
 
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
-        // first, then the UI surfaces — desktop behind, taskbar in front (mirroring the all-in-one
-        // creation order). Explorer stays on-demand (a window the user opens), not a supervised surface.
+        // first, then the UI surfaces — desktop behind, taskbar in front (the full shell the user
+        // expects). Explorer stays on-demand (a window the user opens), not a supervised surface.
         //
-        // TEMP (taskbar-focus iteration): the desktop surface is OFF by default — it sits behind
-        // everything and muddies focus/enumeration while we work on the bar. The core is still
-        // required (the taskbar is an IPC client of it). Set BEVEL_ENABLE_DESKTOP=1 to bring the
-        // desktop back.
-        // Desktop (when enabled) sits at index 1 — behind the taskbar, mirroring all-in-one order.
+        // The desktop surface is OFF by default (user preference: it's not useful today and just gets in
+        // the way — it's launched on demand from the Start menu, bevel-gdie). Set BEVEL_ENABLE_DESKTOP=1
+        // to spawn it at boot. The core is always required (the taskbar is an IPC client of it); if the
+        // desktop is enabled it sits at index 1 — behind the taskbar, in front of the core.
         ShellRole[] roles = Environment.GetEnvironmentVariable("BEVEL_ENABLE_DESKTOP") == "1"
             ? [ShellRole.Core, ShellRole.Desktop, ShellRole.Taskbar]
             : [ShellRole.Core, ShellRole.Taskbar];
@@ -213,6 +223,24 @@ internal static class Program
                         await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;
                     case LauncherControl.Command.Quit:
                         stop.Set(); break;
+                    // Desktop Show/Hide toggle (bevel-gdie): spawn/kill the --role=desktop child on demand.
+                    // The factory re-uses CreateRoleStartInfo so the runtime desktop inherits the EXACT same
+                    // core socket/token + control env as a boot-time desktop (BEVEL_ENABLE_DESKTOP=1) — it's
+                    // a client of the already-running core, torn down cleanly by the supervisor on Hide/quit.
+                    case LauncherControl.Command.SpawnDesktop:
+                        RestartDiag.Log("launcher: received SpawnDesktop → supervisor.SpawnRoleAsync(Desktop)");
+                        await supervisor.SpawnRoleAsync(
+                            ShellRole.Desktop,
+                            () => new RoleProcess(ShellRole.Desktop, CreateRoleStartInfo(ShellRole.Desktop, args, childEnv)),
+                            ct).ConfigureAwait(false);
+                        break;
+                    case LauncherControl.Command.CloseDesktop:
+                        RestartDiag.Log("launcher: received CloseDesktop → supervisor.CloseRoleAsync(Desktop)");
+                        await supervisor.CloseRoleAsync(ShellRole.Desktop, ct).ConfigureAwait(false);
+                        break;
+                    case LauncherControl.Command.QueryDesktop:
+                        // Reply byte carries state (1 up / 0 down) instead of the plain ack below.
+                        return new[] { (byte)(await supervisor.IsRoleRunningAsync(ShellRole.Desktop, ct).ConfigureAwait(false) ? 1 : 0) };
                 }
             }
             return new byte[] { 1 }; // ack
@@ -275,7 +303,8 @@ internal static class Program
         ShellRole.Taskbar => "taskbar",
         ShellRole.Explorer => "explorer",
         ShellRole.Desktop => "desktop",
-        _ => "all",
+        ShellRole.Launcher => "launcher",
+        _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown shell role"),
     };
 
     /// <summary>Polls for a file to appear (the shell-core socket) up to <paramref name="timeout"/>.</summary>
@@ -334,10 +363,14 @@ internal static class Program
 
     /// <summary>Opens a Bevel Explorer window at <paramref name="filePath"/> as its OWN
     /// <c>--role=explorer</c> process — the way the split shell hosts the file manager. Called from the
-    /// taskbar's Start-menu "places": creating the window in the taskbar process instead gives it none
-    /// of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus role /
-    /// open-path), so the child inherits the same PAL + control/shell-core environment.</summary>
-    internal static void SpawnExplorer(string filePath, bool search = false)
+    /// taskbar's Start-menu "places" and from the automation command model's window verbs
+    /// (<c>open</c>/<c>reveal</c>, bevel-e7a7): creating the window in the taskbar process instead gives
+    /// it none of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus
+    /// role / open-path / select), so the child inherits the same PAL + control/shell-core environment.
+    /// <paramref name="selectPath"/> (a <c>reveal</c> target) is handed to the child via
+    /// <c>--select=</c>, which <see cref="App.CreateExplorerSurface"/> turns into a
+    /// <c>SelectAfterLoad</c> once the folder lists.</summary>
+    internal static void SpawnExplorer(string filePath, bool search = false, string? selectPath = null)
     {
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(processPath)) return;
@@ -345,11 +378,14 @@ internal static class Program
         var childArgs = Environment.GetCommandLineArgs().Skip(1)
             .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase)
                      && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase)
+                     && !a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase)
                      && !a.Equals("--search", StringComparison.OrdinalIgnoreCase))
             .Append("--role=explorer")
             .Append("--open-path=" + filePath)
             .ToList();
         if (search) childArgs.Add("--search");   // open the new window straight into Find mode (bevel-x6pv)
+        if (!string.IsNullOrEmpty(selectPath))
+            childArgs.Add("--select=" + selectPath);   // highlight this item once its folder loads (bevel-e7a7)
 
         try
         {
@@ -426,7 +462,7 @@ internal static class Program
             command.Append(QuoteShellArgument(arg));
         }
         var logPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
-        command.Append($" >>{logPath} 2>&1 &");
+        command.Append($" >>{QuoteShellArgument(logPath)} 2>&1 &");   // quote: TMPDIR may contain spaces/metachars (ce-review)
 
         return new ProcessStartInfo
         {

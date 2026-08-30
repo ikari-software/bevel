@@ -66,11 +66,21 @@
                          HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto"
                          Background="{DynamicResource Bevel.Brush.Window}">
-                <ItemsControl x:Name="ItemsPresenter"
+                <local:ItemList x:Name="ItemsPresenter"
                               Focusable="False"
                               VerticalAlignment="Top"
                               HorizontalAlignment="Stretch" />
             </ScrollViewer>
+            <!-- Focus-visible cue: shown only while the list is focused with nothing selected
+                 (see UpdateFocusCue). Subtle dotted rectangle in the theme text colour. -->
+            <Rectangle x:Name="FocusCue"
+                       IsHitTestVisible="False"
+                       IsVisible="False"
+                       Margin="1"
+                       Stroke="{DynamicResource Bevel.Brush.WindowText}"
+                       StrokeThickness="1"
+                       StrokeDashArray="1,2"
+                       Opacity="0.5" />
             <Canvas x:Name="MarqueeCanvas"
                     IsHitTestVisible="False"
                     Background="Transparent">

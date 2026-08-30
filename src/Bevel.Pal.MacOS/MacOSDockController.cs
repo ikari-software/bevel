@@ -56,9 +56,17 @@ public sealed class MacOSDockController : IDockController, IDisposable
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return Task.CompletedTask;
 
+        // The body spawns `defaults` + `killall Dock` and blocks on WaitForExit — the caller
+        // (TaskbarWindow.OnOpened) is on the UI thread, so this MUST run off it (never-block-UI).
+        // The _gate lock already serializes concurrent calls; holding it inside Task.Run is fine.
+        return Task.Run(() => SetAutoHideCore(enabled), ct);
+    }
+
+    private void SetAutoHideCore(bool enabled)
+    {
         lock (_gate)
         {
-            if (_disposed) return Task.CompletedTask;
+            if (_disposed) return;
 
             if (enabled)
             {
@@ -72,7 +80,7 @@ public sealed class MacOSDockController : IDockController, IDisposable
                 if (_originalAutoHide)
                 {
                     _claimed = false;
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 SetAutoHide(true);
@@ -90,8 +98,6 @@ public sealed class MacOSDockController : IDockController, IDisposable
                 _hasOriginal = false;
             }
         }
-
-        return Task.CompletedTask;
     }
 
     private void RestoreIfClaimed()
@@ -192,7 +198,10 @@ public sealed class MacOSDockController : IDockController, IDisposable
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException("failed to start `defaults`");
         var stdout = proc.StandardOutput.ReadToEnd();
-        proc.WaitForExit();
+        if (!proc.WaitForExit(5000))   // bound like RestartDock — never hang on a wedged `defaults`
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+        }
         return stdout;
     }
 

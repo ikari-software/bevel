@@ -114,6 +114,15 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    public async Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        await ws.RestoreAndActivateAsync(new WindowRef { WindowId = id.Value },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+    }
+
     public async Task CloseAsync(ForeignWindowId id, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
@@ -136,6 +145,13 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (_disposed) return null;
+        // Intrinsic deadline (bevel-1275): capture was the one window RPC that forwarded the caller's
+        // token verbatim with no bound of its own, so a cold/wedged ScreenCaptureKit init in the helper
+        // — the slow first SCShareableContent after a Screen-Recording grant — could hang the call for as
+        // long as the caller allowed, and the split-mode/core caller supplies no timeout at all. Bound it
+        // like every sibling RPC via TimeoutScope. On the intrinsic deadline we return null so the caller
+        // falls back to the static app icon (limited mode); only a caller-driven cancellation propagates.
+        using var cts = TimeoutScope(ct);
         try
         {
             var ws = GetWindowClient();
@@ -146,12 +162,13 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                     MaxWidth = (uint)Math.Max(0, maxWidth),
                     MaxHeight = (uint)Math.Max(0, maxHeight),
                 },
-                headers: AuthHeader(), cancellationToken: ct);
+                headers: AuthHeader(), cancellationToken: cts.Token);
             return reply.Png.IsEmpty ? null : reply.Png.ToByteArray();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception)
         {
-            return null;   // helper down / capture unavailable → caller shows no preview (but honor cancellation)
+            ct.ThrowIfCancellationRequested();  // caller cancelled (e.g. hover moved on) → honor it
+            return null;                        // intrinsic timeout / helper down / capture unavailable → no preview
         }
     }
 

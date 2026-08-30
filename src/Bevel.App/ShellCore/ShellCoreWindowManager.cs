@@ -72,6 +72,7 @@ public sealed class ShellCoreWindowManager : IWindowManager
     public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Activate, id, ct);
     public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Minimize, id, ct);
     public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Restore, id, ct);
+    public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.RestoreAndActivate, id, ct);
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Close, id, ct);
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
@@ -84,18 +85,30 @@ public sealed class ShellCoreWindowManager : IWindowManager
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (!_core.IsConnected) return null;
+        // Intrinsic deadline (bevel-1275): the core self-bounds its own helper capture at ~3s, but a
+        // wedged IPC transport to the core would otherwise hang this call for as long as the caller
+        // allowed (the taskbar-model path passes no timeout). Bound it a beat longer than the core's own
+        // deadline so the core's null fallback normally wins first; on our deadline we return null → the
+        // caller shows the static app icon. Only a caller-driven cancellation propagates.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(CaptureRpcTimeout);
         try
         {
             var r = await _core.SendAsync(
                 new CoreCommand(CoreCommandKind.CaptureWindow, WindowId: id.Value, MaxWidth: maxWidth, MaxHeight: maxHeight),
-                ct).ConfigureAwait(false);
+                cts.Token).ConfigureAwait(false);
             return r.Ok ? r.Png : null;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception)
         {
-            return null;   // honor cancellation (timeout); swallow transport/other failures to "no preview"
+            ct.ThrowIfCancellationRequested();  // caller cancelled → honor it
+            return null;                        // intrinsic timeout / transport failure → no preview
         }
     }
+
+    /// <summary>Client-side cap on a capture round-trip to the core, a beat above the core's own ~3s
+    /// helper-capture deadline so the core's null fallback normally returns first (bevel-1275).</summary>
+    private static readonly TimeSpan CaptureRpcTimeout = TimeSpan.FromSeconds(5);
 
     private Task Command(CoreCommandKind kind, ForeignWindowId id, CancellationToken ct) =>
         Send(new CoreCommand(kind, WindowId: id.Value), ct);

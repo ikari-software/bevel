@@ -18,10 +18,13 @@ namespace Bevel.Core;
 /// just the transport. settings.json is still written on save as a passive human-readable export
 /// (mirrors this repo's beads .jsonl pattern) — the DB is the single source of truth for reads.
 ///
-/// Live cross-process propagation is wired to the shell-core broadcast in a LATER phase; this
-/// phase only makes external changes DETECTABLE (poll <see cref="ReloadIfChangedAsync"/>).
+/// Live cross-process propagation runs through the shell core (core-owns-settings, bevel-6nve): the
+/// <c>--role=core</c> process is the SOLE opener + writer of this DB, snapshots the blob to every UI
+/// process on connect, and broadcasts a fresh snapshot after each write it applies. Peer roles never
+/// open the DB — they get <c>RemoteSettingsService</c> instead. <see cref="ReloadIfChangedAsync"/> and
+/// the monotonic <see cref="Version"/> remain for the DB-layer tests and interface-contract compat.
 /// </summary>
-public sealed class SettingsService : IDisposable
+public sealed class SettingsService : ISettingsService, IDisposable
 {
     private static readonly string DefaultConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
@@ -102,18 +105,14 @@ public sealed class SettingsService : IDisposable
             if (File.Exists(_configPath))
                 json = await File.ReadAllTextAsync(_configPath, ct).ConfigureAwait(false);
 
-            _raw = json is null
-                ? new Dictionary<string, JsonElement>()
-                : JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-                  ?? new Dictionary<string, JsonElement>();
+            _raw = ParseRawOrDefault(json);
 
             _version = await WriteRowAsync(conn, JsonSerializer.Serialize(_raw, SettingsJsonContext.Default.DictionaryStringJsonElement), ct)
                 .ConfigureAwait(false);
         }
         else
         {
-            _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-                   ?? new Dictionary<string, JsonElement>();
+            _raw = ParseRawOrDefault(json);
             _version = version;
         }
 
@@ -121,7 +120,14 @@ public sealed class SettingsService : IDisposable
         ApplyRaw();
     }
 
-    /// <summary>Write current settings to the DB (blob + version bump) in a transaction.</summary>
+    /// <summary>
+    /// Write current settings to the DB (blob + version bump) in a transaction — a whole-blob write that
+    /// serializes whatever <see cref="Current"/> + overrides currently hold. Used for whole-object saves
+    /// (mostly tests, and the deliberate <c>CopyFrom</c> "revert to baseline"); the per-setting delta paths
+    /// (<see cref="UpdateAsync"/> / <see cref="UpdateThemeOverridesAsync"/>) go through
+    /// <see cref="MutateMergeAndSaveAsync"/> instead. Under core-owns-settings (bevel-6nve) the core is the
+    /// SOLE writer, so there is no concurrent peer to reconcile against.
+    /// </summary>
     public async Task SaveAsync(CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
@@ -130,22 +136,7 @@ public sealed class SettingsService : IDisposable
             var conn = await OpenAsync(ct).ConfigureAwait(false);
             var json = SerializeRaw();
             _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
-
-            // Passive export: a human-readable settings.json mirror (the DB is the source of truth;
-            // nothing reads this at runtime). Write it ATOMICALLY via a temp file + replace: two
-            // processes' concurrent WriteAllText to the same path throw a sharing violation on Windows'
-            // exclusive locking. temp+replace makes each writer touch its own file; the replace is a
-            // fast atomic rename, and a lost race is harmless (the DB already holds the value).
-            var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
-                File.Move(tmp, _configPath, overwrite: true);
-            }
-            catch (IOException)
-            {
-                try { File.Delete(tmp); } catch { /* leave nothing behind */ }
-            }
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -153,18 +144,70 @@ public sealed class SettingsService : IDisposable
         }
     }
 
-    /// <summary>Update a single setting and persist.</summary>
-    public async Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
+    /// <summary>Update a single setting and persist. The delta MERGES onto the current in-memory state
+    /// (see <see cref="MutateMergeAndSaveAsync"/>) — changing one key never drops the others.</summary>
+    public Task UpdateAsync(Action<BevelSettings> update, CancellationToken ct = default)
+        // Re-read the _settings FIELD on each apply (not a captured local) so the delta always lands on the
+        // live instance, even if a reload swapped it out from under us.
+        => MutateMergeAndSaveAsync(() => update(_settings), ct);
+
+    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist, merging onto the
+    /// current in-memory state.</summary>
+    public Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
+        // ThemeOverridesFor re-fetches from the current overrides dict on each apply, mirroring UpdateAsync.
+        => MutateMergeAndSaveAsync(() => update(ThemeOverridesFor(themeId)), ct);
+
+    /// <summary>
+    /// The delta write path: apply <paramref name="applyDelta"/> to the in-memory model, serialize the whole
+    /// current state, and commit it — a straight single-writer apply.
+    ///
+    /// <para>The delta MERGES onto the current in-memory state: <paramref name="applyDelta"/> mutates one (or
+    /// a few) keys on the live <see cref="Current"/>/overrides, and <see cref="SerializeRaw"/> then captures
+    /// every other explicit key alongside it, so changing key Y never drops an earlier key X. The cross-process
+    /// compare-and-swap that used to reconcile two writers is GONE: under core-owns-settings (bevel-6nve) the
+    /// shell core is the SOLE opener + writer of settings.db, so there is no peer to race — beads y7r4/ha3x
+    /// (the CAS retry + clobber-merge) are dissolved.</para>
+    ///
+    /// <para><see cref="_writeLock"/> is KEPT: within this one process, live-apply sliders/text boxes call
+    /// <see cref="UpdateAsync"/> on every tick/keystroke, and the lock still serialises those against each
+    /// other and guards the passive-export file write from overlapping itself.</para>
+    /// </summary>
+    private async Task MutateMergeAndSaveAsync(Action applyDelta, CancellationToken ct = default)
     {
-        update(_settings);
-        await SaveAsync(ct).ConfigureAwait(false);
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var conn = await OpenAsync(ct).ConfigureAwait(false);
+            applyDelta();                 // merge the delta onto the current in-memory state
+            var json = SerializeRaw();
+            // Unconditional upsert: WriteRowAsync seeds version 1 on a first write (Save-without-Load too)
+            // and bumps monotonically thereafter. No CAS — the core is the only writer.
+            _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
-    /// <summary>Update <paramref name="themeId"/>'s whitelisted overrides and persist.</summary>
-    public async Task UpdateThemeOverridesAsync(string themeId, Action<ThemeOverrides> update, CancellationToken ct = default)
+    /// <summary>Passive export: a human-readable settings.json mirror (the DB is the source of truth; nothing
+    /// reads this at runtime). Written ATOMICALLY via a temp file + replace: two processes' concurrent
+    /// WriteAllText to the same path throw a sharing violation on Windows' exclusive locking. temp+replace makes
+    /// each writer touch its own file; the replace is a fast atomic rename, and a lost race is harmless (the DB
+    /// already holds the value). Callers hold <see cref="_writeLock"/>.</summary>
+    private async Task WritePassiveExportAsync(string json, CancellationToken ct)
     {
-        update(ThemeOverridesFor(themeId));
-        await SaveAsync(ct).ConfigureAwait(false);
+        var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
+            File.Move(tmp, _configPath, overwrite: true);
+        }
+        catch (IOException)
+        {
+            try { File.Delete(tmp); } catch { /* leave nothing behind */ }
+        }
     }
 
     /// <summary>
@@ -188,13 +231,109 @@ public sealed class SettingsService : IDisposable
         if (json is null)
             return false;
 
-        _raw = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-               ?? new Dictionary<string, JsonElement>();
+        _raw = ParseRawOrDefault(json);
         _version = fullVersion;
         MigrateRaw();   // a peer mid-upgrade may still write an older-schema blob (bevel-4er2)
         ApplyRaw();
         Changed?.Invoke();
         return true;
+    }
+
+    // ── Wire helpers (bevel-6nve): the seam the core-owned IPC path serializes over ──────────────
+
+    /// <summary>Serialize the current settings to the canonical persisted JSON blob — byte-identical to the
+    /// blob <see cref="SaveAsync"/> writes and <see cref="LoadAsync"/> reads back — by running the same
+    /// prune + serialize (<see cref="SerializeRaw"/>) the persist path uses. The core pushes this as its
+    /// snapshot on the wire; no serialization is duplicated here.</summary>
+    public string SnapshotJson() => SerializeRaw();
+
+    /// <summary>
+    /// Merge the changed top-level keys carried in <paramref name="patchJson"/> onto the current <c>_raw</c>
+    /// state, then run the existing migrate + project + persist pipeline. This is a straight single-writer
+    /// apply (the core is the sole writer, so there is no peer to CAS against). Unknown keys in the patch are
+    /// preserved verbatim, and keys the patch omits keep their current value — a changed-keys MERGE, not a
+    /// whole-blob replace. Reuses <see cref="MigrateRaw"/>/<see cref="ApplyRaw"/>/<see cref="SerializeRaw"/>;
+    /// no serialization is duplicated.
+    /// </summary>
+    public async Task ApplyPatchJsonAsync(string patchJson, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var conn = await OpenAsync(ct).ConfigureAwait(false);
+
+            // Overlay the changed keys onto current state (a torn/blank patch degrades to no-op, matching
+            // ParseRawOrDefault's "malformed yields defaults" contract). RFC 7386 JSON Merge Patch
+            // semantics: a key whose value is JSON null is a DELETION (revert-to-default), so a peer can
+            // express "this knob went back to its default" — which prunes to an absent key — through the
+            // same changed-keys patch instead of only ever adding/overwriting.
+            foreach (var (key, value) in ParseRawOrDefault(patchJson))
+            {
+                if (value.ValueKind == JsonValueKind.Null) _raw.Remove(key);
+                else _raw[key] = value;
+            }
+
+            MigrateRaw();   // a peer mid-upgrade may still carry an older-schema key set
+            ApplyRaw();
+            var json = SerializeRaw();
+            _version = await WriteRowAsync(conn, json, ct).ConfigureAwait(false);
+            await WritePassiveExportAsync(json, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    // ── DB-free blob projection / diff (bevel-6nve): the reuse points a REMOTE peer decodes core
+    //    snapshots and computes its write patches through, so the peer's projection stays byte-identical
+    //    to the core's WITHOUT the peer opening SQLite or re-implementing ApplyRaw/SerializeRaw. Pure
+    //    in-memory: the transient instance never opens a connection (OpenAsync is only reached via
+    //    Load/Save, which these never call), so the config dir it is rooted at is inert. ──────────────
+
+    private static readonly JsonElement NullJson = JsonDocument.Parse("null").RootElement.Clone();
+
+    /// <summary>Project a canonical settings blob into the typed model + per-theme overrides, running the
+    /// SAME migrate + project pipeline a <see cref="LoadAsync"/> does, with no DB access. A remote peer
+    /// decodes each core snapshot through this so its <see cref="Current"/> matches the core's exactly.</summary>
+    public static (BevelSettings Settings, IReadOnlyDictionary<string, ThemeOverrides> Overrides) ProjectBlob(string? json)
+    {
+        var s = new SettingsService(DefaultConfigDir); // never opened — projection is pure in-memory
+        s._raw = ParseRawOrDefault(json);
+        s.MigrateRaw();
+        s.ApplyRaw();
+        return (s._settings, new Dictionary<string, ThemeOverrides>(s._themeOverrides));
+    }
+
+    /// <summary>Serialize a typed model + per-theme overrides to the canonical pruned blob — reusing the
+    /// exact <see cref="SerializeRaw"/> the persist path uses (no DB, no duplicated serialization).</summary>
+    public static string SerializeBlob(BevelSettings settings, IReadOnlyDictionary<string, ThemeOverrides> overrides)
+    {
+        var s = new SettingsService(DefaultConfigDir);
+        s._settings = settings;
+        foreach (var (id, o) in overrides)
+            s._themeOverrides[id] = o;
+        return s.SerializeRaw();
+    }
+
+    /// <summary>Compute an RFC 7386 JSON merge patch of the top-level keys that DIFFER between two canonical
+    /// blobs: an added/changed key carries its new value, a key present in <paramref name="beforeBlob"/> but
+    /// gone from <paramref name="afterBlob"/> (reverted to default → pruned) carries JSON <c>null</c> so the
+    /// core's <see cref="ApplyPatchJsonAsync"/> deletes it. This is the changed-keys write patch a remote peer
+    /// sends the core (sole writer): scoped to what the caller actually changed, so concurrent edits to other
+    /// keys still merge.</summary>
+    public static string ComputeMergePatch(string beforeBlob, string afterBlob)
+    {
+        var before = ParseRawOrDefault(beforeBlob);
+        var after = ParseRawOrDefault(afterBlob);
+        var patch = new Dictionary<string, JsonElement>();
+        foreach (var (key, value) in after)
+            if (!before.TryGetValue(key, out var old) || old.GetRawText() != value.GetRawText())
+                patch[key] = value;                 // added or changed
+        foreach (var key in before.Keys)
+            if (!after.ContainsKey(key))
+                patch[key] = NullJson;              // removed → RFC 7386 null = delete
+        return JsonSerializer.Serialize(patch, SettingsJsonContext.Default.DictionaryStringJsonElement);
     }
 
     // ── SQLite plumbing ─────────────────────────────────────────────────────────────────────────
@@ -409,6 +548,25 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>Project <c>_raw</c> onto the typed model + per-theme overrides (defaults fill gaps).</summary>
+    /// <summary>Deserialize the blob to the raw dict, falling back to defaults (empty) on a MALFORMED
+    /// blob rather than throwing. A torn write or a hand-edited settings.db would otherwise throw
+    /// JsonException out of LoadAsync — called via GetResult() before the UI starts — and hard-crash
+    /// every process at boot; and out of the 750 ms poll on a peer's bad write (ce-review: reliability
+    /// + testing). Degrading to defaults matches the "missing file yields defaults" contract.</summary>
+    private static Dictionary<string, JsonElement> ParseRawOrDefault(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new Dictionary<string, JsonElement>();
+        try
+        {
+            return JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
+                   ?? new Dictionary<string, JsonElement>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, JsonElement>();
+        }
+    }
+
     private void ApplyRaw()
     {
         _settings = new BevelSettings

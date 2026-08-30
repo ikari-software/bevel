@@ -78,6 +78,7 @@ public static class ColorSchemeService
     {
         var scheme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultScheme : id!;
         if (scheme == _appliedId && _applied is not null) return;
+        Glyphs.InvalidateThemeCache();   // scheme colours changed — drop cached icon brushes (bevel-lha4)
 
         if (Application.Current?.Resources is not { } appResources) return;
 

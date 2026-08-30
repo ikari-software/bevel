@@ -29,6 +29,14 @@ public static class TrayIconTint
     private const double MaxFillForTemplate = 0.55;
     private const double MaxColourFracForTemplate = 0.06;
 
+    // Enabled (bevel-dotj): mirrored macOS status items are TEMPLATE glyphs — white ink designed for the
+    // dark system menu bar, so captured as-is they render white-on-gray on Bevel's light Win2000 tray (no
+    // contrast). Recolour only those inferred templates to the bar's contrast ink (Bevel.Brush.TrayText —
+    // dark on the Win2000 grey well, light on the Luna blue well); REAL multi-colour app icons are left
+    // untouched by the colour/fill heuristic below. The per-pixel scan + recolour is heavy, so callers run
+    // Process OFF the UI thread (TrayItemViewModel.Retint marshals only the finished bitmap back).
+    private const bool TintTemplateIcons = true;
+
     /// <summary>Decode <paramref name="png"/>, and if it looks like a template glyph, return a copy
     /// recoloured to <paramref name="ink"/> (alpha preserved). Otherwise return the icon untouched.
     /// Null only when the PNG can't be decoded.</summary>
@@ -42,6 +50,10 @@ public static class TrayIconTint
         var size = src.PixelSize;
         int w = size.Width, h = size.Height;
         if (w <= 0 || h <= 0) return new Result(src, false);
+
+        // Opt-out hook (kept for a future "show real captured colours" setting): when off, skip the
+        // per-pixel analysis and pass the icon through unchanged.
+        if (!TintTemplateIcons) return new Result(src, false);
 
         int stride = w * 4;
         var buf = new byte[stride * h];
@@ -66,11 +78,7 @@ public static class TrayIconTint
 
         double fill = (double)opaque / total;
         double colourFrac = opaque == 0 ? 1 : (double)coloured / opaque;
-        // Disabled per user preference (bevel-7hf4): show every icon in its REAL captured appearance
-        // rather than flattening monochrome glyphs to a single theme ink — they lose their distinct look.
-        // The analysis above is kept behind this flag for a future opt-in "theme tray icons" setting.
-        const bool TintTemplateIcons = false;
-        bool isTemplate = TintTemplateIcons && opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
+        bool isTemplate = opaque > 0 && fill < MaxFillForTemplate && colourFrac < MaxColourFracForTemplate;
         if (!isTemplate) return new Result(src, false);
 
         // Recolour: RGB <- ink, A <- source alpha (premultiplied). The glyph SHAPE lives in the alpha.

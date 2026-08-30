@@ -147,4 +147,19 @@ public class VfsPathTests
         Assert.Equal(new VfsPath("file", "/a/b"), new VfsPath("file", "/a/b/"));
         Assert.Equal(new VfsPath("file", "/a/b"), new VfsPath("file", "\\a\\b"));
     }
+
+    [Theory]
+    [InlineData("/a/b", "/a/b", true)]          // exact match
+    [InlineData("/a/b/c", "/a/b", true)]        // real descendant
+    [InlineData("/a/bc", "/a/b", false)]        // sibling with a shared prefix — NOT under
+    [InlineData("/a", "/a/b", false)]           // ancestor is not under its descendant
+    [InlineData("/x/y", "/a/b", false)]         // unrelated
+    [InlineData("/a/B/c", "/a/b", true)]        // case-insensitive (case-insensitive FS)
+    [InlineData("/anything", "", true)]         // scheme root contains everything
+    public void IsAtOrUnder_detects_self_and_subtree(string child, string ancestor, bool expected)
+        => Assert.Equal(expected, new VfsPath("file", child).IsAtOrUnder(new VfsPath("file", ancestor)));
+
+    [Fact]
+    public void IsAtOrUnder_is_scheme_scoped()
+        => Assert.False(new VfsPath("zip", "/a/b").IsAtOrUnder(new VfsPath("file", "/a")));
 }

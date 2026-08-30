@@ -26,7 +26,7 @@ public partial class FileManagerWindow : BevelWindow
 {
     private VfsRoot? _vfsRoot;
     private FileManagerController? _controller;
-    private Core.SettingsService? _settings;
+    private Core.ISettingsService? _settings;
     private Bevel.Pal.Abstractions.IFileOpener? _fileOpener;
 
     /// <summary>Wire the OS default-handler opener (set by the window factory). Activating a FILE
@@ -506,7 +506,7 @@ public partial class FileManagerWindow : BevelWindow
         controller.OperationRunner = null;
     }
 
-    public void SetSettingsService(Core.SettingsService settings)
+    public void SetSettingsService(Core.ISettingsService settings)
     {
         _settings = settings;
         // Restore the persisted left-pane state (bevel-xw12): which pane is showing + its width.
@@ -802,6 +802,9 @@ public partial class FileManagerWindow : BevelWindow
     /// <summary>The controller reached a new directory — render it, retitle, update the address.</summary>
     private async void OnCurrentDirectoryChanged(VfsPath path)
     {
+        // A directory change supersedes any in-flight search — otherwise its late results would
+        // paint the OLD folder's matches over the NEW folder's listing (ce-review: frontend-races).
+        _searchCts?.Cancel();
         UpdateTitle(path);
         AddressBar.SetAddress(path.Value);
         if (_activeTab is { } tab) TabStrip.SetHeader(tab.StripId, LabelFor(path));
@@ -831,6 +834,7 @@ public partial class FileManagerWindow : BevelWindow
 
         _loadedPath = path;
         _enumerateCts?.Cancel();
+        _enumerateCts?.Dispose();   // the superseded source was leaked per navigation (ce-review)
         _enumerateCts = new CancellationTokenSource();
         var ct = _enumerateCts.Token;
 
@@ -865,8 +869,12 @@ public partial class FileManagerWindow : BevelWindow
                     {
                         var batch = chunk.ToArray();
                         chunk.Clear();
+                        var flushCount = count;
                         await Dispatcher.UIThread.InvokeAsync(
-                            () => { ItemView.AddItems(batch); StatusBar.UpdateObjectCount(count); },
+                            // Discard a stale chunk: a rapid re-navigation cancels ct and resets the
+                            // view, but an already-scheduled lambda would still paint THIS folder's
+                            // items into the NEW folder's list (ce-review: adversarial+frontend-races).
+                            () => { if (ct.IsCancellationRequested) return; ItemView.AddItems(batch); StatusBar.UpdateObjectCount(flushCount); },
                             DispatcherPriority.Background);
                     }
                 }
@@ -895,7 +903,7 @@ public partial class FileManagerWindow : BevelWindow
             {
                 var batch = chunk.ToArray();
                 await Dispatcher.UIThread.InvokeAsync(
-                    () => { ItemView.AddItems(batch); StatusBar.UpdateObjectCount(count); },
+                    () => { if (ct.IsCancellationRequested) return; ItemView.AddItems(batch); StatusBar.UpdateObjectCount(count); },
                     DispatcherPriority.Background);
             }
 
@@ -1262,13 +1270,21 @@ public partial class FileManagerWindow : BevelWindow
                 break;
 
             case Key.F6:
-                CycleFocus();
+                CycleFocus(reverse: shift);
                 e.Handled = true;
                 break;
 
             case Key.Tab when !ctrl:
-                CycleFocus();
-                e.Handled = true;
+                // Only hijack Tab for the pane cycle when focus is ALREADY inside the trio; otherwise
+                // let it traverse normally so the Toolbar/MenuBar/TabStrip/Search pane stay reachable
+                // by keyboard, and honor Shift for reverse (ce-review: accessibility — the old
+                // unconditional intercept locked the rest of the window out and made Shift+Tab jump
+                // forward too).
+                if (FocusInPaneCycle())
+                {
+                    CycleFocus(reverse: shift);
+                    e.Handled = true;
+                }
                 break;
 
             case Key.Back when !ctrl:
@@ -1348,15 +1364,20 @@ public partial class FileManagerWindow : BevelWindow
         }
     }
 
-    private void CycleFocus()
+    /// <summary>True when keyboard focus is within one of the three cycle panes — the gate for
+    /// hijacking Tab (F6 always cycles regardless).</summary>
+    private bool FocusInPaneCycle() =>
+        TreeView.IsKeyboardFocusWithin || ItemView.IsKeyboardFocusWithin || AddressBar.IsKeyboardFocusWithin;
+
+    private void CycleFocus(bool reverse = false)
     {
-        // F6/Tab: cycle TreeView → ItemView → AddressBar
-        if (TreeView.IsFocused)
-            ItemView.Focus();
-        else if (ItemView.IsFocused)
-            AddressBar.Focus();
-        else
-            TreeView.Focus();
+        // F6/Tab: cycle TreeView → ItemView → AddressBar (reverse for Shift).
+        Control next =
+            TreeView.IsKeyboardFocusWithin ? (reverse ? AddressBar : ItemView) :
+            ItemView.IsKeyboardFocusWithin ? (reverse ? (Control)TreeView : AddressBar) :
+            AddressBar.IsKeyboardFocusWithin ? (reverse ? ItemView : TreeView) :
+            TreeView;
+        next.Focus();
     }
 
     private void OnDirectoryChanged(FsChangeBatch batch)
@@ -1412,6 +1433,24 @@ public partial class FileManagerWindow : BevelWindow
         }
         catch (OperationCanceledException) { return; }
         catch (KeyNotFoundException) { }
+        catch (System.Exception ex) when (
+            ex is System.UnauthorizedAccessException
+               or System.IO.DirectoryNotFoundException
+               or System.IO.FileNotFoundException
+               or System.IO.IOException
+               or System.Security.SecurityException)
+        {
+            // Same guard LoadDirectory got in bevel-y67f, missing on this sibling path: a watcher
+            // reload / F5 after the folder's volume is ejected would otherwise escape this async
+            // void and crash the process (ce-review: reliability, anchor 100).
+            StatusBar.ShowMessage(ex switch
+            {
+                System.UnauthorizedAccessException => "Access is denied.",
+                System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
+                _ => "This folder can't be opened.",
+            });
+            return;
+        }
 
         _loadedPath = path;
         ItemView.ReconcileItems(nodes);
