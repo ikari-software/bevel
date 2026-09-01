@@ -22,7 +22,9 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     // level-26 NSPanel so their captures stay live); false = the legacy off-screen push
     // (MacMenuBarControl, which freezes captures). Kept as a one-line revert if a specific app freezes
     // under full occlusion.
-    private const bool UseOverlayHide = false;   // overlay v1 mis-covered the whole bar + killed translucency; reverted pending fix
+    // static readonly, not const: it selects a runtime branch (overlay vs legacy hide) below, and a const
+    // would fold the unused branch to unreachable → CS0162, which CI treats as an error.
+    private static readonly bool UseOverlayHide = false;   // overlay v1 mis-covered the whole bar + killed translucency; reverted pending fix
 
     private readonly HelperLifecycle _helperLifecycle;
     private readonly ILogger<MacOSSystemTrayHost> _logger;

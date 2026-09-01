@@ -35,7 +35,9 @@ public static class TrayIconTint
     // dark on the Win2000 grey well, light on the Luna blue well); REAL multi-colour app icons are left
     // untouched by the colour/fill heuristic below. The per-pixel scan + recolour is heavy, so callers run
     // Process OFF the UI thread (TrayItemViewModel.Retint marshals only the finished bitmap back).
-    private const bool TintTemplateIcons = true;
+    // static readonly, not const: it gates a runtime branch below (the opt-out early-return), and a const
+    // would let the compiler fold that branch to unreachable → CS0162, which CI treats as an error.
+    private static readonly bool TintTemplateIcons = true;
 
     /// <summary>Decode <paramref name="png"/>, and if it looks like a template glyph, return a copy
     /// recoloured to <paramref name="ink"/> (alpha preserved). Otherwise return the icon untouched.
