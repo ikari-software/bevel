@@ -137,7 +137,12 @@ public static class TaskButtonMenu
         // open popup), which is why any after-open swap either does nothing or shows both items. Reading
         // the modifier at open (TaskbarNative.OptionKeyDown, focus-independent) sets the single correct
         // item BEFORE the popup renders, so it's always right and needs no repaint.
-        var force = TaskbarNative.OptionKeyDown();
+        // IsMacOS guard (bevel-8kxc): TaskbarNative's static field initializers eagerly objc_getClass(…),
+        // which force a libobjc.dylib load the instant the type is touched — a DllNotFound off-macOS. Bevel
+        // only ships on macOS, but this menu is unit-tested headless on CI's Linux/Windows runners, so the
+        // Option-key read (and the two monitor calls below) short-circuit there. `&&` never touches the type
+        // when IsMacOS() is false, so the cctor never runs.
+        var force = OperatingSystem.IsMacOS() && TaskbarNative.OptionKeyDown();
         var quit = new MenuItem
         {
             Header = force ? "_Force Quit" : "_Quit",
@@ -153,9 +158,15 @@ public static class TaskButtonMenu
         // Install a global mouse-down monitor while open — it fires only for clicks in OTHER apps, the
         // reliable click-outside dismiss for a non-activating window (Avalonia light-dismiss misses
         // cross-app clicks here).
+        // Guarded for the same reason as OptionKeyDown above (bevel-8kxc): the global monitor is a macOS
+        // AppKit facility; off-macOS there is no cross-app click stream to watch, so skip it entirely
+        // rather than force the libobjc load through TaskbarNative.
         var monitor = IntPtr.Zero;
-        flyout.Opened += (_, _) => monitor = TaskbarNative.AddGlobalMouseDownMonitor(() => Dispatcher.UIThread.Post(flyout.Hide));
-        flyout.Closed += (_, _) => { TaskbarNative.RemoveMonitor(monitor); monitor = IntPtr.Zero; };
+        if (OperatingSystem.IsMacOS())
+        {
+            flyout.Opened += (_, _) => monitor = TaskbarNative.AddGlobalMouseDownMonitor(() => Dispatcher.UIThread.Post(flyout.Hide));
+            flyout.Closed += (_, _) => { TaskbarNative.RemoveMonitor(monitor); monitor = IntPtr.Zero; };
+        }
         return flyout;
     }
 

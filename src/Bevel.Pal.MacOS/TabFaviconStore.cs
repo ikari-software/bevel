@@ -252,6 +252,22 @@ internal static class TabFaviconStore
     /// half-copy under a valid mtime.</summary>
     private static void RawCopy(string source, string destination, CancellationToken ct)
     {
+        // The raw-syscall path exists ONLY to dodge macOS's flock↔fcntl contention (see remarks above).
+        // Off-macOS that rationale is moot and libSystem.dylib isn't present — a managed copy through the
+        // same unique-temp + rename discipline is correct and keeps FreshCopy portable for CI's Linux/
+        // Windows runners (bevel-8kxc). Never taken in production; Bevel ships on macOS only.
+        if (!OperatingSystem.IsMacOS())
+        {
+            var tmpManaged = $"{destination}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.Copy(source, tmpManaged, overwrite: true);
+                File.Move(tmpManaged, destination, overwrite: true);
+            }
+            catch { TryDelete(tmpManaged); throw; }
+            return;
+        }
+
         var fd = open(source, O_RDONLY);
         if (fd < 0) throw new IOException($"open({source}) failed: errno {Marshal.GetLastPInvokeError()}");
         var tmp = $"{destination}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";

@@ -127,14 +127,18 @@ public sealed class TabFaviconStoreTests : IDisposable
     {
         // The busiest profile is the one the live window belongs to — a fixed "Default" preference
         // starved secondary-profile users of icons (review finding).
-        var root = Path.Combine(_dir, "Google", "Chrome");
+        // The root arg uses the platform separator (Path.Combine), not a hardcoded '/', so the resolved
+        // path matches the Path.Combine-built expectation on Windows too (bevel-8kxc). On macOS '/' is the
+        // separator either way; the literal only bit CI's windows-latest runner.
+        var relRoot = Path.Combine("Google", "Chrome");
+        var root = Path.Combine(_dir, relRoot);
         Directory.CreateDirectory(Path.Combine(root, "Default"));
         Directory.CreateDirectory(Path.Combine(root, "Profile 1"));
         File.WriteAllBytes(Path.Combine(root, "Default", "Favicons"), new byte[] { 1 });
         File.WriteAllBytes(Path.Combine(root, "Profile 1", "Favicons"), new byte[] { 2 });
         File.SetLastWriteTimeUtc(Path.Combine(root, "Default", "Favicons"), DateTime.UtcNow.AddDays(-7));
 
-        var resolved = TabFaviconStore.ResolveDbPath(_dir, "Google/Chrome", isGecko: false);
+        var resolved = TabFaviconStore.ResolveDbPath(_dir, relRoot, isGecko: false);
         Assert.Equal(Path.Combine(root, "Profile 1", "Favicons"), resolved);
     }
 
