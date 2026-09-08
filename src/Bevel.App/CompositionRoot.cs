@@ -24,7 +24,7 @@ public static class CompositionRoot
     // Shared icon-pool geometry (bevel-gww.6). Co-located with the shell-core runtime dir so a
     // supervisor cleaning that dir clears the pool too. 512 slots × up to 96×96 BGRA (covers 48pt@2x
     // Retina) ≈ 19 MB, sparse: only pages for actually-published icons ever become resident.
-    private static string IconPoolPath => Path.Combine(Path.GetTempPath(), "bevel-core", "icons.pool");
+    private static string IconPoolPath => Path.Combine(BevelRuntimeDir.CoreDir, "icons.pool");
     private const int IconPoolSlotCapacity = 512;
     private const int IconPoolMaxBgraBytes = 96 * 96 * 4;
 

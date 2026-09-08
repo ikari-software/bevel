@@ -29,7 +29,7 @@ internal static class LauncherControl
     }
 
     private static string DefaultSocketPath =>
-        Path.Combine(Path.GetTempPath(), "bevel-core", "launcher.sock");
+        BevelRuntimeDir.GuardSocketPath(Path.Combine(BevelRuntimeDir.CoreDir, "launcher.sock"));
 
     /// <summary>True when this process was launched under a supervisor (control env is present), so
     /// quit/restart should fan out to the launcher instead of acting in-process.</summary>

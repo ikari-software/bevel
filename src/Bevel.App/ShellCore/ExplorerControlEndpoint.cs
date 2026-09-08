@@ -44,7 +44,7 @@ public static class ExplorerControlEndpoint
     public static string Dir =>
         Environment.GetEnvironmentVariable(DirEnv) is { Length: > 0 } d
             ? d
-            : Path.Combine(Path.GetTempPath(), "bevel-explorers");
+            : BevelRuntimeDir.ExplorersDir; // shared runtime root; off %TEMP% on Windows (bevel-ncfp.2)
 
     private static string TokenPath => Path.Combine(Dir, "channel.token");
 

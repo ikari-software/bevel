@@ -75,6 +75,10 @@ internal static class Program
         // (sigterm-poll-signal-cancel; this UI-process handler was the one site missing it).
         using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
         using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; App.ShutdownLocal(); });
+        // Windows has no SIGTERM a parent can send a headless child (bevel-ncfp.2): the launcher signals
+        // a named event instead. Drive the SAME local teardown so window OnClosed / hosted-service Dispose
+        // still run. No-op off Windows or when unsupervised.
+        using var winStop = Supervision.WindowsShutdownSignal.Register(App.ShutdownLocal);
 
         // Start the host so IHostedServices run (e.g. the macOS HelperLifecycle). This is
         // non-blocking — hosted services degrade gracefully rather than aborting boot.
@@ -150,6 +154,7 @@ internal static class Program
         using var stop = new ManualResetEventSlim(false);
         using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
         using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
+        using var winStop = Supervision.WindowsShutdownSignal.Register(stop.Set); // Windows graceful-stop (bevel-ncfp.2)
         stop.Wait();
 
         // Ordered teardown: stop serving + drop PAL subscriptions first, then stop the helper. Both
@@ -253,6 +258,7 @@ internal static class Program
         // exited on its own SIGTERM before the async teardown runs (bevel-ply).
         using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
         using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
+        using var winStop = Supervision.WindowsShutdownSignal.Register(() => { supervisor.RequestStop(); stop.Set(); }); // bevel-ncfp.2
         stop.Wait();
 
         // Ordered teardown off the thread pool (no lingering sync context — bevel-fu5): kill every child

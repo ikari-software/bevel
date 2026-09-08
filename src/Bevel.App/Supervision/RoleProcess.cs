@@ -14,6 +14,9 @@ internal sealed class RoleProcess : IRoleProcess
 {
     private readonly ProcessStartInfo _startInfo;
     private Process? _process;
+    // Windows only (bevel-ncfp.2): the named kernel event this child waits on for a graceful stop.
+    // Freshly minted per Start so a restart never inherits an already-signaled event.
+    private EventWaitHandle? _shutdownEvent;
 
     public ShellRole Role { get; }
     public bool IsAlive => _process is { HasExited: false };
@@ -27,8 +30,12 @@ internal sealed class RoleProcess : IRoleProcess
     public void Start()
     {
         Kill(); // never leak a prior instance
+        if (OperatingSystem.IsWindows())
+            ArmWindowsShutdownEvent();
         _process = Process.Start(_startInfo)
             ?? throw new InvalidOperationException($"Failed to start {Role} process.");
+        if (OperatingSystem.IsWindows())
+            WindowsJobObject.TryAssign(_process); // orphan backstop — never the graceful path
     }
 
     public void Kill()
@@ -38,11 +45,11 @@ internal sealed class RoleProcess : IRoleProcess
         {
             if (!_process.HasExited)
             {
-                // Graceful first: SIGTERM lets the child run its own teardown — the taskbar restores the
-                // Dock, the core stops the Swift helper — instead of being torn down mid-state. Give it a
-                // short grace, then hard-kill the whole tree if it hasn't exited (a wedged child must not
-                // block a restart/quit forever).
-                if (!TrySigterm(_process.Id) || !_process.WaitForExit(GraceMs))
+                // Graceful first: let the child run its own teardown — the taskbar restores the Dock,
+                // the core stops the helper — instead of being torn down mid-state. macOS uses SIGTERM;
+                // Windows Set()s the named shutdown event (WindowsShutdownSignal). Give it a short grace,
+                // then hard-kill the whole tree if it hasn't exited (a wedged child must not block quit).
+                if (!TryRequestGracefulStop() || !_process.WaitForExit(GraceMs))
                     _process.Kill(entireProcessTree: true);
             }
         }
@@ -51,17 +58,36 @@ internal sealed class RoleProcess : IRoleProcess
         _process = null;
     }
 
-    public void Dispose() => Kill();
+    public void Dispose()
+    {
+        Kill();
+        _shutdownEvent?.Dispose();
+        _shutdownEvent = null;
+    }
 
     private const int GraceMs = 3000;
     private const int Sigterm = 15;
 
-    /// <summary>Sends SIGTERM to the child (POSIX). Returns false on non-Unix or on failure, so the
-    /// caller falls back to a hard kill.</summary>
-    private static bool TrySigterm(int pid)
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private void ArmWindowsShutdownEvent()
     {
-        if (OperatingSystem.IsWindows()) return false;
-        try { return NativeKill(pid, Sigterm) == 0; }
+        _shutdownEvent?.Dispose();
+        var name = @"Local\bevel-shutdown-" + Guid.NewGuid().ToString("N");
+        _shutdownEvent = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, name);
+        _startInfo.Environment[WindowsShutdownSignal.EnvVar] = name; // the child opens this by name
+    }
+
+    /// <summary>Asks the child to stop gracefully: SIGTERM on POSIX, Set() the named event on Windows.
+    /// Returns false when there's no graceful channel, so the caller hard-kills instead.</summary>
+    private bool TryRequestGracefulStop()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            if (_shutdownEvent is null) return false;
+            try { _shutdownEvent.Set(); return true; }
+            catch { return false; }
+        }
+        try { return NativeKill(_process!.Id, Sigterm) == 0; }
         catch { return false; }
     }
 

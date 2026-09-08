@@ -15,11 +15,13 @@ public static class ShellCoreEndpoint
     private const string SocketEnv = "BEVEL_CORE_SOCKET";
     private const string TokenEnv = "BEVEL_CORE_TOKEN";
 
-    private static string Dir => Path.Combine(Path.GetTempPath(), "bevel-core");
+    // Routed through the shared runtime dir so peers agree by construction, and off %TEMP% on Windows
+    // (bevel-ncfp.2 / U2). macOS/Linux paths are byte-identical to before.
+    private static string Dir => BevelRuntimeDir.CoreDir;
     private static string TokenPath => Path.Combine(Dir, "core.token");
 
-    public static string SocketPath =>
-        Environment.GetEnvironmentVariable(SocketEnv) is { Length: > 0 } s ? s : Path.Combine(Dir, "core.sock");
+    public static string SocketPath => BevelRuntimeDir.GuardSocketPath(
+        Environment.GetEnvironmentVariable(SocketEnv) is { Length: > 0 } s ? s : Path.Combine(Dir, "core.sock"));
 
     /// <summary>Core side: resolve the socket path + nonce, minting and persisting a nonce (0600 under
     /// a 0700 dir) when the supervisor didn't provide one. UI clients read it back via <see cref="ReadNonce"/>.</summary>
