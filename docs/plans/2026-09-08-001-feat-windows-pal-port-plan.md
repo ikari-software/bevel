@@ -3,7 +3,7 @@ title: "feat: Port Bevel to Windows (Bevel.Pal.Windows) for full-functionality d
 type: feat
 date: 2026-09-08
 deepened: 2026-09-08
-status: draft
+status: implemented
 depth: deep
 origin: bevel-ncfp (beads epic)
 deploy_target: NUCBOX_EVO-X2 (192.168.1.48, SMB)
