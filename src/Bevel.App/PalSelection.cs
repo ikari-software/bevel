@@ -10,6 +10,9 @@ public enum PalKind
 
     /// <summary>macOS PAL (stubs at M0; native integration lands M1+).</summary>
     MacOS,
+
+    /// <summary>Windows PAL (bootstrap stubs at bevel-ncfp.1; Win32 integration lands per unit).</summary>
+    Windows,
 }
 
 /// <summary>
@@ -37,15 +40,19 @@ public static class PalSelector
             return value.ToLowerInvariant() switch
             {
                 "macos" or "mac" or "osx" => PalKind.MacOS,
+                "windows" or "win" => PalKind.Windows,
                 _ => PalKind.Fake,
             };
         }
 
-        // Default PAL: on macOS, prefer the real macOS PAL so the shell shows live
-        // windows out of the box; elsewhere fall back to the deterministic Fake PAL
-        // (the app must still boot on Linux/CI for tests and the UI previewer).
+        // Default PAL: on macOS/Windows, prefer that OS's real PAL so the shell shows live windows
+        // out of the box; elsewhere (Linux/CI) fall back to the deterministic Fake PAL (the app must
+        // still boot for tests and the UI previewer).
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return PalKind.MacOS;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return PalKind.Windows;
 
         return PalKind.Fake;
     }

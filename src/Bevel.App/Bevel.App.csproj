@@ -9,6 +9,13 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
+  <!-- Windows target: GUI subsystem so a double-clicked launcher / any role doesn't open a
+       session-long console window (bevel-ncfp.1 / U1). Child-process stdout capture is orthogonal
+       (ProcessStartInfo redirection works regardless of subsystem), so CI logging is unaffected. -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) or $(RuntimeIdentifier.StartsWith('win'))">
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
   <!-- Native publish strategy (RID-guarded, so a plain/RID-less build is unaffected).
        Opt into NativeAOT with -p:BevelPublishAot=true (bevel-gww.7): a single Mach-O, no JIT, the
        real per-process RSS win. The prerequisites are in place — compiled bindings by default, JSON
@@ -43,6 +50,7 @@
     <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
     <ProjectReference Include="..\Bevel.Pal.Fake\Bevel.Pal.Fake.csproj" />
     <ProjectReference Include="..\Bevel.Pal.MacOS\Bevel.Pal.MacOS.csproj" />
+    <ProjectReference Include="..\Bevel.Pal.Windows\Bevel.Pal.Windows.csproj" />
     <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Luna\Bevel.Themes.Luna.csproj" />

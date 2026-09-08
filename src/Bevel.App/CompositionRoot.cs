@@ -39,6 +39,7 @@ public static class CompositionRoot
         return pal switch
         {
             PalKind.MacOS => services.AddMacOSPal(role),
+            PalKind.Windows => services.AddWindowsPal(role),
             _ => services.AddFakePal(),
         };
     }
@@ -147,6 +148,78 @@ public static class CompositionRoot
                 // Give them a settings-ONLY shell-core client (keyed "settings", the one RemoteSettingsService
                 // pulls via [FromKeyedServices]) so ONLY the core opens the DB; their window manager / app
                 // environment / tray above are unaffected (core-owns-settings, bevel-6nve).
+                services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
+                services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+            }
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Windows PAL wiring (bevel-ncfp, the Windows port). Mirrors <see cref="AddMacOSPal"/>'s role split
+    /// exactly — same shared icon pool (single-writer = Core), same shell-core CLIENT wiring for the
+    /// Taskbar/peer roles, same core-owns-settings gating — but with the <c>Windows*</c> PAL impls and
+    /// NO Swift helper: on Windows, window discovery is in-process (the Core owns an EnumWindows +
+    /// SetWinEventHook pump thread, U3), so there is no helper lifecycle to host. U1 ships stubs.
+    /// </summary>
+    private static IServiceCollection AddWindowsPal(this IServiceCollection services, ShellRole role)
+    {
+        // In-process Windows PAL services — every role resolves these directly; lazy, so a role that
+        // never resolves one never constructs it.
+        services.AddSingleton<IDesktopEnvironment, Pal.Windows.WindowsDesktopEnvironment>();
+        services.AddSingleton<IShellSession, Pal.Windows.WindowsShellSession>();
+        services.AddSingleton<IFileOperations, Pal.Windows.WindowsFileOperations>();
+
+        // Shared memory-mapped BGRA icon pool (bevel-gww.6), identical to macOS: single-writer = the
+        // shell-core owner (Core); UI roles are readers (miss -> private render). The isWriter flag also
+        // gates whether the pool file is created/resized (reader opens read-only).
+        var poolIsWriter = role is ShellRole.Core;
+        services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
+            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
+        services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
+            new Pal.Windows.WindowsIconProvider(),
+            sp.GetRequiredService<MmfBgraPool>(),
+            isWriter: poolIsWriter));
+
+        services.AddSingleton<IPermissionBroker, Pal.Windows.WindowsPermissionBroker>();
+        services.AddSingleton<IFileOpener, Pal.Windows.WindowsFileOpener>();
+        services.AddSingleton<IAudioPlayback, Pal.Windows.WindowsAudioPlayback>();
+        services.AddSingleton<IDockController, Pal.Windows.WindowsDockController>();
+        services.AddSingleton<IVolumeLabelSource, Pal.Windows.WindowsVolumeLabelSource>();
+        services.AddSingleton<ITabProvider, Pal.Windows.WindowsTabProvider>();
+
+        // Window management + app environment: the same single-source-of-truth split as macOS. In the
+        // taskbar process these are shell-core CLIENTS (one UDS connection to the core); in the Core and
+        // (lazy) explorer/desktop roles they are the DIRECT Windows implementations.
+        if (role is ShellRole.Taskbar)
+        {
+            services.AddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
+            services.AddSingleton<IWindowManager, ShellCore.ShellCoreWindowManager>();
+            services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
+            services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
+            services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
+            // Settings peer + dedicated keyed "settings" client (bevel-6nve), same rationale as macOS.
+            services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
+            services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+        }
+        else
+        {
+            services.AddSingleton<IWindowManager, Pal.Windows.WindowsWindowManager>();
+            services.AddSingleton<IAppEnvironment, Pal.Windows.WindowsAppEnvironment>();
+            services.AddSingleton<ISystemTrayHost, Pal.Windows.WindowsSystemTrayHost>();
+            // In-process window management: no link to lose, so the indicator stays hidden.
+            services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
+
+            if (role is ShellRole.Core)
+            {
+                // The shell core is the SOLE opener + writer of settings.db (bevel-6nve). No helper to
+                // host — Windows discovery is in-process (U3), unlike the macOS Swift helper.
+                services.AddSingleton<ISettingsService, Bevel.Core.SettingsService>();
+            }
+            else
+            {
+                // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL.
                 services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
                 services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
             }
