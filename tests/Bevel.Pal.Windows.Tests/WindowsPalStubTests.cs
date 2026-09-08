@@ -5,70 +5,21 @@ using Xunit;
 namespace Bevel.Pal.Windows.Tests;
 
 /// <summary>
-/// U1 bootstrap contract (bevel-ncfp.1): the Windows PAL stubs construct and report themselves
-/// unavailable (feature-detect contract), queries return empty rather than throw, and the surfaces
-/// that DO throw are the genuine user actions a caller should gate on Capabilities.Available first.
-/// These run on any OS — the stubs hold no Win32 P/Invoke yet, so nothing is macOS/Linux-guarded here.
+/// The small Windows PAL surfaces that stay simple across the whole port: permission brokering (no TCC),
+/// tab provider (deferred for v1), volume labels (native DriveInfo pass-through), and audio (winmm, U9).
+/// The substantial capabilities (window manager, app env, desktop, file stack, tray, shell session) have
+/// their own dedicated *Tests files with portable + Windows-gated coverage — those assert the REAL
+/// behavior, so this file no longer makes stub-shaped claims about them (which would fail on the
+/// windows-latest CI runner once the real impls landed).
 /// </summary>
 public class WindowsPalStubTests
 {
-    [Fact]
-    public async Task WindowManager_reports_unavailable_and_enumerates_empty()
-    {
-        var wm = new WindowsWindowManager();
-        Assert.False(wm.Capabilities.Available);
-        Assert.Empty(await wm.EnumerateAsync());
-    }
-
-    [Fact]
-    public async Task AppEnvironment_running_and_installed_are_empty()
-    {
-        var ae = new WindowsAppEnvironment();
-        Assert.Empty(await ae.GetRunningAppsAsync());
-        Assert.Empty(await ae.EnumerateInstalledAppsAsync());
-    }
-
-    [Fact]
-    public async Task DesktopEnvironment_has_no_monitors_and_apply_calls_no_op()
-    {
-        var de = new WindowsDesktopEnvironment();
-        Assert.Empty(await de.GetMonitorsAsync());
-        await de.ReserveWorkAreaAsync(new MonitorId("m"), DockEdge.Bottom, 40);   // ambient apply: no throw
-        await de.SetWallpaperVisibleToHostAsync(true);
-    }
-
     [Fact]
     public async Task PermissionBroker_reports_NotApplicable_for_every_permission()
     {
         var pb = new WindowsPermissionBroker();
         foreach (var p in Enum.GetValues<ShellPermission>())
             Assert.Equal(PermissionState.NotApplicable, await pb.GetStateAsync(p));
-    }
-
-    [Fact]
-    public async Task ShellSession_is_not_registered_and_run_at_login_is_off()
-    {
-        var s = new WindowsShellSession();
-        Assert.False(await s.IsRegisteredAsShellAsync());
-        Assert.False(await s.IsRunAtLoginEnabledAsync());
-        await s.SetRunAtLoginAsync(true);   // ambient apply: no throw in the bootstrap stub
-    }
-
-    [Fact]
-    public async Task FileOperations_throw_until_the_real_IFileOperation_lands()
-    {
-        var fo = new WindowsFileOperations();
-        await Assert.ThrowsAsync<NotImplementedException>(() => fo.CopyAsync(new[] { "a" }, "b"));
-        await Assert.ThrowsAsync<NotImplementedException>(() => fo.DeleteAsync(new[] { "a" }, DeleteMode.Trash));
-    }
-
-    [Fact]
-    public async Task IconProvider_returns_a_non_null_blank_so_bound_images_do_not_crash()
-    {
-        var ip = new WindowsIconProvider();
-        var img = await ip.GetIconAsync(".txt", 16);
-        Assert.NotNull(img);
-        Assert.Equal(4, img.Bgra.Length);
     }
 
     [Fact]
@@ -89,11 +40,11 @@ public class WindowsPalStubTests
     }
 
     [Fact]
-    public async Task Audio_empty_path_and_off_windows_are_silent_no_ops()
+    public async Task Audio_empty_path_and_missing_file_are_silent_no_ops()
     {
         var a = new WindowsAudioPlayback();
-        await a.PlayAsync("");   // empty path: no-op
-        await a.PlayAsync(null!); // defensive: no throw
+        await a.PlayAsync("");     // empty path: no-op
+        await a.PlayAsync(null!);  // defensive: no throw
         // Off Windows the whole call is a guarded no-op; on Windows a bad path is swallowed. Either way
         // PlayAsync never throws — a theme sound must not crash the shell.
         await a.PlayAsync("Z:\\does\\not\\exist.wav");

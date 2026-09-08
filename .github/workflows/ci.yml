@@ -49,6 +49,49 @@ jobs:
       - name: Test
         run: dotnet test Bevel.sln --no-build --configuration Release
 
+  # ── Windows runtime smoke: the split core actually boots + binds UDS (bevel-ncfp.12) ──────────
+  # The matrix above only builds/tests. This proves the Windows PAL core role starts headless on real
+  # Windows and binds its Unix-domain-socket endpoint (the load-bearing U1+U2 runtime path) — a class of
+  # failure a cross-platform build can't catch. WinExe has no console, so child stdout is captured via
+  # the process handle, not a console window.
+  windows-smoke:
+    name: Windows runtime smoke (core boots + UDS binds)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build Bevel.App
+        run: dotnet build src/Bevel.App/Bevel.App.csproj --configuration Release
+
+      - name: Boot --role=core --pal=windows and assert the UDS endpoint binds
+        shell: pwsh
+        run: |
+          $dll   = "src/Bevel.App/bin/Release/net10.0/Bevel.App.dll"
+          $dir   = Join-Path $env:LOCALAPPDATA "bevel\bevel-core"
+          $sock  = Join-Path $dir "core.sock"     # the bound AF_UNIX reparse-point file proves StartAsync bound
+          $token = Join-Path $dir "core.token"    # the nonce file proves ForServer() ran
+          if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+
+          $p = Start-Process dotnet -ArgumentList $dll,"--role=core","--pal=windows" -PassThru
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 60; $i++) {   # up to ~30s
+              if ((Test-Path $sock) -and (Test-Path $token)) { $ok = $true; break }
+              if ($p.HasExited) { throw "core exited early (code $($p.ExitCode)) before binding UDS" }
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ok) { throw "core.sock/core.token never appeared — the Windows PAL core did not bind its UDS endpoint in 30s" }
+            Write-Host "OK: Windows PAL core booted headless and bound its UDS endpoint ($sock)."
+          }
+          finally {
+            if (-not $p.HasExited) { $p.Kill($true) }
+          }
+
   # ── Self-contained publish per platform ─────────────────────────────────────
 
   publish:
