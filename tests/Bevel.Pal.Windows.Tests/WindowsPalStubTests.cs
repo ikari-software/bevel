@@ -78,4 +78,24 @@ public class WindowsPalStubTests
     [Fact]
     public void TabProvider_supports_nothing_yet()
         => Assert.False(new WindowsTabProvider().SupportsApp("com.google.Chrome"));
+
+    // ── U9 audio (bevel-ncfp.9) — real winmm PlaySound, but portably testable behaviors ──────────
+
+    [Fact]
+    public async Task Audio_muted_is_a_no_op()
+    {
+        var a = new WindowsAudioPlayback { Muted = true };
+        await a.PlayAsync("C:\\Windows\\Media\\ding.wav"); // muted → returns without touching winmm
+    }
+
+    [Fact]
+    public async Task Audio_empty_path_and_off_windows_are_silent_no_ops()
+    {
+        var a = new WindowsAudioPlayback();
+        await a.PlayAsync("");   // empty path: no-op
+        await a.PlayAsync(null!); // defensive: no throw
+        // Off Windows the whole call is a guarded no-op; on Windows a bad path is swallowed. Either way
+        // PlayAsync never throws — a theme sound must not crash the shell.
+        await a.PlayAsync("Z:\\does\\not\\exist.wav");
+    }
 }
