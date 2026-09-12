@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Deploy the win-x64 build to the LAN Windows box NUCBOX_EVO-X2 over SMB (bevel-ncfp.11 / U11).
+#
+# PREFER packaging/windows/deploy-ssh.sh. Port 22 turned out to be open with key auth already working,
+# so the SSH script does the whole round trip in one command — publish, copy, stop the old instance,
+# extract, optionally launch — with no Finder mount and no manual launch on the box. This SMB script
+# remains for the case where only 445 is reachable.
 # The box (192.168.1.48) has 445/SMB open, RDP off (memory: windows-deploy-box). RDP being off means
 # delivery is file-copy to a share, not a remote session — so this mounts an SMB share and copies.
 #
