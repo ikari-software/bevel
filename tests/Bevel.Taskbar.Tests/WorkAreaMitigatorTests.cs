@@ -16,11 +16,18 @@ public class WorkAreaMitigatorTests
 {
     private static readonly PalRect Band = new(0, 970, 1600, 30);
 
+    /// Settings rooted in a throwaway directory. The parameterless SettingsService ctor resolves the
+    /// developer's REAL ~/.config/bevel and is now refused outright in a test host (BevelConfigDir);
+    /// these two call sites were the ones pointing at it.
+    private static SettingsService ScratchSettings()
+        => new(Directory.CreateDirectory(Path.Combine(
+               Path.GetTempPath(), "bevel-tests", Guid.NewGuid().ToString("n"))).FullName);
+
     private static ForeignWindow Win(string id, PalRect bounds, bool minimized = false)
         => new(new ForeignWindowId(id), "Test", "com.test", minimized, false, bounds);
 
     private static WorkAreaMitigator Make(RecordingWindowManager wm, FixedClock clock)
-        => new(wm, new SettingsService(), () => Band, clock);
+        => new(wm, ScratchSettings(), () => Band, clock);
 
     [Fact]
     public async Task Overlapping_window_is_nudged_to_sit_above_the_band()
@@ -100,7 +107,7 @@ public class WorkAreaMitigatorTests
         // band is now occupied by an overlapping window and must be nudged. Real clock so the
         // settle debounce actually elapses; poll with a generous deadline to stay non-flaky.
         var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
-        var m = new WorkAreaMitigator(wm, new SettingsService(), () => Band);
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band);
         m.Start();
 
         m.RequestMitigation();

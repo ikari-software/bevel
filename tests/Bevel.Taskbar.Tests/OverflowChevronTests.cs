@@ -20,7 +20,7 @@ public class OverflowChevronTests
     [AvaloniaFact]
     public void Chevrons_appear_on_overflow_and_scroll_the_rows()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new StubWm();
 
@@ -64,7 +64,7 @@ public class OverflowChevronTests
     [AvaloniaFact]
     public void Chevrons_hidden_when_everything_fits()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new StubWm();
 

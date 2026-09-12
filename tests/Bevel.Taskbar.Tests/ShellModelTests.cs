@@ -17,7 +17,7 @@ public sealed class ShellModelTests
         // The Start menu's Programs must NOT be a one-shot startup list: installing or removing an app
         // updates it live via IAppEnvironment.InstalledAppsChanged (bevel).
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
-        using var model = new ShellModel(null, appEnv, null);
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
         for (var i = 0; i < 50 && model.Programs.Count < 1; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
         Assert.Equal("Alpha", Assert.Single(model.Programs).DisplayName);
@@ -42,7 +42,7 @@ public sealed class ShellModelTests
     public async Task Reappearing_window_is_revived_in_place()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var original = Window("w1", "Old title");
         manager.Live = [original];
         model.Start();
@@ -78,7 +78,7 @@ public sealed class ShellModelTests
     public async Task Closed_window_is_removed_after_exit_animation()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var window = Window("w1", "Title");
         manager.Live = [window];
         model.Start();
@@ -99,7 +99,7 @@ public sealed class ShellModelTests
     public void Foreground_change_makes_focus_exclusive()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var first = Window("w1", "First", focused: true);
         var second = Window("w2", "Second");
         manager.Live = [first, second];
@@ -119,7 +119,7 @@ public sealed class ShellModelTests
     public void Stale_focus_on_changed_event_does_not_press_multiple_buttons()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var first = Window("w1", "First", focused: true);
         var second = Window("w2", "Second");
         manager.Live = [first, second];
@@ -142,7 +142,7 @@ public sealed class ShellModelTests
     public void Unfocused_foreground_event_does_not_claim_pressed_state()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var first = Window("w1", "First", focused: true);
         var second = Window("w2", "Second");
         manager.Live = [first, second];
@@ -163,7 +163,7 @@ public sealed class ShellModelTests
     public async Task Reconcile_with_no_focused_window_keeps_sticky_pressed_state()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         var first = Window("w1", "First", focused: true);
         var second = Window("w2", "Second");
         manager.Live = [first, second];
@@ -253,7 +253,7 @@ public sealed class ShellModelTests
         // while IconSource is null — and must NOT blank a good icon when a later snapshot lacks one.
         var png = IconPng();
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
 
         var iconless = new ForeignWindow(new ForeignWindowId("w1"), "Doc", "App", false, false, default, IconPng: null);
         manager.Live = [iconless];
@@ -282,7 +282,7 @@ public sealed class ShellModelTests
     public async Task MinimizeAll_minimizes_every_tracked_window()
     {
         var manager = new StubWindowManager();
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         model.Windows.Add(new TaskItemViewModel(Window("a", "A"), manager));
         model.Windows.Add(new TaskItemViewModel(Window("b", "B"), manager));
 
@@ -296,7 +296,7 @@ public sealed class ShellModelTests
     public async Task MinimizeAll_keeps_going_when_one_window_throws()
     {
         var manager = new StubWindowManager { ThrowOnMinimizeId = "b" };
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
         model.Windows.Add(new TaskItemViewModel(Window("a", "A"), manager));
         model.Windows.Add(new TaskItemViewModel(Window("b", "B"), manager));
         model.Windows.Add(new TaskItemViewModel(Window("c", "C"), manager));
@@ -317,7 +317,7 @@ public sealed class ShellModelTests
         // deadline so a caller that forgets is bounded too) — returning null so the button keeps its
         // static app icon, never wedging the pipeline.
         var manager = new StubWindowManager { CaptureHangs = true };
-        using var model = new ShellModel(manager, null, null);
+        using var model = new ShellModel(manager, null, null, usage: TestUsage.Scratch());
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -394,7 +394,7 @@ public sealed class ShellModelTests
         var appEnv = new StubAppEnvironment(
             new InstalledApp("com.a", "Alpha", null),
             new InstalledApp("com.b", "Beta", null));
-        using var model = new ShellModel(null, appEnv, null);
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start(); // LoadProgramsAsync enumerates off-thread, then reconciles on the UI thread
 
         for (var i = 0; i < 50 && model.Programs.Count < 2; i++)

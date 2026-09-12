@@ -35,7 +35,7 @@ public class TaskbarAccessibilityTests
     [AvaloniaFact]
     public void Start_button_is_focusable_with_an_accessible_name()
     {
-        using var model = new ShellModel(null, null, null);
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
@@ -50,7 +50,7 @@ public class TaskbarAccessibilityTests
     [AvaloniaFact]
     public void A_task_button_is_focusable_with_its_window_title_as_the_accessible_name()
     {
-        using var model = new ShellModel(null, null, null);
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new NoopWindowManager();
         var view = new TaskbarView { DataContext = vm };
@@ -73,7 +73,7 @@ public class TaskbarAccessibilityTests
     [AvaloniaFact]
     public void A_tray_icon_is_focusable_with_its_tooltip_as_the_accessible_name()
     {
-        using var model = new ShellModel(null, null, null);
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var host = new OneItemTray(new TrayItem(new TrayItemId("1:10"), "Wi-Fi"));
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), tray: host);
         var view = new TaskbarView { DataContext = vm };
@@ -115,7 +115,7 @@ public class TaskbarAccessibilityTests
     [AvaloniaFact]
     public void Taskbar_become_key_is_false_at_idle_and_true_only_while_a_menu_is_open()
     {
-        using var model = new ShellModel(null, null, null);
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var window = new TaskbarWindow(null, rows: 1) { Content = view };

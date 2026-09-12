@@ -32,7 +32,7 @@ public class RenderLunaStartMenuTest
                 new InstalledApp("com.term", "Terminal", null, "Developer Tools"),
                 new InstalledApp("com.paint", "Paint", null),
                 new InstalledApp("com.web", "Web", null));
-            using var model = new ShellModel(null, appEnv, null);
+            using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
             for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
@@ -97,7 +97,7 @@ public class RenderLunaStartMenuTest
             var appEnv = new StubAppEnvironment(
                 new InstalledApp("com.a", "Alpha", null),
                 new InstalledApp("com.b", "Beta", null));
-            using var model = new ShellModel(null, appEnv, null);
+            using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
             for (var i = 0; i < 50 && model.Programs.Count < 2; i++)

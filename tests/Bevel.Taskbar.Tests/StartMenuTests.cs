@@ -145,7 +145,7 @@ public class StartMenuTests
     public void Bound_programs_shows_no_programs_found_when_loaded_and_empty()
     {
         // No app environment → the startup enumeration latches loaded immediately with zero apps.
-        using var model = new ShellModel(null, null, null);
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         model.Start();
         Dispatcher.UIThread.RunJobs();
 
@@ -162,7 +162,7 @@ public class StartMenuTests
     public async Task Bound_programs_shows_loading_then_binds_when_enumeration_completes()
     {
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
-        using var model = new ShellModel(null, appEnv, null);
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));
         var programsItem = menu.FindControl<MenuItem>("ProgramsItem");
         Assert.NotNull(programsItem);

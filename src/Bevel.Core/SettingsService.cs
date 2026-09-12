@@ -26,12 +26,19 @@ namespace Bevel.Core;
 /// </summary>
 public sealed class SettingsService : ISettingsService, IDisposable
 {
-    private static readonly string DefaultConfigDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
 
     // All (de)serialization goes through SettingsJsonContext's JsonTypeInfo overloads (bevel-gww.7):
     // reflection-free and AOT/trim-clean, while the source-gen options preserve the indented,
     // case-insensitive, skip-null formatting so the on-disk blob stays byte-compatible.
+
+    /// <summary>
+    /// Path handed to the projection-only instances below. They are NEVER opened — the blob pipeline is
+    /// pure in-memory — so this must be somewhere that is neither the user's real config dir (which the
+    /// old code borrowed, making a pure function look like it touched live state) nor a relative path
+    /// that could materialise a stray file in the working directory if the code ever changed.
+    /// </summary>
+    private static readonly string ProjectionOnlyDir =
+        Path.Combine(Path.GetTempPath(), "bevel-projection-only-never-opened");
 
     private readonly string _configDir;
     private readonly string _configPath; // legacy settings.json: migration source + passive export
@@ -54,7 +61,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// <summary>Raised after <see cref="ReloadIfChangedAsync"/> pulls in an external write.</summary>
     public event Action? Changed;
 
-    public SettingsService() : this(DefaultConfigDir)
+    /// <summary>Production ctor: the real per-user config dir. Resolving it THROWS inside a test host
+    /// (see <see cref="BevelConfigDir"/>) — a test must name its own directory via the seam below.</summary>
+    public SettingsService() : this(BevelConfigDir.Path)
     {
     }
 
@@ -298,7 +307,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// decodes each core snapshot through this so its <see cref="Current"/> matches the core's exactly.</summary>
     public static (BevelSettings Settings, IReadOnlyDictionary<string, ThemeOverrides> Overrides) ProjectBlob(string? json)
     {
-        var s = new SettingsService(DefaultConfigDir); // never opened — projection is pure in-memory
+        var s = new SettingsService(ProjectionOnlyDir); // never opened — projection is pure in-memory
         s._raw = ParseRawOrDefault(json);
         s.MigrateRaw();
         s.ApplyRaw();
@@ -309,7 +318,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// exact <see cref="SerializeRaw"/> the persist path uses (no DB, no duplicated serialization).</summary>
     public static string SerializeBlob(BevelSettings settings, IReadOnlyDictionary<string, ThemeOverrides> overrides)
     {
-        var s = new SettingsService(DefaultConfigDir);
+        var s = new SettingsService(ProjectionOnlyDir);
         s._settings = settings;
         foreach (var (id, o) in overrides)
             s._themeOverrides[id] = o;

@@ -62,7 +62,7 @@ public class RenderStartMenuTest
         var appEnv = new StubAppEnvironment(
             new InstalledApp("com.a", "Alpha", null),
             new InstalledApp("com.b", "Beta", null));
-        using var model = new ShellModel(null, appEnv, null);
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start(); // off-thread enumerate → reconcile onto the UI thread
         var vm = new StartMenuViewModel(model);
 

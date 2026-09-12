@@ -116,7 +116,7 @@ public class RenderFileMenuBarTest
                 new InstalledApp("com.term", "Terminal", null, "Developer Tools"),
                 new InstalledApp("com.paint", "Paint", null),
                 new InstalledApp("com.web", "Web", null));
-            using var model = new ShellModel(null, appEnv, null);
+            using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
             for (var i = 0; i < 50 && model.Programs.Count < 4; i++)

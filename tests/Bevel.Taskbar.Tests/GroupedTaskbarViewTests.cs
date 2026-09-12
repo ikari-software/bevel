@@ -20,7 +20,7 @@ public class GroupedTaskbarViewTests
 {
     private static TaskbarView BuildView(bool grouping, params ForeignWindow[] windows)
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new GroupViewStubWm();
         var view = new TaskbarView { DataContext = vm };

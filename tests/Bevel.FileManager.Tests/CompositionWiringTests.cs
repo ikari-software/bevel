@@ -21,9 +21,16 @@ public class CompositionWiringTests
         var services = new ServiceCollection();
         new FileManagerModule().ConfigureServices(services);
         // ISettingsService moved to the role-aware CompositionRoot registration (core-owns-settings,
-        // bevel-6nve), so the module no longer binds it — supply the real DB-backed one for this
-        // module-only wiring graph (these tests exercise the FileManager window wiring, not role split).
-        services.AddSingleton<ISettingsService, SettingsService>();
+        // bevel-6nve), so the module no longer binds it — supply a DB-backed one for this module-only
+        // wiring graph (these tests exercise the FileManager window wiring, not role split).
+        //
+        // ROOTED IN A SCRATCH DIR (bevel-cfg-guard). Registering the TYPE let DI activate the
+        // parameterless ctor, which resolves the developer's real ~/.config/bevel — so this wiring test
+        // opened and wrote the live settings.db on every run. It stays genuinely DB-backed; it just owns
+        // its own database.
+        services.AddSingleton<ISettingsService>(_ => new SettingsService(
+            Directory.CreateDirectory(Path.Combine(
+                Path.GetTempPath(), "bevel-tests", Guid.NewGuid().ToString("n"))).FullName));
         return services.BuildServiceProvider();
     }
 
