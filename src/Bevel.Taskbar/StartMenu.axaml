@@ -52,8 +52,12 @@
 
                     <!-- Item column: a vertical Menu using the themed dropdown MenuItem, so the
                          selection highlight + icon column track the active theme. -->
+                    <!-- 1px left gutter so the item icons don't sit flush against the sidebar banner.
+                         Win2000's own Start menu leaves a hairline there; without it the icon glyphs read
+                         as welded to the stripe, which is the first thing the eye catches. -->
                     <Menu Grid.Column="1"
                           x:Name="ItemsMenu"
+                          Margin="1,0,0,0"
                           MinWidth="180"
                           Background="{DynamicResource Bevel.Brush.Menu}"
                           ItemContainerTheme="{DynamicResource Bevel.Theme.MenuItem}">
