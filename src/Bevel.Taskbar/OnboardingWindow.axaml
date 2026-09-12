@@ -19,7 +19,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="10" Margin="2,8,2,2">
 
-                    <HeaderedContentControl Header="Accessibility Permission" HorizontalContentAlignment="Stretch">
+                    <HeaderedContentControl x:Name="AccessibilitySection" Header="Accessibility Permission" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Border x:Name="PermStatusDot" Width="15" Height="15" CornerRadius="3"
@@ -45,7 +45,7 @@
                         </StackPanel>
                     </HeaderedContentControl>
 
-                    <HeaderedContentControl Header="Screen Recording Permission" HorizontalContentAlignment="Stretch">
+                    <HeaderedContentControl x:Name="ScreenRecordingSection" Header="Screen Recording Permission" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Border x:Name="ScreenRecStatusDot" Width="15" Height="15" CornerRadius="3"
@@ -69,7 +69,7 @@
                         </StackPanel>
                     </HeaderedContentControl>
 
-                    <HeaderedContentControl Header="Work-Area Strategy" HorizontalContentAlignment="Stretch">
+                    <HeaderedContentControl x:Name="WorkAreaSection" Header="Work-Area Strategy" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <TextBlock Text="How the taskbar handles the macOS Dock."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
@@ -355,7 +355,7 @@
             <TabItem Header="Tray">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="10" Margin="2,8,2,2">
-                    <HeaderedContentControl Header="System Tray" HorizontalContentAlignment="Stretch">
+                    <HeaderedContentControl x:Name="TraySection" Header="System Tray" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="6">
                             <TextBlock Text="The mirrored macOS menu-bar icons. Changes apply immediately."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" />
