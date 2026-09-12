@@ -453,15 +453,18 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                                              r.origin.x, r.width, owner, name)))
         }
         let text = rows.sorted { $0.0 < $1.0 }.map { $0.1 }.joined(separator: "\n")
-        try? text.write(toFile: "/tmp/bevel-geo.log", atomically: true, encoding: .utf8)
+        // PID-suffixed: more than one helper can be live (two installs, or a probe alongside the running
+        // shell), and a fixed path means the last writer silently wins — which is exactly how this probe
+        // lied during the bevel-sd6n investigation.
+        try? text.write(toFile: "/tmp/bevel-geo-\(getpid()).log", atomically: true, encoding: .utf8)
     }
 
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
-    /// ScreenCaptureKit capture on each (Req 5.3), marking it `isLive`. Without the grant — or if any
-    /// capture fails — the item keeps its limited-mode app icon (§5.5). One `SCShareableContent`
-    /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
+    /// backing-store capture on each (Req 5.3), marking it `isLive`. Without the grant — or if any
+    /// capture fails — the item keeps its limited-mode app icon (§5.5). One `LegacyWindowCapture` read
+    /// per item, keyed by window id; the caller throttles the cadence (the 2s poll).
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
         dumpGeometry()   // TEMP (bevel-7hf4): geometry probe for single-item reveal; self-gated by /tmp/bevel-geo
@@ -475,37 +478,35 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // directly, so items hidden off-screen by Strategy A still capture their real glyph instead of
         // falling back to the limited-mode app icon. Keyed on the windowNumber half of item_id — no
         // on-screen SCShareableContent gate.
+        var noImage = 0, blank = 0
         for i in items.indices {
             let parts = items[i].itemID.split(separator: ":")
-            guard parts.count == 2, let num = UInt32(parts[1]),
-                  let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+            guard parts.count == 2, let num = UInt32(parts[1]) else { continue }
+            guard let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else {
+                noImage += 1   // no backing store at all (window gone, or the private symbol failed)
+                continue
+            }
             let png = pngFromCGImage(cgImage)
+            if png.isEmpty { blank += 1 }   // captured, but fully transparent — see bevel-sd6n
             if !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
             }
         }
+        // The live/total ratio, split by failure reason, is the one number that distinguishes "mirroring
+        // is on but nothing captures" from "mirroring is off" — the two look identical in the taskbar
+        // (both show limited-mode app icons), which is exactly where bevel-p6g4 hid. `blank` counts
+        // windows that captured a correctly-sized but fully-transparent image (bevel-sd6n).
+        dbg("captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))")
         return items
     }
 
-    /// One-shot capture of a single status-item window, scoped to just that window (not a cropped
-    /// full-screen grab — Req 5.3), returned as a 16×16 PNG. Nil on failure (keeps the limited-mode icon).
-    private func captureWindow(_ scWindow: SCWindow) async -> Data? {
-        let filter = SCContentFilter(desktopIndependentWindow: scWindow)
-        let config = SCStreamConfiguration()
-        // Capture at 2× the window's point size for a crisp downscale to 16px.
-        config.width = max(16, Int(scWindow.frame.width * 2))
-        config.height = max(16, Int(scWindow.frame.height * 2))
-        config.showsCursor = false
-        config.ignoreShadowsSingleWindow = true
-        do {
-            let cgImage = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            return pngFromCGImage(cgImage)
-        } catch {
-            dbg("capture failed for windowID \(scWindow.windowID): \(error)")
-            return nil
-        }
-    }
+    // NOTE: the SCK single-window capture that used to live here is GONE (bevel-p6g4). Tray capture runs
+    // exclusively through LegacyWindowCapture, which reads the backing store and therefore still works
+    // once Strategy A pushes an item off every display — SCK returns -3811 there (proven 0/16 vs 4/4,
+    // docs/design/menubar-management.md). Keeping a second, divergent capture path around is what let the
+    // self-test silently probe a pipeline the product no longer used. Don't reintroduce one: measured
+    // under bevel-sd6n, an SCK fallback for the blank captures recovered 0 of 25.
 
     /// Encodes a captured status-item window at its NATIVE resolution — NO rescale, NO fit-to-box. The
     /// tray renders each mirrored item at its true macOS size (from the item's on-screen `bounds`, in
@@ -615,7 +616,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         var captureOk = true
         let granted = CGPreflightScreenCaptureAccess()
         if granted && discovered {
-            captureOk = await selfTestCapture()
+            captureOk = selfTestCapture()
         }
 
         // Live mirroring is safe iff a granted capture actually worked; without a grant we stay in
@@ -626,24 +627,43 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return live
     }
 
-    /// Captures one status-item window and reports whether it has any non-transparent pixels — the
-    /// "verify non-blank" step. False means SCK returned black/blocked frames (pipeline broken).
-    private func selfTestCapture() async -> Bool {
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(
-            false, onScreenWindowsOnly: true) else { return false }
-        guard let win = content.windows.first(where: {
-            $0.windowLayer == statusWindowLayer && $0.frame.origin.y <= 40
-            && $0.frame.width >= 8 && $0.frame.width <= 400
-        }) else { return false }   // granted but SCK sees no status window → broken
+    /// Captures a status-item window through the SAME path `enumerateWithCapture` uses and reports
+    /// whether it has any non-transparent pixels — the "verify non-blank" step. False means the real
+    /// pipeline is broken (private symbol missing, or black/blocked frames).
+    ///
+    /// This MUST probe the path that actually runs (bevel-p6g4). It previously fetched
+    /// `SCShareableContent(onScreenWindowsOnly: true)` and captured via SCK — the pipeline
+    /// `enumerateWithCapture` retired when it moved to `LegacyWindowCapture`, because SCK cannot
+    /// capture a window that has left every display (-3811), which is exactly where Strategy A — and
+    /// third-party bar managers like Ice — put status items. So the probe found no on-screen status
+    /// window, declared the pipeline "granted but broken", and LATCHED `liveMirroring=false`, killing
+    /// live capture for every item. Self-reinforcing: the better the hiding worked, the more certainly
+    /// the gate failed. A self-test that tests a different pipeline than the product uses is worse than
+    /// no self-test — it fails closed on healthy code.
+    private func selfTestCapture() -> Bool {
+        guard LegacyWindowCapture.isAvailable else { return false }   // private symbol gone on this build
+        // Try every discovered item, not just the first: some items legitimately capture blank
+        // (bevel-sd6n), and one of those must not condemn the whole pipeline.
+        for item in enumerateTrayItems() {
+            let parts = item.itemID.split(separator: ":")
+            guard parts.count == 2, let num = UInt32(parts[1]),
+                  let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+            if isNonBlank(cgImage) { return true }
+        }
+        return false   // nothing captured a single non-transparent pixel → genuinely broken
+    }
 
-        guard let png = await captureWindow(win), !png.isEmpty,
-              let rep = NSBitmapImageRep(data: png) else { return false }
+    /// True when the image has any meaningfully non-transparent pixel (sampled every 4px, as the
+    /// original non-blank check did).
+    private func isNonBlank(_ cgImage: CGImage) -> Bool {
+        let png = pngFromCGImage(cgImage)
+        guard !png.isEmpty, let rep = NSBitmapImageRep(data: png) else { return false }
         for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
             for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {
                 if (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 { return true }
             }
         }
-        return false   // fully transparent → blank
+        return false
     }
 
     /// The current OS build string (e.g. "25G74"), for the self-test diagnostic and OS-change gating.
