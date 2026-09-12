@@ -63,16 +63,22 @@ public class RenderLunaStartMenuTest
                 Content = content,
             };
             window.Show();
-            // Settle the layout before capturing: async icon loads + the theme-based two-column layout
-            // selection can leave the first frame narrow under load, which flaked the width assertion.
-            for (var i = 0; i < 60 && window.Bounds.Width < 340; i++)
+            // Settle before capturing: async icon loads + the theme-based two-column layout selection can
+            // leave the first frame narrow under load. The previous settle polled window.Bounds.Width but
+            // the assertion is on the CAPTURED FRAME's width — two different things, so the loop could
+            // finish happy while the frame was still narrow. It also had only a 60x10ms budget, which a
+            // full-solution run (assemblies in parallel) blows straight through. Poll the frame itself,
+            // on a time-based deadline generous enough not to flake but still fast when it is ready.
+            Avalonia.Media.Imaging.WriteableBitmap? frame = null;
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < deadline)
             {
                 Dispatcher.UIThread.RunJobs();
+                frame = window.CaptureRenderedFrame();
+                if (frame is not null && frame.PixelSize.Width >= 340) break;
                 await Task.Delay(10);
             }
-            Dispatcher.UIThread.RunJobs();
 
-            var frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
             Assert.True(frame!.PixelSize.Width >= 340, $"luna menu too narrow: {frame.PixelSize}");
 
