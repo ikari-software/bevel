@@ -22,6 +22,9 @@ public partial class TaskbarView : UserControl
     private ITabProvider? _tabProvider;
     private Action? _quit;
     private Action? _restart;
+    /// Targeted repair for a lost core link: respawn only the shell-core process (the launcher owns it).
+    /// Null when unsupervised — the repair menu then offers only the whole-shell restart.
+    private Action? _restartCore;
     private Action? _openSettings;
     private Action<Bevel.Core.Vfs.VfsPath>? _openFolder;
     private Action? _openSearch;
@@ -76,12 +79,33 @@ public partial class TaskbarView : UserControl
     /// (DataContext) via the background <see cref="ShellModel"/> — the taskbar no longer
     /// subscribes to window events or builds/mutates buttons by hand (bevel-d2z).
     /// </summary>
+    /// <summary>
+    /// Click on the pulsing disconnected indicator — opens the repair menu (bevel-corepulse). The
+    /// indicator is the only affordance the user has while the core is unreachable: the Start menu's
+    /// own restart path routes through shell state that may itself be stale, so the repairs are offered
+    /// right here, on the thing that is already demanding attention.
+    /// </summary>
+    private void OnDisconnectedIndicatorPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control control)
+            FlyoutBase.ShowAttachedFlyout(control);
+        e.Handled = true;
+    }
+
+    /// <summary>Respawn just the shell core — the targeted fix, and the one that repairs an unlinked
+    /// core socket without disturbing open Explorer windows.</summary>
+    private void OnRepairRestartCore(object? sender, RoutedEventArgs e) => _restartCore?.Invoke();
+
+    /// <summary>Restart every shell process — the heavier fallback when a core respawn doesn't take.</summary>
+    private void OnRepairRestartShell(object? sender, RoutedEventArgs e) => _restart?.Invoke();
+
     public void Initialize(
         Bevel.Core.BevelSettings settings,
         IAppEnvironment? appEnv = null,
         IIconProvider? iconProvider = null,
         Action? quit = null,
         Action? restart = null,
+        Action? restartCore = null,
         Action? openSettings = null,
         Action? toggleLock = null,
         Action<Bevel.Core.Vfs.VfsPath>? openFolder = null,
@@ -96,6 +120,10 @@ public partial class TaskbarView : UserControl
         _tabProvider = tabProvider;
         _quit = quit;
         _restart = restart;
+        _restartCore = restartCore;
+        // Only offer a repair that can actually run: an unsupervised taskbar has no launcher to ask.
+        if (RepairRestartCoreItem is not null) RepairRestartCoreItem.IsEnabled = restartCore is not null;
+        if (RepairRestartShellItem is not null) RepairRestartShellItem.IsEnabled = restart is not null;
         _openSettings = openSettings;
         _openFolder = openFolder;
         _openSearch = openSearch;

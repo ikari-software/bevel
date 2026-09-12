@@ -59,6 +59,28 @@ public partial class App : Application
     /// Program performs the in-place relaunch after the host stops, so the old helper and shell windows
     /// cannot overlap the new version.
     /// </summary>
+    /// <summary>
+    /// Targeted repair for a lost core link (bevel-corepulse): ask the launcher to respawn ONLY the
+    /// shell-core process. That rebinds <c>core.sock</c>, which is what a peer needs to reconnect — a
+    /// core whose socket path was unlinked keeps running and serving nobody, so the taskbar shows no
+    /// windows and no tray while the process looks perfectly healthy in <c>ps</c>.
+    ///
+    /// <para>Returns false when there is no launcher to ask, so the caller can offer the whole-shell
+    /// restart instead rather than silently doing nothing.</para>
+    /// </summary>
+    public static bool RequestRestartCore()
+    {
+        if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.RestartCore))
+        {
+            RestartDiag.Log("RequestRestartCore: launcher-control send=true → core respawned in place");
+            return true;
+        }
+
+        RestartDiag.Log("RequestRestartCore: send failed (supervised=" +
+                        Supervision.LauncherControl.IsSupervised + ") → caller should offer a full restart");
+        return false;
+    }
+
     public static void RequestRestart()
     {
         if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.RestartAll))
@@ -294,6 +316,9 @@ public partial class App : Application
             services.GetService<Bevel.Pal.Abstractions.IIconProvider>(),
             quit: RequestExit,
             restart: RequestRestart,
+            // Only offered when a launcher is actually there to respawn the core; otherwise the repair
+            // menu falls back to the whole-shell restart above.
+            restartCore: Supervision.LauncherControl.IsSupervised ? () => RequestRestartCore() : null,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
             toggleLock: () => ToggleTaskbarLock(settings, taskbarView),
             // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
