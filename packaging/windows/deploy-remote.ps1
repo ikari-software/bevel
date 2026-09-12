@@ -38,6 +38,38 @@ if (-not (Test-Path $exe)) { throw "Deploy finished but $exe is missing — wron
 Write-Output "Deployed: $exe"
 
 if ($Launch) {
-    Write-Output "Launching $exe"
-    Start-Process -FilePath $exe -WorkingDirectory $Dest
+    # NOT Start-Process. An SSH session is Windows session 0, which has no interactive desktop: ANGLE
+    # cannot create a D3D11 swap chain there, so the shell comes up INVISIBLY and floods stderr with
+    # SwapChain11 "Could not create additional swap chains" (HRESULT 0x887A0022) while every process
+    # looks healthy. Hand the launch to the Task Scheduler with an Interactive principal instead, which
+    # starts it in the logged-on user's session where there is a real desktop and GPU.
+    $task = 'BevelInteractiveLaunch'
+    Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
+
+    # WindowsIdentity, NOT "$env:USERDOMAIN\$env:USERNAME": on a workgroup machine USERDOMAIN is
+    # literally "WORKGROUP", which is a workgroup name rather than an account authority, so the
+    # principal fails to resolve with "No mapping between account names and security IDs was done".
+    # GetCurrent().Name gives the real authority (the machine name here, a domain elsewhere).
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $action = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $Dest
+    $principal = New-ScheduledTaskPrincipal -UserId $identity `
+                                            -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $task -Action $action -Principal $principal | Out-Null
+    try {
+        Start-ScheduledTask -TaskName $task
+        Start-Sleep -Seconds 5
+    } finally {
+        # The task is a launch vehicle, not something to leave lying around in the user's task list.
+        Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
+    }
+
+    $procs = Get-Process -Name 'Bevel.App' -ErrorAction SilentlyContinue
+    if (-not $procs) { throw "Launch did not produce any Bevel.App process." }
+
+    # Report the session so an invisible session-0 launch can never be mistaken for a working one.
+    $sessions = ($procs | Select-Object -Expand SessionId -Unique) -join ', '
+    Write-Output "Launched $($procs.Count) process(es) in session(s) $sessions"
+    if ($sessions -eq '0') {
+        Write-Warning "Running in session 0 — there is no interactive desktop, so nothing will be visible."
+    }
 }
