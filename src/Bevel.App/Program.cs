@@ -23,6 +23,15 @@ internal static class Program
         App.Role = role;
         RestartDiag.Log($"boot: role={role} pal={pal}");
 
+        // Last-ditch crash forensics. An unhandled exception in a peer process abandons the managed stack
+        // entirely: the OS crash report shows only IL_Throw -> DispatchManagedException -> PROCAbort with
+        // the managed frames unsymbolicated, so "which exception, from where" is unrecoverable unless the
+        // child's stderr happened to be captured. Mirror it into the persistent diag log, which every role
+        // can write and which survives the process (bevel-ejon / bevel-bxol were diagnosed only because a
+        // LaunchAgent's StandardErrorPath caught them by luck).
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            RestartDiag.Log($"FATAL unhandled ({role}): {e.ExceptionObject}");
+
         // The launcher supervises OTHER processes and hosts no PAL/DI/UI of its own — branch before the
         // host is even built so it never constructs platform services.
         if (role == ShellRole.Launcher)

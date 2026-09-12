@@ -447,6 +447,65 @@ public sealed class ShellCoreIntegrationTests
         public void Dispose() { }
     }
 
+    /// <summary>Stands in for a transport fault that is NOT an InvalidOperationException — the shape the
+    /// helper's gRPC channel actually throws when it is disposed mid-call ("gRPC call disposed.").</summary>
+    private sealed class TransportFault(string message) : Exception(message);
+
+    // bevel-ejon: on a cold boot the Swift helper bounces WHILE the core is seeding, so the first
+    // enumerate fails with a transport fault rather than the "Helper not connected"
+    // InvalidOperationException the retry was typed to. That escaped StartAsync → RunShellCore → Main and
+    // aborted the headless core (SIGABRT), which the supervisor then crash-looped. Seeding is best-effort
+    // by contract: any non-cancellation failure must be retried, then degrade — never propagate.
+    [Fact]
+    public async Task StartAsync_SurvivesNonInvalidOperationFault_DuringWindowSeed_AndStillSeeds()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        pal.EnumerateFaults.Enqueue(new TransportFault("gRPC call disposed."));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+
+        await server.StartAsync(Ct);            // must not throw
+
+        Assert.Equal(2, pal.EnumerateCalls);    // faulted once, retried, then succeeded
+
+        // And the retry's result is actually seeded — a survived seed must not be an empty one.
+        await using var core = new ShellCoreClient(path, nonce);
+        var opened = new ConcurrentBag<string>();
+        var wm = new ShellCoreWindowManager(core);
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => opened.Contains("a"), "the retried seed should still replay the window");
+        Assert.Contains("a", opened);
+    }
+
+    // Same contract for the apps/tray seeds, which ran their own narrower catches (bevel-ejon): a faulting
+    // source degrades that ONE snapshot to empty and leaves the rest of the projection intact.
+    [Fact]
+    public async Task StartAsync_SurvivesNonInvalidOperationFault_DuringAppsAndTraySeed()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        pal.InstalledAppsFault = new TransportFault("gRPC call disposed.");
+        pal.TrayFault = new TransportFault("gRPC call disposed.");
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+
+        await server.StartAsync(Ct);            // must not throw
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var opened = new ConcurrentBag<string>();
+        var wm = new ShellCoreWindowManager(core);
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => opened.Contains("a"), "a failing apps/tray seed must not empty the window projection");
+        Assert.Contains("a", opened);           // windows still seeded despite apps/tray failing
+    }
+
     private sealed class ControllablePal : IWindowManager, IAppEnvironment, ISystemTrayHost
     {
         private readonly List<ForeignWindow> _windows = new();
@@ -474,8 +533,16 @@ public sealed class ShellCoreIntegrationTests
         public Capabilities Capabilities { get; } =
             new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
 
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default) =>
-            ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+        /// <summary>Test seam (bevel-ejon): exceptions to throw from the next N window enumerates before
+        /// succeeding — stands in for the helper's transport faulting mid-seed on a cold boot.</summary>
+        public readonly Queue<Exception> EnumerateFaults = new();
+        public int EnumerateCalls;
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+        {
+            EnumerateCalls++;
+            if (EnumerateFaults.Count > 0) throw EnumerateFaults.Dequeue();
+            return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+        }
 
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
@@ -501,8 +568,10 @@ public sealed class ShellCoreIntegrationTests
         public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default) =>
             ValueTask.FromResult<IReadOnlyList<RunningApp>>(Array.Empty<RunningApp>());
 
+        /// <summary>Test seam (bevel-ejon): thrown from the installed-apps seed.</summary>
+        public Exception? InstalledAppsFault;
         public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default) =>
-            ValueTask.FromResult(_installed);
+            InstalledAppsFault is { } ex ? throw ex : ValueTask.FromResult(_installed);
 
         public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) { Launched.Add(appIdOrPath); return Task.CompletedTask; }
 
@@ -515,8 +584,11 @@ public sealed class ShellCoreIntegrationTests
         /// <summary>Test seam (bevel-8ck): fires while the core is taking its tray snapshot, so a test can
         /// inject a delta into the exact subscribe→snapshot gap the race lived in.</summary>
         public Action? OnGetItems;
+        /// <summary>Test seam (bevel-ejon): thrown from the tray seed.</summary>
+        public Exception? TrayFault;
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         {
+            if (TrayFault is { } ex) throw ex;
             OnGetItems?.Invoke();
             return ValueTask.FromResult<IReadOnlyList<TrayItem>>(_trayItems.ToArray());
         }
