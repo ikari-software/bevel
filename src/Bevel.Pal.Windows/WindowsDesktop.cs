@@ -129,16 +129,52 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
         }
     }
 
+    /// <summary>Live monitor work/full rects in physical pixels. Used by tests to assert
+    /// SPI_SETWORKAREA actually moved <c>rcWork</c> (PR #1 #14) rather than only "did not throw".</summary>
+    internal static bool TryGetWorkArea(MonitorId monitor, out PalRect work, out PalRect full)
+    {
+        work = default;
+        full = default;
+        if (!OperatingSystem.IsWindows()) return false;
+        foreach (var mi in EnumerateMonitorInfos())
+        {
+            if (!string.Equals(mi.DeviceName, monitor.Value, StringComparison.Ordinal))
+                continue;
+            var w = mi.rcWork;
+            var f = mi.rcMonitor;
+            work = new PalRect(w.left, w.top, w.right - w.left, w.bottom - w.top);
+            full = new PalRect(f.left, f.top, f.right - f.left, f.bottom - f.top);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Restore a previously snapshotted work area (test cleanup — do not use
+    /// <see cref="ResetWorkAreasToFull"/> here; that would erase Explorer's own inset).</summary>
+    internal static void RestoreWorkArea(PalRect work)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var rect = new RECT
+        {
+            left = work.X,
+            top = work.Y,
+            right = work.X + work.Width,
+            bottom = work.Y + work.Height,
+        };
+        SetWorkArea(ref rect);
+    }
+
     [SupportedOSPlatform("windows")]
     private static void SetWorkArea(ref RECT rect)
     {
         // SPI_SETWORKAREA takes a RECT* in pvParam; the OS applies it to the monitor containing the rect.
-        // No SPIF_SENDCHANGE broadcast here — the shell re-reads on its own cadence and a WM_SETTINGCHANGE
-        // storm across monitors isn't worth it; callers that need the notify can add SPIF flags later.
+        // SPIF_SENDCHANGE is required when we have just hidden Explorer's bar (bevel-h0sr): without the
+        // broadcast, windows (and Avalonia's Screen list) keep the old rcWork inset and Bevel stays
+        // parked above an empty native-taskbar-sized strip.
         var handle = GCHandle.Alloc(rect, GCHandleType.Pinned);
         try
         {
-            SystemParametersInfo(SPI_SETWORKAREA, 0, handle.AddrOfPinnedObject(), 0);
+            SystemParametersInfo(SPI_SETWORKAREA, 0, handle.AddrOfPinnedObject(), SPIF_SENDCHANGE);
         }
         finally
         {
@@ -385,6 +421,7 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
 
     private const uint MONITORINFOF_PRIMARY = 0x1;
     private const uint SPI_SETWORKAREA = 0x002F;
+    private const uint SPIF_SENDCHANGE = 0x02;
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
 
@@ -433,13 +470,23 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
 /// <summary>
 /// U7: the Windows "dock" analogue of the macOS Dock auto-hide. There is no auto-hide toggle we can
 /// safely flip on the native taskbar without owning its AppBar registration, so the shell-mode gesture
-/// is to <b>hide/restore the native taskbar window</b> (<c>Shell_TrayWnd</c>) outright: on enable we
-/// capture its prior visibility and hide it; on disable we restore exactly that prior state — Bevel
-/// never leaves the user's taskbar hidden if it was showing and we somehow crash between the two.
+/// is to <b>hide/restore the native taskbar window</b> (<c>Shell_TrayWnd</c> +
+/// <c>Shell_SecondaryTrayWnd</c>) outright: on enable we capture its prior visibility and hide it;
+/// on disable we restore exactly that prior state.
+///
+/// Crash-safety (bevel-injy, mirroring <c>MacOSDockController</c>): a marker file records that Bevel
+/// claimed the native bar. It is removed on every clean exit path (OnClosed → SetAutoHide(false),
+/// <see cref="Dispose"/>, process exit). A hard kill (Job Object, 3s grace then Kill) skips those;
+/// the next launch heals the leftover hide so the machine is never left without a taskbar.
+///
+/// Work-area (bevel-h0sr): hiding the HWND does <b>not</b> drop Explorer's AppBar reservation, so
+/// <c>rcWork</c> still insets the bottom and Windows clamps our bar into that strip. After hide we
+/// reset every monitor's work area to full <c>rcMonitor</c> (with <c>SPIF_SENDCHANGE</c>) so Bevel
+/// can sit on the physical bottom edge.
 ///
 /// Guarded off-Windows; no P/Invoke in the constructor.
 /// </summary>
-public sealed class WindowsDockController : IDockController
+public sealed class WindowsDockController : IDockController, IDisposable
 {
     private static readonly Capabilities Caps = new(
         Available: true, TrayMode: TrayCapability.Authoritative,
@@ -447,8 +494,24 @@ public sealed class WindowsDockController : IDockController
 
     public Capabilities Capabilities => OperatingSystem.IsWindows() ? Caps : Capabilities.None;
 
-    // Remembers whether the native taskbar was visible when we hid it, so disable restores symmetrically.
+    private readonly WindowsDesktopEnvironment? _desktop;
+    private readonly object _gate = new();
     private bool? _priorVisible;
+    private bool _claimed;
+    private bool _disposed;
+
+    private static readonly string MarkerDir =
+        OperatingSystem.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "bevel")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".bevel");
+    private static readonly string MarkerFile = Path.Combine(MarkerDir, "win-taskbar-claimed.json");
+
+    public WindowsDockController(WindowsDesktopEnvironment? desktop = null)
+    {
+        _desktop = desktop;
+        HealCrashIfNeeded();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreIfClaimed();
+    }
 
     public Task SetAutoHideAsync(bool enabled, CancellationToken ct = default)
     {
@@ -462,27 +525,131 @@ public sealed class WindowsDockController : IDockController
     [SupportedOSPlatform("windows")]
     private void Apply(bool enabled)
     {
-        var tray = FindWindow("Shell_TrayWnd", null);
-        if (tray == IntPtr.Zero)
-            return;
+        lock (_gate)
+        {
+            if (_disposed) return;
 
-        if (enabled)
-        {
-            // Capture prior state once so a re-enable doesn't clobber the remembered visibility.
-            _priorVisible ??= IsWindowVisible(tray);
-            ShowWindow(tray, SW_HIDE);
+            if (enabled)
+            {
+                var trays = FindTrayWindows();
+                if (trays.Count == 0) return;
+
+                _priorVisible ??= trays.Exists(IsWindowVisible);
+                foreach (var hwnd in trays)
+                    ShowWindow(hwnd, SW_HIDE);
+                _claimed = true;
+                WriteMarker(_priorVisible ?? true);
+                // Drop Explorer's leftover AppBar inset so our bar can sit on the physical bottom.
+                _desktop?.ResetWorkAreasToFull();
+            }
+            else
+            {
+                RestoreIfClaimedLocked();
+            }
         }
-        else
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        RestoreIfClaimed();
+    }
+
+    private void RestoreIfClaimed()
+    {
+        lock (_gate) RestoreIfClaimedLocked();
+    }
+
+    private void RestoreIfClaimedLocked()
+    {
+        if (!_claimed && !File.Exists(MarkerFile))
         {
-            // Restore exactly what we found: only re-show if it had been visible before we hid it.
-            bool showAgain = _priorVisible ?? true;
-            ShowWindow(tray, showAgain ? SW_SHOW : SW_HIDE);
             _priorVisible = null;
+            return;
         }
+
+        bool showAgain = _priorVisible ?? ReadMarkerPriorVisible() ?? true;
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (var hwnd in FindTrayWindows())
+                ShowWindow(hwnd, showAgain ? SW_SHOW : SW_HIDE);
+        }
+        _claimed = false;
+        _priorVisible = null;
+        DeleteMarker();
+    }
+
+    private void HealCrashIfNeeded()
+    {
+        try
+        {
+            if (!File.Exists(MarkerFile)) return;
+            // Previous session died while the native bar was hidden by us. Restore now so the
+            // user is not stuck without a taskbar until they happen to launch Bevel again and quit cleanly.
+            _claimed = true;
+            _priorVisible = ReadMarkerPriorVisible() ?? true;
+            RestoreIfClaimed();
+        }
+        catch
+        {
+            DeleteMarker();
+        }
+    }
+
+    private static bool? ReadMarkerPriorVisible()
+    {
+        try
+        {
+            var json = File.ReadAllText(MarkerFile);
+            // Hand-written one-field marker (AOT-safe, same shape as MacOSDockController).
+            if (json.Contains("\"priorVisible\":false", StringComparison.Ordinal)) return false;
+            if (json.Contains("\"priorVisible\":true", StringComparison.Ordinal)) return true;
+        }
+        catch { /* treat as "was visible" */ }
+        return null;
+    }
+
+    private static void WriteMarker(bool priorVisible)
+    {
+        try
+        {
+            Directory.CreateDirectory(MarkerDir);
+            File.WriteAllText(MarkerFile, $"{{\"priorVisible\":{(priorVisible ? "true" : "false")}}}");
+        }
+        catch { /* best-effort */ }
+    }
+
+    private static void DeleteMarker()
+    {
+        try { if (File.Exists(MarkerFile)) File.Delete(MarkerFile); }
+        catch { /* best-effort */ }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static List<IntPtr> FindTrayWindows()
+    {
+        var list = new List<IntPtr>();
+        var primary = FindWindow("Shell_TrayWnd", null);
+        if (primary != IntPtr.Zero) list.Add(primary);
+
+        EnumWindowsProc callback = (hwnd, _) =>
+        {
+            var sb = new System.Text.StringBuilder(64);
+            if (GetClassName(hwnd, sb, sb.Capacity) > 0
+                && sb.ToString() is "Shell_SecondaryTrayWnd")
+                list.Add(hwnd);
+            return true;
+        };
+        EnumWindows(callback, IntPtr.Zero);
+        GC.KeepAlive(callback);
+        return list;
     }
 
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindow(string? lpClassName, string? lpWindowName);
@@ -492,4 +659,19 @@ public sealed class WindowsDockController : IDockController
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    /// <summary>Whether Explorer's primary taskbar HWND is visible. Tests use this to assert
+    /// hide/restore/Dispose actually moved OS state (PR #1 #1).</summary>
+    internal static bool IsNativeTaskbarVisible()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        var hwnd = FindWindow("Shell_TrayWnd", null);
+        return hwnd != IntPtr.Zero && IsWindowVisible(hwnd);
+    }
 }

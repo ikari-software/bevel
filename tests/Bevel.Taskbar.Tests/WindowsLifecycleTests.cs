@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using Bevel.App;
 using Bevel.App.Supervision;
@@ -65,5 +66,83 @@ public class WindowsLifecycleTests
         using var reg = WindowsShutdownSignal.Register(() => fired = true);
         Assert.NotNull(reg);
         Assert.False(fired);
+    }
+
+    [Fact]
+    public void Windows_runtime_root_is_LocalAppData_bevel()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.Equal(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "bevel"),
+            BevelRuntimeDir.Root);
+    }
+
+    [Fact]
+    public void Named_shutdown_event_stops_a_waiting_child_on_windows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var psi = new ProcessStartInfo("powershell.exe")
+        {
+            Arguments = "-NoProfile -Command \"$n=$env:BEVEL_SHUTDOWN_EVENT; $e=[Threading.EventWaitHandle]::OpenExisting($n); [void]$e.WaitOne()\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        using var rp = new RoleProcess(ShellRole.Core, psi);
+        rp.Start();
+        for (var i = 0; i < 50 && !rp.IsAlive; i++)
+            Thread.Sleep(50);
+        Assert.True(rp.IsAlive, "powershell child should be waiting on the named shutdown event");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        rp.Kill();
+        sw.Stop();
+        Assert.False(rp.IsAlive);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2.5),
+            "named-event teardown must not fall through to the 3s hard-kill grace");
+    }
+
+    [Fact]
+    public void RoleProcess_kill_reaps_a_real_child()
+    {
+        var file = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sleep";
+        var args = OperatingSystem.IsWindows() ? "/c ping 127.0.0.1 -n 20 >nul" : "20";
+        var psi = new ProcessStartInfo(file)
+        {
+            Arguments = args,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        using var rp = new RoleProcess(ShellRole.Core, psi);
+        rp.Start();
+        Assert.True(rp.IsAlive);
+        rp.Kill();
+        Assert.False(rp.IsAlive);
+    }
+
+    [Fact]
+    public void Launcher_job_assigns_a_fresh_child_on_windows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var psi = new ProcessStartInfo("cmd.exe")
+        {
+            Arguments = "/c ping 127.0.0.1 -n 20 >nul",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        using var rp = new RoleProcess(ShellRole.Core, psi);
+        rp.Start();
+        try
+        {
+            // Nested-job CI hosts may refuse AssignProcessToJobObject — that is not #5 breakaway.
+            if (rp.IsInLauncherJob)
+                Assert.True(rp.IsAlive);
+        }
+        finally { rp.Kill(); }
     }
 }

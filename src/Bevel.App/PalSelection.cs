@@ -16,9 +16,10 @@ public enum PalKind
 }
 
 /// <summary>
-/// Resolves the PAL from the command line. <c>--pal=fake</c> / <c>--pal=macos</c>.
-/// Defaults to <see cref="PalKind.Fake"/> so the scaffold boots on any OS (DI-02).
-/// A future hook will default to <see cref="PalKind.MacOS"/> via a platform detector.
+/// Resolves the PAL from the command line. <c>--pal=fake</c> / <c>--pal=macos</c> /
+/// <c>--pal=windows</c> (aliases <c>mac</c>/<c>osx</c> and <c>win</c>).
+/// Defaults to the host OS PAL on macOS and Windows so a packaged launch shows live windows;
+/// Linux/CI fall back to <see cref="PalKind.Fake"/> (DI-02).
 /// </summary>
 public static class PalSelector
 {

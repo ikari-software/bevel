@@ -22,6 +22,7 @@ namespace Bevel.Taskbar;
 public sealed class TaskbarWindow : BevelWindow
 {
     private readonly IDockController? _dockController;
+    private readonly IDesktopEnvironment? _desktop;
     private int _rows;
 
     /// <summary>Current number of button rows (Win2000 drag-to-resize, bevel-0ml).</summary>
@@ -37,9 +38,11 @@ public sealed class TaskbarWindow : BevelWindow
     /// otherwise stay silent until its slow safety poll.</summary>
     public event Action? WorkAreaChanged;
 
-    public TaskbarWindow(IDockController? dockController = null, int rows = 1)
+    public TaskbarWindow(IDockController? dockController = null, int rows = 1,
+        IDesktopEnvironment? desktop = null)
     {
         _dockController = dockController;
+        _desktop = desktop;
         _rows = Math.Max(1, rows);
         Title = "Bevel Taskbar";
         WindowState = WindowState.Normal;
@@ -155,8 +158,14 @@ public sealed class TaskbarWindow : BevelWindow
         base.OnOpened(e);
         StripWindowChrome();
         ApplyTaskbarBehaviors();
-        // Claim the bottom edge: auto-hide the Dock while the taskbar is up.
-        _ = _dockController?.SetAutoHideAsync(true);
+        // Screens are valid now (the ctor may have run with an empty list). Park on the
+        // true bottom BEFORE claiming the native bar so we have a first-paint position.
+        PositionAtPrimaryDisplayBottom();
+
+        // Claim the bottom edge: auto-hide the Dock / hide Shell_TrayWnd. Re-anchor AFTER
+        // that returns — hiding the native bar expands rcWork, and Windows will have
+        // clamped us into the old inset if we don't move again (bevel-h0sr).
+        ClaimDockAndReanchor();
 
         // Publish the taskbar band for WorkAreaMitigator (bevel-m2.13). Screen geometry is
         // only known once opened; recompute on move/scale so display reconfigs are picked up.
@@ -167,15 +176,48 @@ public sealed class TaskbarWindow : BevelWindow
         // A resolution/arrangement change (applicationDidChangeScreenParameters on macOS) moves
         // the bottom edge but neither Avalonia nor the OS re-anchors our borderless bar, and no
         // window emits a move event — so re-anchor the bar, refresh the band, and re-nudge here.
+        // On Windows, Screens.Changed often misses work-area-only updates; also listen to the
+        // PAL's WM_DISPLAYCHANGE watcher (bevel-h0sr).
         if (Screens is not null)
             Screens.Changed += OnScreensChanged;
+        if (_desktop is not null)
+            _desktop.MonitorsChanged += OnMonitorsChanged;
     }
 
     protected override void OnClosed(EventArgs e)
     {
         if (Screens is not null)
             Screens.Changed -= OnScreensChanged;
+        if (_desktop is not null)
+            _desktop.MonitorsChanged -= OnMonitorsChanged;
+        // Restore the native Dock / Shell_TrayWnd. Must run here, not only on host Dispose:
+        // a graceful shutdown closes the window first (bevel-injy). Fire-and-forget — the
+        // macOS path already hops off the UI thread internally.
+        _ = _dockController?.SetAutoHideAsync(false);
         base.OnClosed(e);
+    }
+
+    /// <summary>Hide the host Dock / native taskbar, then re-park on the (possibly expanded)
+    /// primary bottom so we are not left sitting on the old work-area inset.</summary>
+    private async void ClaimDockAndReanchor()
+    {
+        try
+        {
+            if (_dockController is not null)
+                await _dockController.SetAutoHideAsync(true);
+        }
+        catch { /* claim is best-effort; still re-anchor */ }
+
+        void Reanchor()
+        {
+            PositionAtPrimaryDisplayBottom();
+            ApplyTaskbarBehaviors();
+            RecomputeWorkAreaBand();
+            WorkAreaChanged?.Invoke();
+        }
+
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) Reanchor();
+        else Avalonia.Threading.Dispatcher.UIThread.Post(Reanchor);
     }
 
     /// <summary>Re-anchors the bar to the (possibly resized) primary display, refreshes the
@@ -197,6 +239,9 @@ public sealed class TaskbarWindow : BevelWindow
             RowsChanged?.Invoke(_rows);
         WorkAreaChanged?.Invoke();         // kick an immediate re-nudge (no window moved on its own)
     }
+
+    private void OnMonitorsChanged(object? sender, EventArgs e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => OnScreensChanged(sender, e));
 
     private readonly object _bandLock = new();
     private PalRect? _workAreaBand;
@@ -222,20 +267,14 @@ public sealed class TaskbarWindow : BevelWindow
         var primary = Screens?.Primary ?? Screens?.All?.FirstOrDefault();
         if (primary is not null)
         {
-            // Screen.Bounds is device pixels; window-manager bounds are points. Divide by the
-            // display scale so Overlaps() compares like with like — a no-op at scale 1.0, but
-            // the difference that keeps the band correct on a Retina display (scale 2.0).
+            // Screen.Bounds is device pixels. IWindowManager bounds are physical pixels on Windows
+            // and points on macOS — TaskbarGeometry.WorkAreaBand converts so Overlaps() compares
+            // like with like (PR #1 #2: a DIP band vs GetWindowRect at 200% scaling nudged windows
+            // to a mid-screen boundary).
             var scale = primary.Scaling <= 0 ? 1.0 : primary.Scaling;
-            var xPts = primary.Bounds.X / scale;
-            var yPts = primary.Bounds.Y / scale;
-            var widthPts = primary.Bounds.Width / scale;
-            var heightPts = primary.Bounds.Height / scale;
             var barH = TaskbarTheme.HeightForRows(_rows);
-            band = new PalRect(
-                (int)Math.Round(xPts),
-                (int)Math.Round(yPts + heightPts - barH),
-                (int)Math.Round(widthPts),
-                barH);
+            band = TaskbarGeometry.WorkAreaBand(
+                primary.Bounds, scale, barH, windowManagerUsesPhysicalPixels: OperatingSystem.IsWindows());
         }
         lock (_bandLock) _workAreaBand = band;
     }
@@ -275,9 +314,16 @@ public sealed class TaskbarWindow : BevelWindow
         }
     }
 
-    /// <summary>Applies macOS-specific window level and collection behaviors.</summary>
+    /// <summary>Applies platform window-level / tool-window behaviors so the bar stays on the
+    /// bottom edge and above ordinary windows.</summary>
     private void ApplyTaskbarBehaviors()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsTaskbarNative.ApplyToolWindowStyles(this);
+            return;
+        }
+
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return;
 
@@ -300,6 +346,11 @@ public sealed class TaskbarWindow : BevelWindow
     /// level, so ordinary windows can cover it.</summary>
     public void SetAlwaysOnTop(bool onTop)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsTaskbarNative.SetAlwaysOnTop(this, onTop);
+            return;
+        }
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return;
         var handle = TryGetNativeHandle();
         if (handle == IntPtr.Zero) return;
@@ -385,11 +436,18 @@ public sealed class TaskbarWindow : BevelWindow
         if (primary is null) return;
 
         var bounds = primary.Bounds;
+        var scale = primary.Scaling <= 0 ? 1.0 : primary.Scaling;
         var taskbarHeight = TaskbarTheme.HeightForRows(_rows);
 
-        Position = new PixelPoint(bounds.X, bounds.Y + bounds.Height - taskbarHeight);
-        Width = bounds.Width;
+        // Bounds/Position are device pixels; Width/Height are DIP. Mixing them parks the bar
+        // at the wrong Y on any scale ≠ 1 (bevel-h0sr).
+        Position = TaskbarGeometry.BottomLeft(bounds, scale, taskbarHeight);
+        Width = TaskbarGeometry.WidthDip(bounds, scale);
         Height = taskbarHeight;
+
+        var heightPx = (int)Math.Round(taskbarHeight * scale);
+        var widthPx = bounds.Width;
+        WindowsTaskbarNative.PlaceAt(this, Position, widthPx, heightPx);
     }
 
     private IntPtr TryGetNativeHandle()

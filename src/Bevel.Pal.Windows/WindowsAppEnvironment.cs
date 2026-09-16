@@ -275,8 +275,9 @@ public sealed class WindowsAppEnvironment : IAppEnvironment, IDisposable
                 // .lnk-path fallback so the entry is still launchable.
                 link.GetPath(sb, sb.Capacity, ref find, 2);
                 var target = sb.ToString();
-                if (!string.IsNullOrEmpty(target))
-                    appId = target;
+                // Keep AppId as the .lnk itself (PR #1 #11): resolving to the .exe discards the
+                // shortcut's arguments, working directory, and distinct Start-menu identity.
+                // Launch goes through ShellExecute, which honors those. The target is icon-only.
 
                 var iconSb = new StringBuilder(260);
                 link.GetIconLocation(iconSb, iconSb.Capacity, out _);

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Bevel.Pal.Abstractions;
@@ -19,10 +20,10 @@ namespace Bevel.Pal.Windows;
 /// Escape hatch if a broken shell locks you out: Ctrl+Alt+Del → Task Manager → Run new task → <c>explorer</c>
 /// / <c>regedit</c> (see <c>packaging/windows/RESTORE-SHELL.md</c>).</para>
 ///
-/// <para><b>Power</b>: <see cref="ExitWindowsEx"/> for logoff/reboot/shutdown, <see cref="LockWorkStation"/>
-/// for lock. Logoff needs no privilege; reboot/shutdown need <c>SE_SHUTDOWN_NAME</c> enabled on the process
-/// token FIRST (<see cref="EnableShutdownPrivilege"/>). The call is advisory/fire-and-forget: it initiates
-/// the sequence and returns.</para>
+    /// <para><b>Power</b>: <see cref="ExitWindowsEx"/> for logoff/reboot/shutdown, <see cref="LockWorkStation"/>
+    /// for lock. Logoff needs no privilege; reboot/shutdown need <c>SE_SHUTDOWN_NAME</c> enabled on the process
+    /// token FIRST (<see cref="EnableShutdownPrivilege"/>). Privilege or Win32 failures throw so a rejected
+    /// action cannot look like success (PR #1 #8).</para>
 ///
 /// <para>Every registry / P/Invoke method is guarded with <see cref="OperatingSystem.IsWindows"/> so this
 /// assembly loads and its constructor runs on CI's macOS/Linux runners (mirrors the bevel-8kxc discipline):
@@ -183,25 +184,27 @@ public sealed class WindowsShellSession : IShellSession
     {
         if (kind == LogoutKind.Lock)
         {
-            // Lock is not an ExitWindowsEx flavor — it has its own user32 entry point and needs no privilege.
-            LockWorkStation();
+            if (!LockWorkStation())
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "LockWorkStation failed");
             return;
         }
 
         uint flags = kind switch
         {
-            LogoutKind.LogOut => EWX_LOGOFF,   // 0x0 — no privilege required
-            LogoutKind.Restart => EWX_REBOOT,  // 0x2 — needs SE_SHUTDOWN_NAME
-            LogoutKind.Shutdown => EWX_SHUTDOWN,// 0x1 — needs SE_SHUTDOWN_NAME
+            LogoutKind.LogOut => EWX_LOGOFF,
+            LogoutKind.Restart => EWX_REBOOT,
+            LogoutKind.Shutdown => EWX_SHUTDOWN,
             _ => EWX_LOGOFF,
         };
 
-        // Reboot/shutdown require the shutdown privilege enabled on our own token first.
         if (kind is LogoutKind.Restart or LogoutKind.Shutdown)
-            EnableShutdownPrivilege();
+        {
+            if (!EnableShutdownPrivilege())
+                throw new InvalidOperationException("SE_SHUTDOWN_NAME could not be enabled; restart/shutdown refused.");
+        }
 
-        // A real, planned reason keeps the shutdown out of the "unexpected" event-log bucket.
-        _ = ExitWindowsEx(flags, SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED);
+        if (!ExitWindowsEx(flags, SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED))
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"ExitWindowsEx({kind}) failed");
     }
 
     /// <summary>Enables <c>SE_SHUTDOWN_NAME</c> on the current process token (required before

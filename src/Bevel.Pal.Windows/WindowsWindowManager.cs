@@ -177,9 +177,10 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
     /// <summary>The enumerate filter: visible, un-owned, not a tool window (unless flagged app), and
     /// not DWM-cloaked (UWP-suspended / on another virtual desktop).</summary>
     [SupportedOSPlatform("windows")]
-    private static bool IsRealAppWindow(IntPtr hwnd)
+    internal static bool IsRealAppWindow(IntPtr hwnd)
     {
         if (!IsWindowVisible(hwnd)) return false;
+        if (GetAncestor(hwnd, GA_ROOT) != hwnd) return false;
         if (GetWindow(hwnd, GW_OWNER) != IntPtr.Zero) return false;
 
         long ex = GetWindowLongPtrSafe(hwnd, GWL_EXSTYLE);
@@ -269,6 +270,22 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return (exePath, Path.GetFileNameWithoutExtension(exePath));
     }
 
+    /// <summary>PID to terminate for a top-level HWND. UWP windows are hosted by
+    /// ApplicationFrameHost; killing that PID takes every hosted app with it (PR #1 #12). Prefer
+    /// the inner <c>CoreWindow</c> process when present.</summary>
+    [SupportedOSPlatform("windows")]
+    internal static uint TerminationPid(IntPtr hwnd)
+    {
+        GetWindowThreadProcessId(hwnd, out uint pid);
+        var core = FindWindowEx(hwnd, IntPtr.Zero, "Windows.UI.Core.CoreWindow", null);
+        if (core != IntPtr.Zero)
+        {
+            GetWindowThreadProcessId(core, out uint corePid);
+            if (corePid != 0) return corePid;
+        }
+        return pid;
+    }
+
     [SupportedOSPlatform("windows")]
     private static string? GetProcessImagePath(uint pid)
     {
@@ -330,7 +347,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
                 if (id is not null && id.Equals(bundleId, StringComparison.OrdinalIgnoreCase))
                 {
                     matches.Add(hwnd);
-                    GetWindowThreadProcessId(hwnd, out uint pid);
+                    var pid = TerminationPid(hwnd);
                     if (pid != 0) pids.Add(pid);
                 }
             }
@@ -367,54 +384,94 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         int w = r.Right - r.Left, h = r.Bottom - r.Top;
         if (w <= 0 || h <= 0) return null;
 
+        var (capW, capH) = NormalizeCaptureMax(maxWidth, maxHeight);
+        int dstW = w, dstH = h;
+        if (w > capW || h > capH)
+        {
+            double scale = Math.Min((double)capW / w, (double)capH / h);
+            dstW = Math.Max(1, (int)Math.Round(w * scale));
+            dstH = Math.Max(1, (int)Math.Round(h * scale));
+        }
+
         IntPtr hdcWindow = GetWindowDC(hwnd);
         if (hdcWindow == IntPtr.Zero) return null;
-        IntPtr hdcMem = IntPtr.Zero, hBitmap = IntPtr.Zero;
+        IntPtr hdcMem = IntPtr.Zero, hBitmap = IntPtr.Zero, hdcDest = IntPtr.Zero, hDest = IntPtr.Zero;
         try
         {
             hdcMem = CreateCompatibleDC(hdcWindow);
             if (hdcMem == IntPtr.Zero) return null;
 
-            var bmi = new BITMAPINFO
-            {
-                bmiHeader = new BITMAPINFOHEADER
-                {
-                    biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
-                    biWidth = w,
-                    biHeight = -h,          // top-down
-                    biPlanes = 1,
-                    biBitCount = 32,
-                    biCompression = BI_RGB,
-                },
-            };
-
+            var bmi = Dib(w, h);
             hBitmap = CreateDIBSection(hdcMem, ref bmi, DIB_RGB_COLORS, out IntPtr pBits, IntPtr.Zero, 0);
             if (hBitmap == IntPtr.Zero || pBits == IntPtr.Zero) return null;
 
             IntPtr old = SelectObject(hdcMem, hBitmap);
-            // PW_RENDERFULLCONTENT (0x2) is header-only in the SDK: required or GPU/DWM-composited
-            // windows come back black.
             bool ok = PrintWindow(hwnd, hdcMem, PW_RENDERFULLCONTENT);
             SelectObject(hdcMem, old);
             if (!ok) return null;
 
-            var bgra = new byte[w * h * 4];
-            Marshal.Copy(pBits, bgra, 0, bgra.Length);
+            IntPtr copyFrom = pBits;
+            int copyW = w, copyH = h;
+            if (dstW != w || dstH != h)
+            {
+                hdcDest = CreateCompatibleDC(hdcWindow);
+                if (hdcDest == IntPtr.Zero) return null;
+                var destBmi = Dib(dstW, dstH);
+                hDest = CreateDIBSection(hdcDest, ref destBmi, DIB_RGB_COLORS, out IntPtr pDest, IntPtr.Zero, 0);
+                if (hDest == IntPtr.Zero || pDest == IntPtr.Zero) return null;
+                var oldDest = SelectObject(hdcDest, hDest);
+                var oldSrc = SelectObject(hdcMem, hBitmap);
+                SetStretchBltMode(hdcDest, HALFTONE);
+                StretchBlt(hdcDest, 0, 0, dstW, dstH, hdcMem, 0, 0, w, h, SRCCOPY);
+                SelectObject(hdcMem, oldSrc);
+                SelectObject(hdcDest, oldDest);
+                copyFrom = pDest;
+                copyW = dstW;
+                copyH = dstH;
+            }
 
-            return EncodePng(bgra, w, h, maxWidth, maxHeight);
+            var bgra = new byte[copyW * copyH * 4];
+            Marshal.Copy(copyFrom, bgra, 0, bgra.Length);
+            // Already sized to the cap — EncodePng must not downscale again.
+            return EncodePng(bgra, copyW, copyH, 0, 0);
         }
         finally
         {
+            if (hDest != IntPtr.Zero) DeleteObject(hDest);
+            if (hdcDest != IntPtr.Zero) DeleteDC(hdcDest);
             if (hBitmap != IntPtr.Zero) DeleteObject(hBitmap);
             if (hdcMem != IntPtr.Zero) DeleteDC(hdcMem);
             ReleaseDC(hwnd, hdcWindow);
         }
     }
 
+    private static BITMAPINFO Dib(int width, int height) => new()
+    {
+        bmiHeader = new BITMAPINFOHEADER
+        {
+            biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+            biWidth = width,
+            biHeight = -height,
+            biPlanes = 1,
+            biBitCount = 32,
+            biCompression = BI_RGB,
+        },
+    };
+
+    /// <summary>Hover previews pass 0/0 meaning "helper default". On Windows that used to mean
+    /// "no cap" and allocated full-size 4K DIB + BGRA + PNG buffers (PR #1 #3). Same 240×160
+    /// logical default as the macOS helper.</summary>
+    internal const int DefaultCaptureMaxWidth = 240;
+    internal const int DefaultCaptureMaxHeight = 160;
+
+    internal static (int Width, int Height) NormalizeCaptureMax(int maxWidth, int maxHeight) =>
+        (maxWidth <= 0 ? DefaultCaptureMaxWidth : maxWidth,
+         maxHeight <= 0 ? DefaultCaptureMaxHeight : maxHeight);
+
     /// <summary>Encodes a top-down BGRA buffer to a valid RGBA PNG, optionally nearest-neighbour
     /// downscaled to fit within <paramref name="maxWidth"/>×<paramref name="maxHeight"/> (0 = no cap).
     /// PrintWindow's alpha is unreliable, so pixels are forced opaque.</summary>
-    private static byte[] EncodePng(byte[] bgra, int srcW, int srcH, int maxWidth, int maxHeight)
+    internal static byte[] EncodePng(byte[] bgra, int srcW, int srcH, int maxWidth, int maxHeight)
     {
         int dstW = srcW, dstH = srcH;
         if (maxWidth > 0 && maxHeight > 0 && (srcW > maxWidth || srcH > maxHeight))
@@ -853,4 +910,14 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(IntPtr hObject);
+
+    private const int HALFTONE = 4;
+    private const uint SRCCOPY = 0x00CC0020;
+
+    [DllImport("gdi32.dll")]
+    private static extern int SetStretchBltMode(IntPtr hdc, int mode);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool StretchBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
+        IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, uint rop);
 }

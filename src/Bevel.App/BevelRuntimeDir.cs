@@ -26,6 +26,10 @@ internal static class BevelRuntimeDir
     /// <summary>Taskbar↔Explorer control-channel rendezvous dir.</summary>
     public static string ExplorersDir => Path.Combine(Root, "bevel-explorers");
 
+    /// <summary>Per-role heartbeat + health-status files the launcher watches (bevel-9h7n).
+    /// Not a socket dir — no sun_path cap. Cleared at launcher boot like the quit marker.</summary>
+    public static string HealthDir => Path.Combine(Root, "bevel-health");
+
     /// <summary>Asserts a UDS path fits the <c>sun_path</c> 108-byte limit (Windows and Linux both cap
     /// there). A bind past it fails obscurely, so fail loudly with the offending path instead
     /// (bevel-ncfp.2 / U2). Returns the path unchanged for fluent use.</summary>

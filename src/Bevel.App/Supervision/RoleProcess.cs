@@ -19,7 +19,20 @@ internal sealed class RoleProcess : IRoleProcess
     private EventWaitHandle? _shutdownEvent;
 
     public ShellRole Role { get; }
-    public bool IsAlive => _process is { HasExited: false };
+    public bool IsAlive
+    {
+        get
+        {
+            var p = _process;
+            if (p is null) return false;
+            try
+            {
+                p.Refresh(); // Windows can cache HasExited; a dead core then never respawns (bevel-hprv)
+                return !p.HasExited;
+            }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
 
     public RoleProcess(ShellRole role, ProcessStartInfo startInfo)
     {
@@ -36,6 +49,18 @@ internal sealed class RoleProcess : IRoleProcess
             ?? throw new InvalidOperationException($"Failed to start {Role} process.");
         if (OperatingSystem.IsWindows())
             WindowsJobObject.TryAssign(_process); // orphan backstop — never the graceful path
+    }
+
+    /// <summary>True when this child was assigned to the launcher kill-on-close job.
+    /// False off Windows, before Start, or when the host already nested the process in a job
+    /// (PR #1 #5 — assignment is best-effort; do not treat false as a breakaway policy change).</summary>
+    internal bool IsInLauncherJob
+    {
+        get
+        {
+            if (!OperatingSystem.IsWindows() || _process is null) return false;
+            return WindowsJobObject.IsAssigned(_process);
+        }
     }
 
     public void Kill()

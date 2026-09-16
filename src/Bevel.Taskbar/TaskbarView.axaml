@@ -455,7 +455,7 @@
                                 </Style.Animations>
                             </Style>
                         </Grid.Styles>
-                        <Ellipse Classes="halo" Fill="#C0392B" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse Classes="halo" Fill="{DynamicResource Bevel.Brush.HotTracking}" RenderTransformOrigin="0.5,0.5">
                             <Ellipse.RenderTransform>
                                 <ScaleTransform ScaleX="0.62" ScaleY="0.62" />
                             </Ellipse.RenderTransform>

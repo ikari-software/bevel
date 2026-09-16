@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
@@ -73,6 +74,36 @@ public class DisconnectedIndicatorTests
         var dot = Assert.Single(ellipses, e => !e.Classes.Contains("halo"));
         Assert.Equal(1.0, dot.Opacity, 3);
         Assert.NotNull(halo.RenderTransform);   // the ping scales; without a transform it cannot
+    }
+
+    [AvaloniaFact]
+    public void Halo_fill_follows_HotTracking_in_win2000_and_luna()
+    {
+        try
+        {
+            foreach (var theme in new[] { "win2000", "luna" })
+            {
+                Bevel.UI.ThemeService.Apply(theme);
+                var (view, _, _) = Build(connected: false);
+                Dispatcher.UIThread.RunJobs();
+                var halo = Assert.Single(
+                    Indicator(view).GetVisualDescendants().OfType<Ellipse>(),
+                    e => e.Classes.Contains("halo"));
+                Assert.True(
+                    Avalonia.Application.Current!.TryGetResource(
+                        "Bevel.Brush.HotTracking",
+                        Avalonia.Application.Current.ActualThemeVariant,
+                        out var token));
+                var expected = Assert.IsAssignableFrom<ISolidColorBrush>(token);
+                var actual = Assert.IsAssignableFrom<ISolidColorBrush>(halo.Fill);
+                Assert.Equal(expected.Color, actual.Color);
+                Assert.NotEqual(Colors.Red, actual.Color);
+            }
+        }
+        finally
+        {
+            Bevel.UI.ThemeService.Apply("win2000");
+        }
     }
 
     [AvaloniaFact]

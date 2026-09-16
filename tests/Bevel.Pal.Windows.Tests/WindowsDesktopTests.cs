@@ -54,9 +54,10 @@ public class WindowsDesktopTests
     {
         if (OperatingSystem.IsWindows())
             return;
-        var dock = new WindowsDockController();
+        using var dock = new WindowsDockController();
         await dock.SetAutoHideAsync(true);
         await dock.SetAutoHideAsync(false);
+        dock.Dispose(); // second dispose must be a no-op (bevel-injy)
     }
 
     [Fact]
@@ -97,13 +98,21 @@ public class WindowsDesktopTests
             return;
         var de = new WindowsDesktopEnvironment();
         var primary = (await de.GetMonitorsAsync()).First(m => m.IsPrimary);
+        Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var original, out var full));
         try
         {
-            await de.ReserveWorkAreaAsync(primary.Id, DockEdge.Bottom, 40); // must not throw against a real monitor
+            await de.ReserveWorkAreaAsync(primary.Id, DockEdge.Bottom, 40);
+            Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var reserved, out _));
+            Assert.Equal(full.Height - 40, reserved.Height);
+            Assert.Equal(full.Y, reserved.Y);
+            Assert.Equal(full.X, reserved.X);
+            Assert.Equal(full.Width, reserved.Width);
         }
         finally
         {
-            de.ResetWorkAreasToFull(); // reconciliation: leave the box's work area intact after the test
+            WindowsDesktopEnvironment.RestoreWorkArea(original);
+            Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var restored, out _));
+            Assert.Equal(original, restored);
         }
     }
 
@@ -112,8 +121,27 @@ public class WindowsDesktopTests
     {
         if (!OperatingSystem.IsWindows())
             return;
-        var dock = new WindowsDockController();
+        if (!WindowsDockController.IsNativeTaskbarVisible())
+            return; // session-0 / no Explorer — nothing to hide
+        using var dock = new WindowsDockController();
         await dock.SetAutoHideAsync(true);  // hide Shell_TrayWnd, capturing prior state
+        Assert.False(WindowsDockController.IsNativeTaskbarVisible());
         await dock.SetAutoHideAsync(false); // restore it symmetrically
+        Assert.True(WindowsDockController.IsNativeTaskbarVisible());
+    }
+
+    [Fact]
+    public async Task Dock_dispose_restores_the_native_taskbar_on_windows()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        if (!WindowsDockController.IsNativeTaskbarVisible())
+            return;
+
+        var dock = new WindowsDockController();
+        await dock.SetAutoHideAsync(true);
+        Assert.False(WindowsDockController.IsNativeTaskbarVisible());
+        dock.Dispose();
+        Assert.True(WindowsDockController.IsNativeTaskbarVisible());
     }
 }

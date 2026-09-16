@@ -121,6 +121,32 @@ public class WindowsAppEnvironmentTests
     }
 
     [Fact]
+    public async Task Resolved_shortcut_keeps_the_lnk_as_AppId_on_windows()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        var dir = Directory.CreateTempSubdirectory("bevel-appenv-reallnk");
+        var lnk = Path.Combine(dir.FullName, "Notepad with args.lnk");
+        try
+        {
+            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+            var shortcut = shell.CreateShortcut(lnk);
+            shortcut.TargetPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "notepad.exe");
+            shortcut.Arguments = "/a";
+            shortcut.WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            shortcut.Save();
+
+            using var env = new WindowsAppEnvironment(new[] { dir.FullName });
+            var installed = await env.EnumerateInstalledAppsAsync();
+            var hit = Assert.Single(installed, a => a.DisplayName == "Notepad with args");
+            Assert.Equal(lnk, hit.AppId);
+            Assert.False(hit.AppId.EndsWith(".exe", StringComparison.OrdinalIgnoreCase),
+                "resolving to the .exe would drop Arguments/WorkingDirectory (PR #1 #11)");
+        }
+        finally { TryDelete(dir.FullName); }
+    }
+
+    [Fact]
     public async Task Adding_a_shortcut_raises_InstalledAppsChanged_on_windows()
     {
         if (!OperatingSystem.IsWindows())

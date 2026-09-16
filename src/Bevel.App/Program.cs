@@ -30,7 +30,14 @@ internal static class Program
         // can write and which survives the process (bevel-ejon / bevel-bxol were diagnosed only because a
         // LaunchAgent's StandardErrorPath caught them by luck).
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
             RestartDiag.Log($"FATAL unhandled ({role}): {e.ExceptionObject}");
+            if (role != ShellRole.Launcher)
+                RoleHeartbeatStore.ReportFailed(role, e.ExceptionObject?.ToString() ?? "unhandled");
+        };
+
+        if (role != ShellRole.Launcher)
+            RoleHeartbeatStore.ReportStarting(role);
 
         // The launcher supervises OTHER processes and hosts no PAL/DI/UI of its own — branch before the
         // host is even built so it never constructs platform services.
@@ -156,6 +163,7 @@ internal static class Program
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
         var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
         server.StartAsync().GetAwaiter().GetResult();
+        RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
 
         // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
         // newer binary; a bare shell sends it on quit. Cancel the default action so .NET does NOT
@@ -193,6 +201,7 @@ internal static class Program
             ["BEVEL_CORE_TOKEN"] = coreToken,
             [LauncherControl.SocketEnv] = controlSocket,
             [LauncherControl.TokenEnv] = Convert.ToHexString(controlNonce),
+            [BuildStamp.EnvVar] = BuildStamp.Current(),
         };
 
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
@@ -211,11 +220,22 @@ internal static class Program
             .Select(r => (IRoleProcess)new RoleProcess(r, CreateRoleStartInfo(r, args, childEnv)))
             .ToArray();
 
+        // A leftover quit marker / heartbeat from a previous session must not suppress crash-respawn
+        // or look like a live child this boot.
+        QuitRequest.Clear();
+        RoleHeartbeatStore.ClearAll();
+
         var supervisor = new RoleProcessSupervisor(
             processes,
             pollInterval: TimeSpan.FromSeconds(1),
             coreReadyProbe: ct => WaitForFileAsync(coreSocket, TimeSpan.FromSeconds(5), ct),
-            log: msg => Console.Error.WriteLine($"[launcher] {msg}"));
+            log: msg => Console.Error.WriteLine($"[launcher] {msg}"),
+            // bevel-hprv: process-alive is not "serving". A core that lost core.sock stays
+            // up in ps while every peer shows the disconnected indicator.
+            coreHealthyProbe: _ => Task.FromResult(File.Exists(coreSocket)),
+            quitRequested: QuitRequest.Exists,
+            health: new ShellHealthMonitor(BuildStamp.Current),
+            onAlert: ShellHealthAlert.Show);
 
         supervisor.StartAsync().GetAwaiter().GetResult();
 
@@ -236,7 +256,12 @@ internal static class Program
                     case LauncherControl.Command.RestartCore:
                         await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;
                     case LauncherControl.Command.Quit:
-                        stop.Set(); break;
+                        // Latch BEFORE waking the waiter — without RequestStop the monitor can
+                        // respawn a child that exits during teardown, and Quit looks like Restart
+                        // (bevel-0md2 / the bevel-ply race on the quit path only).
+                        supervisor.RequestStop();
+                        stop.Set();
+                        break;
                     // Desktop Show/Hide toggle (bevel-gdie): spawn/kill the --role=desktop child on demand.
                     // The factory re-uses CreateRoleStartInfo so the runtime desktop inherits the EXACT same
                     // core socket/token + control env as a boot-time desktop (BEVEL_ENABLE_DESKTOP=1) — it's

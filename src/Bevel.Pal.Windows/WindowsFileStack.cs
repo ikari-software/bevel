@@ -16,7 +16,8 @@ namespace Bevel.Pal.Windows;
 // apartment + message pump. Every call marshals onto ONE shared, dedicated STA worker thread
 // (WindowsShellStaThread) and returns a Task; NEVER the Avalonia UI/calling thread, and never a
 // blocking PerformOperations() on it. The STA thread is created LAZILY on the first real Windows
-// call (Lazy<T>), so constructing any of these on macOS/Linux CI touches no COM and starts no thread.
+// call, so constructing any of these on macOS/Linux CI touches no COM and starts no thread. A hung
+// COM call times out; the waiter Retires that STA and later work runs on a fresh one (PR #1 #6).
 //
 // CROSS-PLATFORM. TargetFramework is net10.0 (not net10.0-windows), so this compiles and LOADS on
 // macOS/Linux. Every P/Invoke/COM method is guarded `if (!OperatingSystem.IsWindows())` at the top
@@ -38,25 +39,25 @@ public sealed class WindowsFileOperations : IFileOperations
     public Task CopyAsync(IReadOnlyList<string> sources, string destDir, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || sources.Count == 0) return Task.CompletedTask;
-        return WindowsShellStaThread.Instance.Run(() => TransferOnSta(Op.Copy, sources, destDir));
+        return WindowsShellStaThread.Instance.Run(() => TransferOnSta(Op.Copy, sources, destDir), ct);
     }
 
     public Task MoveAsync(IReadOnlyList<string> sources, string destDir, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || sources.Count == 0) return Task.CompletedTask;
-        return WindowsShellStaThread.Instance.Run(() => TransferOnSta(Op.Move, sources, destDir));
+        return WindowsShellStaThread.Instance.Run(() => TransferOnSta(Op.Move, sources, destDir), ct);
     }
 
     public Task DeleteAsync(IReadOnlyList<string> paths, DeleteMode mode, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || paths.Count == 0) return Task.CompletedTask;
-        return WindowsShellStaThread.Instance.Run(() => DeleteOnSta(paths, mode));
+        return WindowsShellStaThread.Instance.Run(() => DeleteOnSta(paths, mode), ct);
     }
 
     public Task RenameAsync(string path, string newName, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(path)) return Task.CompletedTask;
-        return WindowsShellStaThread.Instance.Run(() => RenameOnSta(path, newName));
+        return WindowsShellStaThread.Instance.Run(() => RenameOnSta(path, newName), ct);
     }
 
     private enum Op { Copy, Move }
@@ -242,7 +243,7 @@ public sealed class WindowsFileOpener : IFileOpener
     public Task OpenPathAsync(string path, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(path)) return Task.CompletedTask;
-        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", path, null));
+        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", path, null), ct);
     }
 
     /// <summary>No-op: Windows has no Quick Look / spacebar-preview analogue. Documented and intentional
@@ -253,14 +254,14 @@ public sealed class WindowsFileOpener : IFileOpener
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(appPath)) return Task.CompletedTask;
         // Launch the chosen app with the file as its (quoted) argument.
-        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", appPath, $"\"{path}\""));
+        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", appPath, $"\"{path}\""), ct);
     }
 
     public Task RevealAsync(string path, CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(path)) return Task.CompletedTask;
         // explorer.exe /select,"<path>" opens the containing folder with the item selected.
-        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", "explorer.exe", $"/select,\"{path}\""));
+        return WindowsShellStaThread.Instance.Run(() => ShellExecute("open", "explorer.exe", $"/select,\"{path}\""), ct);
     }
 
     public ValueTask<IReadOnlyList<OpenWithHandler>> GetHandlersAsync(string path, CancellationToken ct = default)
@@ -268,7 +269,7 @@ public sealed class WindowsFileOpener : IFileOpener
         if (!OperatingSystem.IsWindows())
             return ValueTask.FromResult<IReadOnlyList<OpenWithHandler>>(Array.Empty<OpenWithHandler>());
         return new ValueTask<IReadOnlyList<OpenWithHandler>>(
-            WindowsShellStaThread.Instance.Run(() => (IReadOnlyList<OpenWithHandler>)EnumHandlersOnSta(path)));
+            WindowsShellStaThread.Instance.Run(() => (IReadOnlyList<OpenWithHandler>)EnumHandlersOnSta(path), ct));
     }
 
     [SupportedOSPlatform("windows")]
@@ -382,7 +383,7 @@ public sealed class WindowsIconProvider : IIconProvider
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(pathOrExtension))
             return ValueTask.FromResult(Blank);
-        return new ValueTask<PalImage>(WindowsShellStaThread.Instance.Run(() => LoadIconOnSta(pathOrExtension, size)));
+        return new ValueTask<PalImage>(WindowsShellStaThread.Instance.Run(() => LoadIconOnSta(pathOrExtension, size), ct));
     }
 
     public event EventHandler? IconInvalidated;
@@ -582,10 +583,25 @@ public sealed class WindowsVolumeLabelSource : IVolumeLabelSource
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsShellStaThread
 {
-    private static readonly Lazy<WindowsShellStaThread> Lazy =
-        new(() => new WindowsShellStaThread(), LazyThreadSafetyMode.ExecutionAndPublication);
+    // Lazy so constructing file-stack types on macOS/Linux CI never starts a COM thread.
+    // Replaceable so a hung COM call (PR #1 #6) can be isolated: the waiter times out, this
+    // instance is retired, and later work runs on a fresh STA instead of queuing behind the stall.
+    // The hung call is NOT aborted or retried — COM mutation in flight stays on the retired thread.
+    private static WindowsShellStaThread? _instance;
 
-    public static WindowsShellStaThread Instance => Lazy.Value;
+    public static WindowsShellStaThread Instance
+    {
+        get
+        {
+            var existing = Volatile.Read(ref _instance);
+            if (existing is not null) return existing;
+            var created = new WindowsShellStaThread();
+            var raced = Interlocked.CompareExchange(ref _instance, created, null);
+            return raced ?? created;
+        }
+    }
+
+    internal static TimeSpan CallTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     private readonly ConcurrentQueue<Action> _queue = new();
     private readonly AutoResetEvent _wake = new(false);
@@ -602,19 +618,46 @@ internal sealed class WindowsShellStaThread
         _thread.Start();
     }
 
-    public Task<T> Run<T>(Func<T> work)
+    public Task<T> Run<T>(Func<T> work, CancellationToken ct = default)
     {
+        if (ct.IsCancellationRequested)
+            return Task.FromCanceled<T>(ct);
+
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         _queue.Enqueue(() =>
         {
-            try { tcs.SetResult(work()); }
-            catch (Exception ex) { tcs.SetException(ex); }
+            if (ct.IsCancellationRequested) { tcs.TrySetCanceled(ct); return; }
+            try { tcs.TrySetResult(work()); }
+            catch (Exception ex) { tcs.TrySetException(ex); }
         });
         _wake.Set();
-        return tcs.Task;
+        return AwaitBounded(tcs.Task, ct);
     }
 
-    public Task Run(Action work) => Run<bool>(() => { work(); return true; });
+    public Task Run(Action work, CancellationToken ct = default) =>
+        Run<bool>(() => { work(); return true; }, ct);
+
+    private async Task<T> AwaitBounded<T>(Task<T> inner, CancellationToken ct)
+    {
+        using var timeout = new CancellationTokenSource(CallTimeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        try
+        {
+            return await inner.WaitAsync(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            Retire();
+            throw new TimeoutException(
+                "Windows shell STA call exceeded 30s; the hung COM call was isolated onto a retired thread.");
+        }
+    }
+
+    private void Retire()
+    {
+        var replacement = new WindowsShellStaThread();
+        Interlocked.CompareExchange(ref _instance, replacement, this);
+    }
 
     private void Loop()
     {

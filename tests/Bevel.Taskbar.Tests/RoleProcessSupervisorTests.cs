@@ -277,4 +277,114 @@ public sealed class RoleProcessSupervisorTests
         // never tearing the monitor down.
         await WaitFor(() => core.StartCount >= 3, "supervisor should keep retrying a failing child");
     }
+
+    [Fact]
+    public async Task Restarts_a_live_core_whose_health_probe_fails()
+    {
+        // bevel-hprv: a core process that is still running but whose socket is gone must be
+        // treated as dead. The probe fails for 3 consecutive ticks, then Kill+Start.
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var healthy = true;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core }, Poll,
+            coreHealthyProbe: _ => Task.FromResult(healthy));
+        await sup.StartAsync();
+        Assert.Equal(1, core.StartCount);
+
+        healthy = false;
+        await WaitFor(() => core.StartCount >= 2 && core.KillCount >= 1,
+            "supervisor should kill+respawn a live-but-unhealthy core");
+    }
+
+    [Fact]
+    public async Task Does_not_respawn_when_quit_is_requested()
+    {
+        // bevel-0md2: Start ▸ Quit writes a marker; a child that then exits must stay dead.
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var quit = false;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            quitRequested: () => quit);
+        await sup.StartAsync();
+
+        quit = true;
+        taskbar.Alive = false;
+        await Task.Delay(Poll * 8);
+        Assert.Equal(1, taskbar.StartCount); // never respawned
+        Assert.True(core.IsAlive);           // unrelated children are not killed by the marker itself
+    }
+
+    private static RoleHeartbeat Hb(ShellRole role, HeartbeatStatus status, string stamp = "s", bool core = true, string error = "") =>
+        new(role, 1, stamp, BuildStamp.Protocol, status, core, error);
+
+    [Fact]
+    public async Task Holds_and_does_not_respawn_a_child_that_reports_startup_failure()
+    {
+        var log = new List<string>();
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var alerts = new List<HealthVerdict>();
+        RoleHeartbeat? hb = Hb(ShellRole.Taskbar, HeartbeatStatus.Starting);
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { taskbar }, Poll,
+            health: new ShellHealthMonitor(() => "s"),
+            heartbeat: _ => hb,
+            onAlert: v => { lock (alerts) alerts.Add(v); });
+        await sup.StartAsync();
+        Assert.Equal(1, taskbar.StartCount);
+
+        hb = Hb(ShellRole.Taskbar, HeartbeatStatus.Failed, error: "XamlLoadException");
+        taskbar.Alive = false;
+
+        await WaitFor(() => { lock (alerts) return alerts.Count > 0; }, "hold should surface an alert");
+        await Task.Delay(Poll * 6);
+        Assert.Equal(1, taskbar.StartCount); // held — not crash-looped
+        lock (alerts) Assert.Equal(HealthFault.StartupFailed, alerts[0].Fault);
+    }
+
+    [Fact]
+    public async Task Restarts_a_live_child_whose_stamp_does_not_match()
+    {
+        var log = new List<string>();
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { taskbar }, Poll,
+            health: new ShellHealthMonitor(() => "new", skewRestartBudget: 3),
+            heartbeat: _ => Hb(ShellRole.Taskbar, HeartbeatStatus.Ready,
+                stamp: taskbar.StartCount >= 2 ? "new" : "old"));
+        await sup.StartAsync();
+
+        await WaitFor(() => taskbar.KillCount >= 1 && taskbar.StartCount >= 2,
+            "version skew should kill+respawn the live child onto the current binary");
+
+        var starts = taskbar.StartCount;
+        await Task.Delay(Poll * 6);
+        Assert.Equal(starts, taskbar.StartCount); // matching stamp after respawn — no more restarts
+        Assert.True(taskbar.IsAlive);
+    }
+
+    [Fact]
+    public async Task Ready_taskbar_without_a_core_link_restarts_the_core()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        RoleHeartbeat HbFor(ShellRole role) => role == ShellRole.Taskbar
+            ? Hb(ShellRole.Taskbar, HeartbeatStatus.Ready, core: core.StartCount >= 2)
+            : Hb(ShellRole.Core, HeartbeatStatus.Ready);
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            health: new ShellHealthMonitor(() => "s", commTimeoutTicks: 2),
+            heartbeat: r => HbFor(r));
+        await sup.StartAsync();
+        Assert.Equal(1, core.StartCount);
+
+        await WaitFor(() => core.KillCount >= 1 && core.StartCount >= 2,
+            "lost IPC should restart the core, not the ready taskbar");
+        Assert.Equal(0, taskbar.KillCount);
+        Assert.Equal(1, taskbar.StartCount);
+        Assert.True(taskbar.IsAlive);
+    }
 }

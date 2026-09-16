@@ -61,12 +61,30 @@ internal static class WindowsJobObject
     private static readonly IntPtr Handle = CreateKillOnCloseJob();
 
     /// <summary>Assign a freshly-started child to the launcher job (best-effort; a child already in a
-    /// non-nestable job — some CI hosts — just isn't assigned, and the graceful path still tears it down).</summary>
+    /// non-nestable job — some CI hosts — just isn't assigned, and the graceful path still tears it down).
+    ///
+    /// <para>PR #1 #5 is a verification gate, not a confirmed defect: <c>ShellExecute</c> of an editor
+    /// from a child MAY broker a process that is not in this job (CREATE_BREAKAWAY_FROM_JOB). Do not
+    /// add <c>JOB_OBJECT_LIMIT_BREAKAWAY_OK</c> (or silently swallow breakaway) until a Windows-box
+    /// test has shown whether launched editors survive Bevel quit. KILL_ON_JOB_CLOSE stays the
+    /// orphan backstop for processes we actually assign.</para></summary>
     public static void TryAssign(Process process)
     {
         if (Handle == IntPtr.Zero) return;
         try { AssignProcessToJobObject(Handle, process.Handle); }
         catch { /* nested-job restriction or race — non-fatal; the named-event path is primary */ }
+    }
+
+    /// <summary>True when <paramref name="process"/> is in the launcher kill-on-close job.</summary>
+    internal static bool IsAssigned(Process process)
+    {
+        if (Handle == IntPtr.Zero) return false;
+        try
+        {
+            if (!IsProcessInJob(process.Handle, Handle, out var inside)) return false;
+            return inside;
+        }
+        catch { return false; }
     }
 
     private static IntPtr CreateKillOnCloseJob()
@@ -141,6 +159,9 @@ internal static class WindowsJobObject
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool IsProcessInJob(IntPtr processHandle, IntPtr jobHandle, out bool result);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);

@@ -12,6 +12,7 @@ namespace Bevel.Pal.Windows.Tests;
 ///  • WINDOWS-GATED (`if (!OperatingSystem.IsWindows()) return;`): exercise the real shell COM —
 ///    copy a temp file, recycle a temp file, and resolve a non-empty ".txt" icon.
 /// </summary>
+[Collection("WindowsShellSta")]
 public class WindowsFileStackTests
 {
     // ── Portable: off-Windows guards (these are the assertions CI on macOS/Linux actually checks) ──

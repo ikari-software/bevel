@@ -167,7 +167,8 @@ public static class CompositionRoot
     {
         // In-process Windows PAL services — every role resolves these directly; lazy, so a role that
         // never resolves one never constructs it.
-        services.AddSingleton<IDesktopEnvironment, Pal.Windows.WindowsDesktopEnvironment>();
+        services.AddSingleton<Pal.Windows.WindowsDesktopEnvironment>();
+        services.AddSingleton<IDesktopEnvironment>(sp => sp.GetRequiredService<Pal.Windows.WindowsDesktopEnvironment>());
         services.AddSingleton<IShellSession, Pal.Windows.WindowsShellSession>();
         services.AddSingleton<IFileOperations, Pal.Windows.WindowsFileOperations>();
 
@@ -185,7 +186,8 @@ public static class CompositionRoot
         services.AddSingleton<IPermissionBroker, Pal.Windows.WindowsPermissionBroker>();
         services.AddSingleton<IFileOpener, Pal.Windows.WindowsFileOpener>();
         services.AddSingleton<IAudioPlayback, Pal.Windows.WindowsAudioPlayback>();
-        services.AddSingleton<IDockController, Pal.Windows.WindowsDockController>();
+        services.AddSingleton<IDockController>(sp => new Pal.Windows.WindowsDockController(
+            sp.GetRequiredService<Pal.Windows.WindowsDesktopEnvironment>()));
         services.AddSingleton<IVolumeLabelSource, Pal.Windows.WindowsVolumeLabelSource>();
         services.AddSingleton<ITabProvider, Pal.Windows.WindowsTabProvider>();
 

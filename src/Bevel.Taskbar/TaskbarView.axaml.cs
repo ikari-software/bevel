@@ -711,7 +711,7 @@ public partial class TaskbarView : UserControl
         if (_vm?.Model is { } model)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            try { png = await model.CaptureWindowAsync(vm.Id, 0, 0, cts.Token); }
+            try { png = await model.CaptureWindowAsync(vm.Id, 240, 160, cts.Token); }
             catch { png = null; }   // timeout / transport / capture failure → no preview, never crash
         }
         // Bail unless this is still the current request AND the same button still shows the same window.

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using Bevel.Pal.Windows;
 using Xunit;
@@ -102,4 +104,111 @@ public class WindowsWindowManagerTests
         await wm.RestoreAndActivateAsync(id);
         Assert.Null(await wm.CaptureWindowAsync(id, 200, 200));
     }
+
+    [Fact]
+    public void NormalizeCaptureMax_treats_zero_as_the_240x160_hover_default()
+    {
+        Assert.Equal((240, 160), WindowsWindowManager.NormalizeCaptureMax(0, 0));
+        Assert.Equal((240, 160), WindowsWindowManager.NormalizeCaptureMax(-1, 0));
+        Assert.Equal((320, 200), WindowsWindowManager.NormalizeCaptureMax(320, 200));
+    }
+
+    [Fact]
+    public void EncodePng_zero_cap_keeps_source_dimensions()
+    {
+        var png = WindowsWindowManager.EncodePng(OpaqueBgra(400, 300), 400, 300, 0, 0);
+        Assert.Equal((400, 300), PngSize(png));
+    }
+
+    [Fact]
+    public void EncodePng_fits_a_4k_buffer_inside_the_hover_cap()
+    {
+        var (capW, capH) = WindowsWindowManager.NormalizeCaptureMax(0, 0);
+        var png = WindowsWindowManager.EncodePng(OpaqueBgra(3840, 2160), 3840, 2160, capW, capH);
+        var (w, h) = PngSize(png);
+        Assert.True(w <= capW && h <= capH, $"hover PNG {w}x{h} exceeded {capW}x{capH}");
+        Assert.True(w > 0 && h > 0);
+    }
+
+    [Fact]
+    public async Task Windows_real_hwnd_geometry_capture_minimize_restore_close()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        if (!TryLaunchNotepad(out var proc, out var hwnd)) return;
+
+        using var wm = new WindowsWindowManager();
+        var id = new ForeignWindowId(hwnd.ToInt64().ToString());
+        try
+        {
+            Assert.True(WindowsWindowManager.IsRealAppWindow(hwnd));
+            var child = GetWindow(hwnd, GW_CHILD);
+            if (child != IntPtr.Zero)
+                Assert.False(WindowsWindowManager.IsRealAppWindow(child), "child HWNDs must not become taskbar buttons");
+
+            Assert.Equal((uint)proc.Id, WindowsWindowManager.TerminationPid(hwnd));
+
+            var png = await wm.CaptureWindowAsync(id, 0, 0);
+            Assert.NotNull(png);
+            var (w, h) = PngSize(png);
+            Assert.True(w <= 240 && h <= 160, $"0/0 capture encoded {w}x{h}, expected ≤240×160");
+
+            await wm.MinimizeAsync(id);
+            await Task.Delay(200);
+            var minimized = (await wm.EnumerateAsync()).FirstOrDefault(x => x.Id.Value == id.Value);
+            if (minimized is not null)
+                Assert.True(minimized.IsMinimized);
+
+            await wm.RestoreAsync(id);
+            await wm.CloseAsync(id);
+        }
+        finally
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            proc.Dispose();
+        }
+    }
+
+    private static bool TryLaunchNotepad(out Process proc, out IntPtr hwnd)
+    {
+        hwnd = IntPtr.Zero;
+        proc = Process.Start(new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
+            ?? throw new InvalidOperationException("notepad.exe failed to start");
+        for (var i = 0; i < 50; i++)
+        {
+            proc.Refresh();
+            hwnd = proc.MainWindowHandle;
+            if (hwnd != IntPtr.Zero) return true;
+            Thread.Sleep(100);
+        }
+        try { proc.Kill(entireProcessTree: true); } catch { /* headless session */ }
+        proc.Dispose();
+        proc = null!;
+        return false;
+    }
+
+    private static byte[] OpaqueBgra(int w, int h)
+    {
+        var buf = new byte[w * h * 4];
+        for (var i = 0; i < buf.Length; i += 4)
+        {
+            buf[i] = 0x40;     // B
+            buf[i + 1] = 0x80; // G
+            buf[i + 2] = 0xC0; // R
+            buf[i + 3] = 0xFF;
+        }
+        return buf;
+    }
+
+    private static (int Width, int Height) PngSize(byte[] png)
+    {
+        Assert.True(png.Length >= 24, "PNG too short to contain IHDR");
+        int width = (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19];
+        int height = (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23];
+        return (width, height);
+    }
+
+    private const uint GW_CHILD = 5;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 }

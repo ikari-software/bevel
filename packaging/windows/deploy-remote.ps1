@@ -55,16 +55,30 @@ if ($Launch) {
     $principal = New-ScheduledTaskPrincipal -UserId $identity `
                                             -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $task -Action $action -Principal $principal | Out-Null
+    $procs = $null
     try {
         Start-ScheduledTask -TaskName $task
-        Start-Sleep -Seconds 5
+
+        # WAIT FOR THE PROCESS, don't sleep a fixed interval. Start-ScheduledTask returns as soon as the
+        # request is queued, and unregistering the task out from under a launch that has not spawned yet
+        # cancels it: a fixed 5s wait worked on a warm run and then failed on a cold one, reporting
+        # "Launch did not produce any Bevel.App process" for a deploy that was otherwise fine.
+        $deadline = (Get-Date).AddSeconds(45)
+        while ((Get-Date) -lt $deadline) {
+            $procs = Get-Process -Name 'Bevel.App' -ErrorAction SilentlyContinue
+            if ($procs) { break }
+            Start-Sleep -Milliseconds 250
+        }
     } finally {
-        # The task is a launch vehicle, not something to leave lying around in the user's task list.
+        # Only now: the task is a launch vehicle, not something to leave in the user's task list.
         Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
     }
 
+    if (-not $procs) { throw "Launch did not produce any Bevel.App process within 45s." }
+
+    # Let the launcher finish spawning core + taskbar so the session report covers the whole shell.
+    Start-Sleep -Seconds 2
     $procs = Get-Process -Name 'Bevel.App' -ErrorAction SilentlyContinue
-    if (-not $procs) { throw "Launch did not produce any Bevel.App process." }
 
     # Report the session so an invisible session-0 launch can never be mistaken for a working one.
     $sessions = ($procs | Select-Object -Expand SessionId -Unique) -join ', '
