@@ -82,25 +82,45 @@ public class WindowsLifecycleTests
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        var psi = new ProcessStartInfo("powershell.exe")
+        // Ready file proves the child inherited BEVEL_SHUTDOWN_EVENT and opened the handle before we Set().
+        // No stdout/stderr redirect — a failed OpenExisting writing to a full pipe can hang the child.
+        var ready = Path.Combine(Path.GetTempPath(), "bevel-shutdown-ready-" + Guid.NewGuid().ToString("N"));
+        try
         {
-            Arguments = "-NoProfile -Command \"$n=$env:BEVEL_SHUTDOWN_EVENT; $e=[Threading.EventWaitHandle]::OpenExisting($n); [void]$e.WaitOne()\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var rp = new RoleProcess(ShellRole.Core, psi);
-        rp.Start();
-        for (var i = 0; i < 50 && !rp.IsAlive; i++)
-            Thread.Sleep(50);
-        Assert.True(rp.IsAlive, "powershell child should be waiting on the named shutdown event");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        rp.Kill();
-        sw.Stop();
-        Assert.False(rp.IsAlive);
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2.5),
-            "named-event teardown must not fall through to the 3s hard-kill grace");
+            var readyLiteral = ready.Replace("'", "''");
+            var psi = new ProcessStartInfo("powershell.exe")
+            {
+                Arguments =
+                    "-NoProfile -ExecutionPolicy Bypass -Command \"" +
+                    "$n=$env:BEVEL_SHUTDOWN_EVENT; " +
+                    "if([string]::IsNullOrEmpty($n)){ exit 11 }; " +
+                    "$e=[System.Threading.EventWaitHandle]::OpenExisting($n); " +
+                    "[IO.File]::WriteAllText('" + readyLiteral + "', $n); " +
+                    "[void]$e.WaitOne(); " +
+                    "exit 0\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var rp = new RoleProcess(ShellRole.Core, psi);
+            rp.Start();
+
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (!File.Exists(ready) && DateTime.UtcNow < deadline)
+                Thread.Sleep(50);
+            Assert.True(File.Exists(ready), "child never armed on the named shutdown event (env not passed?)");
+            Assert.False(string.IsNullOrWhiteSpace(File.ReadAllText(ready)));
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            rp.Kill();
+            sw.Stop();
+            Assert.False(rp.IsAlive);
+            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(2.5),
+                $"named-event teardown took {sw.Elapsed}; must not fall through to the 3s hard-kill grace");
+        }
+        finally
+        {
+            try { File.Delete(ready); } catch { /* best-effort */ }
+        }
     }
 
     [Fact]
