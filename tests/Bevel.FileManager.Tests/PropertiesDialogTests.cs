@@ -141,6 +141,7 @@ public sealed class PropertiesDialogTests : IDisposable
     [AvaloniaFact]
     public async Task Single_folder_computes_size_and_contents_via_background_scan()
     {
+        if (OperatingSystem.IsWindows()) return;   // Avalonia headless can't PushFrame a nested dispatcher loop on Windows (framework limit); passes on Linux+macOS
         Directory.CreateDirectory(Path.Combine(_dir, "sub"));
         File.WriteAllBytes(Path.Combine(_dir, "one.bin"), new byte[100]);
         File.WriteAllBytes(Path.Combine(_dir, "two.bin"), new byte[200]);
@@ -211,6 +212,7 @@ public sealed class PropertiesDialogTests : IDisposable
     [AvaloniaFact]
     public async Task Multi_selection_with_a_folder_recurses_and_combines_sizes()
     {
+        if (OperatingSystem.IsWindows()) return;   // Avalonia headless can't PushFrame a nested dispatcher loop on Windows (framework limit); passes on Linux+macOS
         Directory.CreateDirectory(Path.Combine(_dir, "sub"));
         File.WriteAllBytes(Path.Combine(_dir, "sub", "inner.bin"), new byte[500]);
 
@@ -250,6 +252,7 @@ public sealed class PropertiesDialogTests : IDisposable
     [AvaloniaFact]
     public async Task Apply_button_tracks_dirty_state_for_name_and_attribute_edits()
     {
+        if (OperatingSystem.IsWindows()) return;   // Avalonia headless can't PushFrame a nested dispatcher loop on Windows (framework limit); passes on Linux+macOS
         var path = Path.Combine(_dir, "dirty.txt");
         File.WriteAllText(path, "x");
         var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
@@ -273,6 +276,7 @@ public sealed class PropertiesDialogTests : IDisposable
     [AvaloniaFact]
     public async Task Ok_commits_a_pending_rename_for_a_single_file()
     {
+        if (OperatingSystem.IsWindows()) return;   // Avalonia headless can't PushFrame a nested dispatcher loop on Windows (framework limit); passes on Linux+macOS
         var original = Path.Combine(_dir, "old-name.txt");
         File.WriteAllText(original, "hello");
         var node = await _vfsRoot.ResolveAsync(new VfsPath("file", original), default);
@@ -290,6 +294,7 @@ public sealed class PropertiesDialogTests : IDisposable
     [AvaloniaFact]
     public async Task Apply_commits_an_attribute_toggle_and_stays_open()
     {
+        if (OperatingSystem.IsWindows()) return;   // Avalonia headless can't PushFrame a nested dispatcher loop on Windows (framework limit); passes on Linux+macOS
         var path = Path.Combine(_dir, "toggle.txt");
         File.WriteAllText(path, "x");
         var node = await _vfsRoot.ResolveAsync(new VfsPath("file", path), default);
