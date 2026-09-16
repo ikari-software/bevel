@@ -102,11 +102,17 @@ public class WindowsDesktopTests
         try
         {
             await de.ReserveWorkAreaAsync(primary.Id, DockEdge.Bottom, 40);
-            Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var reserved, out _));
-            Assert.Equal(full.Height - 40, reserved.Height);
-            Assert.Equal(full.Y, reserved.Y);
-            Assert.Equal(full.X, reserved.X);
-            Assert.Equal(full.Width, reserved.Width);
+            Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var reserved, out var fullAfter));
+            // SPI_SETWORKAREA must shrink rcWork below rcMonitor. Explorer's AppBar may claim a few
+            // extra pixels on CI, so require ≥ thickness rather than an exact full-40 height.
+            Assert.True(reserved.Height < fullAfter.Height,
+                $"reserved height {reserved.Height} should be below full {fullAfter.Height}");
+            Assert.True(fullAfter.Height - reserved.Height >= 40,
+                $"expected ≥40px bottom carve, got {fullAfter.Height - reserved.Height}");
+            Assert.Equal(fullAfter.Y, reserved.Y);
+            Assert.Equal(fullAfter.X, reserved.X);
+            Assert.Equal(fullAfter.Width, reserved.Width);
+            Assert.Equal(full, fullAfter); // monitor bounds themselves must not move
         }
         finally
         {
