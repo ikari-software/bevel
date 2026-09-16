@@ -82,13 +82,22 @@ public sealed class ClickSelectionTests
         Dispatcher.UIThread.RunJobs();
 
         view.ViewMode = ViewMode.LargeIcons;      // switch views, then click
-        Dispatcher.UIThread.RunJobs();
+        // LargeIcons virtualization can lag a frame under CI load — poll until b.txt is realized.
+        Control? target = null;
+        for (var i = 0; i < 50 && target is null; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            target = view.ItemsControl.GetRealizedContainers()
+                .FirstOrDefault(c => (c.DataContext as ItemViewModel)?.DisplayName == "b.txt");
+            if (target is null)
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        Assert.NotNull(target);
+
         w.MouseMove(new Point(1, 1));
         Dispatcher.UIThread.RunJobs();
 
-        var target = view.ItemsControl.GetRealizedContainers()
-            .First(c => (c.DataContext as ItemViewModel)?.DisplayName == "b.txt");
-        var center = target.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), w)!.Value;
+        var center = target!.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), w)!.Value;
         w.MouseDown(center, MouseButton.Left);
         w.MouseUp(center, MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
