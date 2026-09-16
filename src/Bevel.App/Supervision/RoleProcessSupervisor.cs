@@ -4,7 +4,9 @@ namespace Bevel.App.Supervision;
 /// Supervises the multi-process shell (bevel-gww.4). It starts the role processes in dependency order
 /// — the shell-core owner (which brings up the Swift helper) BEFORE the UI roles that are its clients —
 /// then runs a single crash-monitor loop that respawns any child that dies, with per-child backoff so a
-/// crash-looping binary can't spin hot. Two fan-out operations back the goal's headline:
+/// crash-looping binary can't spin hot. When a <see cref="ShellHealthMonitor"/> is wired (bevel-9h7n),
+/// heartbeats additionally drive startup-fail / version-skew / lost-IPC heals, and a Hold stops the
+/// silent crash-loop and surfaces a user alert. Two fan-out operations back the goal's headline:
 /// <list type="bullet">
 /// <item><see cref="RestartAllAsync"/> — kill every process and respawn it; each comes back on the
 /// CURRENT binary, so a taskbar-initiated restart updates the whole shell to the latest build.</item>
@@ -28,8 +30,19 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _maxBackoff;
     private readonly Func<CancellationToken, Task>? _coreReadyProbe;
+    private readonly Func<CancellationToken, Task<bool>>? _coreHealthyProbe;
+    private readonly Func<bool>? _quitRequested;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly Action<string>? _log;
+    private readonly ShellHealthMonitor? _health;
+    private readonly Func<ShellRole, RoleHeartbeat?>? _heartbeat;
+    private readonly Action<HealthVerdict>? _onAlert;
+    // One native/status alert per role per hold episode — Observe returns Hold every later
+    // tick, and popping a dialog per second would be the new invisible-failure mode.
+    private readonly HashSet<ShellRole> _alerted = new();
+    // Consecutive failed health probes on a still-running core (bevel-hprv). Reset when the
+    // socket looks healthy again; at the threshold we treat the process as dead and respawn.
+    private int _coreUnhealthyTicks;
 
     // Serializes the start / restart / stop operations against the monitor loop's respawns, so a
     // RestartAll can never race a per-child crash-respawn into a double-spawn.
@@ -49,15 +62,25 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         Func<CancellationToken, Task>? coreReadyProbe = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
         TimeSpan? maxBackoff = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<CancellationToken, Task<bool>>? coreHealthyProbe = null,
+        Func<bool>? quitRequested = null,
+        ShellHealthMonitor? health = null,
+        Func<ShellRole, RoleHeartbeat?>? heartbeat = null,
+        Action<HealthVerdict>? onAlert = null)
     {
         if (processes.Count == 0) throw new ArgumentException("Supervise at least one process.", nameof(processes));
         _processes = processes.ToList(); // own a private, mutable copy — runtime add/remove edits this list, not the caller's
         _pollInterval = pollInterval;
         _coreReadyProbe = coreReadyProbe;
+        _coreHealthyProbe = coreHealthyProbe;
+        _quitRequested = quitRequested;
         _delay = delay ?? Task.Delay;
         _maxBackoff = maxBackoff ?? TimeSpan.FromSeconds(30);
         _log = log;
+        _health = health;
+        _heartbeat = heartbeat ?? (health is null ? null : RoleHeartbeatStore.Read);
+        _onAlert = onAlert;
     }
 
     /// <summary>Starts every process in order (core → UIs), then launches the crash-monitor loop.</summary>
@@ -88,6 +111,9 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                 _processes[i].Kill();
             _cooldown.Clear();
             _backoffTicks.Clear();
+            _alerted.Clear();
+            _health?.Reset();
+            if (_health is not null) RoleHeartbeatStore.ClearAll();
             await StartAllInOrderLocked(ct).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -104,6 +130,9 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             if (core is null) { _log?.Invoke("supervisor: no core process to restart"); return; }
             _log?.Invoke("supervisor: restarting shell-core owner");
             core.Kill();
+            _health?.Reset(ShellRole.Core);
+            _alerted.Remove(ShellRole.Core);
+            if (_health is not null) RoleHeartbeatStore.Clear(ShellRole.Core);
             core.Start();
             _cooldown.Remove(ShellRole.Core);
             _backoffTicks.Remove(ShellRole.Core);
@@ -136,6 +165,9 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             _processes.Add(proc);
             _cooldown.Remove(role);
             _backoffTicks.Remove(role);
+            _alerted.Remove(role);
+            _health?.Reset(role);
+            if (_health is not null) RoleHeartbeatStore.Clear(role);
             try { proc.Start(); }
             catch (Exception ex)
             {
@@ -163,8 +195,11 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             _processes.Remove(proc);      // de-supervise FIRST so the monitor can't respawn it mid-kill
             _cooldown.Remove(role);
             _backoffTicks.Remove(role);
+            _alerted.Remove(role);
+            _health?.Reset(role);
             proc.Kill();
             proc.Dispose();
+            if (_health is not null) RoleHeartbeatStore.Clear(role);
         }
         finally { _gate.Release(); }
     }
@@ -264,14 +299,42 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                 continue; // a restart/stop holds the gate — skip this tick, it owns the processes
             try
             {
+                // Quit intent (bevel-0md2) wins over crash-respawn: a child that exited because the
+                // user asked to quit must not come back, even if RequestStop raced this tick.
+                if (_quitRequested?.Invoke() == true)
+                {
+                    RequestStop();
+                    break;
+                }
+
                 var maxCooldown = Math.Max(1, (int)(_maxBackoff.Ticks / Math.Max(1, _pollInterval.Ticks)));
                 foreach (var p in _processes)
                 {
-                    if (ct.IsCancellationRequested || p.IsAlive)
+                    if (ct.IsCancellationRequested) break;
+
+                    var alive = p.IsAlive;
+                    if (alive && p.Role == ShellRole.Core && !await CoreLooksHealthyAsync(ct).ConfigureAwait(false))
                     {
-                        if (p.IsAlive) { _cooldown.Remove(p.Role); _backoffTicks.Remove(p.Role); }
+                        _log?.Invoke("supervisor: core process is alive but its socket is gone — restarting");
+                        try { p.Kill(); } catch { /* already gone */ }
+                        if (_health is not null) RoleHeartbeatStore.Clear(p.Role);
+                        alive = false;
+                    }
+
+                    if (_health is not null)
+                    {
+                        var verdict = ApplyHealth(p, ref alive);
+                        if (verdict.Action == HealthAction.Hold) continue;
+                    }
+
+                    if (alive)
+                    {
+                        _cooldown.Remove(p.Role);
+                        _backoffTicks.Remove(p.Role);
                         continue;
                     }
+
+                    if (_health?.IsHeld(p.Role) == true) continue;
 
                     // Serve the backoff: skip this tick if the child is still cooling down from a
                     // prior failed respawn (a crash-looping binary must not spin hot).
@@ -299,11 +362,17 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                             ? Math.Min(prev * 2, maxCooldown) : 1;
                         _cooldown[p.Role] = _backoffTicks[p.Role];
                         p.Start();
-                        if (p.Role == ShellRole.Core && _coreReadyProbe is not null)
-                            await _coreReadyProbe(ct).ConfigureAwait(false);
+                        _health?.NoteRespawn(p.Role);
+                        if (p.Role == ShellRole.Core)
+                        {
+                            _coreUnhealthyTicks = 0; // give the new process a full probe window
+                            if (_coreReadyProbe is not null)
+                                await _coreReadyProbe(ct).ConfigureAwait(false);
+                        }
                     }
                     catch (Exception ex)
                     {
+                        _health?.NoteRespawn(p.Role);
                         var level = _backoffTicks.TryGetValue(p.Role, out var cur) ? Math.Min(cur * 2, maxCooldown) : 1;
                         _backoffTicks[p.Role] = level;
                         _cooldown[p.Role] = level;
@@ -313,6 +382,75 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             }
             finally { _gate.Release(); }
         }
+    }
+
+    /// <summary>
+    /// Startup / IPC / version-skew policy (bevel-9h7n). Hold stops the silent crash-loop;
+    /// Restart kills a live-but-wrong child (or the core, when a ready UI has no link) so the
+    /// existing dead-path respawns it. Alerts fire once per hold episode.
+    /// </summary>
+    private HealthVerdict ApplyHealth(IRoleProcess p, ref bool alive)
+    {
+        var hb = _heartbeat?.Invoke(p.Role);
+        var verdict = _health!.Observe(p.Role, alive, hb);
+        if (verdict.Fault != HealthFault.None)
+            _log?.Invoke($"supervisor: health {verdict.Fault} {verdict.Action} {verdict.Target}: {verdict.Detail}");
+
+        if (verdict.Action == HealthAction.Hold)
+        {
+            if (_alerted.Add(verdict.Target))
+                _onAlert?.Invoke(verdict);
+            if (verdict.Target == p.Role && alive)
+            {
+                try { p.Kill(); } catch { /* already gone */ }
+                RoleHeartbeatStore.Clear(p.Role);
+                alive = false;
+            }
+            return verdict;
+        }
+
+        if (verdict.Action == HealthAction.Restart)
+        {
+            if (verdict.Target != p.Role)
+            {
+                if (_health.IsHeld(verdict.Target)) return verdict;
+                var other = _processes.FirstOrDefault(x => x.Role == verdict.Target);
+                if (other is not null)
+                {
+                    _log?.Invoke($"supervisor: health restarting {other.Role} on behalf of {p.Role}");
+                    try { other.Kill(); } catch { }
+                    RoleHeartbeatStore.Clear(other.Role);
+                }
+            }
+            else if (alive)
+            {
+                try { p.Kill(); } catch { }
+                RoleHeartbeatStore.Clear(p.Role);
+                alive = false;
+            }
+        }
+
+        return verdict;
+    }
+
+    /// <summary>A live core whose socket is missing/unconnectable is as dead as a crashed one
+    /// (bevel-hprv). Require a few consecutive failures so a core that is mid-rebind is not
+    /// kill-looped. No probe configured → always healthy (tests / older callers).</summary>
+    private async Task<bool> CoreLooksHealthyAsync(CancellationToken ct)
+    {
+        if (_coreHealthyProbe is null) return true;
+        try
+        {
+            if (await _coreHealthyProbe(ct).ConfigureAwait(false))
+            {
+                _coreUnhealthyTicks = 0;
+                return true;
+            }
+        }
+        catch { /* a throwing probe is an unhealthy tick, not a monitor crash */ }
+
+        _coreUnhealthyTicks++;
+        return _coreUnhealthyTicks < 3; // still give it two more ticks
     }
 
     private async Task<bool> DelayOrCancelled(TimeSpan delay, CancellationToken ct)

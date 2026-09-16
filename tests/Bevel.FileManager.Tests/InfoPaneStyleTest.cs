@@ -74,7 +74,31 @@ public class InfoPaneStyleTest
         Assert.Equal(new[] { "place", "command" }, invoked);
     }
 
-    [AvaloniaFact]
+        /// <summary>
+    /// Pump the dispatcher until <paramref name="settled"/> holds, or fail with <paramref name="because"/>.
+    ///
+    /// <para>The chevron transitions run 160ms. This test used to <c>await Task.Delay(190)</c> and assert
+    /// immediately — 30ms of slack, which a loaded CI runner eats whole: it failed on macOS (rotation
+    /// angle short of 180) and on Windows (body still visible) while the behaviour was entirely correct.
+    /// Polling asserts the same END STATE without betting on how fast the runner is, matching the
+    /// non-flaky pattern already used for the taskbar settle debounce. A genuine regression still fails —
+    /// just after the deadline instead of instantly.</para>
+    /// </summary>
+    private static async System.Threading.Tasks.Task WaitUntil(Func<bool> settled, string because)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            if (settled()) return;
+            await System.Threading.Tasks.Task.Delay(10);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(settled(), because);
+    }
+
+[AvaloniaFact]
     public async System.Threading.Tasks.Task WinXP_chevrons_are_centered_functional_and_animated()
     {
         var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
@@ -106,15 +130,15 @@ public class InfoPaneStyleTest
 
         tasksToggle.IsChecked = false;
         tasksToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await System.Threading.Tasks.Task.Delay(190);
-        Dispatcher.UIThread.RunJobs();
+        await WaitUntil(() => !tasksBody.IsVisible && Math.Abs(rotation.Angle - 180) < 0.001,
+            "collapsing should hide the body and rotate the chevron to 180°");
         Assert.False(tasksBody.IsVisible);
         Assert.Equal(180, rotation.Angle, 3);
 
         tasksToggle.IsChecked = true;
         tasksToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await System.Threading.Tasks.Task.Delay(190);
-        Dispatcher.UIThread.RunJobs();
+        await WaitUntil(() => tasksBody.IsVisible && tasksBody.Opacity >= 0.999 && Math.Abs(rotation.Angle) < 0.001,
+            "expanding should show the body at full opacity and rotate the chevron back to 0°");
         Assert.True(tasksBody.IsVisible);
         Assert.Equal(1, tasksBody.Opacity, 3);
         Assert.Equal(0, rotation.Angle, 3);

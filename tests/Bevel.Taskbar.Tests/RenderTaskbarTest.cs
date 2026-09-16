@@ -24,7 +24,7 @@ public class RenderTaskbarTest
     public void Render_two_row_taskbar_to_png()
     {
         // Bind the view to the same shape the app uses: a TaskbarViewModel over a ShellModel.
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new StubWindowManager();
 
@@ -56,7 +56,7 @@ public class RenderTaskbarTest
         try
         {
             Bevel.UI.ThemeService.Apply("luna");
-            var model = new ShellModel(null, null, null);
+            var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
             var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
             var wm = new StubWindowManager();
             var view = new TaskbarView { DataContext = vm };
@@ -86,7 +86,7 @@ public class RenderTaskbarTest
         // glyph — grey and ugly on the themed bar. They must now be flat "chevron"-styled buttons whose
         // content is a vector Path arrow (themed fill via Bevel.Brush.TrayText), so they read cleanly on
         // both the Win2000 grey and the Luna blue.
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var window = new TaskbarWindow(null, rows: 2) { Content = view };
@@ -111,7 +111,7 @@ public class RenderTaskbarTest
     [AvaloniaFact]
     public void Clicking_an_unfocused_task_button_does_not_leave_it_stuck_pressed()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var wm = new StubWindowManager();
 

@@ -33,6 +33,9 @@ public partial class App : Application
         // Under a launcher (split shell), quitting means quitting the WHOLE shell: hand it to the
         // launcher, which tears every process down. Standalone (all-in-one) falls through to this
         // process's own Avalonia shutdown.
+        // Latch quit intent FIRST so a failed control send (stale launcher.sock) cannot look
+        // like a taskbar crash — the monitor honors the marker and will not respawn (bevel-0md2).
+        Supervision.QuitRequest.Write();
         if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.Quit))
             return;
 
@@ -59,6 +62,28 @@ public partial class App : Application
     /// Program performs the in-place relaunch after the host stops, so the old helper and shell windows
     /// cannot overlap the new version.
     /// </summary>
+    /// <summary>
+    /// Targeted repair for a lost core link (bevel-corepulse): ask the launcher to respawn ONLY the
+    /// shell-core process. That rebinds <c>core.sock</c>, which is what a peer needs to reconnect — a
+    /// core whose socket path was unlinked keeps running and serving nobody, so the taskbar shows no
+    /// windows and no tray while the process looks perfectly healthy in <c>ps</c>.
+    ///
+    /// <para>Returns false when there is no launcher to ask, so the caller can offer the whole-shell
+    /// restart instead rather than silently doing nothing.</para>
+    /// </summary>
+    public static bool RequestRestartCore()
+    {
+        if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.RestartCore))
+        {
+            RestartDiag.Log("RequestRestartCore: launcher-control send=true → core respawned in place");
+            return true;
+        }
+
+        RestartDiag.Log("RequestRestartCore: send failed (supervised=" +
+                        Supervision.LauncherControl.IsSupervised + ") → caller should offer a full restart");
+        return false;
+    }
+
     public static void RequestRestart()
     {
         if (Supervision.LauncherControl.TrySend(Supervision.LauncherControl.Command.RestartAll))
@@ -74,8 +99,10 @@ public partial class App : Application
         // standalone process (no launcher) does the in-place re-exec.
         if (Supervision.LauncherControl.IsSupervised)
         {
+            // Exit THIS process only. Do NOT go through RequestExit — that writes the quit
+            // marker (bevel-0md2) and the monitor would refuse to bring us back.
             RestartDiag.Log("RequestRestart: supervised but send failed → exit only (launcher monitor respawns); NO standalone re-exec");
-            RequestExit();
+            ShutdownLocal();
             return;
         }
 
@@ -218,9 +245,21 @@ public partial class App : Application
     /// services resolved here — the window does its own in-process AppKit work).</summary>
     private static void CreateDesktopSurface(IClassicDesktopStyleApplicationLifetime desktop)
     {
-        var desktopWin = new DesktopWindow { Content = new DesktopView() };
-        desktopWin.Show();
-        desktop.MainWindow = desktopWin;
+        try
+        {
+            var desktopWin = new DesktopWindow { Content = new DesktopView() };
+            desktopWin.Show();
+            desktop.MainWindow = desktopWin;
+            var connected = Services?.GetService<Bevel.Pal.Abstractions.IShellConnectionStatus>();
+            Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Desktop, connected?.IsConnected ?? true);
+            if (connected is not null)
+                connected.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
+        }
+        catch (Exception ex)
+        {
+            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Desktop, ex.ToString());
+            throw;
+        }
     }
 
     /// <summary>Taskbar right-click → "Lock the Taskbar": flips the setting and pushes it onto the live
@@ -275,6 +314,20 @@ public partial class App : Application
     private static void CreateTaskbarSurface(
         IServiceProvider services, ISettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
     {
+        try
+        {
+            CreateTaskbarSurfaceCore(services, settings, desktop);
+        }
+        catch (Exception ex)
+        {
+            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Taskbar, ex.ToString());
+            throw;
+        }
+    }
+
+    private static void CreateTaskbarSurfaceCore(
+        IServiceProvider services, ISettingsService settings, IClassicDesktopStyleApplicationLifetime desktop)
+    {
         // Apply the button-height tier before any TaskbarWindow/HeightForRows geometry is computed
         // (bevel-m2.10.1) — it's a startup-wide metric read by the window and the work-area band.
         Taskbar.TaskbarTheme.Configure(settings.Current.TaskbarButtonSize);
@@ -294,6 +347,9 @@ public partial class App : Application
             services.GetService<Bevel.Pal.Abstractions.IIconProvider>(),
             quit: RequestExit,
             restart: RequestRestart,
+            // Only offered when a launcher is actually there to respawn the core; otherwise the repair
+            // menu falls back to the whole-shell restart above.
+            restartCore: Supervision.LauncherControl.IsSupervised ? () => RequestRestartCore() : null,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
             toggleLock: () => ToggleTaskbarLock(settings, taskbarView),
             // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
@@ -327,16 +383,31 @@ public partial class App : Application
             _ = macTray.StartPollAsync();
         var taskbarWin = new Taskbar.TaskbarWindow(
             services.GetService<Bevel.Pal.Abstractions.IDockController>(),
-            settings.Current.TaskbarRows)
+            settings.Current.TaskbarRows,
+            services.GetService<Bevel.Pal.Abstractions.IDesktopEnvironment>())
         {
             Content = taskbarView,
         };
+
+        // bevel-hprv: a core that is alive-but-not-serving never trips the crash-monitor (it
+        // only watches HasExited). After a sustained disconnect, ask the launcher to respawn
+        // just the core — same verb as the pulsing-indicator click, without waiting for one.
+        var connection = services.GetService<Bevel.Pal.Abstractions.IShellConnectionStatus>();
+        if (Supervision.LauncherControl.IsSupervised && connection is not null)
+        {
+            var autoRepair = new Supervision.LostCoreAutoRepair(
+                connection, RequestRestartCore, log: RestartDiag.Log);
+            desktop.Exit += (_, _) => autoRepair.Dispose();
+        }
         // Persist the row count when the user drags the bar taller/shorter (bevel-0ml). Guarded like
         // ToggleTaskbarLock — a bare `_ = UpdateAsync(...)` swallowed a SaveAsync fault into an
         // unobserved task exception (ce-review: reliability).
         taskbarWin.RowsChanged += rows => PersistRows(settings, rows);
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
+        Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Taskbar, connection?.IsConnected ?? true);
+        if (connection is not null)
+            connection.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
 
         // Work-area overlap mitigation (bevel-m2.13): in the default Nudge strategy,
         // shrink windows whose bottom edge crosses the taskbar band so they sit above it.
@@ -387,6 +458,20 @@ public partial class App : Application
     private static void CreateExplorerSurface(
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
+        try
+        {
+            CreateExplorerSurfaceCore(services, desktop);
+        }
+        catch (Exception ex)
+        {
+            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Explorer, ex.ToString());
+            throw;
+        }
+    }
+
+    private static void CreateExplorerSurfaceCore(
+        IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
+    {
         var factory = services.GetRequiredService<FileManagerWindowFactory>();
         // A spawned explorer process (Start-menu "places") passes the folder to open via --open-path;
         // otherwise land on the user's home.
@@ -418,5 +503,9 @@ public partial class App : Application
         // wired in the supervision phase; in-process spawning stays correct within the explorer
         // process.) New Tab (Ctrl+T) is out of scope.
         FileManagerWindow.NewWindowRequested += path => factory.Create(path);
+        var connected = services.GetService<Bevel.Pal.Abstractions.IShellConnectionStatus>();
+        Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Explorer, connected?.IsConnected ?? true);
+        if (connected is not null)
+            connected.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
     }
 }

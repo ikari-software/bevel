@@ -122,6 +122,15 @@ public static class ThemeService
             {
                 applied = false;
                 Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex.Message}");
+                // ROLL THE FAILED ENTRY BACK OUT (bevel-bxol). Styles.Add inserts first and re-resolves
+                // after, so a throw leaves a HALF-WIRED StyleInclude sitting in app.Styles — its Loaded
+                // content never materialised. Every later resource lookup walks that entry, and
+                // Avalonia.Styling.Styles.TryGetResource NREs on it: the next control attached to the
+                // logical tree (TaskbarView.OnLoaded adding children) dies on the dispatcher and takes the
+                // whole process with it. Leaving it for the NEXT Apply() to remove is too late — nothing
+                // survives to call it. Degrade to the previous theme's templates instead: partial, but live.
+                try { app.Styles.Remove(styles); } catch { /* best-effort; never throw out of a rollback */ }
+                _appliedStyles = null;
             }
         }
         // Commit the applied id only if nothing threw. On a faulty swap we leave _appliedId at the previous

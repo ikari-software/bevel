@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Windows PAL implementation (bevel-ncfp, the Windows port). U1 ships compile-only NotYet
+       stubs mirroring Bevel.Pal.MacOS's M0 shape; real Win32 integration lands per unit (U2-U12).
+       Every P/Invoke entry is guarded with OperatingSystem.IsWindows() so the assembly loads on
+       CI's macOS/Linux runners without throwing (mirrors the bevel-8kxc discipline). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Interface-contract events not yet raised by the bootstrap stubs. -->
+    <NoWarn>$(NoWarn);CS0067</NoWarn>
+    <!-- Win32 P/Invoke + COM interop land here (U2+). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.Pal.Windows.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -15,7 +15,7 @@ public static class AutomationSocket
 {
     /// <summary>Default per-user socket path (alongside the settings db under ~/.config/bevel).</summary>
     public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel", "bevelctl.sock");
+        Bevel.Core.BevelConfigDir.Path, "bevelctl.sock");
 
     private const int MaxFrame = 16 * 1024 * 1024;
 

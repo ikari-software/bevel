@@ -123,4 +123,71 @@ public sealed class RoleSelectorTests
         Assert.True(sharedClient, "expected a shared (non-keyed) window/app/tray core client");
         Assert.True(settingsClient, "expected a dedicated keyed \"settings\" core client for RemoteSettingsService");
     }
+
+    // ── Windows PAL wiring (bevel-ncfp.1 / U1) ───────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("--pal=windows", PalKind.Windows)]
+    [InlineData("--pal=win", PalKind.Windows)]        // short alias
+    [InlineData("--pal=WINDOWS", PalKind.Windows)]    // case-insensitive
+    [InlineData("--pal=macos", PalKind.MacOS)]
+    [InlineData("--pal=nonsense", PalKind.Fake)]      // unknown -> Fake scaffold
+    public void PalSelector_parses_windows(string arg, PalKind expected) =>
+        Assert.Equal(expected, PalSelector.FromArgs(new[] { arg }));
+
+    [Fact]
+    public void Windows_pal_registers_all_capability_interfaces()
+    {
+        var services = new ServiceCollection();
+        services.AddBevelPlatform(PalKind.Windows, ShellRole.Core);
+
+        // Every PAL surface the Fake PAL registers must be bound for the Windows PAL too.
+        foreach (var t in new[]
+        {
+            typeof(IWindowManager), typeof(ISystemTrayHost), typeof(IDesktopEnvironment),
+            typeof(IShellSession), typeof(IFileOperations), typeof(IIconProvider),
+            typeof(IAppEnvironment), typeof(IFileOpener), typeof(IPermissionBroker),
+            typeof(IAudioPlayback), typeof(IDockController), typeof(IShellConnectionStatus),
+            typeof(ITabProvider), typeof(IVolumeLabelSource),
+        })
+            Assert.True(services.Any(d => d.ServiceType == t), $"Windows PAL missing {t.Name}");
+    }
+
+    [Theory]
+    [InlineData(ShellRole.Core)]
+    [InlineData(ShellRole.Taskbar)]
+    [InlineData(ShellRole.Explorer)]
+    [InlineData(ShellRole.Desktop)]
+    public void Windows_pal_hosts_no_helper_service_in_any_role(ShellRole role)
+    {
+        // Unlike macOS (Core hosts the Swift helper), Windows discovery is in-process — NO role
+        // registers an IHostedService helper.
+        var services = new ServiceCollection();
+        services.AddBevelPlatform(PalKind.Windows, role);
+        Assert.False(services.Any(d => d.ServiceType == typeof(IHostedService)));
+    }
+
+    [Theory]
+    [InlineData(ShellRole.Core, "WindowsWindowManager")]     // direct in-process discovery owner
+    [InlineData(ShellRole.Taskbar, "ShellCoreWindowManager")] // peer: shell-core client
+    public void Windows_window_manager_binds_direct_for_core_and_client_for_taskbar(ShellRole role, string expected)
+    {
+        var services = new ServiceCollection();
+        services.AddBevelPlatform(PalKind.Windows, role);
+        var wm = services.Single(d => d.ServiceType == typeof(IWindowManager));
+        Assert.Equal(expected, wm.ImplementationType?.Name);
+    }
+
+    [Theory]
+    [InlineData(ShellRole.Core, "SettingsService")]           // sole DB writer
+    [InlineData(ShellRole.Taskbar, "RemoteSettingsService")]  // peers read/write through the core
+    [InlineData(ShellRole.Explorer, "RemoteSettingsService")]
+    [InlineData(ShellRole.Desktop, "RemoteSettingsService")]
+    public void Windows_settings_service_is_real_for_core_and_remote_for_peers(ShellRole role, string expectedImpl)
+    {
+        var services = new ServiceCollection();
+        services.AddBevelPlatform(PalKind.Windows, role);
+        var settings = services.Single(d => d.ServiceType == typeof(ISettingsService));
+        Assert.Equal(expectedImpl, settings.ImplementationType?.Name);
+    }
 }

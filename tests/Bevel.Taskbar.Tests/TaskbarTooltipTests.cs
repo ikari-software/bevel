@@ -16,7 +16,7 @@ public sealed class TaskbarTooltipTests
     [AvaloniaFact]
     public void Window_buttons_do_not_use_avalonian_tooltip_popup()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var window = new TaskbarWindow(null) { Content = view };
@@ -36,7 +36,7 @@ public sealed class TaskbarTooltipTests
     [AvaloniaFact]
     public void Preview_frame_has_a_background_behind_the_thumbnail()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         // The frame binds its backing to Bevel.Brush.InfoWindow (the info-tooltip face); inject it so the
@@ -61,7 +61,7 @@ public sealed class TaskbarTooltipTests
     [AvaloniaFact]
     public void Tooltip_popup_opens_with_placement_target()
     {
-        var model = new ShellModel(null, null, null);
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var window = new TaskbarWindow(null) { Content = view, Width = 800, Height = 40 };

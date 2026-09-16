@@ -421,12 +421,47 @@
 
                     <!-- Disconnected indicator: a notification-area icon shown only while the taskbar
                          has lost its link to the shell core. It reconnects automatically (backoff),
-                         and this clears itself when the link returns. -->
-                    <Grid x:Name="DisconnectedIndicator" Width="14" Height="14"
+                         and this clears itself when the link returns.
+
+                         It PULSES, and it is CLICKABLE (bevel-corepulse). A static dot was too easy to
+                         miss: a taskbar with no buttons and no tray looks like lost settings rather than
+                         a lost core, which is precisely how a real incident was misread. The pulse is a
+                         halo that pings outward while the SOLID dot underneath stays fully opaque — the
+                         glyph never dims below legibility, so the motion adds urgency without costing
+                         clarity. Clicking offers the repairs that actually work (the launcher owns both;
+                         RestartCore is the targeted one, and is what fixes an unlinked core socket). -->
+                    <Grid x:Name="DisconnectedIndicator" Width="18" Height="18"
                           IsVisible="{Binding IsDisconnected}"
-                          VerticalAlignment="Center"
-                          ToolTip.Tip="Disconnected from the shell core — reconnecting…">
-                        <Ellipse Fill="#C0392B" Stroke="#7B241C" StrokeThickness="0.5" />
+                          VerticalAlignment="Center" Background="Transparent" Cursor="Hand"
+                          PointerPressed="OnDisconnectedIndicatorPressed"
+                          ToolTip.Tip="Disconnected from the shell core — reconnecting… (click to repair)">
+                        <Grid.Styles>
+                            <!-- Halo only. Animating the dot itself would make the icon fade toward
+                                 invisible at the exact moment it most needs to be seen. -->
+                            <Style Selector="Grid#DisconnectedIndicator > Ellipse.halo">
+                                <Style.Animations>
+                                    <Animation Duration="0:0:1.6" IterationCount="INFINITE" Easing="CubicEaseOut">
+                                        <KeyFrame Cue="0%">
+                                            <Setter Property="Opacity" Value="0.55" />
+                                            <Setter Property="ScaleTransform.ScaleX" Value="0.62" />
+                                            <Setter Property="ScaleTransform.ScaleY" Value="0.62" />
+                                        </KeyFrame>
+                                        <KeyFrame Cue="100%">
+                                            <Setter Property="Opacity" Value="0" />
+                                            <Setter Property="ScaleTransform.ScaleX" Value="1.0" />
+                                            <Setter Property="ScaleTransform.ScaleY" Value="1.0" />
+                                        </KeyFrame>
+                                    </Animation>
+                                </Style.Animations>
+                            </Style>
+                        </Grid.Styles>
+                        <Ellipse Classes="halo" Fill="{DynamicResource Bevel.Brush.HotTracking}" RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform ScaleX="0.62" ScaleY="0.62" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <Ellipse Width="14" Height="14" Fill="#C0392B" Stroke="#7B241C" StrokeThickness="0.5"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
                         <Rectangle Width="9" Height="2.2" RadiusX="1" RadiusY="1" Fill="White"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    RenderTransformOrigin="0.5,0.5">
@@ -434,6 +469,16 @@
                                 <RotateTransform Angle="45" />
                             </Rectangle.RenderTransform>
                         </Rectangle>
+                        <FlyoutBase.AttachedFlyout>
+                            <MenuFlyout Placement="Top">
+                                <MenuItem x:Name="RepairRestartCoreItem" Header="Restart shell core"
+                                          Click="OnRepairRestartCore"
+                                          ToolTip.Tip="Respawns just the core process and rebinds its socket — windows and tray come back without restarting the shell." />
+                                <MenuItem x:Name="RepairRestartShellItem" Header="Restart Bevel"
+                                          Click="OnRepairRestartShell"
+                                          ToolTip.Tip="Restarts every shell process. Use if restarting the core alone doesn't reconnect." />
+                            </MenuFlyout>
+                        </FlyoutBase.AttachedFlyout>
                     </Grid>
                     <tb:ClockWidget x:Name="Clock" VerticalAlignment="Center" />
 

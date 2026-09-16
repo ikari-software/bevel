@@ -24,6 +24,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     private BevelSettings? _baseline;   // settings at open (or last Apply); Cancel reverts to this
     private readonly IPermissionBroker? _permissionBroker;
     private readonly IShellSession? _shellSession;
+    private readonly IDockController? _dock;
+    private readonly ISystemTrayHost? _tray;
     private DispatcherTimer? _permPollTimer;
 
     // Guards the run-at-login checkbox against feedback: when we set IsChecked programmatically
@@ -39,18 +41,65 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     // AOT — bevel-gww.7). It ONLY inflates the XAML — it must not run the DI ctor's LoadSettings /
     // permission-poll logic, which would dereference the unset service. The app always builds this
     // window through the DI constructor below.
+    /// <summary>
+    /// Hide the settings this platform cannot act on (bevel-platsettings). On Windows the dialog was
+    /// offering macOS-only controls — "Accessibility Permission", "Screen Recording Permission", a
+    /// Work-Area Strategy described as handling "the macOS Dock", and a tray page about mirroring "the
+    /// macOS menu-bar icons". Every one of them is inert there, and an inert control is worse than a
+    /// missing one: it asks the user to grant a permission that does not exist and reads as broken.
+    ///
+    /// <para>Gated on PAL CAPABILITY, not <c>OperatingSystem.Is*</c> — the same feature-detect contract
+    /// the PAL states for its own callers. A permission the platform does not have reports
+    /// <see cref="PermissionState.NotApplicable"/>; a Dock that is not there reports
+    /// <c>Available: false</c>; and menu-bar consolidation only means anything where the tray is
+    /// <see cref="TrayCapability.Mirrored"/> (macOS can only mirror someone else's bar — Windows shells
+    /// own the tray protocol outright, so there is nothing to consolidate).</para>
+    /// </summary>
+    private void HidePlatformInapplicableSections()
+    {
+        // The Dock strategy exists only where a Dock does.
+        if (_dock is not null && !_dock.Capabilities.Available)
+            WorkAreaSection.IsVisible = false;
+
+        // Consolidating a menu bar into the tray is meaningless unless the tray MIRRORS another bar.
+        if (_tray is not null && _tray.Capabilities.TrayMode != TrayCapability.Mirrored)
+            TraySection.IsVisible = false;
+
+        if (_permissionBroker is null) return;
+
+        // Permission state is async; resolve off the UI thread and hide on the dispatcher. Defaulting to
+        // VISIBLE while unknown keeps macOS correct if the probe is slow — a briefly-shown real control
+        // beats a permanently-hidden one.
+        _ = HideInapplicablePermissionAsync(ShellPermission.Accessibility, AccessibilitySection);
+        _ = HideInapplicablePermissionAsync(ShellPermission.ScreenRecording, ScreenRecordingSection);
+    }
+
+    private async Task HideInapplicablePermissionAsync(ShellPermission permission, Control section)
+    {
+        PermissionState state;
+        try { state = await _permissionBroker!.GetStateAsync(permission).ConfigureAwait(false); }
+        catch { return; }   // a broker that cannot answer must not blank the section
+
+        if (state != PermissionState.NotApplicable) return;
+        await Dispatcher.UIThread.InvokeAsync(() => section.IsVisible = false);
+    }
+
     public OnboardingWindow()
     {
         _settings = null!;
         InitializeComponent();
     }
 
-    public OnboardingWindow(ISettingsService settings, IPermissionBroker? permissionBroker = null, IShellSession? shellSession = null)
+    public OnboardingWindow(ISettingsService settings, IPermissionBroker? permissionBroker = null,
+        IShellSession? shellSession = null, IDockController? dock = null, ISystemTrayHost? tray = null)
     {
         InitializeComponent();
         _settings = settings;
         _permissionBroker = permissionBroker;
         _shellSession = shellSession;
+        _dock = dock;
+        _tray = tray;
+        HidePlatformInapplicableSections();
 
         foreach (var (_, display) in Bevel.UI.ThemeService.Themes)
             ThemeCombo.Items.Add(display);

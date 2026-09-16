@@ -24,8 +24,6 @@ public sealed class ProgramUsageStore
         public DateTime FirstSeenUtc { get; set; }
     }
 
-    private static readonly string DefaultConfigDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "bevel");
 
     private readonly string _path;
     private readonly object _gate = new();
@@ -35,7 +33,9 @@ public sealed class ProgramUsageStore
 
     public ProgramUsageStore(string? configDir = null)
     {
-        _path = Path.Combine(configDir ?? DefaultConfigDir, "program-usage.json");
+        // Null means the real config dir, which THROWS in a test host (BevelConfigDir) — a test that
+        // forgets to pass its own directory fails loudly instead of rewriting the developer's usage data.
+        _path = Path.Combine(configDir ?? Bevel.Core.BevelConfigDir.Path, "program-usage.json");
         _byApp = Load(_path);
     }
 

@@ -96,12 +96,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
         // repopulate. (~10s covers a cold helper exec + connect.)
         var initialWindows = await SeedWhenHelperReadyAsync(_windows.EnumerateAsync, ct).ConfigureAwait(false);
-        IReadOnlyList<InstalledApp> initialApps;
-        try { initialApps = await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false); }
-        catch (InvalidOperationException) { initialApps = Array.Empty<InstalledApp>(); }
-        IReadOnlyList<TrayItem> initialTray;
-        try { initialTray = await _tray.GetItemsAsync(ct).ConfigureAwait(false); }
-        catch (InvalidOperationException) { initialTray = Array.Empty<TrayItem>(); }
+        var initialApps = await SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).ConfigureAwait(false);
+        var initialTray = await SeedOrEmptyAsync(_tray.GetItemsAsync, ct).ConfigureAwait(false);
         lock (_gate)
         {
             foreach (var w in initialWindows)
@@ -129,25 +125,44 @@ public sealed class ShellCoreServer : IAsyncDisposable
         BroadcastSnapshot();
     }
 
-    /// <summary>Runs <paramref name="enumerate"/>, tolerating the "Helper not connected" race at startup:
-    /// the helper connects asynchronously after <c>host.Start()</c>, so the first enumerate can throw until
-    /// it's up. Retries on that transient <see cref="InvalidOperationException"/> for ~10s, then degrades to
-    /// an empty snapshot (the live delta streams + the window reconcile backstop repopulate). Never crashes
-    /// the core.</summary>
+    /// <summary>Runs <paramref name="enumerate"/>, tolerating the whole startup race window: the helper
+    /// connects asynchronously after <c>host.Start()</c> AND can bounce mid-connect on a cold boot, so the
+    /// first enumerate fails in more than one shape — <see cref="InvalidOperationException"/>("Helper not
+    /// connected") before the channel exists, and a transport fault (e.g. gRPC <c>Cancelled</c> / "gRPC call
+    /// disposed.") when the channel is torn down DURING the call. Seeding is best-effort by contract, so
+    /// retry on ANY non-cancellation failure for ~10s, then degrade to an empty snapshot (the live delta
+    /// streams + the window reconcile backstop repopulate). Never crashes the core — a throw here escapes to
+    /// Main and aborts the process, which the supervisor then crash-loops (bevel-ejon).</summary>
     private static async ValueTask<IReadOnlyList<T>> SeedWhenHelperReadyAsync<T>(
         Func<CancellationToken, ValueTask<IReadOnlyList<T>>> enumerate, CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
         {
             try { return await enumerate(ct).ConfigureAwait(false); }
-            catch (InvalidOperationException) when (attempt < 66 && !ct.IsCancellationRequested)
+            // Scope the catch by INTENT (best-effort seed), not by exception type: typing it to
+            // InvalidOperationException encoded an assumption about which transport error the helper
+            // produces, and the gRPC-disposed shape slipped straight through it. Real cancellation
+            // (shutdown) still propagates.
+            catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
             {
-                await Task.Delay(150, ct).ConfigureAwait(false);   // ~66 × 150ms ≈ 10s
+                if (attempt >= 66)
+                    return Array.Empty<T>();   // ~66 × 150ms ≈ 10s — streams + reconcile will fill it in
+                await Task.Delay(150, ct).ConfigureAwait(false);
             }
-            catch (InvalidOperationException)
-            {
-                return Array.Empty<T>();   // timed out — streams + reconcile will fill it in
-            }
+        }
+    }
+
+    /// <summary>Single-shot sibling of <see cref="SeedWhenHelperReadyAsync"/> for the snapshots taken once
+    /// the helper is already up (apps/tray share its connection). Same contract — a failed seed degrades to
+    /// empty and is repaired by the live streams; it must never abort the core — but no extra retry budget,
+    /// so boot isn't lengthened by a genuinely unavailable source.</summary>
+    private static async ValueTask<IReadOnlyList<T>> SeedOrEmptyAsync<T>(
+        Func<CancellationToken, ValueTask<IReadOnlyList<T>>> enumerate, CancellationToken ct)
+    {
+        try { return await enumerate(ct).ConfigureAwait(false); }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
+        {
+            return Array.Empty<T>();
         }
     }
 
