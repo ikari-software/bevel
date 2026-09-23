@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -79,6 +81,7 @@ public partial class StartMenu : UserControl
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
+        WireTypeToSearch();
     }
 
     public bool IsOpen => MenuPopup.IsOpen;
@@ -93,6 +96,7 @@ public partial class StartMenu : UserControl
     public Task OpenAsync(Control placementTarget)
     {
         ApplyThemeLayout();
+        ClearSearch();          // every open starts on the unfiltered menu (bevel-cezo)
         RefreshDesktopLabel();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
@@ -243,8 +247,210 @@ public partial class StartMenu : UserControl
         return string.IsNullOrWhiteSpace(u) ? "User" : char.ToUpperInvariant(u[0]) + u.Substring(1);
     }
 
-    /// <summary>Closes the menu; the Menu's own cascade popups close with it.</summary>
-    public void Close() => MenuPopup.IsOpen = false;
+    /// <summary>Closes the menu; the Menu's own cascade popups close with it. Any type-to-search query is
+    /// dropped, so the next open shows the full menu.</summary>
+    public void Close()
+    {
+        ClearSearch();
+        MenuPopup.IsOpen = false;
+    }
+
+    // ── Type-to-search (bevel-cezo) ────────────────────────────────────
+
+    private readonly StartMenuFilter _filter = new();
+    private readonly ObservableCollection<ProgramItemViewModel> _searchResults = new();
+
+    /// <summary>True while a typed query is narrowing the menu.</summary>
+    public bool IsSearchActive => _filter.IsActive;
+
+    /// <summary>The query typed so far (empty when no search is running) — surfaced for tests/automation.</summary>
+    public string SearchQuery => _filter.Query;
+
+    /// <summary>The ranked matches currently shown, best first.</summary>
+    public IReadOnlyList<ProgramItemViewModel> SearchResults => _searchResults;
+
+    /// <summary>
+    /// Escape's first meaning while searching: drop the query and restore the full menu. Returns false when
+    /// no search is running, which is the host's cue to close the menu instead (see
+    /// <c>TaskbarView.OnTaskbarKeyDown</c>) — so one Escape clears, the next closes.
+    /// </summary>
+    public bool ClearSearchIfActive()
+    {
+        if (!_filter.IsActive) return false;
+        ClearSearch();
+        return true;
+    }
+
+    /// <summary>
+    /// Wires type-to-search onto the popup's own root panel. It has to be the popup panel and not this
+    /// UserControl: the popup is a separate visual tree with its own TopLevel, so keystrokes aimed at the
+    /// focused menu row never reach the control that owns the Popup.
+    ///
+    /// KeyDown is taken on the TUNNEL phase so Enter/Backspace/Escape are seen BEFORE the inner
+    /// <see cref="Menu"/>'s own interaction handler consumes them; printable characters arrive as real text
+    /// input (bubble), which is what makes digits and accented characters work — a Key-enum decode can't.
+    /// </summary>
+    private void WireTypeToSearch()
+    {
+        foreach (var host in new Interactive[] { PopupRoot, ItemsMenu })
+        {
+            host.AddHandler(InputElement.KeyDownEvent, OnMenuKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
+            host.AddHandler(InputElement.TextInputEvent, OnMenuTextInput, RoutingStrategies.Bubble, handledEventsToo: true);
+        }
+    }
+
+    private RoutedEventArgs? _lastSearchEvent;
+
+    /// <summary>
+    /// The handlers sit on BOTH the popup root and the inner <see cref="Menu"/>: the Programs cascade opens a
+    /// popup of its own, and the Menu is the ancestor Avalonia's own menu interaction handler relies on to
+    /// receive keys from nested submenu rows — so covering both means a keystroke is seen wherever focus sits.
+    /// When an event passes through both, only the first sighting is acted on.
+    /// </summary>
+    private bool AlreadySeen(RoutedEventArgs e)
+    {
+        if (ReferenceEquals(_lastSearchEvent, e)) return true;
+        _lastSearchEvent = e;
+        return false;
+    }
+
+    private void OnMenuTextInput(object? sender, TextInputEventArgs e)
+    {
+        if (!MenuPopup.IsOpen || _programsVm is null) return;
+        if (AlreadySeen(e)) return;
+        if (!_filter.Append(e.Text)) return;
+        ApplySearch();
+        e.Handled = true;
+    }
+
+    private void OnMenuKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!MenuPopup.IsOpen || _programsVm is null) return;
+        if (AlreadySeen(e)) return;
+        switch (e.Key)
+        {
+            case Key.Back when _filter.IsActive:
+                _filter.Backspace();
+                ApplySearch();
+                e.Handled = true;
+                break;
+            case Key.Escape when _filter.IsActive:
+                ClearSearch();
+                e.Handled = true;
+                break;
+            case Key.Enter or Key.Return when _filter.IsActive:
+                if (TryLaunchTopMatch(e.Source)) e.Handled = true;
+                break;
+            default:
+                break;   // arrows / Home / End / mnemonics stay with the menu's own navigation
+        }
+    }
+
+    /// <summary>
+    /// Enter's rule while a search is running: launch the top match — UNLESS the keystroke came from a row
+    /// that is itself one of the matches, i.e. the user arrowed focus onto it, in which case that row's own
+    /// activation is the right thing and the search stays out of the way.
+    ///
+    /// Public because it is the only honestly testable form of the rule: headless Avalonia never realizes a
+    /// submenu's containers, so no test can produce a focused cascade row to raise the key from.
+    /// </summary>
+    public bool EnterShouldLaunchTopMatch(object? keySource)
+    {
+        if (_searchResults.Count == 0) return false;
+        return keySource is not Control c
+            || c.DataContext is not ProgramItemViewModel focused
+            || !_searchResults.Contains(focused);
+    }
+
+    private bool TryLaunchTopMatch(object? source)
+    {
+        if (!EnterShouldLaunchTopMatch(source)) return false;
+        var top = _searchResults[0];
+        if (top.LaunchCommand.CanExecute(null)) top.LaunchCommand.Execute(null);
+        Close();
+        return true;
+    }
+
+    /// <summary>
+    /// Re-ranks the program index against the current query and shows the matches in whichever layout is
+    /// live: the Luna pinned column becomes the result list, the classic Programs cascade becomes the result
+    /// cascade (and opens itself). Ranking is a linear pass over the already-in-memory index — no I/O, no
+    /// enumeration — so it stays on the keystroke; only the matched rows' icons are kicked, and those load
+    /// off-thread as everywhere else.
+    /// </summary>
+    private void ApplySearch()
+    {
+        if (_programsVm is null) return;
+        if (!_filter.IsActive) { ClearSearch(); return; }
+
+        var ranked = StartMenuFilter.Rank(_programsVm.Programs, static p => p.DisplayName, _filter.Query);
+        _searchResults.Clear();
+        foreach (var p in ranked)
+        {
+            p.EnsureIcon();   // lazy, off-thread, idempotent
+            _searchResults.Add(p);
+        }
+
+        UpdateSearchStrip();
+        if (LunaLayout.IsVisible)
+            LunaPinned.ItemsSource = _searchResults;
+        else
+            ShowClassicResults();
+    }
+
+    /// <summary>Points the Programs cascade at the matches and opens it, so the results are on screen the
+    /// moment they exist. A query with no hits shows a disabled "(No matches)" row rather than an empty
+    /// cascade, which would read as a broken menu.</summary>
+    private void ShowClassicResults()
+    {
+        if (_searchResults.Count > 0)
+        {
+            if (!ReferenceEquals(ProgramsItem.ItemsSource, _searchResults))
+            {
+                // Avalonia forbids touching Items while an ItemsSource is bound, so detach first — the
+                // cascade may be holding either the full collection or a placeholder row.
+                ProgramsItem.ItemsSource = null;
+                ProgramsItem.Items.Clear();
+                ProgramsItem.ItemsSource = _searchResults;
+            }
+        }
+        else
+        {
+            ProgramsItem.ItemsSource = null;
+            ProgramsItem.Items.Clear();
+            ProgramsItem.Items.Add(Disabled("(No matches)"));
+        }
+        foreach (var top in ItemsMenu.Items.OfType<MenuItem>())
+            top.IsSubMenuOpen = ReferenceEquals(top, ProgramsItem);
+    }
+
+    private void UpdateSearchStrip()
+    {
+        var n = _searchResults.Count;
+        var count = n switch { 0 => "no matches", 1 => "1 match", _ => $"{n} matches" };
+        ClassicSearchText.Text = _filter.Query;
+        ClassicSearchCount.Text = count;
+        LunaSearchText.Text = _filter.Query;
+        LunaSearchCount.Text = count;
+        ClassicSearchStrip.IsVisible = _filter.IsActive && !LunaLayout.IsVisible;
+        LunaSearchStrip.IsVisible = _filter.IsActive && LunaLayout.IsVisible;
+    }
+
+    /// <summary>Drops the query and puts both layouts back the way they were: Luna's pinned column returns to
+    /// the curated frequent list, the classic cascade to the full program collection.</summary>
+    private void ClearSearch()
+    {
+        _filter.Clear();
+        _searchResults.Clear();
+        ClassicSearchStrip.IsVisible = false;
+        LunaSearchStrip.IsVisible = false;
+        if (_programsVm is null) return;
+        if (_lunaWired) LunaPinned.ItemsSource = _programsVm.FrequentPrograms;
+        ProgramsItem.IsSubMenuOpen = false;
+        // Detach the result list before UpdateProgramsPlaceholder reaches for Items (see ShowClassicResults).
+        if (ReferenceEquals(ProgramsItem.ItemsSource, _searchResults)) ProgramsItem.ItemsSource = null;
+        UpdateProgramsPlaceholder();
+    }
 
     // ── Hover-to-open ──────────────────────────────────────────────────
 
@@ -357,6 +563,9 @@ public partial class StartMenu : UserControl
     /// </summary>
     private void UpdateProgramsPlaceholder()
     {
+        // While a type-to-search query is live the cascade belongs to the result list (bevel-cezo); a
+        // background re-enumeration must not yank it back to the full collection mid-search.
+        if (_filter.IsActive) return;
         var programs = _programsVm!.Programs;
         if (programs.Count > 0)
         {
