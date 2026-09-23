@@ -1094,7 +1094,10 @@ public partial class TaskbarView : UserControl
         }
         else if (e.Key == Key.Escape && _startMenu is { IsOpen: true })
         {
-            _startMenu.Close();
+            // While a type-to-search query is live, the first Escape clears the filter and the NEXT one
+            // closes the menu (bevel-cezo) — the same two-step Escape a search field anywhere else gives.
+            if (!_startMenu.ClearSearchIfActive())
+                _startMenu.Close();
             e.Handled = true;
         }
     }

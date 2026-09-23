@@ -16,7 +16,10 @@
                IsLightDismissEnabled="True"
                Placement="Top"
                WindowManagerAddShadowHint="False">
-            <Panel>
+            <!-- The popup lives in its own visual tree/TopLevel, so the type-to-search key + text handlers
+                 (bevel-cezo) are attached to THIS panel in code-behind: keystrokes from either layout — and
+                 from the Programs cascade's own nested popup — route up to it. -->
+            <Panel x:Name="PopupRoot">
             <!-- ══════════════════ Win2000 layout ══════════════════ -->
             <classic:ClassicBorderDecorator x:Name="ClassicLayout"
                                             BorderStyle="AltRaised"
@@ -55,9 +58,40 @@
                     <!-- 1px left gutter so the item icons don't sit flush against the sidebar banner.
                          Win2000's own Start menu leaves a hairline there; without it the icon glyphs read
                          as welded to the stripe, which is the first thing the eye catches. -->
-                    <Menu Grid.Column="1"
-                          x:Name="ItemsMenu"
-                          Margin="1,0,0,0"
+                    <DockPanel Grid.Column="1" Margin="1,0,0,0">
+                    <!-- Type-to-search strip (bevel-cezo): hidden until the user types with the menu open,
+                         then it shows the live query and the match count above the item column, in the
+                         classic sunken edit-field frame so it reads as the menu's own search box. -->
+                    <classic:ClassicBorderDecorator x:Name="ClassicSearchStrip"
+                                                    DockPanel.Dock="Top"
+                                                    IsVisible="False"
+                                                    BorderStyle="Sunken"
+                                                    BorderThickness="2"
+                                                    Margin="3,3,3,2"
+                                                    Padding="4,3"
+                                                    Background="{DynamicResource Bevel.Brush.Window}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <!-- Code-drawn magnifier on the shared 16-grid; theme-tokened, vector-only. -->
+                            <Canvas Width="14" Height="14" VerticalAlignment="Center">
+                                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
+                                         Stroke="{DynamicResource Bevel.Brush.WindowText}" StrokeThickness="1.4" />
+                                <Path Data="M9.5,9.5 L13,13"
+                                      Stroke="{DynamicResource Bevel.Brush.WindowText}"
+                                      StrokeThickness="1.6" StrokeLineCap="Round" />
+                            </Canvas>
+                            <TextBlock x:Name="ClassicSearchText"
+                                       FontFamily="{DynamicResource Bevel.Font.UI}"
+                                       Foreground="{DynamicResource Bevel.Brush.WindowText}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="ClassicSearchCount"
+                                       FontFamily="{DynamicResource Bevel.Font.UI}"
+                                       Foreground="{DynamicResource Bevel.Brush.WindowText}"
+                                       Opacity="0.6"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </classic:ClassicBorderDecorator>
+
+                    <Menu x:Name="ItemsMenu"
                           MinWidth="180"
                           Background="{DynamicResource Bevel.Brush.Menu}"
                           ItemContainerTheme="{DynamicResource Bevel.Theme.MenuItem}">
@@ -91,6 +125,7 @@
                         <MenuItem x:Name="RestartItem" Header="_Restart Bevel" Click="OnRestartClick" />
                         <MenuItem x:Name="QuitItem" Header="_Quit Bevel" Click="OnQuitClick" />
                     </Menu>
+                    </DockPanel>
                 </Grid>
             </classic:ClassicBorderDecorator>
 
@@ -206,6 +241,33 @@
                     <!-- Orange banded separator under the header -->
                     <Border DockPanel.Dock="Top" Height="3" Background="{DynamicResource Luna.Brush.StartMenuHeaderRule}" />
                     <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Luna.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
+
+                    <!-- Type-to-search strip (bevel-cezo): hidden until the user types with the menu open,
+                         then it shows the live query + match count while the pinned column below turns into
+                         the ranked result list. Rounded Luna field on the pale-blue band. -->
+                    <Border x:Name="LunaSearchStrip" DockPanel.Dock="Top" IsVisible="False"
+                            Padding="10,7"
+                            Background="{DynamicResource Luna.Brush.StartMenuPlacesColumn}">
+                        <Border CornerRadius="3" Padding="7,4"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource Luna.Brush.StartMenuPlaceIconBorder}"
+                                Background="{DynamicResource Luna.Brush.StartMenuPinnedColumn}">
+                            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                <Canvas Width="14" Height="14" VerticalAlignment="Center">
+                                    <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
+                                             Stroke="#2F6FD0" StrokeThickness="1.6" />
+                                    <Path Data="M9.5,9.5 L13,13" Stroke="#2F6FD0"
+                                          StrokeThickness="1.8" StrokeLineCap="Round" />
+                                </Canvas>
+                                <TextBlock x:Name="LunaSearchText" FontSize="13"
+                                           Foreground="{DynamicResource Luna.Brush.StartMenuPlaceText}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock x:Name="LunaSearchCount" FontSize="11" Opacity="0.65"
+                                           Foreground="{DynamicResource Luna.Brush.StartMenuPlaceText}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Border>
 
                     <!-- Footer: coloured band with Log Off / Turn Off grouped to the RIGHT (the plate
                          places both buttons in the right portion, empty space at left), with a thin top
