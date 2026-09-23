@@ -59,6 +59,9 @@ public static class CompositionRoot
         services.AddSingleton<IDockController, Pal.Fake.FakeDockController>();
         services.AddSingleton<IShellConnectionStatus, AlwaysConnectedShellStatus>();
         services.AddSingleton<ITabProvider, Pal.Fake.FakeTabProvider>();
+        // Unread badges (bevel-ijln): starts empty — the scripted fake desktop invents no counts.
+        services.AddSingleton<Pal.Fake.FakeAppBadgeSource>();
+        services.AddSingleton<IAppBadgeSource>(sp => sp.GetRequiredService<Pal.Fake.FakeAppBadgeSource>());
         // The Fake PAL is the single-process dev/test shell, so it owns settings.db directly through the
         // real service — never a shell-core peer (core-owns-settings, bevel-6nve).
         services.AddSingleton<Bevel.Core.ISettingsService, Bevel.Core.SettingsService>();
@@ -97,6 +100,9 @@ public static class CompositionRoot
         // Tabs are enumerated by talking Apple Events to the target app — purely local (an osascript
         // child), so like IFileOpener every role gets the direct implementation, no core proxy.
         services.AddSingleton<ITabProvider, Pal.MacOS.MacOSTabProvider>();
+        // Unread badges (bevel-ijln): read from the Dock's accessibility tree in-process — no helper
+        // hop, so every role gets it direct (the taskbar process is the one that needs it).
+        services.AddSingleton<IAppBadgeSource, Pal.MacOS.MacOSAppBadgeSource>();
 
         // Window management + app environment: the single-source-of-truth split. In the taskbar
         // process these are shell-core CLIENTS (one UDS connection to the core, which owns the helper
@@ -190,6 +196,9 @@ public static class CompositionRoot
             sp.GetRequiredService<Pal.Windows.WindowsDesktopEnvironment>()));
         services.AddSingleton<IVolumeLabelSource, Pal.Windows.WindowsVolumeLabelSource>();
         services.AddSingleton<ITabProvider, Pal.Windows.WindowsTabProvider>();
+        // No badge source on Windows yet (bevel-ijln): the shell-integration taskbar overlay-icon API is
+        // per-owning-process like NSDockTile, so there is nothing to read cross-app. Empty, never invented.
+        services.AddSingleton<IAppBadgeSource>(_ => NullAppBadgeSource.Instance);
 
         // Window management + app environment: the same single-source-of-truth split as macOS. In the
         // taskbar process these are shell-core CLIENTS (one UDS connection to the core); in the Core and

@@ -80,8 +80,22 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     /// <summary>Any child window focused → the group button shows the sunken/active state.</summary>
     public bool IsFocused => Windows.Any(w => w.IsFocused);
 
+    /// <summary>
+    /// The app's unread badge (bevel-ijln). Every member window belongs to ONE app, so they all carry
+    /// the same platform label — take the first non-empty rather than summing. Deliberately NOT the
+    /// window count: <see cref="Count"/> is the glomming count (R-TB-6) and lives in <see cref="Label"/>.
+    /// </summary>
+    public string? BadgeText => Windows.FirstOrDefault(w => w.HasBadge)?.BadgeText;
+
+    /// <summary>The group badge as a number when it parses as one, else null.</summary>
+    public int? BadgeCount => int.TryParse(BadgeText, out var n) && n > 0 ? n : null;
+
+    public bool HasBadge => !string.IsNullOrEmpty(BadgeText);
+
     /// <summary>Accessible summary for the group button.</summary>
-    public string StatusText => $"{DisplayName} — {Count} windows (click to choose)";
+    public string StatusText => HasBadge
+        ? $"{DisplayName} — {Count} windows, {BadgeText} unread (click to choose)"
+        : $"{DisplayName} — {Count} windows (click to choose)";
 
     // ── ITaskbarItem (layout) — the same knobs a single button exposes ──
     public double Width { get => _width; set => SetProperty(ref _width, value); }
@@ -152,6 +166,16 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
             OnPropertyChanged(nameof(IsFocused));
         else if (e.PropertyName is nameof(TaskItemViewModel.IconSource))
             OnPropertyChanged(nameof(IconSource));
+        else if (e.PropertyName is nameof(TaskItemViewModel.BadgeText))
+            RaiseBadge();
+    }
+
+    private void RaiseBadge()
+    {
+        OnPropertyChanged(nameof(BadgeText));
+        OnPropertyChanged(nameof(BadgeCount));
+        OnPropertyChanged(nameof(HasBadge));
+        OnPropertyChanged(nameof(StatusText));
     }
 
     private void RaiseAggregates()
@@ -161,5 +185,6 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
         OnPropertyChanged(nameof(IconSource));
         OnPropertyChanged(nameof(IsFocused));
         OnPropertyChanged(nameof(StatusText));
+        RaiseBadge();
     }
 }

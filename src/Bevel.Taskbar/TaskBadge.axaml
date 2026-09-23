@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+      The unread/attention pill on a taskbar button (bevel-ijln) — the count an app publishes for
+      itself (Slack's unread, Mail's inbox), sourced from the platform via IAppBadgeSource. Sits INLINE
+      between the icon and the title rather than overlaying the icon, which is what makes it readable at
+      11px and what keeps it independent of the icon's size: a Large/big-icons mode simply grows the
+      icon next to it, with no overlay geometry to re-derive.
+
+      All colour comes from theme tokens, never a hardcoded macOS red: the fill is the active skin's
+      SELECTION colour and the text its selection foreground, so the pill is the Win2000 scheme's
+      highlight under Win2000, the variant's blue/olive/silver under Luna — and both runtime recolor
+      engines (ColorSchemeService via SchemeAliases, LunaVariantService) already own these two keys, so
+      it follows a live scheme/variant switch with nothing extra to Clear().
+
+      Geometry is code-drawn (a rounded Border), antialiased as Avalonia draws it by default — a 14px
+      pill with AA off would be a mess. CornerRadius is deliberately larger than any plausible half-
+      height: Avalonia clamps it, so the shape stays a true pill at every font size. FontSize is NOT set
+      so the pill inherits the button's, scaling with the bar.
+    -->
+    <ControlTheme x:Key="Bevel.Theme.TaskBadge" TargetType="ContentControl">
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="99" MinWidth="15" Padding="4,0"
+                        ClipToBounds="True">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+</ResourceDictionary>

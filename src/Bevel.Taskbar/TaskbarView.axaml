@@ -5,6 +5,14 @@
              x:Class="Bevel.Taskbar.TaskbarView"
              x:DataType="tb:TaskbarViewModel"
              ClipToBounds="False">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- The unread/attention pill on a task button (bevel-ijln) — theme-tokened, code-drawn. -->
+                <ResourceInclude Source="avares://Bevel.Taskbar/TaskBadge.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <UserControl.Styles>
         <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). The DEFAULT background
              must come from a style, not a local Background="Transparent" on the Border: a local value
@@ -173,6 +181,11 @@
                                 <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
+                                <!-- Unread count BEFORE the title (bevel-ijln): stays put in the icon-only
+                                     tier, where the label collapses but the badge must not. -->
+                                <ContentControl Theme="{DynamicResource Bevel.Theme.TaskBadge}"
+                                                Content="{Binding BadgeText}"
+                                                IsVisible="{Binding HasBadge}" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowLabel}"
                                            FontStyle="{Binding TitleStyle}"
@@ -232,6 +245,11 @@
                                 <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
+                                <!-- The APP's unread count (bevel-ijln). Distinct from the "(N)" window
+                                     count in Label, which is the glomming count (R-TB-6). -->
+                                <ContentControl Theme="{DynamicResource Bevel.Theme.TaskBadge}"
+                                                Content="{Binding BadgeText}"
+                                                IsVisible="{Binding HasBadge}" />
                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowLabel}"
                                            TextTrimming="CharacterEllipsis"

@@ -24,6 +24,11 @@
     <Color x:Key="Bevel.Color.GradientInactiveTitle">#C6D6EF</Color>
     <Color x:Key="Bevel.Color.InactiveTitleText">#E8EEF7</Color>
     <Color x:Key="Bevel.Color.Highlight">#316AC5</Color>
+    <!-- Selection foreground. White on every Luna variant, so LunaVariantService deliberately does
+         NOT re-hue it (a re-hued one would wash out on the blue). Completes the pair Win2000/SchemeAliases
+         already define, so anything token-driven on the selection colour — the taskbar unread pill
+         (bevel-ijln) — resolves under Luna too instead of rendering invisible text. -->
+    <Color x:Key="Bevel.Color.HighlightText">#FFFFFF</Color>
     <Color x:Key="Bevel.Color.HotTracking">#0A51DF</Color>
     <Color x:Key="Bevel.Color.Desktop">#5A7EDC</Color>
 
@@ -60,6 +65,7 @@
     <SolidColorBrush x:Key="Bevel.Brush.GradientInactiveTitle" Color="{StaticResource Bevel.Color.GradientInactiveTitle}" />
     <SolidColorBrush x:Key="Bevel.Brush.InactiveTitleText" Color="{StaticResource Bevel.Color.InactiveTitleText}" />
     <SolidColorBrush x:Key="Bevel.Brush.Highlight" Color="{StaticResource Bevel.Color.Highlight}" />
+    <SolidColorBrush x:Key="Bevel.Brush.HighlightText" Color="{StaticResource Bevel.Color.HighlightText}" />
     <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="{StaticResource Bevel.Color.HotTracking}" />
     <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="{StaticResource Bevel.Color.Desktop}" />
 
