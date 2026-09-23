@@ -80,9 +80,12 @@
                                          FontSize="11" GroupName="WorkArea">
                                 <RadioButton.IsChecked>True</RadioButton.IsChecked>
                             </RadioButton>
-                            <TextBlock Text="Dock auto-hides; overlapping windows are nudged up."
+                            <!-- Honest about what Nudge is (02 Req 9.2): macOS cannot reserve work area
+                                 for our bar, so Zoom / maximize still target the whole screen and the
+                                 window is corrected a moment later (bevel-yv2m). -->
+                            <TextBlock Text="Dock auto-hides; overlapping windows are nudged up. macOS Zoom still fills the whole screen first, so a zoomed window snaps up off the taskbar a moment later."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
-                                       Margin="20,0,0,0" />
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <RadioButton x:Name="WASDockShim"
                                          Content="Dock Shim (strict)"
