@@ -17,7 +17,12 @@ internal static class FakeData
 
 public sealed class FakeWindowManager : IWindowManager
 {
-    private static readonly IReadOnlyList<ForeignWindow> Windows = new[]
+    // Per-instance and mutable so a reposition is observable: the work-area nudge engine
+    // (WorkAreaMitigator) reads bounds back through EnumerateAsync to decide whether its
+    // correction took, so a Reposition that silently did nothing made the whole Nudge strategy
+    // untestable — and invisible under --pal=fake (bevel-yv2m). Ordering is preserved (the
+    // taskbar's window strip is order-sensitive), so this is a list, not a dictionary.
+    private readonly List<ForeignWindow> _windows = new()
     {
         new ForeignWindow(new ForeignWindowId("w1"), "Untitled - Notepad", "fake.notepad", false, true, new PalRect(100, 100, 800, 600)),
         new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.explorer", false, false, new PalRect(200, 200, 1024, 768)),
@@ -29,7 +34,9 @@ public sealed class FakeWindowManager : IWindowManager
     public Capabilities Capabilities => FakeData.Caps;
 
     public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-        => ValueTask.FromResult(Windows);
+    {
+        lock (_windows) return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+    }
 
     public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
@@ -37,7 +44,22 @@ public sealed class FakeWindowManager : IWindowManager
     // One atomic op in the real PAL (bevel-nxic); in-memory it's a no-op like Restore+Activate.
     public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>Applies the move/resize to the in-memory desktop and announces it, the way a real
+    /// window server would: the caller can read the new frame back from
+    /// <see cref="EnumerateAsync"/> and sees the same WindowChanged it would get on-device. An
+    /// unknown id is ignored (the window closed) rather than throwing.</summary>
+    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+    {
+        ForeignWindow? moved = null;
+        lock (_windows)
+        {
+            var i = _windows.FindIndex(w => w.Id == id);
+            if (i >= 0) _windows[i] = moved = _windows[i] with { Bounds = bounds };
+        }
+        if (moved is not null) WindowChanged?.Invoke(this, moved);
+        return Task.CompletedTask;
+    }
 
     public event EventHandler<ForeignWindow>? WindowOpened;
     public event EventHandler<ForeignWindow>? WindowClosed;

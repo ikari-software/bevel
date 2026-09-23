@@ -82,8 +82,8 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Reposition_is_rate_limited_per_window()
     {
-        // The fake holds the window's frame fixed after the nudge (a real window would move,
-        // and the event debounce would gate re-checks) so this isolates the per-window limiter.
+        // The fake holds the window's frame fixed after the nudge — i.e. the app re-asserted the very
+        // frame we just corrected. That is the reposition fight Req 9.2's rate limit exists for.
         var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
         var clock = new FixedClock();
         var m = Make(wm, clock);
@@ -91,12 +91,107 @@ public class WorkAreaMitigatorTests
         await m.MitigateOnceAsync();      // nudge #1
         Assert.Single(wm.Repositions);
 
-        await m.MitigateOnceAsync();      // within 2s of #1 → blocked
+        await m.MitigateOnceAsync();      // same frame, within 2s of #1 → blocked
         Assert.Single(wm.Repositions);
 
         clock.Advance(TimeSpan.FromSeconds(3));
         await m.MitigateOnceAsync();      // limiter elapsed → nudge #2
         Assert.Equal(2, wm.Repositions.Count);
+    }
+
+    /// <summary>
+    /// bevel-yv2m: an AppKit zoom animates into NSScreen.visibleFrame — our band included — so its
+    /// final frame can land AFTER our correction. That is a window that genuinely moved, not an app
+    /// re-asserting the frame we corrected, so it must be corrected at once rather than sit over the
+    /// bar until the cooldown expires (the old blind per-window limiter left it there for seconds).
+    /// </summary>
+    [Fact]
+    public async Task Zoom_landing_after_a_correction_is_fixed_without_waiting_for_the_cooldown()
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var clock = new FixedClock();
+        var m = Make(wm, clock);
+
+        Assert.Equal(1, await m.MitigateOnceAsync());
+
+        // The zoom's own final frame arrives: a DIFFERENT overlapping rect (top at the menu bar,
+        // bottom at the screen edge), well inside the 2s limiter window.
+        wm.Set(Win("w1", new PalRect(0, 30, 1600, 970)));
+        clock.Advance(TimeSpan.FromMilliseconds(400));
+
+        Assert.Equal(1, await m.MitigateOnceAsync());
+        Assert.Equal(2, wm.Repositions.Count);
+        Assert.Equal(new PalRect(0, 30, 1600, 940), wm.Repositions[1].Bounds);   // bottom on 970
+    }
+
+    /// <summary>A window observed clear of the band forgets its back-off, so re-zooming it moments
+    /// later is corrected immediately instead of inheriting the previous correction's cooldown.</summary>
+    [Fact]
+    public async Task Window_seen_clear_of_the_band_forgets_its_back_off()
+    {
+        var zoomed = new PalRect(0, 800, 800, 300);
+        var wm = new RecordingWindowManager(Win("w1", zoomed));
+        var clock = new FixedClock();
+        var m = Make(wm, clock);
+
+        await m.MitigateOnceAsync();                          // nudge #1
+        wm.Set(Win("w1", new PalRect(0, 800, 800, 170)));     // correction took: clear of the band
+        await m.MitigateOnceAsync();
+        Assert.Single(wm.Repositions);
+
+        wm.Set(Win("w1", zoomed));                            // user zooms again, same target frame
+        clock.Advance(TimeSpan.FromMilliseconds(300));         // still inside the 2s limiter window
+
+        await m.MitigateOnceAsync();
+        Assert.Equal(2, wm.Repositions.Count);
+    }
+
+    /// <summary>
+    /// bevel-yv2m: after a correction the engine re-checks by itself a beat later, so a zoom
+    /// animation whose final frame lands on top of our correction (and emits no further AX event) is
+    /// fixed in well under a second instead of waiting on the 3s safety poll. Real clock: this is
+    /// the verify-pass timing, not the decision logic.
+    /// </summary>
+    [Fact]
+    public async Task Correction_is_verified_again_shortly_after_it_is_applied()
+    {
+        if (OperatingSystem.IsWindows()) return;   // the settle timer never fires under Avalonia's headless Windows dispatch model (framework limit, not Bevel); passes on Linux+macOS
+        // The window re-enters the band ONCE right after the first correction (the animation landing)
+        // and emits no event — only the engine's own verify pass can catch it.
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        wm.OnReposition = count => wm.Set(count == 1
+            ? Win("w1", new PalRect(0, 30, 1600, 970))        // zoom lands over the band
+            : Win("w1", new PalRect(0, 30, 1600, 940)));      // second correction holds
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band);
+        m.Start();
+
+        m.RequestMitigation();
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);   // well inside the 3s safety poll
+        while (wm.Repositions.Count < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        m.Dispose();
+
+        Assert.Equal(2, wm.Repositions.Count);
+    }
+
+    /// <summary>The engine drives a real PAL implementation end to end: the Fake PAL applies the
+    /// reposition, so the window is genuinely out of the band afterwards (and a second pass has
+    /// nothing left to do) — no Mac required.</summary>
+    [Fact]
+    public async Task Fake_pal_window_ends_up_above_the_band()
+    {
+        var wm = new Bevel.Pal.Fake.FakeWindowManager();
+        // The Fake desktop's widest window (w3: y=150 h=800 → bottom 950) clears this band, so give
+        // the engine a band it does cross: the bottom 30pt of a 900pt-tall screen.
+        var band = new PalRect(0, 870, 1600, 30);
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => band, new FixedClock());
+
+        Assert.True(await m.MitigateOnceAsync() > 0);
+
+        foreach (var w in await wm.EnumerateAsync())
+            Assert.False(Crosses(w.Bounds, band), $"{w.Id.Value} still crosses the band: {w.Bounds}");
+        Assert.Equal(0, await m.MitigateOnceAsync());   // nothing left to correct
     }
 
     [Fact]
@@ -122,11 +217,19 @@ public class WorkAreaMitigatorTests
         m.Dispose();
     }
 
+    private static bool Crosses(PalRect w, PalRect band)
+        => w.Y < band.Y + band.Height && w.Y + w.Height > band.Y
+        && w.X < band.X + band.Width && w.X + w.Width > band.X;
+
     /// <summary>Records reposition calls and lets a test swap the window list between passes.</summary>
     private sealed class RecordingWindowManager : IWindowManager
     {
         private IReadOnlyList<ForeignWindow> _windows;
         public List<(ForeignWindowId Id, PalRect Bounds)> Repositions { get; } = new();
+
+        /// <summary>Called with the running reposition count after each one, so a test can script
+        /// what the desktop looks like next (e.g. a zoom animation landing on our correction).</summary>
+        public Action<int>? OnReposition { get; set; }
 
         public RecordingWindowManager(params ForeignWindow[] windows) => _windows = windows;
         public void Set(params ForeignWindow[] windows) => _windows = windows;
@@ -141,6 +244,7 @@ public class WorkAreaMitigatorTests
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
         {
             Repositions.Add((id, bounds));
+            OnReposition?.Invoke(Repositions.Count);
             return Task.CompletedTask;
         }
 
