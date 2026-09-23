@@ -496,6 +496,15 @@ public static class TaskbarTheme
     /// <summary>Window-button height in logical px for the active tier (default Normal = 24).</summary>
     public static int ButtonHeight { get; private set; } = 24;
 
+    /// <summary>
+    /// Task-button icon edge in logical px for the active tier (bevel-c54t). The taller tiers are not
+    /// just taller chrome: Large and Big grow the glyph too, so <c>Big</c> + <c>IconOnly</c> reads as the
+    /// Win10/11 icon-only bar. The bar's icon PNGs arrive from the helper at 64×64 px, so every value
+    /// here is a DOWNSCALE at 1× and 2× — nothing is upscaled from a 16px bitmap.
+    /// The tray is deliberately NOT driven from here — it keeps its own <c>TaskbarTrayIconSize</c> slider.
+    /// </summary>
+    public static int TaskIconSize { get; private set; } = 16;
+
     /// <summary>Height per button row: the button plus its 4px (2+2) vertical margin.</summary>
     public static int RowHeight => ButtonHeight + 4;
 
@@ -507,12 +516,22 @@ public static class TaskbarTheme
 
     /// <summary>Selects the button-height tier. Call once at startup, before the taskbar window is
     /// built. Normal (default) keeps the classic 24/28/30 metrics.</summary>
-    public static void Configure(TaskbarButtonSize size) => ButtonHeight = size switch
+    public static void Configure(TaskbarButtonSize size)
     {
-        TaskbarButtonSize.Small => 18,   // → row 22, bar 24
-        TaskbarButtonSize.Large => 30,   // → row 34, bar 36
-        _ => 24,                          // Normal → row 28, bar 30 (Win2000 classic)
-    };
+        ButtonHeight = size switch
+        {
+            TaskbarButtonSize.Small => 18,   // → row 22, bar 24
+            TaskbarButtonSize.Large => 30,   // → row 34, bar 36
+            TaskbarButtonSize.Big => 40,     // → row 44, bar 46 (Win10/11 big-icons bar)
+            _ => 24,                          // Normal → row 28, bar 30 (Win2000 classic)
+        };
+        TaskIconSize = size switch
+        {
+            TaskbarButtonSize.Large => 24,   // 30px button, 3px above/below the glyph
+            TaskbarButtonSize.Big => 32,     // 40px button, 4px above/below — the Win10/11 look
+            _ => 16,                          // Small/Normal keep the classic 16px glyph
+        };
+    }
 }
 
 /// <summary>

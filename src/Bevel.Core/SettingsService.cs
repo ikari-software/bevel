@@ -912,8 +912,13 @@ public enum TaskbarButtonSize
     /// <summary>Win2000 classic (default).</summary>
     Normal,
 
-    /// <summary>Taller, touch-/readability-friendly rows.</summary>
+    /// <summary>Taller, touch-/readability-friendly rows — and a 24px task-button glyph (bevel-c54t).</summary>
     Large,
+
+    /// <summary>Big icons (bevel-c54t): a 40px button carrying a 32px glyph — the Win10/11 bar. Pairs with
+    /// <see cref="TaskbarButtonLabels.IconOnly"/> for the icon-only look; the two settings stay
+    /// independent, the Onboarding picker just selects both together.</summary>
+    Big,
 }
 
 /// <summary>bevel-m2.10: taskbar button width strategy.</summary>

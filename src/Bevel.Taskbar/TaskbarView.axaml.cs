@@ -67,7 +67,21 @@ public partial class TaskbarView : UserControl
     private readonly HashSet<Avalonia.Controls.Primitives.FlyoutBase> _scopedFlyouts = new();
     private IntPtr _startHotkeyMonitor;   // native global Ctrl+Esc / Option+Esc monitor token (macOS)
 
-    public TaskbarView() => InitializeComponent();
+    public TaskbarView()
+    {
+        InitializeComponent();
+        ApplyTaskIconMetric();   // seed the glyph token from the tier App already Configure()d
+    }
+
+    /// <summary>
+    /// Republishes <see cref="TaskbarTheme.TaskIconSize"/> as the <c>Bevel.Metric.TaskbarIconSize</c>
+    /// resource the task-button templates bind their Image Width/Height to (bevel-c54t). Assigning the
+    /// resource is what makes a live tier change re-size already-realized buttons: the templates use
+    /// DynamicResource, so every bound Image (and anything else keyed off the token, e.g. a badge)
+    /// re-measures without rebuilding the strip. Cheap, UI-thread-only, no icon work.
+    /// </summary>
+    private void ApplyTaskIconMetric() =>
+        Resources["Bevel.Metric.TaskbarIconSize"] = (double)TaskbarTheme.TaskIconSize;
 
     public Button StartButtonControl => StartButton;
     public ItemsControl WindowButtonAreaControl => WindowButtonArea;
@@ -138,7 +152,7 @@ public partial class TaskbarView : UserControl
         _maxButtonWidth = settings.TaskbarButtonWidth;
         _widthMode = settings.TaskbarButtonWidthMode;
         _buttonSize = settings.TaskbarButtonSize;
-        _minButtonWidth = Math.Clamp(settings.TaskbarMinButtonWidth, IconOnlyFloor, settings.TaskbarButtonWidth);
+        _minButtonWidth = Math.Clamp(settings.TaskbarMinButtonWidth, IconOnlyFloorFor(TaskbarTheme.TaskIconSize), settings.TaskbarButtonWidth);
         _grouping = settings.TaskbarGrouping;
         _buttonLabels = settings.TaskbarButtonLabels;
         _middleClickCloses = settings.TaskbarMiddleClickCloses;
@@ -235,7 +249,7 @@ public partial class TaskbarView : UserControl
         // area band, and re-heights the already-realized buttons (WireTaskButton only sets new ones).
         _maxButtonWidth = s.TaskbarButtonWidth;
         _widthMode = s.TaskbarButtonWidthMode;
-        _minButtonWidth = Math.Clamp(s.TaskbarMinButtonWidth, IconOnlyFloor, s.TaskbarButtonWidth);
+        _minButtonWidth = Math.Clamp(s.TaskbarMinButtonWidth, IconOnlyFloorFor(TaskbarTheme.TaskIconSize), s.TaskbarButtonWidth);
         if (_buttonSize != s.TaskbarButtonSize)
         {
             _buttonSize = s.TaskbarButtonSize;
@@ -243,6 +257,7 @@ public partial class TaskbarView : UserControl
             _window?.ReapplyMetrics();     // resize + re-anchor + refresh band; raises RowsChanged → ApplyRowLayout
             StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
             ReapplyButtonHeights();
+            ApplyTaskIconMetric();         // bigger/smaller glyphs follow the tier, live (bevel-c54t)
         }
         // Row count from the settings slider — the same knob as dragging the resize grip. SetRows is a
         // no-op when unchanged and clamps to the screen-derived MaxRows.
@@ -396,6 +411,7 @@ public partial class TaskbarView : UserControl
         _window?.SetAlwaysOnTop(_alwaysOnTop);
         ResizeGrip.IsVisible = !_locked;
         ShowDesktopButton.IsVisible = _showDesktop;
+        ApplyTaskIconMetric();   // re-seed in case the tier was Configure()d after construction
         ApplyAppearance(_fontSize, _bgColor, _opacity);   // now attached — theme resources resolve
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
@@ -950,10 +966,19 @@ public partial class TaskbarView : UserControl
     // ── Window-button sizing (U11) ──────────────────────────────────────
 
     // Icon-only tier (bevel-m2.10): the narrowest a shrinking button goes, and the width at/above
-    // which it still shows its text label. Below LabelHideThreshold the label is dropped and only a
-    // centred icon remains (the hover tooltip still carries the full title).
-    private const int IconOnlyFloor = 24;
-    private const double LabelHideThreshold = 34;
+    // which it still shows its text label. Below the label-hide threshold the label is dropped and only
+    // a centred icon remains (the hover tooltip still carries the full title).
+    //
+    // All three are derived from the tier's glyph edge (bevel-c54t) rather than hardcoded around 16px:
+    // a 32px Big-tier icon needs a ≥40px button, and the pre-c54t constants (24/34/40) fall out exactly
+    // at the 16px default, so Small/Normal behaviour is bit-identical.
+    private const int BaseTaskIconSize = 16;
+
+    /// <summary>Narrowest an icon-only button goes: the glyph plus its 8px horizontal padding.</summary>
+    private static int IconOnlyFloorFor(int iconSize) => iconSize + 8;
+
+    /// <summary>At/above this width a shrinking button still earns its text label.</summary>
+    private static double LabelHideThresholdFor(int iconSize) => iconSize + 18;
 
     /// <summary>
     /// Sizes the live window buttons per the configured display mode (bevel-m2.10):
@@ -961,7 +986,7 @@ public partial class TaskbarView : UserControl
     /// <item><b>Fixed</b> — every button stays at the max width and the strip scrolls when it overflows.</item>
     /// <item><b>ShrinkToFit</b> (default) — buttons share the strip (available / perRow). They keep
     /// their label down to the text floor (<see cref="_minButtonWidth"/>); when even that won't fit
-    /// they drop to icon-only and shrink to <see cref="IconOnlyFloor"/>.</item>
+    /// they drop to icon-only and shrink to the icon-only floor.</item>
     /// </list>
     /// The computed width/label are pushed onto each live VM — the template's Width transition
     /// animates the change, driving both the steady-state resize as the strip fills AND the XP
@@ -978,7 +1003,8 @@ public partial class TaskbarView : UserControl
         if (available <= 0) return; // not laid out yet — SizeChanged will re-run this
 
         var (width, showLabel) = ComputeButtonLayout(
-            _widthMode, available, live.Count, _window?.Rows ?? 1, _maxButtonWidth, _minButtonWidth, _buttonLabels);
+            _widthMode, available, live.Count, _window?.Rows ?? 1, _maxButtonWidth, _minButtonWidth, _buttonLabels,
+            TaskbarTheme.TaskIconSize);
 
         foreach (var vm in live)
         {
@@ -993,24 +1019,28 @@ public partial class TaskbarView : UserControl
     /// unit-testable without a visual tree. <b>Fixed</b> → every button at <paramref name="max"/>.
     /// <b>ShrinkToFit</b> → each button gets an equal share of the row (<paramref name="available"/> ÷
     /// buttons-per-row); labelled down to the text floor (<paramref name="minButtonWidth"/>), then
-    /// icon-only down to <see cref="IconOnlyFloor"/>, dropping the label below
-    /// <see cref="LabelHideThreshold"/>.
+    /// icon-only down to the icon-only floor, dropping the label below
+    /// the label-hide threshold.
     /// </summary>
-    /// <summary>Icon-only buttons never grow past this — a square-ish hit target, not a wide empty button.</summary>
-    private const double IconOnlyMax = 40;
+    /// <summary>Icon-only buttons never grow past this — a square-ish hit target, not a wide empty button.
+    /// Scales with the tier's glyph so a 32px Big icon gets a 56px slot, not a 40px one (bevel-c54t).</summary>
+    private static double IconOnlyMaxFor(int iconSize) => iconSize + 24;
 
     internal static (double Width, bool ShowLabel) ComputeButtonLayout(
         TaskbarButtonWidthMode mode, double available, int count, int rows, double max, int minButtonWidth,
-        TaskbarButtonLabels labels = TaskbarButtonLabels.Auto)
+        TaskbarButtonLabels labels = TaskbarButtonLabels.Auto, int iconSize = BaseTaskIconSize)
     {
+        var iconOnlyFloor = IconOnlyFloorFor(iconSize);
+        var iconOnlyMax = IconOnlyMaxFor(iconSize);
+
         // IconOnly (macOS-Dock / KDE icons-only): always icon-sized, never labelled, in any width mode.
         if (labels == TaskbarButtonLabels.IconOnly)
         {
             if (mode == TaskbarButtonWidthMode.Fixed || count <= 0)
-                return (IconOnlyMax, false);
+                return (iconOnlyMax, false);
             var perRowIo = (int)Math.Ceiling(count / (double)Math.Max(1, rows));
             var idealIo = (available / Math.Max(1, perRowIo)) - 2;
-            return (Math.Clamp(idealIo, IconOnlyFloor, IconOnlyMax), false);
+            return (Math.Clamp(idealIo, iconOnlyFloor, iconOnlyMax), false);
         }
 
         if (mode == TaskbarButtonWidthMode.Fixed || count <= 0)
@@ -1019,7 +1049,7 @@ public partial class TaskbarView : UserControl
         var perRow = (int)Math.Ceiling(count / (double)Math.Max(1, rows));
         const double perButtonMargin = 2;   // Margin(1,·) => 2px horizontal
         var ideal = (available / Math.Max(1, perRow)) - perButtonMargin;
-        var floor = Math.Clamp((double)minButtonWidth, IconOnlyFloor, max);
+        var floor = Math.Clamp((double)minButtonWidth, iconOnlyFloor, max);
 
         // Always-labels: keep the label and never fall below the text floor. If that overflows the row,
         // the wrap/scroll chevrons handle it — we don't drop to icon-only.
@@ -1030,8 +1060,8 @@ public partial class TaskbarView : UserControl
             return (Math.Min(ideal, max), true);   // roomy: labelled, up to the max
 
         // Crowded past the text floor: shrink further, dropping the label once too narrow.
-        var width = Math.Clamp(ideal, IconOnlyFloor, floor);
-        return (width, width >= LabelHideThreshold);
+        var width = Math.Clamp(ideal, iconOnlyFloor, floor);
+        return (width, width >= LabelHideThresholdFor(iconSize));
     }
 
     /// <summary>

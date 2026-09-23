@@ -118,6 +118,41 @@ public class ButtonLayoutTests
         Assert.Equal(Min, width);
     }
 
+    /// <summary>
+    /// bevel-c54t: the icon-only floor/cap scale with the tier's glyph. A 32px Big-tier icon in a
+    /// 24–40px slot would be clipped, so the slot grows with it (floor 40, cap 56) — while the default
+    /// 16px glyph must still produce the exact pre-c54t 24/40 numbers the tests above assert.
+    /// </summary>
+    [Theory]
+    [InlineData(16, 24, 40)]   // Small/Normal — unchanged
+    [InlineData(24, 32, 48)]   // Large
+    [InlineData(32, 40, 56)]   // Big icons
+    public void Icon_only_slot_scales_with_the_tier_glyph(int iconSize, double expectedFloor, double expectedMax)
+    {
+        // Roomy: clamped to the cap.
+        var roomy = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 1000, 2, 1, Max, Min, TaskbarButtonLabels.IconOnly, iconSize);
+        Assert.Equal(expectedMax, roomy.Width);
+        Assert.False(roomy.ShowLabel);
+
+        // Extreme crowding: clamped to the floor, never below the glyph.
+        var crowded = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 40, 20, 1, Max, Min, TaskbarButtonLabels.IconOnly, iconSize);
+        Assert.Equal(expectedFloor, crowded.Width);
+        Assert.True(crowded.Width >= iconSize, "the slot must never be narrower than the glyph it holds");
+    }
+
+    /// <summary>Auto mode's crowded tier also respects the bigger glyph: it may shrink to the tier's
+    /// icon-only floor, never past it (bevel-c54t).</summary>
+    [Fact]
+    public void Auto_mode_crowded_floor_respects_a_big_glyph()
+    {
+        var (width, showLabel) = TaskbarView.ComputeButtonLayout(
+            TaskbarButtonWidthMode.ShrinkToFit, 50, 12, 1, Max, Min, TaskbarButtonLabels.Auto, iconSize: 32);
+        Assert.False(showLabel);
+        Assert.Equal(40, width);   // 32 + 8, not the 16px tier's 24
+    }
+
     [Fact]
     public void Rows_split_the_button_count_so_multi_row_buttons_stay_wider()
     {
