@@ -156,6 +156,47 @@ public sealed class FakeIconProvider : IIconProvider
     public event EventHandler? IconInvalidated;
 }
 
+/// <summary>
+/// Deterministic stand-in for real content previews (bevel-9elh): the Fake PAL has no decoder, so it
+/// synthesizes a preview tile for the formats a real backend would preview and returns null for the
+/// rest. That gives tests BOTH branches of the stack grid — the preview cell and the type-icon
+/// fallback — with no Quick Look, no ImageIO and no fixture files, and the pixels are a pure function
+/// of the path so a render test is stable.
+/// </summary>
+public sealed class FakeThumbnailProvider : IThumbnailProvider
+{
+    private static readonly HashSet<string> Previewable = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".bmp", ".heic", ".webp", ".pdf",
+    };
+
+    public bool CanPreview(string path)
+        => !string.IsNullOrEmpty(path) && Previewable.Contains(Path.GetExtension(path));
+
+    public ValueTask<PalImage?> GetThumbnailAsync(string path, int maxPixelSize, CancellationToken ct = default)
+    {
+        if (!CanPreview(path)) return ValueTask.FromResult<PalImage?>(null);
+        if (maxPixelSize <= 0) maxPixelSize = 64;
+
+        // A landscape tile (4:3) — the common photo shape, so aspect-fit layout is exercised, not just
+        // the square case. Colour is derived from the path: distinct per file, identical per run.
+        var w = maxPixelSize;
+        var h = Math.Max(1, maxPixelSize * 3 / 4);
+        var seed = (uint)StringComparer.Ordinal.GetHashCode(path);
+        byte b = (byte)(40 + seed % 180), g = (byte)(40 + (seed >> 8) % 180), r = (byte)(40 + (seed >> 16) % 180);
+
+        var bgra = new byte[w * h * 4];
+        for (var i = 0; i < w * h; i++)
+        {
+            bgra[i * 4 + 0] = b;
+            bgra[i * 4 + 1] = g;
+            bgra[i * 4 + 2] = r;
+            bgra[i * 4 + 3] = 255;   // opaque: premultiplied, fully covered
+        }
+        return ValueTask.FromResult<PalImage?>(new PalImage(w, h, bgra));
+    }
+}
+
 public sealed class FakeAppEnvironment : IAppEnvironment
 {
     private static readonly IReadOnlyList<RunningApp> Running = new[]

@@ -27,7 +27,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     /// as always connected). Drives the tray disconnected indicator.</param>
     public TaskbarViewModel(ShellModel model, StartMenuViewModel startMenu,
         IShellConnectionStatus? connection = null, ISystemTrayHost? tray = null,
-        ISettingsService? settings = null, IAppEnvironment? appEnv = null, IIconProvider? icons = null)
+        ISettingsService? settings = null, IAppEnvironment? appEnv = null, IIconProvider? icons = null,
+        IThumbnailProvider? thumbnails = null)
     {
         Model = model;
         ShowDesktopCommand = new AsyncRelayCommand(Model.MinimizeAllAsync);
@@ -37,7 +38,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         Tray = new TrayViewModel(tray);
         Tray.Start();
         Stacks = new StacksViewModel(
-            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons);
+            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons, thumbnails);
         if (connection is not null)
         {
             _isDisconnected = !connection.IsConnected;

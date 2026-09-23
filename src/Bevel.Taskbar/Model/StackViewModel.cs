@@ -25,15 +25,20 @@ public sealed class StackViewModel : ObservableObject, IDisposable
 
     private readonly IAppEnvironment? _appEnv;
     private readonly IconLoader _icons;
+    private readonly PreviewLoader _previews;
     private FileSystemWatcher? _watcher;
     private Bitmap? _folderIcon;
     private bool _hasNew;
 
-    public StackViewModel(string folderPath, IAppEnvironment? appEnv, IconLoader icons)
+    public StackViewModel(string folderPath, IAppEnvironment? appEnv, IconLoader icons,
+        PreviewLoader? previews = null)
     {
         FolderPath = folderPath;
         _appEnv = appEnv;
         _icons = icons;
+        // No thumbnail provider (Windows PAL today, or a test) still gets the grid — every cell just
+        // resolves to a larger type icon instead of a content preview.
+        _previews = previews ?? new PreviewLoader(icons, thumbnails: null);
         Name = FriendlyName(folderPath);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync);
         _ = LoadFolderIconAsync();
@@ -66,14 +71,15 @@ public sealed class StackViewModel : ObservableObject, IDisposable
         var folder = FolderPath;
         var max = MaxItems;
         var recent = await Task.Run(() => RecentEntries(folder, max)).ConfigureAwait(false);
+        _previews.Trim(recent);   // forget cell images for files that dropped off the list
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             Items.Clear();
             foreach (var path in recent)
             {
-                var item = new StackFileViewModel(path, _appEnv, _icons);
+                var item = new StackFileViewModel(path, _appEnv, _previews);
                 Items.Add(item);
-                item.EnsureIcon(); // ~16 items, off-thread — no UI-thread render cost
+                item.EnsurePreview(); // ~16 items, off-thread — no UI-thread decode cost
             }
         });
     }
@@ -161,21 +167,24 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     }
 }
 
-/// <summary>One entry in a stack's flyout: a file or subfolder that opens in its default handler
-/// (bevel-12g). Icon loads lazily off-thread, mirroring <see cref="ProgramItemViewModel"/>.</summary>
+/// <summary>One cell in a stack's grid flyout: a file or subfolder that opens in its default handler
+/// (bevel-12g). The cell image is a real content preview where the platform can decode one and the
+/// file's type icon at cell size otherwise (bevel-9elh); it loads lazily off-thread, mirroring
+/// <see cref="ProgramItemViewModel"/>.</summary>
 public sealed class StackFileViewModel : ObservableObject
 {
     private readonly IAppEnvironment? _appEnv;
-    private readonly IconLoader _icons;
+    private readonly PreviewLoader _previews;
     private readonly string _path;
-    private Bitmap? _iconSource;
-    private bool _iconRequested;
+    private Bitmap? _previewSource;
+    private bool _hasContentPreview;
+    private bool _previewRequested;
 
-    public StackFileViewModel(string path, IAppEnvironment? appEnv, IconLoader icons)
+    public StackFileViewModel(string path, IAppEnvironment? appEnv, PreviewLoader previews)
     {
         _path = path;
         _appEnv = appEnv;
-        _icons = icons;
+        _previews = previews;
         Name = Path.GetFileName(path.TrimEnd('/', '\\'));
         OpenCommand = new AsyncRelayCommand(OpenAsync);
     }
@@ -183,24 +192,36 @@ public sealed class StackFileViewModel : ObservableObject
     public string Name { get; }
     /// <summary>Absolute path — used to drag the file out of the stack flyout to other apps (bevel-cust).</summary>
     public string FullPath => _path;
-    public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
+
+    /// <summary>The cell image: the file's content preview, or its type icon at cell size.</summary>
+    public Bitmap? PreviewSource { get => _previewSource; private set => SetProperty(ref _previewSource, value); }
+
+    /// <summary>True only when <see cref="PreviewSource"/> is a REAL content preview (a decoded photo,
+    /// a PDF page) rather than a type icon — the grid frames the two differently, so a cell never
+    /// passes a generic icon off as a preview of the file's contents.</summary>
+    public bool HasContentPreview { get => _hasContentPreview; private set => SetProperty(ref _hasContentPreview, value); }
+
     public ICommand OpenCommand { get; }
 
     /// <summary>Raised after opening so the host can dismiss the flyout.</summary>
     public event Action? Opened;
 
-    public void EnsureIcon()
+    public void EnsurePreview()
     {
-        if (_iconRequested) return;
-        _iconRequested = true;
-        _ = LoadIconAsync();
+        if (_previewRequested) return;
+        _previewRequested = true;
+        _ = LoadPreviewAsync();
     }
 
-    private async Task LoadIconAsync()
+    private async Task LoadPreviewAsync()
     {
-        var bmp = await _icons.LoadAsync(_path, 16).ConfigureAwait(false);
-        if (bmp is null) return;
-        await Dispatcher.UIThread.InvokeAsync(() => IconSource = bmp);
+        var cell = await _previews.LoadAsync(_path).ConfigureAwait(false);
+        if (cell.Image is null) return;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            PreviewSource = cell.Image;
+            HasContentPreview = cell.IsContentPreview;
+        });
     }
 
     private async Task OpenAsync()
@@ -217,11 +238,14 @@ public sealed class StackFileViewModel : ObservableObject
 /// <summary>The set of configured taskbar stacks (bevel-12g), built from the folder paths in settings.</summary>
 public sealed class StacksViewModel : IDisposable
 {
-    public StacksViewModel(IEnumerable<string> folders, IAppEnvironment? appEnv, IIconProvider? icons)
+    public StacksViewModel(IEnumerable<string> folders, IAppEnvironment? appEnv, IIconProvider? icons,
+        IThumbnailProvider? thumbnails = null)
     {
         var loader = new IconLoader(icons);
         foreach (var folder in folders)
-            Stacks.Add(new StackViewModel(folder, appEnv, loader));
+            // One PreviewLoader per stack: its cache is trimmed to that folder's live entries, so
+            // stacks never evict each other's cell images.
+            Stacks.Add(new StackViewModel(folder, appEnv, loader, new PreviewLoader(loader, thumbnails)));
     }
 
     public ObservableCollection<StackViewModel> Stacks { get; } = new();

@@ -122,6 +122,29 @@ public interface IIconProvider
     event EventHandler? IconInvalidated;
 }
 
+/// <summary>
+/// Content previews (thumbnails) for user files — the Finder/Quick Look thumbnail equivalent, as
+/// distinct from <see cref="IIconProvider"/>'s generic file-TYPE icons (bevel-9elh). A preview shows
+/// what is IN the file (the photo itself, the first PDF page); an icon shows what KIND of file it is.
+/// A backend previews only the formats it can actually decode, so a null result is the normal
+/// "no preview for this file" answer rather than an error — callers fall back to a larger type icon.
+/// Purely local (a file read + decode, like <see cref="IFileOpener"/>), so every process gets the
+/// direct implementation; no shell-core round-trip.
+/// </summary>
+public interface IThumbnailProvider
+{
+    /// <summary>A content preview of <paramref name="path"/> whose LONGEST side is at most
+    /// <paramref name="maxPixelSize"/>, aspect ratio preserved (a landscape photo comes back wider
+    /// than tall). Null when this backend cannot preview that file — unsupported format, unreadable,
+    /// or no preview engine at all. Never throws; the decode runs off the calling thread.</summary>
+    ValueTask<PalImage?> GetThumbnailAsync(string path, int maxPixelSize, CancellationToken ct = default);
+
+    /// <summary>Cheap, no-I/O gate: whether this backend would even attempt a preview for
+    /// <paramref name="path"/> (an extension check). Lets a UI skip a pointless async hop for the
+    /// files that have no preview at all.</summary>
+    bool CanPreview(string path);
+}
+
 /// <summary>App launching and the running/installed application registries.</summary>
 public interface IAppEnvironment
 {

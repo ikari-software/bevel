@@ -52,6 +52,7 @@ public static class CompositionRoot
         services.AddSingleton<IShellSession, Pal.Fake.FakeShellSession>();
         services.AddSingleton<IFileOperations, Pal.Fake.FakeFileOperations>();
         services.AddSingleton<IIconProvider, Pal.Fake.FakeIconProvider>();
+        services.AddSingleton<IThumbnailProvider, Pal.Fake.FakeThumbnailProvider>();
         services.AddSingleton<IAppEnvironment, Pal.Fake.FakeAppEnvironment>();
         services.AddSingleton<IFileOpener, Pal.Fake.FakeFileOpener>();
         services.AddSingleton<IPermissionBroker, Pal.Fake.FakePermissionBroker>();
@@ -87,6 +88,11 @@ public static class CompositionRoot
             new Pal.MacOS.MacOSIconProvider(),
             sp.GetRequiredService<MmfBgraPool>(),
             isWriter: poolIsWriter));
+
+        // Content previews (bevel-9elh) stay OUT of the shared icon pool: a thumbnail is per-file
+        // content, not a reusable type icon, and the taskbar is the only consumer today. Purely local
+        // (ImageIO / CGPDFDocument read the file in-process), so every role gets it directly.
+        services.AddSingleton<IThumbnailProvider, Pal.MacOS.MacOSThumbnailProvider>();
 
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         // Opening a document is a purely local `open`(1) spawn — no shell-core proxy, every role direct.

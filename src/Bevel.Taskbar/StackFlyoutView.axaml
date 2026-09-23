@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tb="clr-namespace:Bevel.Taskbar"
+             x:Class="Bevel.Taskbar.StackFlyoutView"
+             x:DataType="tb:StackViewModel">
+    <!-- A folder stack's flyout (bevel-9elh): a macOS-Dock-style GRID of recent items showing real
+         content previews where the platform can decode one, rendered in the ACTIVE skin's tokens —
+         Win2000 selection blue, Win2000 sunken frames, no borrowed macOS colours. Lives in its own
+         file so the grid can grow without touching the hot TaskbarView.axaml.
+         Its own styles, deliberately: the flyout must look right on its own, not depend on a style
+         block in the parent view. -->
+    <UserControl.Styles>
+        <!-- Cell selection: the DEFAULT background must come from a style, never a local
+             Background="Transparent" — a local value outranks a style setter and would silently veto
+             the :pointerover one (the bug behind "white text but no blue" in the row flyout). -->
+        <Style Selector="Border.stackcell">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.stackcell:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+        </Style>
+        <Style Selector="Border.stackcell:pointerover TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <!-- Keyboard focus must be visible (WCAG 2.4.7): a focused cell takes the same selection as
+             hover, so arrowing/tabbing through the grid is never invisible. -->
+        <Style Selector="Border.stackcell:focus-visible">
+            <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+        </Style>
+        <Style Selector="Border.stackcell:focus-visible TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <!-- Only a REAL content preview gets the sunken photo frame; a type-icon fallback sits bare, so
+             the frame reads as "this is the file's contents" rather than decoration. -->
+        <Style Selector="Border.preview">
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Border.preview.content">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.ButtonShadow}" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- 4 cells wide (4 × 78 + padding): 16 recent items land as a compact 4×4 grid over the tray. -->
+    <StackPanel MaxWidth="320" Margin="2">
+        <ItemsControl ItemsSource="{Binding Items}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel ItemWidth="78" ItemHeight="98" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="tb:StackFileViewModel">
+                    <!-- Grid cell (was an Explorer-style row): click to open, drag out to any app. -->
+                    <Border Classes="stackcell" Padding="3" Margin="1"
+                            Focusable="True" KeyDown="OnStackFileKeyDown"
+                            ToolTip.Tip="{Binding Name}"
+                            AutomationProperties.Name="{Binding Name}"
+                            Tapped="OnStackFileTapped"
+                            PointerPressed="OnStackFilePressed"
+                            PointerMoved="OnStackFileMoved">
+                        <StackPanel Spacing="3">
+                            <Border Classes="preview" Classes.content="{Binding HasContentPreview}"
+                                    Height="64" Width="68" Padding="1"
+                                    HorizontalAlignment="Center">
+                                <Image Source="{Binding PreviewSource}"
+                                       RenderOptions.BitmapInterpolationMode="HighQuality"
+                                       Stretch="Uniform" StretchDirection="DownOnly"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="{Binding Name}" FontSize="10"
+                                       TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border Height="1" Margin="4,3"
+                Background="{DynamicResource Bevel.Brush.ButtonShadow}" />
+        <Button Command="{Binding OpenFolderCommand}" Content="Open folder"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                Background="Transparent" BorderThickness="0" Padding="6,3" FontSize="11" />
+    </StackPanel>
+</UserControl>
