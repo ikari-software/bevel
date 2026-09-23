@@ -478,6 +478,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarGrouping", _settings.TaskbarGrouping.ToString(), d.TaskbarGrouping.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarButtonLabels", _settings.TaskbarButtonLabels.ToString(), d.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarMiddleClickCloses", _settings.TaskbarMiddleClickCloses, d.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarReclickMinimize", _settings.TaskbarReclickMinimize.ToString(), d.TaskbarReclickMinimize.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarWindowSort", _settings.TaskbarWindowSort.ToString(), d.TaskbarWindowSort.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("windowlessAppsLast", _settings.WindowlessAppsLast, d.WindowlessAppsLast, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarFontSize", _settings.TaskbarFontSize, d.TaskbarFontSize, SettingsJsonContext.Default.Int32);
@@ -617,6 +618,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarButtonLabels = Enum.TryParse<TaskbarButtonLabels>(GetString("taskbarButtonLabels"), out var tbl)
                 ? tbl : TaskbarButtonLabels.Auto,
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
+            TaskbarReclickMinimize = Enum.TryParse<TaskbarReclickMinimize>(GetString("taskbarReclickMinimize"), out var trm)
+                ? trm : TaskbarReclickMinimize.Click,
             TaskbarWindowSort = Enum.TryParse<TaskbarWindowSort>(GetString("taskbarWindowSort"), out var tws)
                 ? tws : TaskbarWindowSort.OpenOrder,
             WindowlessAppsLast = GetBool("windowlessAppsLast") ?? false,
@@ -774,6 +777,12 @@ public sealed class BevelSettings
     /// <summary>Middle-clicking a window button closes that window (Win7+/browser-tab convention).</summary>
     public bool TaskbarMiddleClickCloses { get; set; } = true;
 
+    /// <summary>When clicking the ACTIVE window's own button minimizes it (bevel-au94). Defaults to
+    /// <see cref="TaskbarReclickMinimize.Click"/> — the classic Win2000 toggle, which is part of what the
+    /// taskbar IS rather than a quirk to be modernised away; the other two modes exist for users who want
+    /// a click to only ever raise. See <c>docs/design/taskbar-reclick-minimize.md</c>.</summary>
+    public TaskbarReclickMinimize TaskbarReclickMinimize { get; set; } = TaskbarReclickMinimize.Click;
+
     /// <summary>How taskbar buttons are ordered. OpenOrder keeps the classic positional order (a window
     /// stays put — muscle memory); Name sorts by app name A→Z.</summary>
     public TaskbarWindowSort TaskbarWindowSort { get; set; } = TaskbarWindowSort.OpenOrder;
@@ -901,6 +910,20 @@ public enum TaskbarButtonLabels
 
     /// <summary>Never show labels — icon-only buttons, macOS-Dock/KDE-icons-only style.</summary>
     IconOnly,
+}
+
+/// <summary>bevel-au94: what a click on the ACTIVE window's own taskbar button does.</summary>
+public enum TaskbarReclickMinimize
+{
+    /// <summary>Classic Win2000 (default): clicking the active window's button minimizes it.</summary>
+    Click,
+
+    /// <summary>A plain click only ever raises; Option (macOS) / Alt (Windows) + click minimizes instead.</summary>
+    OptionClick,
+
+    /// <summary>Never minimize from the button — a click always raises. Minimize stays on the button's
+    /// right-click menu, so the verb is never unreachable.</summary>
+    Never,
 }
 
 /// <summary>bevel-m2.10.1: taskbar button height tier (drives button, row, and bar height).</summary>

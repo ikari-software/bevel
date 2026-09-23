@@ -191,4 +191,48 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(TaskbarGroupingMode.Never, service.Current.TaskbarGrouping);
     }
+
+    // ── Reclick-minimize mode (bevel-au94) ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void Reclick_minimize_defaults_to_the_classic_click_and_stays_out_of_the_blob()
+    {
+        var blob = SettingsService.SerializeBlob(new BevelSettings(), new Dictionary<string, ThemeOverrides>());
+
+        Assert.DoesNotContain("taskbarReclickMinimize", blob);   // default is pruned, like every other knob
+        Assert.Equal(TaskbarReclickMinimize.Click, SettingsService.ProjectBlob(blob).Settings.TaskbarReclickMinimize);
+    }
+
+    [Theory]
+    [InlineData(TaskbarReclickMinimize.OptionClick)]
+    [InlineData(TaskbarReclickMinimize.Never)]
+    public void Reclick_minimize_round_trips_the_peer_snapshot_path(TaskbarReclickMinimize mode)
+    {
+        // The core owns settings.db; peers only ever see this blob over the shell-core IPC, so the
+        // serialize → project pair IS the mechanism a taskbar process picks the mode up through.
+        var blob = SettingsService.SerializeBlob(
+            new BevelSettings { TaskbarReclickMinimize = mode }, new Dictionary<string, ThemeOverrides>());
+
+        Assert.Contains("taskbarReclickMinimize", blob);
+        Assert.Equal(mode, SettingsService.ProjectBlob(blob).Settings.TaskbarReclickMinimize);
+    }
+
+    [Fact]
+    public void An_unparseable_reclick_minimize_value_falls_back_to_the_classic_click()
+        => Assert.Equal(
+            TaskbarReclickMinimize.Click,
+            SettingsService.ProjectBlob("""{ "taskbarReclickMinimize": "Sideways" }""").Settings.TaskbarReclickMinimize);
+
+    [Fact]
+    public async Task Reclick_minimize_survives_a_save_load_cycle()
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        await service.UpdateAsync(s => s.TaskbarReclickMinimize = TaskbarReclickMinimize.Never);
+
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+
+        Assert.Equal(TaskbarReclickMinimize.Never, reloaded.Current.TaskbarReclickMinimize);
+    }
 }
