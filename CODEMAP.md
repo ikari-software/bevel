@@ -13,6 +13,7 @@ For shared format rules, see `docs/code-maps/FORMAT.md`. Inventory: `docs/code-m
 - `src/Bevel.App/Supervision/RoleProcessSupervisor.cs` — spawns/restarts child roles; holds a **mutable** child set (`SpawnRoleAsync`/`CloseRoleAsync`/`IsRoleRunningAsync`) so the desktop can be added/removed at runtime (a user-hidden desktop is NOT auto-respawned). Heartbeats (`RoleHeartbeatStore` under `BevelRuntimeDir.HealthDir`) + `ShellHealthMonitor` make startup fail / version skew / lost IPC visible and held instead of a silent crash-loop (bevel-9h7n). `Program.RunLauncher` + `Supervision/LauncherControl.cs` own the verbs.
 - `src/Bevel.UI/` — shared chrome (`BevelWindow`) + theming. Live theme colour lives here, **not in XAML** (see Notes).
 - `src/Bevel.Taskbar/Model/ShellModel.cs` — background model owning the window/app/tray observable collections.
+- `src/Bevel.Taskbar/Model/TaskButtonClickPolicy.cs` — what a task-button click *means* (today: does re-clicking the active window minimize it — bevel-au94, `docs/design/taskbar-reclick-minimize.md`). One shared mutable holder because `ShellModel` builds buttons with no settings of its own; `TaskbarView` writes the mode on every settings apply, `TaskItemViewModel.ToggleAsync` reads it at click time. Modifier chords are read from the platform's LIVE modifier state, never from an input event — the bar is non-activating.
 - `native/helper-macos/Sources/BevelHelper/` — window/tray enumeration; a separate TCC identity (see Coupling).
 
 ## Entrypoints

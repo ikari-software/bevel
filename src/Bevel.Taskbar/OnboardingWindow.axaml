@@ -233,6 +233,19 @@
                                       FontSize="11" Margin="0,4,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Re-click" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="ReclickMinimizeCombo" FontSize="11" Width="200" VerticalAlignment="Center">
+                                    <ComboBoxItem>Minimizes the window (classic)</ComboBoxItem>
+                                    <ComboBoxItem x:Name="ReclickModifierItem">Minimizes with Option held</ComboBoxItem>
+                                    <ComboBoxItem>Never minimizes — always raises</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock x:Name="ReclickHint"
+                                       Text="What clicking the ACTIVE window's own button does. Classic Win2000 minimizes it; the other modes keep a click to raising only. Minimize stays on the button's right-click menu either way."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />
                                 <ComboBox x:Name="ButtonSizeCombo" FontSize="11" Width="120" VerticalAlignment="Center">
                                     <ComboBoxItem>Small</ComboBoxItem>

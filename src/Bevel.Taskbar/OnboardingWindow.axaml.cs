@@ -121,6 +121,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         SortModeCombo.SelectionChanged += OnSortModeChanged;
         WindowlessLastCheck.IsCheckedChanged += OnWindowlessLastChanged;
         MiddleClickCloseCheck.IsCheckedChanged += OnMiddleClickChanged;
+        ReclickMinimizeCombo.SelectionChanged += OnReclickMinimizeChanged;
         ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
         StartLabelBox.TextChanged += (_, _) => PersistStart();
         FrequentCountSlider.ValueChanged += OnFrequentCountChanged;
@@ -203,6 +204,10 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         SortModeCombo.SelectedIndex = (int)s.TaskbarWindowSort;      // OpenOrder=0, Name=1
         WindowlessLastCheck.IsChecked = s.WindowlessAppsLast;
         MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
+        // The chord is named in the host platform's vocabulary (Option on macOS, Alt on Windows) — the
+        // live-modifier probe behind it is per-platform too (bevel-au94).
+        ReclickModifierItem.Content = $"Minimizes with {TaskButtonClickPolicy.ModifierName} held";
+        ReclickMinimizeCombo.SelectedIndex = (int)s.TaskbarReclickMinimize;   // Click=0, OptionClick=1, Never=2
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2, Big=3
         RowsSlider.Value = s.TaskbarRows;
         RowsValue.Text = $"{s.TaskbarRows} row{(s.TaskbarRows == 1 ? "" : "s")}";
@@ -427,6 +432,16 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         if (MiddleClickCloseCheck.IsChecked is not { } v) return;
         if (_settings.Current.TaskbarMiddleClickCloses == v) return;
         await PersistAndApply(s => s.TaskbarMiddleClickCloses = v);
+    }
+
+    /// <summary>Reclick-minimize mode (bevel-au94). Applies live: TaskbarView pushes the new mode into
+    /// <see cref="TaskButtonClickPolicy.Shared"/> on the next settings poll, in this process and in peers.</summary>
+    private async void OnReclickMinimizeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ReclickMinimizeCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarReclickMinimize)ReclickMinimizeCombo.SelectedIndex;
+        if (_settings.Current.TaskbarReclickMinimize == mode) return;
+        await PersistAndApply(s => s.TaskbarReclickMinimize = mode);
     }
 
     /// <summary>Start show/caption both persist here (TextChanged fires per keystroke — the equality

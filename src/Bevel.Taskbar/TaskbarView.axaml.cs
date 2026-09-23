@@ -156,6 +156,9 @@ public partial class TaskbarView : UserControl
         _grouping = settings.TaskbarGrouping;
         _buttonLabels = settings.TaskbarButtonLabels;
         _middleClickCloses = settings.TaskbarMiddleClickCloses;
+        // Click semantics live in the shared policy, not a field here: buttons created later by ShellModel
+        // (which has no settings) read the same object, so a live change reaches them too (bevel-au94).
+        TaskButtonClickPolicy.Shared.Mode = settings.TaskbarReclickMinimize;
         _sort = settings.TaskbarWindowSort;
         _windowlessLast = settings.WindowlessAppsLast;
         _trayOverflowCap = settings.TaskbarTrayOverflowCap;
@@ -223,6 +226,7 @@ public partial class TaskbarView : UserControl
         _vm?.SetSort(_sort, _windowlessLast);
         _buttonLabels = s.TaskbarButtonLabels;
         _middleClickCloses = s.TaskbarMiddleClickCloses;
+        TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
         _fontSize = s.TaskbarFontSize;
         _bgColor = s.TaskbarBackgroundColor;
         _opacity = s.TaskbarOpacity;

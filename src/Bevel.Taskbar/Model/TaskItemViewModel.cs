@@ -16,6 +16,7 @@ namespace Bevel.Taskbar;
 public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 {
     private readonly IWindowManager _windows;
+    private readonly TaskButtonClickPolicy _clicks;
     private string _title = "";
     private bool _isFocused;
     private bool _isMinimized;
@@ -26,9 +27,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     private Bitmap? _iconSource;
     private bool _showLabel = true;
 
-    public TaskItemViewModel(ForeignWindow w, IWindowManager windows)
+    /// <param name="clicks">Click semantics for this button (bevel-au94); defaults to the taskbar
+    /// process's shared policy, which <c>TaskbarView</c> keeps in step with the settings poll.</param>
+    public TaskItemViewModel(ForeignWindow w, IWindowManager windows, TaskButtonClickPolicy? clicks = null)
     {
         _windows = windows;
+        _clicks = clicks ?? TaskButtonClickPolicy.Shared;
         Id = w.Id;
         AppId = w.AppId;
         IsAppPresence = w.IsAppPresence;
@@ -128,11 +132,13 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Minimized windows remain actionable but their content is visibly recessed.</summary>
     public double ContentOpacity => IsAppPresence ? 0.6 : IsMinimized ? 0.55 : 1;
 
-    /// <summary>Accessible state and the action clicking the button will perform.</summary>
+    /// <summary>Accessible state and the action clicking the button will perform. The active window's hint
+    /// follows the reclick policy (bevel-au94), so the button never advertises a minimize this click won't
+    /// actually do.</summary>
     public string StatusText => IsMinimized
         ? $"{Title} — Minimized (click to restore)"
         : IsFocused
-            ? $"{Title} — Active (click to minimize)"
+            ? _clicks.MinimizeGestureHint is { } hint ? $"{Title} — Active ({hint})" : $"{Title} — Active"
             : $"{Title} — Open (click to activate)";
 
     /// <summary>
@@ -220,8 +226,11 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>
     /// Classic Win2000 task-button toggle (minimizing never removes the button):
     ///   minimized → restore + raise (a raise alone won't de-miniaturize);
-    ///   focused   → minimize;
+    ///   focused   → minimize, when the reclick policy says this gesture minimizes (bevel-au94);
     ///   otherwise → activate.
+    /// The focused arm is the only configurable one: with minimize turned off — or moved to Option/Alt —
+    /// a plain click on the active window falls through to activate, a harmless raise, so a click is
+    /// never a no-op.
     /// </summary>
     private async Task ToggleAsync()
     {
@@ -235,8 +244,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             return;
         }
 
-        var action = IsMinimized ? "restore+activate" : IsFocused ? "minimize" : "activate";
-        TaskbarLog.Debug($"CLICK id={Id.Value} title='{Title}' min={IsMinimized} focus={IsFocused} -> {action}");
+        // Decided once, before any optimistic state edit: the modifier probe reads live hardware state, so
+        // re-asking it per branch could get a different answer part-way through one click.
+        var minimize = !IsMinimized && IsFocused && _clicks.MinimizesFocusedWindow();
+        var action = IsMinimized ? "restore+activate" : minimize ? "minimize" : "activate";
+        TaskbarLog.Debug($"CLICK id={Id.Value} title='{Title}' min={IsMinimized} focus={IsFocused} " +
+            $"reclick={_clicks.Mode} -> {action}");
         try
         {
             if (IsMinimized)
@@ -246,7 +259,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
                 // second RPC no longer races the de-miniaturize animation and lands the window mid-stack.
                 await _windows.RestoreAndActivateAsync(Id);
             }
-            else if (IsFocused)
+            else if (minimize)
             {
                 IsMinimized = true; IsFocused = false;   // optimistic: button un-presses + dims immediately
                 await _windows.MinimizeAsync(Id);

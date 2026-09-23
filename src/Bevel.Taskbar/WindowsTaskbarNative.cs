@@ -66,6 +66,17 @@ internal static class WindowsTaskbarNative
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
 
+    /// <summary>Live Alt state, the Windows twin of <c>TaskbarNative.OptionKeyDown</c> (bevel-au94).
+    /// <c>GetAsyncKeyState</c> reads the physical key independently of which window has focus, which the
+    /// non-activating taskbar needs — its buttons never receive a keyboard-modifier-bearing event.</summary>
+    public static bool AltKeyDown()
+        => OperatingSystem.IsWindows() && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+
+    private const int VK_MENU = 0x12;   // Alt
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
 
