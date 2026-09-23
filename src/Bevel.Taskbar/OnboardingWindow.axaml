@@ -235,9 +235,10 @@
                                     <ComboBoxItem>Small</ComboBoxItem>
                                     <ComboBoxItem>Normal</ComboBoxItem>
                                     <ComboBoxItem>Large</ComboBoxItem>
+                                    <ComboBoxItem>Big icons</ComboBoxItem>
                                 </ComboBox>
                             </StackPanel>
-                            <TextBlock Text="Taller or shorter taskbar buttons — applies immediately."
+                            <TextBlock Text="Taller or shorter taskbar buttons — applies immediately. Large uses a 24px icon; Big icons is the Win10/11 bar (32px icon, labels off)."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 

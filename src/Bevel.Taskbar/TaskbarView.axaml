@@ -5,6 +5,14 @@
              x:Class="Bevel.Taskbar.TaskbarView"
              x:DataType="tb:TaskbarViewModel"
              ClipToBounds="False">
+    <UserControl.Resources>
+        <!-- Task-button glyph edge in logical px (bevel-c54t). Declared here as the Normal-tier default
+             and REPLACED at runtime from TaskbarTheme.TaskIconSize (see ApplyTaskIconMetric) whenever the
+             Small/Normal/Large/Big tier changes — a DynamicResource so the live settings poll re-sizes
+             already-realized buttons without rebuilding them. Anything that must sit relative to the task
+             icon (e.g. a badge) should read THIS token, never a hardcoded 16. -->
+        <x:Double x:Key="Bevel.Metric.TaskbarIconSize">16</x:Double>
+    </UserControl.Resources>
     <UserControl.Styles>
         <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). The DEFAULT background
              must come from a style, not a local Background="Transparent" on the Border: a local value
@@ -170,7 +178,12 @@
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" Opacity="{Binding ContentOpacity}"
                                         IsHitTestVisible="False">
-                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
+                                <!-- Glyph edge is the tier token, not a hardcoded 16 (bevel-c54t): Large/Big
+                                     grow it to 24/32 from the helper's 64px source PNG (downscale, never
+                                     an upscaled 16px bitmap), HighQuality so it stays smooth. -->
+                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
+                                       Width="{DynamicResource Bevel.Metric.TaskbarIconSize}"
+                                       Height="{DynamicResource Bevel.Metric.TaskbarIconSize}"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
@@ -229,7 +242,12 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" IsHitTestVisible="False">
-                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16"
+                                <!-- Glyph edge is the tier token, not a hardcoded 16 (bevel-c54t): Large/Big
+                                     grow it to 24/32 from the helper's 64px source PNG (downscale, never
+                                     an upscaled 16px bitmap), HighQuality so it stays smooth. -->
+                                <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
+                                       Width="{DynamicResource Bevel.Metric.TaskbarIconSize}"
+                                       Height="{DynamicResource Bevel.Metric.TaskbarIconSize}"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"

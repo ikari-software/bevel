@@ -203,7 +203,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         SortModeCombo.SelectedIndex = (int)s.TaskbarWindowSort;      // OpenOrder=0, Name=1
         WindowlessLastCheck.IsChecked = s.WindowlessAppsLast;
         MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
-        ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2
+        ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2, Big=3
         RowsSlider.Value = s.TaskbarRows;
         RowsValue.Text = $"{s.TaskbarRows} row{(s.TaskbarRows == 1 ? "" : "s")}";
         RefreshCrispBevels();
@@ -459,7 +459,19 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         if (ButtonSizeCombo.SelectedIndex < 0) return;
         var size = (TaskbarButtonSize)ButtonSizeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonSize == size) return;
-        await PersistAndApply(s => s.TaskbarButtonSize = size);
+        // "Big icons" is the Win10/11 preset, so picking it also turns labels off (bevel-c54t) — a big
+        // glyph next to a title is neither look. The two settings stay INDEPENDENT (the user can turn
+        // labels back on from the mode combo right below); this only pairs them at the moment of choice.
+        var pairIconOnly = size == TaskbarButtonSize.Big
+                           && _settings.Current.TaskbarButtonLabels != TaskbarButtonLabels.IconOnly;
+        await PersistAndApply(s =>
+        {
+            s.TaskbarButtonSize = size;
+            if (pairIconOnly) s.TaskbarButtonLabels = TaskbarButtonLabels.IconOnly;
+        });
+        // Reflect the paired change in the label combo. Its handler re-reads the already-persisted
+        // value and no-ops, so this can't double-write.
+        if (pairIconOnly) LabelModeCombo.SelectedIndex = (int)TaskbarButtonLabels.IconOnly;
     }
 
     private async void OnRowsChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
