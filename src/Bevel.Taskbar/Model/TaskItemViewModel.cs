@@ -134,12 +134,20 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Accessible state and the action clicking the button will perform. The active window's hint
     /// follows the reclick policy (bevel-au94), so the button never advertises a minimize this click won't
-    /// actually do.</summary>
-    public string StatusText => IsMinimized
-        ? $"{Title} — Minimized (click to restore)"
-        : IsFocused
-            ? _clicks.MinimizeGestureHint is { } hint ? $"{Title} — Active ({hint})" : $"{Title} — Active"
-            : $"{Title} — Open (click to activate)";
+    /// actually do; the unread badge (bevel-ijln) is appended so a screen reader announces the count the
+    /// pill shows visually.</summary>
+    public string StatusText
+    {
+        get
+        {
+            var state = IsMinimized
+                ? $"{Title} — Minimized (click to restore)"
+                : IsFocused
+                    ? _clicks.MinimizeGestureHint is { } hint ? $"{Title} — Active ({hint})" : $"{Title} — Active"
+                    : $"{Title} — Open (click to activate)";
+            return HasBadge ? $"{state} — {BadgeText} unread" : state;
+        }
+    }
 
     /// <summary>
     /// Animated button width (logical px). The template binds Width here through a transition, so
@@ -222,6 +230,51 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Sets focus from the shell's exclusive foreground projection.</summary>
     public void SetFocused(bool focused) => IsFocused = focused;
+
+    // ── Unread / attention badge (bevel-ijln) ───────────────────────────
+    //
+    // The count an app publishes for itself — Slack's unread, Mail's inbox — sourced from the
+    // platform (on macOS, the Dock's accessibility tree; see IAppBadgeSource) and pushed here by
+    // ShellModel off the poll loop. NEVER inferred from the title: no source, no badge.
+
+    private string? _badgeText;
+
+    /// <summary>
+    /// The badge label exactly as the platform publishes it, or null when this app shows none.
+    /// Usually a count ("3"), but a platform may hand over an ellipsized or non-numeric label
+    /// (macOS reports "..82" for a four-digit badge), so this is a string and is shown verbatim.
+    /// </summary>
+    public string? BadgeText
+    {
+        get => _badgeText;
+        private set
+        {
+            if (!SetProperty(ref _badgeText, value)) return;
+            OnPropertyChanged(nameof(BadgeCount));
+            OnPropertyChanged(nameof(HasBadge));
+            OnPropertyChanged(nameof(StatusText));
+        }
+    }
+
+    /// <summary>The badge as a number when it parses as one, else null — callers that want an int
+    /// must cope with null rather than invent a value.</summary>
+    public int? BadgeCount => int.TryParse(BadgeText, out var n) && n > 0 ? n : null;
+
+    /// <summary>Drives the pill's visibility; false whenever the app publishes no badge.</summary>
+    public bool HasBadge => !string.IsNullOrEmpty(BadgeText);
+
+    /// <summary>Pushes (or with null/empty clears) the platform badge label. Idempotent — an
+    /// unchanged label raises nothing, so the 2s poll doesn't churn bindings.</summary>
+    public void ApplyBadge(string? label) =>
+        BadgeText = string.IsNullOrWhiteSpace(label) ? null : label.Trim();
+
+    /// <summary>The keys this button can be matched against a platform badge by: the bundle id (exact,
+    /// preferred) and the friendly app id the enumeration carries.</summary>
+    internal IEnumerable<string> BadgeKeys()
+    {
+        if (!string.IsNullOrEmpty(BundleId)) yield return BundleId;
+        if (!string.IsNullOrEmpty(AppId)) yield return AppId;
+    }
 
     /// <summary>
     /// Classic Win2000 task-button toggle (minimizing never removes the button):

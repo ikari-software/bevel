@@ -6,12 +6,21 @@
              x:DataType="tb:TaskbarViewModel"
              ClipToBounds="False">
     <UserControl.Resources>
-        <!-- Task-button glyph edge in logical px (bevel-c54t). Declared here as the Normal-tier default
-             and REPLACED at runtime from TaskbarTheme.TaskIconSize (see ApplyTaskIconMetric) whenever the
-             Small/Normal/Large/Big tier changes — a DynamicResource so the live settings poll re-sizes
-             already-realized buttons without rebuilding them. Anything that must sit relative to the task
-             icon (e.g. a badge) should read THIS token, never a hardcoded 16. -->
-        <x:Double x:Key="Bevel.Metric.TaskbarIconSize">16</x:Double>
+        <!-- One explicit dictionary so the merged include and the plain metric entry can coexist
+             (Avalonia only allows MergedDictionaries inside an explicit ResourceDictionary).
+             ApplyTaskIconMetric still assigns through Resources[...] and lands here unchanged. -->
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- The unread/attention pill on a task button (bevel-ijln) — theme-tokened, code-drawn. -->
+                <ResourceInclude Source="avares://Bevel.Taskbar/TaskBadge.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- Task-button glyph edge in logical px (bevel-c54t). Declared here as the Normal-tier default
+                 and REPLACED at runtime from TaskbarTheme.TaskIconSize (see ApplyTaskIconMetric) whenever
+                 the Small/Normal/Large/Big tier changes — a DynamicResource so the live settings poll
+                 re-sizes already-realized buttons without rebuilding them. Anything that must sit relative
+                 to the task icon (e.g. the badge above) should read THIS token, never a hardcoded 16. -->
+            <x:Double x:Key="Bevel.Metric.TaskbarIconSize">16</x:Double>
+        </ResourceDictionary>
     </UserControl.Resources>
     <UserControl.Styles>
         <!-- Win2000 selection highlight for the stack-flyout rows (bevel-cust). The DEFAULT background
@@ -186,6 +195,11 @@
                                        Height="{DynamicResource Bevel.Metric.TaskbarIconSize}"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
+                                <!-- Unread count BEFORE the title (bevel-ijln): stays put in the icon-only
+                                     tier, where the label collapses but the badge must not. -->
+                                <ContentControl Theme="{DynamicResource Bevel.Theme.TaskBadge}"
+                                                Content="{Binding BadgeText}"
+                                                IsVisible="{Binding HasBadge}" />
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowLabel}"
                                            FontStyle="{Binding TitleStyle}"
@@ -250,6 +264,11 @@
                                        Height="{DynamicResource Bevel.Metric.TaskbarIconSize}"
                                        Margin="{Binding IconMargin}" VerticalAlignment="Center"
                                        IsHitTestVisible="False" />
+                                <!-- The APP's unread count (bevel-ijln). Distinct from the "(N)" window
+                                     count in Label, which is the glomming count (R-TB-6). -->
+                                <ContentControl Theme="{DynamicResource Bevel.Theme.TaskBadge}"
+                                                Content="{Binding BadgeText}"
+                                                IsVisible="{Binding HasBadge}" />
                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
                                            IsVisible="{Binding ShowLabel}"
                                            TextTrimming="CharacterEllipsis"

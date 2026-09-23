@@ -24,6 +24,9 @@ public sealed class ShellModel : IDisposable
     private readonly IAppEnvironment? _appEnv;
     private readonly IconLoader _icons;
     private readonly IShellConnectionStatus? _connection;
+    /// <summary>Platform unread/attention badges (bevel-ijln). Null when the host publishes none —
+    /// then no button ever shows a pill; counts are never inferred.</summary>
+    private readonly IAppBadgeSource? _badges;
     private CancellationTokenSource? _cts;
     /// <summary>Live token source of the reconcile loop's between-passes wait, cancelled to wake it
     /// early (a reconnect pokes it so the strip re-syncs at once, not after the next interval).</summary>
@@ -69,13 +72,15 @@ public sealed class ShellModel : IDisposable
     public event Action? ProgramsLoadedChanged;
 
     public ShellModel(IWindowManager? windows, IAppEnvironment? appEnv, IIconProvider? icons,
-        IShellConnectionStatus? connection = null, ProgramUsageStore? usage = null)
+        IShellConnectionStatus? connection = null, ProgramUsageStore? usage = null,
+        IAppBadgeSource? badges = null)
     {
         _windows = windows;
         _appEnv = appEnv;
         _icons = new IconLoader(icons);
         _connection = connection;
         _usage = usage ?? new ProgramUsageStore();
+        _badges = badges;
         Programs.CollectionChanged += (_, _) => RecomputeFrequent();
     }
 
@@ -167,7 +172,29 @@ public sealed class ShellModel : IDisposable
             try
             {
                 var live = await _windows!.EnumerateAsync(ct).ConfigureAwait(false);
-                Post(() => Reconcile(live));
+                // Unread badges ride the same backstop tick (bevel-ijln). Read off-thread — on macOS
+                // this walks the Dock's accessibility tree, a synchronous cross-process hop — and pass
+                // only the finished key→label index to the UI thread. A badge failure must not cost the
+                // window reconcile, so it is caught separately and simply yields no badges this tick.
+                Dictionary<string, string> badgeIndex;
+                try
+                {
+                    badgeIndex = _badges is null
+                        ? new Dictionary<string, string>()
+                        : TaskBadges.Index(await _badges.GetBadgesAsync(ct).ConfigureAwait(false));
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    TaskbarLog.Swallowed("BadgePoll", ex);
+                    badgeIndex = new Dictionary<string, string>();
+                }
+
+                Post(() =>
+                {
+                    Reconcile(live);
+                    ApplyBadges(badgeIndex);
+                });
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { TaskbarLog.Swallowed("ReconcileLoop", ex); } // helper not up yet — retry next tick
@@ -357,7 +384,23 @@ public sealed class ShellModel : IDisposable
     {
         var vm = new TaskItemViewModel(w, _windows!);
         LoadWindowIcon(vm, w.IconPng); // decode off-thread, assign on UI thread
+        // Seed the unread pill from the last poll (bevel-ijln) so a button born on the instant event
+        // path already carries its app's badge instead of waiting out the next backstop tick.
+        vm.ApplyBadge(TaskBadges.Lookup(vm, _badgeIndex));
         return vm;
+    }
+
+    /// <summary>Last badge snapshot, UI-thread-owned: applied to the strip each poll and used to seed
+    /// buttons created between polls. Empty when no source is wired (bevel-ijln).</summary>
+    private IReadOnlyDictionary<string, string> _badgeIndex = new Dictionary<string, string>();
+
+    /// <summary>UI thread. Pushes a fresh badge snapshot onto every button (clearing apps that stopped
+    /// badging) and remembers it for buttons created before the next poll.</summary>
+    private void ApplyBadges(IReadOnlyDictionary<string, string> index)
+    {
+        if (_disposed) return;
+        _badgeIndex = index;
+        TaskBadges.Apply(Windows, index);
     }
 
     /// <summary>Refreshes a surviving button in place. Revive first: if this exact id reappeared
