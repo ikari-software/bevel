@@ -73,6 +73,39 @@ public class TrayIconHeightCapTests
         Assert.Equal(20.0 / 14.0, vm.Items[0].IconW / vm.Items[0].IconH, 3);
     }
 
+    // Integration gap found when bevel-c54t merged: the tier test above predates the Big tier, so the
+    // tray budget was unasserted on the tallest bar. Big is the interesting case in the other direction —
+    // the band finally has room for a real notch-Mac item, so the cap must STOP clamping rather than
+    // keep shrinking it, while a slider value beyond the budget is still clamped.
+    [AvaloniaFact]
+    public void The_big_icons_tier_gives_the_tray_room_instead_of_clamping()
+    {
+        try
+        {
+            TaskbarTheme.Configure(TaskbarButtonSize.Big);        // button 40 → row 44 → bar 46
+            var vm = new TrayViewModel(new StubTray(Tall("1:10")));
+            vm.Start();
+            Dispatcher.UIThread.RunJobs();
+            vm.SetRows(2);
+
+            // HeightForRows(2) = 46 + 44 = 90; (90 − 6) / 2 = 42 — bigger than the 26pt Normal budget.
+            Assert.Equal(42, TrayViewModel.MaxIconHeight(2));
+            Assert.True(TrayViewModel.MaxIconHeight(2) > 26, "Big must widen the tray budget, not narrow it");
+
+            // A 37pt item now fits under the 42pt budget, so it is passed through UNCLAMPED at full size.
+            Assert.Equal(37, vm.Items[0].IconH, 3);
+            Assert.Equal(30.0 / 37.0, vm.Items[0].IconW / vm.Items[0].IconH, 3);
+
+            // The cap is still a real ceiling on this tier: an oversized slider value gets clamped to it.
+            vm.Configure(overflowCap: 8, iconSize: 32);           // 2.0× of 37 = 74pt, over the 42pt budget
+            Assert.Equal(42, vm.Items[0].IconH, 3);
+        }
+        finally
+        {
+            TaskbarTheme.Configure(TaskbarButtonSize.Normal);     // restore the shared default
+        }
+    }
+
     [AvaloniaFact]
     public void The_cap_follows_the_button_height_tier()
     {
