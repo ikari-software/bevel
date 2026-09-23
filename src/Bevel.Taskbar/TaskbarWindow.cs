@@ -406,12 +406,12 @@ public sealed class TaskbarWindow : BevelWindow
         {
             TaskbarNative.SetCanBecomeKeyWindow(handle, false);
             // Re-activate the app that owned key focus when the menu opened — the reliable way to return
-            // focus from a utility bar (macOS won't auto-pick a new key window for us).
-            if (_priorAppPid > 0)
-            {
+            // focus from a utility bar (macOS won't auto-pick a new key window for us). Gated on the LIVE
+            // foreground (bevel-hx63): if a third app is frontmost now, something activated it while the
+            // menu was open and handing back would stomp it.
+            if (ShouldHandBackKeyFocus(_priorAppPid, TaskbarNative.FrontmostAppPid(), Environment.ProcessId))
                 TaskbarNative.ActivateAppByPid(_priorAppPid);
-                _priorAppPid = 0;
-            }
+            _priorAppPid = 0;
         }
     }
 
@@ -422,6 +422,32 @@ public sealed class TaskbarWindow : BevelWindow
     /// just-activated window below it (the regression this fixes). Callers invoke this the moment they
     /// drive a foreign activation/quit from an open taskbar menu. No-op when nothing was captured.</summary>
     public void CancelKeyFocusHandback() => _priorAppPid = 0;
+
+    /// <summary>Decides whether the pending key-focus handback should actually run (bevel-hx63).
+    ///
+    /// The handback exists for a menu that took NO action: open, arrow around, Escape — focus must return
+    /// to the app that had it. It must NOT run when the menu's action was to activate a foreign window,
+    /// because re-raising the prior app would stomp the window the user just asked for (and it does so with
+    /// <c>IgnoringOtherApps</c>, which outranks the helper's bare <c>activate()</c>, so it always wins).
+    ///
+    /// This used to be an opt-out: each call site that drove a foreign activation had to remember to call
+    /// <see cref="CancelKeyFocusHandback"/> first. The group-flyout row remembered; the plain task-button
+    /// <c>ActivateCommand</c> did not — so "Start menu open → click a task button" light-dismissed Start and
+    /// handed focus straight back to the previously-frontmost app, which is the reported Arc/Terminal
+    /// snap-back. Deciding from the live foreground instead makes it evidence-based and correct for every
+    /// call site, present and future: a third app holding the foreground IS the proof that an activation we
+    /// drove landed.</summary>
+    /// <param name="priorAppPid">App captured as frontmost when the menu opened; 0 once cancelled/consumed.</param>
+    /// <param name="frontmostPid">The frontmost app right now; 0 when it can't be determined.</param>
+    /// <param name="ownPid">This process, which legitimately holds the foreground while its menu is key.</param>
+    internal static bool ShouldHandBackKeyFocus(int priorAppPid, int frontmostPid, int ownPid)
+    {
+        if (priorAppPid <= 0) return false;              // nothing captured, or explicitly cancelled
+        if (frontmostPid <= 0) return true;              // can't tell → keep the classic restore
+        if (frontmostPid == priorAppPid) return true;    // prior app still front → handback is a no-op
+        if (frontmostPid == ownPid) return true;         // only WE took front for the menu → restore it
+        return false;                                    // a third app is front → we activated it; leave it
+    }
 
     /// <summary>
     /// Positions the window at the bottom of the primary display, full-width,

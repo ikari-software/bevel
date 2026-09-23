@@ -136,6 +136,29 @@ public class TaskbarAccessibilityTests
         Assert.False(window.IsKeyFocusAllowed);
     }
 
+
+    // ── Handback is evidence-based, not call-site-opt-out (bevel-hx63) ────
+    // The menu-close handback re-activates the app that was frontmost when the menu opened. It used to
+    // fire unconditionally, so correctness depended on EVERY call site that activates a foreign window
+    // remembering to call CancelKeyFocusHandback first. The group-flyout row did; the plain task-button
+    // ActivateCommand did not — so "Start menu open → click a task button" light-dismissed Start and the
+    // handback re-raised the previously-frontmost app (Terminal) back over the just-activated one (Arc),
+    // with IgnoringOtherApps beating the helper's bare activate(). The decision now reads the live
+    // frontmost app instead of trusting the call site.
+
+    [Theory]
+    // prior, frontmost, own, expected
+    [InlineData(501, 501, 999, true)]   // prior app still frontmost → handback is a harmless no-op, keep it
+    [InlineData(501, 999, 999, true)]   // only WE took front (menu became key) → restore the user's app
+    [InlineData(501, 0, 999, true)]     // frontmost unknown → preserve the classic restore behaviour
+    [InlineData(501, 777, 999, false)]  // a THIRD app is frontmost → we activated it; never stomp it
+    [InlineData(0, 777, 999, false)]    // nothing captured / explicitly cancelled → nothing to hand back
+    public void Key_focus_handback_only_runs_when_no_other_app_took_the_foreground(
+        int priorAppPid, int frontmostPid, int ownPid, bool expected)
+    {
+        Assert.Equal(expected, TaskbarWindow.ShouldHandBackKeyFocus(priorAppPid, frontmostPid, ownPid));
+    }
+
     // ── Test doubles ─────────────────────────────────────────────────────
 
     /// <summary>Tray host exposing a single item, so the view realizes exactly one tray Image.</summary>
