@@ -315,8 +315,8 @@
                     VerticalAlignment="Stretch"
                     Margin="0,1,2,1">
             <!-- Folder stacks (bevel-12g): tray-adjacent buttons LEFT of the notification well (not
-                 inside it) — a folder whose flyout lists recent contents, Win2000 list style. A blue
-                 dot cues new items. Click refreshes + opens the flyout; each row opens its file. -->
+                 inside it) — a folder whose flyout shows recent contents as a preview grid (bevel-9elh).
+                 A blue dot cues new items. Click refreshes + opens the flyout; each cell opens its file. -->
             <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center" Margin="0,0,4,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -340,35 +340,10 @@
                                                  IsVisible="{Binding HasNew}" />
                                     </Grid>
                                     <Button.Flyout>
+                                        <!-- The flyout's whole content lives in StackFlyoutView (bevel-9elh):
+                                             a macOS-style grid of content previews + the "Open folder" row. -->
                                         <Flyout Placement="Top">
-                                            <StackPanel MinWidth="180">
-                                                <ItemsControl ItemsSource="{Binding Items}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate x:DataType="tb:StackFileViewModel">
-                                                            <!-- Explorer-style row (bevel-cust): hover highlight,
-                                                                 click to open, drag out to any app. -->
-                                                            <Border Classes="flyoutrow"
-                                                                    HorizontalAlignment="Stretch" Padding="6,3"
-                                                                    Focusable="True" KeyDown="OnStackFileKeyDown"
-                                                                    AutomationProperties.Name="{Binding Name}"
-                                                                    Tapped="OnStackFileTapped"
-                                                                    PointerPressed="OnStackFilePressed"
-                                                                    PointerMoved="OnStackFileMoved">
-                                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                    <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality" Width="16" Height="16" />
-                                                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
-                                                                               FontSize="11" TextTrimming="CharacterEllipsis" />
-                                                                </StackPanel>
-                                                            </Border>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                                <Border Height="1" Margin="4,3"
-                                                        Background="{DynamicResource Bevel.Brush.ButtonShadow}" />
-                                                <Button Command="{Binding OpenFolderCommand}" Content="Open folder"
-                                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                                        Background="Transparent" BorderThickness="0" Padding="6,3" FontSize="11" />
-                                            </StackPanel>
+                                            <tb:StackFlyoutView />
                                         </Flyout>
                                     </Button.Flyout>
                                 </Button>

@@ -52,6 +52,7 @@ public static class CompositionRoot
         services.AddSingleton<IShellSession, Pal.Fake.FakeShellSession>();
         services.AddSingleton<IFileOperations, Pal.Fake.FakeFileOperations>();
         services.AddSingleton<IIconProvider, Pal.Fake.FakeIconProvider>();
+        services.AddSingleton<IThumbnailProvider, Pal.Fake.FakeThumbnailProvider>();
         services.AddSingleton<IAppEnvironment, Pal.Fake.FakeAppEnvironment>();
         services.AddSingleton<IFileOpener, Pal.Fake.FakeFileOpener>();
         services.AddSingleton<IPermissionBroker, Pal.Fake.FakePermissionBroker>();
@@ -90,6 +91,11 @@ public static class CompositionRoot
             new Pal.MacOS.MacOSIconProvider(),
             sp.GetRequiredService<MmfBgraPool>(),
             isWriter: poolIsWriter));
+
+        // Content previews (bevel-9elh) stay OUT of the shared icon pool: a thumbnail is per-file
+        // content, not a reusable type icon, and the taskbar is the only consumer today. Purely local
+        // (ImageIO / CGPDFDocument read the file in-process), so every role gets it directly.
+        services.AddSingleton<IThumbnailProvider, Pal.MacOS.MacOSThumbnailProvider>();
 
         services.AddSingleton<IPermissionBroker, Pal.MacOS.MacOSPermissionBroker>();
         // Opening a document is a purely local `open`(1) spawn — no shell-core proxy, every role direct.
@@ -199,6 +205,10 @@ public static class CompositionRoot
         // No badge source on Windows yet (bevel-ijln): the shell-integration taskbar overlay-icon API is
         // per-owning-process like NSDockTile, so there is nothing to read cross-app. Empty, never invented.
         services.AddSingleton<IAppBadgeSource>(_ => NullAppBadgeSource.Instance);
+        // No thumbnail engine on Windows yet (bevel-9elh): the macOS provider is ImageIO/CGPDFDocument.
+        // Registered explicitly rather than left unbound, so stack cells fall back to type icons as a
+        // stated platform fact instead of depending on an optional ctor param resolving to null.
+        services.AddSingleton<IThumbnailProvider>(_ => NullThumbnailProvider.Instance);
 
         // Window management + app environment: the same single-source-of-truth split as macOS. In the
         // taskbar process these are shell-core CLIENTS (one UDS connection to the core); in the Core and
