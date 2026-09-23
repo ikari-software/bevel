@@ -54,6 +54,24 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public const int MinIconSize = 12;
     public const int MaxIconSize = 32;
 
+    /// <summary>Vertical chrome between a taskbar row and the tray icons inside it, in points: the
+    /// <c>TrayArea</c> StackPanel's 1pt top+bottom margin plus the sunken tray well's 2pt top+bottom
+    /// border (Bevel.Metric.TrayWellBorder; Luna flattens it to 0, so this is the worst case).</summary>
+    internal const double TrayWellInset = 6;
+
+    /// <summary>The tallest a tray icon may render (points) on a bar of <paramref name="rows"/> rows.
+    /// Native menu-bar status items are NOT bounded by the taskbar — their on-screen height is whatever
+    /// the host's menu bar is (the helper admits 8–40pt, and a notched Mac's band is ~37pt) and the user's
+    /// size slider scales it further — so without this clamp the tray strip renders taller than the bar
+    /// it lives in and the icons spill past it (bevel-xpfl). Derived from the live
+    /// <see cref="TaskbarTheme"/> metrics so the Small/Normal/Large button tier moves it too.</summary>
+    internal static double MaxIconHeight(int rows)
+    {
+        rows = Math.Max(1, rows);
+        var content = TaskbarTheme.HeightForRows(rows) - TrayWellInset;
+        return Math.Max(8, content / rows);
+    }
+
     private int _iconSize = 16;
     private Color _ink = Colors.White;
 
@@ -85,7 +103,17 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         rows = Math.Max(1, rows);
         if (_rows == rows) return;
         Rows = rows;
+        ApplyIconHeightCap();
         Reslice();
+    }
+
+    /// <summary>Pushes the current per-row height budget onto every item, so no icon can render taller
+    /// than the tray strip it sits in (bevel-xpfl). Re-applied whenever the row count, the button tier or
+    /// the user's size slider changes, and on every newly mirrored item.</summary>
+    private void ApplyIconHeightCap()
+    {
+        var max = MaxIconHeight(_rows);
+        foreach (var it in Items) it.SetMaxHeight(max);
     }
 
     /// <summary>Applies the user's tray tuning live (bevel-cust.tray): inline overflow cap + icon size.</summary>
@@ -93,7 +121,8 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     {
         _iconSize = Math.Clamp(iconSize, MinIconSize, MaxIconSize);
         var scale = _iconSize / 16.0;   // 16 == Native (1.0×); the slider scales native size uniformly
-        foreach (var it in Items) it.SetScale(scale);
+        var max = MaxIconHeight(_rows);
+        foreach (var it in Items) { it.SetMaxHeight(max); it.SetScale(scale); }
         VisibleCap = Math.Clamp(overflowCap, MinOverflowCap, MaxOverflowCap);
         Reslice();
     }
@@ -176,6 +205,7 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         var existing = Items.FirstOrDefault(i => i.Id.Equals(item.Id));
         if (existing is not null) { existing.Update(item); return; } // in-place update — no reslice needed
         var vm = new TrayItemViewModel(item) { Ink = _ink };
+        vm.SetMaxHeight(MaxIconHeight(_rows));
         vm.SetScale(_iconSize / 16.0);
         Items.Add(vm);
         Reslice();
@@ -274,11 +304,34 @@ public sealed class TrayItemViewModel : ObservableObject
     // NATIVE size + a single tray-wide uniform SCALE (bevel-7hf4). The mirrored icon renders at its true
     // macOS on-screen size (from bounds, points) × the scale — default 1.0 = "Native", so a mac icon stays
     // mac-sized. The scale is uniform across every item, so it never reintroduces per-item size drift.
-    private double _nativeW = 24, _nativeH = 22, _scale = 1.0;
+    private double _nativeW = 24, _nativeH = 22, _scale = 1.0, _maxH;
 
-    /// <summary>Rendered size (points) = native on-screen size × the tray scale.</summary>
-    public double IconW => _nativeW * _scale;
-    public double IconH => _nativeH * _scale;
+    /// <summary>Shrink factor that keeps the rendered height inside the tray strip's per-row budget
+    /// (<see cref="SetMaxHeight"/>). 1.0 whenever the icon already fits; applied to BOTH axes so a
+    /// clamped icon scales down uniformly instead of squashing (bevel-xpfl).</summary>
+    private double Fit
+    {
+        get
+        {
+            var h = _nativeH * _scale;
+            return _maxH > 0 && h > _maxH ? _maxH / h : 1.0;
+        }
+    }
+
+    /// <summary>Rendered size (points) = native on-screen size × the tray scale, capped to the row height.</summary>
+    public double IconW => _nativeW * _scale * Fit;
+    public double IconH => _nativeH * _scale * Fit;
+
+    /// <summary>The tallest this icon may render (points) — the tray strip's per-row content height. The
+    /// host's menu-bar item height is outside Bevel's control (and the size slider multiplies it), so
+    /// without this bound the tray measures taller than the bar and spills past it (bevel-xpfl).</summary>
+    public void SetMaxHeight(double maxH)
+    {
+        if (Math.Abs(_maxH - maxH) < 0.001) return;
+        _maxH = maxH;
+        OnPropertyChanged(nameof(IconW));
+        OnPropertyChanged(nameof(IconH));
+    }
 
     /// <summary>How many box-slots this item spans in the overflow budget — its NATIVE width in
     /// <see cref="TrayViewModel.BoxWidth"/> units (scale-independent, so the "N boxes/row" cap is stable
