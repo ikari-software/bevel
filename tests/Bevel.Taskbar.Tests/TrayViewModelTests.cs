@@ -11,7 +11,11 @@ namespace Bevel.Taskbar.Tests;
 /// The notification-area tray view-model (bevel-m3.1): pulls the initial item set from
 /// <see cref="ISystemTrayHost"/> and reconciles the add/remove/update events in place (keyed by id),
 /// marshalling each onto the UI thread.
+///
+/// Icon sizing reads the shared <see cref="TaskbarTheme"/> metrics (the row-height cap, bevel-xpfl),
+/// hence the serial theme collection.
 /// </summary>
+[Collection("TaskbarTheme")]
 public class TrayViewModelTests
 {
     private static TrayItem Item(string id, string tooltip) => new(new TrayItemId(id), tooltip);
@@ -120,8 +124,10 @@ public class TrayViewModelTests
         Assert.Equal(3, vm.VisibleItems.Count);
         Assert.Equal(7, vm.OverflowItems.Count);
         // Icon size is a uniform scale of the NATIVE size (16 == native): iconSize 24 → 1.5× → a bounds-less
-        // test item (native 24pt) renders at 36pt. Uniform, so no per-item drift.
-        Assert.All(vm.VisibleItems, i => Assert.Equal(36, i.IconW));
+        // test item (native 24×22pt) wants 36×33pt. Uniform, so no per-item drift — but bounded by the row
+        // height, so on the default single-row bar it lands at the 24pt cap, aspect intact (bevel-xpfl).
+        Assert.All(vm.VisibleItems, i => Assert.Equal(TrayViewModel.MaxIconHeight(1), i.IconH, 3));
+        Assert.All(vm.VisibleItems, i => Assert.Equal(24.0 / 22.0, i.IconW / i.IconH, 3));
     }
 
     [AvaloniaFact]
