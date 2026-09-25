@@ -35,10 +35,23 @@ public class StackTests : IDisposable
         File("mid.txt", 10);
         File(".hidden", 0);
 
-        var recent = StackViewModel.RecentEntries(_dir, 16).Select(Path.GetFileName).ToArray();
+        var recent = StackViewModel.RecentEntries(_dir, 16).Select(e => Path.GetFileName(e.Path)).ToArray();
 
         Assert.Equal(new[] { "new.txt", "mid.txt", "old.txt" }, recent);
         Assert.DoesNotContain(".hidden", recent);
+    }
+
+    [Fact]
+    public void RecentEntries_carries_the_last_write_stamp_it_already_read()
+    {
+        // The stamp exists so the preview cache can spot a file replaced under the same name without a
+        // second stat (and never one on the UI thread). If it came back 0 the cache would treat every
+        // file as unchanged forever, which is the bug this pairs with.
+        var path = File("shot.png", 3);
+        var entry = Assert.Single(StackViewModel.RecentEntries(_dir, 16));
+        Assert.Equal(path, entry.Path);
+        Assert.Equal(System.IO.File.GetLastWriteTimeUtc(path).Ticks, entry.Stamp);
+        Assert.NotEqual(0, entry.Stamp);
     }
 
     [Fact]
@@ -120,6 +133,73 @@ public class StackTests : IDisposable
 
         loader.Trim(Array.Empty<string>());                  // the file dropped off the recent list
         Assert.NotSame(first, loader.LoadAsync(path));        // cache forgot it (no unbounded growth)
+    }
+
+    // ── Cell-image staleness (bevel-9elh follow-up, found by nuclear-pr-review) ───────────────
+    // MacOSThumbnailProvider keys its own cache on path + LastWriteTimeUtc and has a test for
+    // invalidation-on-rewrite — but PreviewLoader above it cached by PATH ALONE, forever, which
+    // defeated that invalidation entirely in the real call path. Two reachable consequences in a
+    // Downloads stack, both fixed by carrying the file's stamp into the cache check.
+
+    [AvaloniaFact]
+    public async Task A_file_rewritten_at_the_same_path_gets_a_fresh_preview_not_the_stale_one()
+    {
+        var thumbs = new CountingThumbnails();
+        var loader = new PreviewLoader(new IconLoader(new Bevel.Pal.Fake.FakeIconProvider()), thumbs);
+        var path = Path.Combine(_dir, "report.png");
+
+        var stamp1 = 1_000L;
+        var first = loader.LoadAsync(path, stamp1);
+        await first;
+        Assert.Same(first, loader.LoadAsync(path, stamp1));   // unchanged file → still one decode
+        Assert.Equal(1, thumbs.Calls);
+
+        // Re-downloaded over the same name: a NEW file, same path, newer stamp. Serving the cached
+        // bitmap here shows the previous download's contents indefinitely.
+        var stamp2 = 2_000L;
+        Assert.NotSame(first, loader.LoadAsync(path, stamp2));
+        await loader.LoadAsync(path, stamp2);
+        Assert.Equal(2, thumbs.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task A_preview_that_failed_while_the_file_was_incomplete_is_retried_once_it_finishes()
+    {
+        // The stack's watcher fires on create, so the first preview of a download is routinely
+        // attempted against a partially-written file. That decode fails and the cell falls back to a
+        // type icon — which was then cached forever, so the cell never upgraded after the download
+        // completed. Retrying on a stamp change covers this without retrying genuinely-corrupt files.
+        var thumbs = new CountingThumbnails { Succeed = false };
+        var loader = new PreviewLoader(new IconLoader(new Bevel.Pal.Fake.FakeIconProvider()), thumbs);
+        var path = Path.Combine(_dir, "big.png");
+
+        Assert.False((await loader.LoadAsync(path, stamp: 1_000L)).IsContentPreview);  // mid-write
+        Assert.Equal(1, thumbs.Calls);
+
+        await loader.LoadAsync(path, stamp: 1_000L);          // same stamp → no pointless re-decode
+        Assert.Equal(1, thumbs.Calls);
+
+        await loader.LoadAsync(path, stamp: 2_000L);          // download finished, mtime moved
+        Assert.Equal(2, thumbs.Calls);
+    }
+
+    /// <summary>Thumbnail backend that counts decode attempts and can be told to fail, so a test can
+    /// assert whether the loader re-asked rather than inspecting pixels.</summary>
+    private sealed class CountingThumbnails : Bevel.Pal.Abstractions.IThumbnailProvider
+    {
+        public int Calls;
+        public bool Succeed { get; init; } = true;
+
+        public bool CanPreview(string path) => path.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+
+        public System.Threading.Tasks.ValueTask<Bevel.Pal.Abstractions.PalImage?> GetThumbnailAsync(
+            string path, int maxPixelSize, System.Threading.CancellationToken ct = default)
+        {
+            Calls++;
+            // 2x2 opaque BGRA when succeeding; null models "backend could not decode this".
+            return ValueTask.FromResult<Bevel.Pal.Abstractions.PalImage?>(
+                Succeed ? new Bevel.Pal.Abstractions.PalImage(2, 2, new byte[2 * 2 * 4]) : null);
+        }
     }
 
     [Fact]

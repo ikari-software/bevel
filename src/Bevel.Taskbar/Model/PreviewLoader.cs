@@ -38,7 +38,11 @@ public sealed class PreviewLoader
 
     private readonly IconLoader _icons;
     private readonly IThumbnailProvider? _thumbnails;
-    private readonly ConcurrentDictionary<string, Task<StackPreview>> _cache = new();
+    /// <summary>Cell images by path, each tagged with the file stamp it was decoded from, so a file
+    /// replaced under the same name is not served from the previous file's bitmap.</summary>
+    private readonly ConcurrentDictionary<string, Entry> _cache = new();
+
+    private readonly record struct Entry(long Stamp, Task<StackPreview> Task);
 
     public PreviewLoader(IconLoader icons, IThumbnailProvider? thumbnails)
     {
@@ -53,12 +57,35 @@ public sealed class PreviewLoader
 
     /// <summary>The cell image for <paramref name="path"/>, decoded off-thread on first request and
     /// shared from cache thereafter. Never faults: a failure yields a type icon, and a missing icon
-    /// provider yields a null bitmap.</summary>
-    public Task<StackPreview> LoadAsync(string? path)
+    /// provider yields a null bitmap.
+    ///
+    /// <paramref name="stamp"/> is the file's last-write tick count, which the caller already has from
+    /// the directory enumeration (it sorts by it) — so this costs no extra I/O, and crucially no stat on
+    /// the UI thread: <c>EnsurePreview</c> is called from inside a <c>Dispatcher.UIThread.InvokeAsync</c>,
+    /// so this method's synchronous part runs there. A cached entry is reused only while the stamp still
+    /// matches; a changed stamp means a different file (or a download that has since finished) and forces
+    /// a fresh decode. That is what keeps the underlying provider's own mtime-keyed invalidation
+    /// reachable — caching by path alone here silently defeated it.</summary>
+    public Task<StackPreview> LoadAsync(string? path, long stamp = 0)
     {
         if (string.IsNullOrEmpty(path))
             return Task.FromResult(new StackPreview(null, false));
-        return _cache.GetOrAdd(path, p => LoadCoreAsync(p));
+
+        while (true)
+        {
+            if (_cache.TryGetValue(path, out var cached))
+            {
+                if (cached.Stamp == stamp) return cached.Task;
+                // Stale: drop the exact pair we read, so a concurrent refresh that already replaced it
+                // wins rather than having its fresher entry removed underneath it.
+                ((ICollection<KeyValuePair<string, Entry>>)_cache).Remove(new(path, cached));
+                continue;
+            }
+
+            var fresh = new Entry(stamp, LoadCoreAsync(path));
+            if (_cache.TryAdd(path, fresh)) return fresh.Task;
+            // Lost an add race: loop and return the winner's task (this decode is abandoned).
+        }
     }
 
     /// <summary>Forgets every cached cell image whose file is no longer in <paramref name="keep"/> —

@@ -131,10 +131,15 @@ jobs:
             --output .publish/${{ matrix.artifact-name }}
 
       - name: Upload artifact
+        # Persist build output only for main and release tags. PR / m0* runs still publish
+        # (the self-contained-build gate that matters) but no longer park ~181 MB per run in
+        # org Actions storage. Tags stay included so the tag-gated sign job can download them.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           path: .publish/${{ matrix.artifact-name }}
+          retention-days: 7
 
   # ── Swift native helper build (macOS only) ──────────────────────────────────
 
@@ -148,10 +153,15 @@ jobs:
         run: swift build --package-path native/helper-macos --configuration release
 
       - name: Upload BevelHelper binary
+        # Persist build output only for main and release tags. PR / m0* runs still publish
+        # (the self-contained-build gate that matters) but no longer park ~181 MB per run in
+        # org Actions storage. Tags stay included so the tag-gated sign job can download them.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v4
         with:
           name: BevelHelper
           path: native/helper-macos/.build/release/BevelHelper
+          retention-days: 7
 
   # ── Theme token codegen drift check (bevel-51t / MET-01) ────────────────────
   #
@@ -299,3 +309,4 @@ jobs:
         with:
           name: Bevel-signed
           path: .publish/Bevel.app
+          retention-days: 7

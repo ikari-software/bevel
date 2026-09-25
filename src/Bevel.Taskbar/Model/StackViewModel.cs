@@ -71,37 +71,40 @@ public sealed class StackViewModel : ObservableObject, IDisposable
         var folder = FolderPath;
         var max = MaxItems;
         var recent = await Task.Run(() => RecentEntries(folder, max)).ConfigureAwait(false);
-        _previews.Trim(recent);   // forget cell images for files that dropped off the list
+        _previews.Trim(recent.Select(e => e.Path));   // forget cell images for files that dropped off the list
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             Items.Clear();
-            foreach (var path in recent)
+            foreach (var entry in recent)
             {
-                var item = new StackFileViewModel(path, _appEnv, _previews);
+                var item = new StackFileViewModel(entry.Path, entry.Stamp, _appEnv, _previews);
                 Items.Add(item);
                 item.EnsurePreview(); // ~16 items, off-thread — no UI-thread decode cost
             }
         });
     }
 
-    /// <summary>The folder's most-recent entries (files and subfolders) as full paths, newest first,
-    /// skipping hidden / dotfiles. Pure and defensive — a missing/denied folder yields empty.</summary>
-    public static IReadOnlyList<string> RecentEntries(string folder, int max)
+    /// <summary>The folder's most-recent entries (files and subfolders), newest first, skipping hidden /
+    /// dotfiles. Pure and defensive — a missing/denied folder yields empty. The last-write stamp is
+    /// returned alongside the path because this enumeration already reads it to sort; carrying it means
+    /// the preview cache can detect a file replaced under the same name without a second stat (and
+    /// without one on the UI thread).</summary>
+    public static IReadOnlyList<StackEntry> RecentEntries(string folder, int max)
     {
         try
         {
             var dir = new DirectoryInfo(folder);
-            if (!dir.Exists) return Array.Empty<string>();
+            if (!dir.Exists) return Array.Empty<StackEntry>();
             return dir.EnumerateFileSystemInfos()
                 .Where(e => !e.Name.StartsWith('.') && !e.Attributes.HasFlag(FileAttributes.Hidden))
                 .OrderByDescending(e => e.LastWriteTimeUtc)
                 .Take(max)
-                .Select(e => e.FullName)
+                .Select(e => new StackEntry(e.FullName, e.LastWriteTimeUtc.Ticks))
                 .ToList();
         }
         catch
         {
-            return Array.Empty<string>();
+            return Array.Empty<StackEntry>();
         }
     }
 
@@ -171,18 +174,26 @@ public sealed class StackViewModel : ObservableObject, IDisposable
 /// (bevel-12g). The cell image is a real content preview where the platform can decode one and the
 /// file's type icon at cell size otherwise (bevel-9elh); it loads lazily off-thread, mirroring
 /// <see cref="ProgramItemViewModel"/>.</summary>
+/// <summary>One entry of a stack's recent-contents listing: its full path plus the last-write tick count
+/// the enumeration already read in order to sort. The stamp travels with the path so the preview cache can
+/// tell "same file" from "replaced under the same name" without a second stat — and, since the cell load is
+/// kicked off from inside a UI-thread dispatch, without ever stat-ing on the UI thread.</summary>
+public readonly record struct StackEntry(string Path, long Stamp);
+
 public sealed class StackFileViewModel : ObservableObject
 {
     private readonly IAppEnvironment? _appEnv;
     private readonly PreviewLoader _previews;
     private readonly string _path;
+    private readonly long _stamp;
     private Bitmap? _previewSource;
     private bool _hasContentPreview;
     private bool _previewRequested;
 
-    public StackFileViewModel(string path, IAppEnvironment? appEnv, PreviewLoader previews)
+    public StackFileViewModel(string path, long stamp, IAppEnvironment? appEnv, PreviewLoader previews)
     {
         _path = path;
+        _stamp = stamp;
         _appEnv = appEnv;
         _previews = previews;
         Name = Path.GetFileName(path.TrimEnd('/', '\\'));
@@ -215,7 +226,7 @@ public sealed class StackFileViewModel : ObservableObject
 
     private async Task LoadPreviewAsync()
     {
-        var cell = await _previews.LoadAsync(_path).ConfigureAwait(false);
+        var cell = await _previews.LoadAsync(_path, _stamp).ConfigureAwait(false);
         if (cell.Image is null) return;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
