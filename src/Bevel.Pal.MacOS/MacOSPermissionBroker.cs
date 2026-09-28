@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
+using static Bevel.Pal.MacOS.CoreGraphicsInterop;
+using static Bevel.Pal.MacOS.ImageIOInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -68,9 +70,5 @@ public sealed class MacOSPermissionBroker : IPermissionBroker
     private static extern bool AXIsProcessTrusted();
 
     // Screen Recording grant checks (CoreGraphics). Preflight never prompts; Request prompts once.
-    [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
-    private static extern bool CGPreflightScreenCaptureAccess();
 
-    [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
-    private static extern bool CGRequestScreenCaptureAccess();
 }

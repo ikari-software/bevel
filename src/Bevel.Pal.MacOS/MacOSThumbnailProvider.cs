@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreFoundationInterop;
+using static Bevel.Pal.MacOS.CoreGraphicsInterop;
+using static Bevel.Pal.MacOS.ImageIOInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -216,12 +218,12 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
     /// upright. Owned by the caller (CFRelease).</summary>
     private static IntPtr ThumbnailOptions(int max)
     {
-        var keyAlways = Constant(ImageIO, "kCGImageSourceCreateThumbnailFromImageAlways");
-        var keyTransform = Constant(ImageIO, "kCGImageSourceCreateThumbnailWithTransform");
-        var keyMaxPixel = Constant(ImageIO, "kCGImageSourceThumbnailMaxPixelSize");
-        var trueValue = Constant(CoreFoundation, "kCFBooleanTrue");
-        var keyCallbacks = SymbolAddress(CoreFoundation, "kCFTypeDictionaryKeyCallBacks");
-        var valueCallbacks = SymbolAddress(CoreFoundation, "kCFTypeDictionaryValueCallBacks");
+        var keyAlways = Constant(Frameworks.ImageIO, "kCGImageSourceCreateThumbnailFromImageAlways");
+        var keyTransform = Constant(Frameworks.ImageIO, "kCGImageSourceCreateThumbnailWithTransform");
+        var keyMaxPixel = Constant(Frameworks.ImageIO, "kCGImageSourceThumbnailMaxPixelSize");
+        var trueValue = Constant(Frameworks.CoreFoundation, "kCFBooleanTrue");
+        var keyCallbacks = SymbolAddress(Frameworks.CoreFoundation, "kCFTypeDictionaryKeyCallBacks");
+        var valueCallbacks = SymbolAddress(Frameworks.CoreFoundation, "kCFTypeDictionaryValueCallBacks");
         if (keyAlways == IntPtr.Zero || keyTransform == IntPtr.Zero || keyMaxPixel == IntPtr.Zero
             || trueValue == IntPtr.Zero || keyCallbacks == IntPtr.Zero || valueCallbacks == IntPtr.Zero)
             return IntPtr.Zero;
@@ -265,57 +267,14 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
 
     private const string CoreFoundation =
         "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
-    private const string CoreGraphics =
-        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
-    private const string ImageIO =
-        "/System/Library/Frameworks/ImageIO.framework/ImageIO";
 
     private const int kCFNumberIntType = 9;
     private const int kCGPDFCropBox = 1;
     private const int kCGInterpolationHigh = 3;
 
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct CGRect
-    {
-        public readonly double X, Y, Width, Height;
-        public CGRect(double x, double y, double w, double h) { X = x; Y = y; Width = w; Height = h; }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct CGAffineTransform
-    {
-        public readonly double A, B, C, D, Tx, Ty;
-    }
 
 
-    [DllImport(ImageIO)] private static extern IntPtr CGImageSourceCreateWithURL(IntPtr url, IntPtr options);
-    [DllImport(ImageIO)] private static extern IntPtr CGImageSourceCreateThumbnailAtIndex(
-        IntPtr source, nuint index, IntPtr options);
 
-    [DllImport(CoreGraphics)] private static extern nuint CGImageGetWidth(IntPtr image);
-    [DllImport(CoreGraphics)] private static extern nuint CGImageGetHeight(IntPtr image);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGColorSpaceCreateDeviceRGB();
-    [DllImport(CoreGraphics)] private static extern void CGColorSpaceRelease(IntPtr space);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGBitmapContextCreate(
-        IntPtr data, nuint width, nuint height, nuint bitsPerComponent, nuint bytesPerRow,
-        IntPtr colorSpace, uint bitmapInfo);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGBitmapContextGetData(IntPtr c);
-    [DllImport(CoreGraphics)] private static extern nuint CGBitmapContextGetBytesPerRow(IntPtr c);
-    [DllImport(CoreGraphics)] private static extern void CGContextDrawImage(IntPtr c, CGRect rect, IntPtr image);
-    [DllImport(CoreGraphics)] private static extern void CGContextRelease(IntPtr c);
-    [DllImport(CoreGraphics)] private static extern void CGContextSetInterpolationQuality(IntPtr c, int quality);
-    [DllImport(CoreGraphics)] private static extern void CGContextSetRGBFillColor(
-        IntPtr c, double red, double green, double blue, double alpha);
-    [DllImport(CoreGraphics)] private static extern void CGContextFillRect(IntPtr c, CGRect rect);
-    [DllImport(CoreGraphics)] private static extern void CGContextConcatCTM(IntPtr c, CGAffineTransform transform);
 
-    [DllImport(CoreGraphics)] private static extern IntPtr CGPDFDocumentCreateWithURL(IntPtr url);
-    [DllImport(CoreGraphics)] private static extern void CGPDFDocumentRelease(IntPtr document);
-    [DllImport(CoreGraphics)] private static extern nuint CGPDFDocumentGetNumberOfPages(IntPtr document);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGPDFDocumentGetPage(IntPtr document, nuint pageNumber);
-    [DllImport(CoreGraphics)] private static extern CGRect CGPDFPageGetBoxRect(IntPtr page, int box);
-    [DllImport(CoreGraphics)] private static extern int CGPDFPageGetRotationAngle(IntPtr page);
-    [DllImport(CoreGraphics)] private static extern CGAffineTransform CGPDFPageGetDrawingTransform(
-        IntPtr page, int box, CGRect rect, int rotate, [MarshalAs(UnmanagedType.U1)] bool preserveAspectRatio);
-    [DllImport(CoreGraphics)] private static extern void CGContextDrawPDFPage(IntPtr c, IntPtr page);
+
 }

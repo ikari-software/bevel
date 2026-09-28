@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
+using static Bevel.Pal.MacOS.CoreGraphicsInterop;
+using static Bevel.Pal.MacOS.ImageIOInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -116,22 +118,6 @@ public sealed class MacOSIconProvider : IIconProvider
     }
 
     // ── CoreGraphics (C API — no objc_msgSend) ──────────────────────────
-    private const string CoreGraphics =
-        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
 
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct CGRect
-    {
-        public readonly double X, Y, Width, Height;
-        public CGRect(double x, double y, double w, double h) { X = x; Y = y; Width = w; Height = h; }
-    }
 
-    [DllImport(CoreGraphics)] private static extern IntPtr CGColorSpaceCreateDeviceRGB();
-    [DllImport(CoreGraphics)] private static extern void CGColorSpaceRelease(IntPtr space);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGBitmapContextCreate(
-        IntPtr data, nuint width, nuint height, nuint bitsPerComponent, nuint bytesPerRow,
-        IntPtr colorSpace, uint bitmapInfo);
-    [DllImport(CoreGraphics)] private static extern void CGContextDrawImage(IntPtr c, CGRect rect, IntPtr image);
-    [DllImport(CoreGraphics)] private static extern IntPtr CGBitmapContextGetData(IntPtr c);
-    [DllImport(CoreGraphics)] private static extern void CGContextRelease(IntPtr c);
 }
