@@ -25,8 +25,6 @@ public class InteropConventionTests
     private static readonly HashSet<string> KnownDuplicates = new(StringComparer.Ordinal)
     {
         "AXIsProcessTrusted", "AXUIElementCopyAttributeValue", "AXUIElementCreateApplication",
-        "CFArrayGetCount", "CFArrayGetTypeID", "CFArrayGetValueAtIndex", "CFGetTypeID", "CFRelease",
-        "CFRetain", "CFStringGetTypeID", "CFURLCreateFromFileSystemRepresentation",
         "CGBitmapContextCreate", "CGBitmapContextGetData", "CGColorSpaceCreateDeviceRGB",
         "CGColorSpaceRelease", "CGContextDrawImage", "CGContextRelease", "dlopen",
     };

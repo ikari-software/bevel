@@ -73,6 +73,28 @@ public class GeckoTabEngineTests
         Assert.True(new MacOSTabProvider().SupportsApp(bundleId));
     }
 
+    // ── CoreFoundation ownership balance (permission-gated) ──────────────────
+    // Added with the interop consolidation (bevel-uat): this path calls CFRetain/CFRelease and had no
+    // balance coverage, while MacOSAppBadgeSource had a 20x repeat for exactly this. An unbalanced
+    // CFRetain leaks; an unbalanced CFRelease corrupts and typically faults on a LATER access, so one
+    // pass proves nothing — twenty passes is what turns an over-release into a visible failure.
+    // No-ops cleanly without an AX grant or a running Zen, like the enumeration test below.
+
+    [Fact]
+    public async System.Threading.Tasks.Task Repeated_enumeration_keeps_cf_ownership_balanced()
+    {
+        if (!System.OperatingSystem.IsMacOS()) return;
+
+        for (var i = 0; i < 20; i++)
+        {
+            var tabs = await GeckoTabEngine.GetTabsAsync(
+                "app.zen-browser.zen", System.Threading.CancellationToken.None);
+            // Empty is the contract when Zen is absent or the grant is missing; the point of the loop is
+            // that twenty real trips through the retain/release pairs neither throw nor fault the process.
+            Assert.NotNull(tabs);
+        }
+    }
+
     // ── Live enumeration (permission-gated) ──────────────────────────────────
 
     [Fact]

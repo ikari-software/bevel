@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
+using static Bevel.Pal.MacOS.CoreFoundationInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -321,8 +322,6 @@ internal static class GeckoTabEngine
 
     private const string AppServices =
         "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
-    private const string CoreFoundation =
-        "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
 
     [DllImport(AppServices)] private static extern IntPtr AXUIElementCreateApplication(int pid);
     [DllImport(AppServices)] private static extern IntPtr AXUIElementCreateSystemWide();
@@ -330,11 +329,4 @@ internal static class GeckoTabEngine
     [DllImport(AppServices)] private static extern int AXUIElementPerformAction(IntPtr el, IntPtr action);
     [DllImport(AppServices)] private static extern int AXUIElementSetMessagingTimeout(IntPtr el, float seconds);
 
-    [DllImport(CoreFoundation)] private static extern void CFRelease(IntPtr cf);
-    [DllImport(CoreFoundation)] private static extern IntPtr CFRetain(IntPtr cf);
-    [DllImport(CoreFoundation)] private static extern nint CFArrayGetCount(IntPtr array);
-    [DllImport(CoreFoundation)] private static extern IntPtr CFArrayGetValueAtIndex(IntPtr array, nint index);
-    [DllImport(CoreFoundation)] private static extern nuint CFGetTypeID(IntPtr cf);
-    [DllImport(CoreFoundation)] private static extern nuint CFStringGetTypeID();
-    [DllImport(CoreFoundation)] private static extern nuint CFArrayGetTypeID();
 }

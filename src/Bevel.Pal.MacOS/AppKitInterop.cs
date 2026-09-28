@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using static Bevel.Pal.MacOS.CoreFoundationInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -344,18 +345,10 @@ internal static class AppKitInterop
     //  CFURL / LaunchServices (C API — no AppKit required)
     // ------------------------------------------------------------------
 
-    [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
-    private static extern void CFRelease(IntPtr cf);
 
     /// <summary>
     /// Creates a CFURLRef from a file-system path. Uses CoreFoundation (always available).
     /// </summary>
-    [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
-    private static extern IntPtr CFURLCreateFromFileSystemRepresentation(
-        IntPtr allocator,
-        byte[] buffer,
-        IntPtr bufLen,
-        [MarshalAs(UnmanagedType.I1)] bool isDirectory);
 
     /// <summary>
     /// Opens an application (or file) at the given URL using LaunchServices.

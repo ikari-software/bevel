@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
+using static Bevel.Pal.MacOS.CoreFoundationInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -286,13 +287,6 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
         public readonly double A, B, C, D, Tx, Ty;
     }
 
-    [DllImport(CoreFoundation)] private static extern void CFRelease(IntPtr cf);
-    [DllImport(CoreFoundation)] private static extern IntPtr CFURLCreateFromFileSystemRepresentation(
-        IntPtr allocator, byte[] buffer, nint bufLen, [MarshalAs(UnmanagedType.U1)] bool isDirectory);
-    [DllImport(CoreFoundation)] private static extern IntPtr CFNumberCreate(IntPtr allocator, int type, ref int value);
-    [DllImport(CoreFoundation)] private static extern IntPtr CFDictionaryCreate(
-        IntPtr allocator, IntPtr[] keys, IntPtr[] values, nint numValues,
-        IntPtr keyCallBacks, IntPtr valueCallBacks);
 
     [DllImport(ImageIO)] private static extern IntPtr CGImageSourceCreateWithURL(IntPtr url, IntPtr options);
     [DllImport(ImageIO)] private static extern IntPtr CGImageSourceCreateThumbnailAtIndex(

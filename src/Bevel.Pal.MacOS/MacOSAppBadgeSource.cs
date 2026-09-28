@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Bevel.Pal.Abstractions;
+using static Bevel.Pal.MacOS.CoreFoundationInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -254,7 +255,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
 
     private const uint kCFStringEncodingUTF8 = 0x08000100;
-    private const long kCFURLPOSIXPathStyle = 0;
+    private const nint kCFURLPOSIXPathStyle = 0;
 
     private static IntPtr CFStringCreate(string s)
     {
@@ -288,7 +289,8 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
     private static IntPtr CFURLCreateFromFileSystemRepresentation(string path)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(path);
-        return CFURLCreateFromFileSystemRepresentation(IntPtr.Zero, bytes, bytes.Length, true);
+        return CoreFoundationInterop.CFURLCreateFromFileSystemRepresentation(
+            IntPtr.Zero, bytes, bytes.Length, true);
     }
 
     [DllImport(ApplicationServices)]
@@ -302,53 +304,19 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
     [DllImport(ApplicationServices)]
     private static extern int AXUIElementCopyAttributeValue(IntPtr element, IntPtr attribute, out IntPtr value);
 
-    [DllImport(CoreFoundation)]
-    private static extern void CFRelease(IntPtr cf);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFRetain(IntPtr cf);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFGetTypeID(IntPtr cf);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFStringGetTypeID();
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFArrayGetTypeID();
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFURLGetTypeID();
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFStringCreateWithCString(IntPtr alloc, IntPtr cStr, uint encoding);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFStringGetCStringPtr(IntPtr theString, uint encoding);
 
-    [DllImport(CoreFoundation)]
-    private static extern long CFStringGetLength(IntPtr theString);
 
-    [DllImport(CoreFoundation)]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private static extern bool CFStringGetCString(IntPtr theString, IntPtr buffer, long bufferSize, uint encoding);
 
-    [DllImport(CoreFoundation)]
-    private static extern long CFArrayGetCount(IntPtr theArray);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFArrayGetValueAtIndex(IntPtr theArray, long idx);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFURLCopyFileSystemPath(IntPtr url, long pathStyle);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFURLCreateFromFileSystemRepresentation(
-        IntPtr alloc, byte[] buffer, long bufLen, [MarshalAs(UnmanagedType.I1)] bool isDirectory);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFBundleCreate(IntPtr alloc, IntPtr bundleURL);
 
-    [DllImport(CoreFoundation)]
-    private static extern IntPtr CFBundleGetIdentifier(IntPtr bundle);
 }
