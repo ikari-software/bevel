@@ -24,7 +24,7 @@ public class InteropConventionTests
     /// never add one. An empty list means the migration is done.</summary>
     private static readonly HashSet<string> KnownDuplicates = new(StringComparer.Ordinal)
     {
-        "AXIsProcessTrusted", "AXUIElementCopyAttributeValue", "AXUIElementCreateApplication", "dlopen",
+        "dlopen",
     };
 
     private static readonly Regex Extern = new(

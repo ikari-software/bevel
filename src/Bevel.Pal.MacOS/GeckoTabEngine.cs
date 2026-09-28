@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreFoundationInterop;
+using static Bevel.Pal.MacOS.AccessibilityInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -320,13 +321,6 @@ internal static class GeckoTabEngine
     private static extern bool objc_msgSend_bool_nuint(IntPtr receiver, IntPtr selector, nuint arg1);
 
 
-    private const string AppServices =
-        "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
 
-    [DllImport(AppServices)] private static extern IntPtr AXUIElementCreateApplication(int pid);
-    [DllImport(AppServices)] private static extern IntPtr AXUIElementCreateSystemWide();
-    [DllImport(AppServices)] private static extern int AXUIElementCopyAttributeValue(IntPtr el, IntPtr attr, out IntPtr value);
-    [DllImport(AppServices)] private static extern int AXUIElementPerformAction(IntPtr el, IntPtr action);
-    [DllImport(AppServices)] private static extern int AXUIElementSetMessagingTimeout(IntPtr el, float seconds);
 
 }

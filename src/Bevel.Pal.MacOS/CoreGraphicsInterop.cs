@@ -102,9 +102,14 @@ internal static class CoreGraphicsInterop
     public static extern void CGContextDrawPDFPage(IntPtr c, IntPtr page);
 
     // ── Screen-capture permission (TCC) ──────────────────────────────────
+    // Both return CoreGraphics `bool` (one byte). A bare C# `bool` would marshal as a 4-byte Win32
+    // BOOL and read three undefined bytes to decide a screen-recording permission -- the same defect
+    // AXIsProcessTrusted had in MacOSPermissionBroker. Transcribed from a bare bool, fixed here.
     [DllImport(Frameworks.CoreGraphics)]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool CGPreflightScreenCaptureAccess();
 
     [DllImport(Frameworks.CoreGraphics)]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool CGRequestScreenCaptureAccess();
 }

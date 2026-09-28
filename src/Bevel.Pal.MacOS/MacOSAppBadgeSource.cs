@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreFoundationInterop;
+using static Bevel.Pal.MacOS.AccessibilityInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -251,8 +252,6 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
 
     private const string CoreFoundation =
         "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
-    private const string ApplicationServices =
-        "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
 
     private const uint kCFStringEncodingUTF8 = 0x08000100;
     private const nint kCFURLPOSIXPathStyle = 0;
@@ -293,16 +292,9 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
             IntPtr.Zero, bytes, bytes.Length, true);
     }
 
-    [DllImport(ApplicationServices)]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private static extern bool AXIsProcessTrusted();
 
-    [DllImport(ApplicationServices)]
-    private static extern IntPtr AXUIElementCreateApplication(int pid);
 
     /// <summary>Returns AXError (0 = kAXErrorSuccess). <paramref name="value"/> is +1 owned on success.</summary>
-    [DllImport(ApplicationServices)]
-    private static extern int AXUIElementCopyAttributeValue(IntPtr element, IntPtr attribute, out IntPtr value);
 
 
 

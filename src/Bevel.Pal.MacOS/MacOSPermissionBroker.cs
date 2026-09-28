@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreGraphicsInterop;
 using static Bevel.Pal.MacOS.ImageIOInterop;
+using static Bevel.Pal.MacOS.AccessibilityInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -66,8 +67,6 @@ public sealed class MacOSPermissionBroker : IPermissionBroker
             UseShellExecute = true,
         });
 
-    [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
-    private static extern bool AXIsProcessTrusted();
 
     // Screen Recording grant checks (CoreGraphics). Preflight never prompts; Request prompts once.
 
