@@ -26,6 +26,8 @@ jobs:
   build:
     runs-on: macos-14
     environment: release   # secrets live behind a gated environment
+    permissions:
+      contents: write   # required to create the Release and upload its assets
     steps:
       - uses: actions/checkout@v4
 
@@ -79,8 +81,30 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/bevel-signing.keychain-db"
 
-      - uses: actions/upload-artifact@v4
+      # A tag build publishes a real GitHub Release. Release assets are free and unmetered,
+      # unlike Actions artifacts which bill against the org's 2 GB Actions storage and then
+      # silently expire — so the notarized DMG used to cost storage and reach nobody.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          shopt -s nullglob
+          dmgs=(dist/Bevel-*.dmg)
+          if [ ${#dmgs[@]} -eq 0 ]; then echo '::error::no DMG produced in dist/'; exit 1; fi
+          gh release create "$GITHUB_REF_NAME" "${dmgs[@]}" \
+            --title "Bevel $VERSION" \
+            --generate-notes \
+            --verify-tag
+
+      # workflow_dispatch runs have no tag to attach a Release to, so they keep a short-lived
+      # artifact instead of the old 90-day default.
+      - name: Upload DMG artifact (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
           name: Bevel-macos-${{ steps.ver.outputs.version }}
           path: dist/Bevel-*.dmg
           if-no-files-found: error
+          retention-days: 7
