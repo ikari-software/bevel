@@ -238,3 +238,4 @@
 {"id":"int-bd55d4f2eec4df91f302868102196d6c","kind":"field_change","created_at":"2026-09-28T21:58:42.272171Z","actor":"ikari","issue_id":"bevel-uat.1","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-bbf58b10f78793769b432eb84d141333","kind":"field_change","created_at":"2026-09-28T22:02:33.943354Z","actor":"ikari","issue_id":"bevel-uat.2","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-74bdda4b16292943c260a38faa47082e","kind":"field_change","created_at":"2026-09-28T22:05:23.138136Z","actor":"ikari","issue_id":"bevel-uat.3","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-b1b0ba6b6f8391c3d7011cd89bb1fb2d","kind":"field_change","created_at":"2026-09-28T22:08:13.246468Z","actor":"ikari","issue_id":"bevel-uat.4","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}

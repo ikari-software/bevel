@@ -312,11 +312,11 @@ internal static class GeckoTabEngine
         Console.Error.WriteLine($"[taskbar] GECKO {action} failed: AXError {axError}");
     }
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool objc_msgSend_bool(IntPtr receiver, IntPtr selector);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool objc_msgSend_bool_nuint(IntPtr receiver, IntPtr selector, nuint arg1);
 

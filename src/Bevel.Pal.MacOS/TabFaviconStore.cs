@@ -309,12 +309,12 @@ internal static class TabFaviconStore
 
     // open(2) is variadic (mode follows only with O_CREAT, which we never pass); on arm64/x64
     // macOS a two-arg call matches the non-variadic declaration's ABI.
-    [DllImport("libSystem.dylib", SetLastError = true)]
+    [DllImport(Frameworks.LibSystem, SetLastError = true)]
     private static extern int open(string path, int flags);
 
-    [DllImport("libSystem.dylib", SetLastError = true)]
+    [DllImport(Frameworks.LibSystem, SetLastError = true)]
     private static extern nint read(int fd, byte[] buf, nint count);
 
-    [DllImport("libSystem.dylib", SetLastError = true)]
+    [DllImport(Frameworks.LibSystem, SetLastError = true)]
     private static extern int close(int fd);
 }

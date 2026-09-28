@@ -17,8 +17,9 @@ internal static class AppKitInterop
 
     private static bool _appKitLoaded;
 
-    [DllImport("/usr/lib/libSystem.dylib")]
-    private static extern IntPtr dlopen(string path, int mode);
+    // Public because LoginItemRegistrar dlopens a framework too; it used to declare its own copy.
+    [DllImport(Frameworks.LibSystem)]
+    public static extern IntPtr dlopen(string path, int mode);
 
     private const int RTLD_LAZY = 0x1;
     private const int RTLD_NOLOAD = 0x10;
@@ -34,14 +35,14 @@ internal static class AppKitInterop
             return;
 
         // RTLD_NOLOAD: only returns non-null if already loaded, null otherwise.
-        var alreadyLoaded = dlopen("/System/Library/Frameworks/AppKit.framework/AppKit", RTLD_LAZY | RTLD_NOLOAD);
+        var alreadyLoaded = dlopen(Frameworks.AppKit, RTLD_LAZY | RTLD_NOLOAD);
         if (alreadyLoaded != IntPtr.Zero)
         {
             _appKitLoaded = true;
             return;
         }
 
-        var handle = dlopen("/System/Library/Frameworks/AppKit.framework/AppKit", RTLD_LAZY);
+        var handle = dlopen(Frameworks.AppKit, RTLD_LAZY);
         if (handle == IntPtr.Zero)
         {
             // AppKit couldn't be loaded — this is a headless or sandboxed environment.
@@ -56,49 +57,49 @@ internal static class AppKitInterop
     //  objc_msgSend overloads
     // ------------------------------------------------------------------
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid(IntPtr receiver, IntPtr selector);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr(IntPtr receiver, IntPtr selector);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr_IntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr_IntPtr_IntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool SendBool_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I4)]
     public static extern int SendInt(IntPtr receiver, IntPtr selector);
 
     /// <summary>objc_msgSend returning a pointer-width signed integer (NSInteger) — e.g. an enum status.</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern nint SendNInt(IntPtr receiver, IntPtr selector);
 
     /// <summary>objc_msgSend with a void return and one object arg (e.g. <c>setAutosaveName:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
 
     /// <summary>objc_msgSend with one CGFloat (double) arg returning an object (e.g. <c>statusItemWithLength:</c>).
     /// On arm64 the double is passed in a float register (v0) per AAPCS.</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr_Double(IntPtr receiver, IntPtr selector, double arg1);
 
     /// <summary>objc_msgSend with a void return and one CGFloat (double) arg (e.g. <c>setLength:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_Double(IntPtr receiver, IntPtr selector, double arg1);
 
     /// <summary>objc_msgSend with a void return, one CGFloat (double) arg and one object arg
     /// (e.g. <c>setDouble:forKey:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_Double_IntPtr(IntPtr receiver, IntPtr selector, double arg1, IntPtr arg2);
 
     // ── Window/panel creation + geometry (MacMenuBarOverlay, bevel-7hf4) ──
@@ -107,40 +108,40 @@ internal static class AppKitInterop
 
     /// <summary>objc_msgSend for <c>initWithContentRect:styleMask:backing:defer:</c> — returns the
     /// initialized NSPanel/NSWindow. NSRect in v0–v3, the two NSUIntegers in x2/x3, the BOOL in w4.</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr_NSRect_NUInt_NUInt_Bool(
         IntPtr receiver, IntPtr selector, NSRect rect, nuint styleMask, nuint backing,
         [MarshalAs(UnmanagedType.I1)] bool deferCreation);
 
     /// <summary>objc_msgSend for <c>setFrame:display:</c> (void; NSRect + BOOL).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_NSRect_Bool(
         IntPtr receiver, IntPtr selector, NSRect rect, [MarshalAs(UnmanagedType.I1)] bool display);
 
     /// <summary>objc_msgSend with one NSInteger arg (e.g. <c>setLevel:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_NInt(IntPtr receiver, IntPtr selector, nint arg1);
 
     /// <summary>objc_msgSend with one NSUInteger arg (e.g. <c>setCollectionBehavior:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_NUInt(IntPtr receiver, IntPtr selector, nuint arg1);
 
     /// <summary>objc_msgSend with one ObjC BOOL arg (1 byte on ARM64 — hence I1; e.g. <c>setOpaque:</c>,
     /// <c>setHasShadow:</c>, <c>setIgnoresMouseEvents:</c>, <c>setReleasedWhenClosed:</c>).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid_Bool(IntPtr receiver, IntPtr selector,
         [MarshalAs(UnmanagedType.I1)] bool arg1);
 
     /// <summary>objc_msgSend returning a CGFloat (double) — e.g. <c>[NSStatusBar thickness]</c>.
     /// On ARM64 the double comes back in d0; plain objc_msgSend (no _fpret).</summary>
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern double SendDouble(IntPtr receiver, IntPtr selector);
 
     // ------------------------------------------------------------------
     //  Selector cache
     // ------------------------------------------------------------------
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "sel_registerName")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "sel_registerName")]
     private static extern IntPtr sel_registerName(string name);
 
     // Concurrent: resolved from threadpool threads too (icon renders, the Gecko AX tab walk) — a
@@ -154,7 +155,7 @@ internal static class AppKitInterop
     //  objc_getClass
     // ------------------------------------------------------------------
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_getClass")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_getClass")]
     private static extern IntPtr objc_getClass(string name);
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IntPtr> _classes = new();
@@ -354,7 +355,7 @@ internal static class AppKitInterop
     /// Opens an application (or file) at the given URL using LaunchServices.
     /// Returns 0 on success (noErr). Handles single-instance semantics correctly.
     /// </summary>
-    [DllImport("/System/Library/Frameworks/CoreServices.framework/CoreServices")]
+    [DllImport(Frameworks.CoreServices)]
     public static extern int LSOpenCFURLRef(IntPtr url, out IntPtr launchedURL);
 
     /// <summary>
@@ -399,10 +400,10 @@ internal static class AppKitInterop
         public double Top, Left, Bottom, Right;
     }
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     private static extern NSRect SendNSRect(IntPtr receiver, IntPtr selector);
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     private static extern NSEdgeInsets SendNSEdgeInsets(IntPtr receiver, IntPtr selector);
 
     /// <summary>Returns [NSScreen screens] as an NSArray.</summary>
@@ -448,6 +449,6 @@ internal static class AppKitInterop
     //  until the thread dies (bevel-fo2 class). Push before, Pop in finally.
     // ------------------------------------------------------------------
 
-    [DllImport("/usr/lib/libobjc.dylib")] public static extern IntPtr objc_autoreleasePoolPush();
-    [DllImport("/usr/lib/libobjc.dylib")] public static extern void objc_autoreleasePoolPop(IntPtr pool);
+    [DllImport(Frameworks.ObjC)] public static extern IntPtr objc_autoreleasePoolPush();
+    [DllImport(Frameworks.ObjC)] public static extern void objc_autoreleasePoolPop(IntPtr pool);
 }

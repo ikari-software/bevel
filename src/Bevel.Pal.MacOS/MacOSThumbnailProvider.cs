@@ -265,8 +265,7 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
 
     // ── Native ───────────────────────────────────────────────────────────────
 
-    private const string CoreFoundation =
-        "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+    private const string CoreFoundation = Frameworks.CoreFoundation;
 
     private const int kCFNumberIntType = 9;
     private const int kCGPDFCropBox = 1;

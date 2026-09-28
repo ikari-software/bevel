@@ -14,19 +14,13 @@ namespace Bevel.Pal.MacOS.Tests;
 /// always exposed public externs. It was caused by each new file starting its own private silo, which is
 /// a habit no code review reliably catches across 80 symbols. So it is asserted instead.
 ///
-/// <see cref="KnownDuplicates"/> is a SHRINKING baseline: it lists the symbols still duplicated, so the
-/// suite stays green mid-migration while the list can only get smaller. The final task empties it and
-/// deletes it.
+/// It also asserts every DllImport names a <see cref="Frameworks"/> constant rather than a path literal,
+/// so there is exactly one place to be right about each framework's location. Note the guard sees only
+/// DllImport attributes: a path passed as a dlopen ARGUMENT is invisible to it, so those are centralised
+/// by convention (see AppKitInterop.EnsureAppKitLoaded, LoginItemRegistrar).
 /// </summary>
 public class InteropConventionTests
 {
-    /// <summary>Symbols still declared in more than one file. Delete entries as they are consolidated;
-    /// never add one. An empty list means the migration is done.</summary>
-    private static readonly HashSet<string> KnownDuplicates = new(StringComparer.Ordinal)
-    {
-        "dlopen",
-    };
-
     private static readonly Regex Extern = new(
         @"\[DllImport\(\s*(?<lib>[^,)\]]+)[^\]]*\]\s*(?:\[[^\]]*\]\s*)*" +
         @"(?:private|internal|public)\s+static\s+extern\s+[\w\.\<\>\[\]\*\?]+\s+(?<name>\w+)\s*\(",
@@ -50,28 +44,14 @@ public class InteropConventionTests
     [Fact]
     public void No_symbol_is_declared_in_two_files()
     {
-        var offenders = DuplicatedSymbols().Where(s => !KnownDuplicates.Contains(s)).ToList();
+        var offenders = DuplicatedSymbols();
 
         Assert.True(offenders.Count == 0,
             "These P/Invoke symbols are declared in more than one file. Put each in the interop class " +
-            "for its framework instead of a private silo:\n  " + string.Join("\n  ", offenders));
+            "for its framework instead of starting a private silo:\n  " + string.Join("\n  ", offenders));
     }
 
     [Fact]
-    public void Baseline_lists_only_real_duplicates()
-    {
-        // Stops the baseline from rotting into a list of names that no longer exist, which would let a
-        // genuine duplicate hide behind a stale entry.
-        var actual = DuplicatedSymbols().ToHashSet(StringComparer.Ordinal);
-        var stale = KnownDuplicates.Except(actual).OrderBy(s => s, StringComparer.Ordinal).ToList();
-
-        Assert.True(stale.Count == 0,
-            "KnownDuplicates names symbols that are no longer duplicated — delete them:\n  " +
-            string.Join("\n  ", stale));
-    }
-
-    [Fact(Skip = "Turns on in the final consolidation task (bevel-uat.5) — until then it lists every " +
-                 "not-yet-migrated declaration, which is noise rather than signal.")]
     public void Every_dll_import_names_a_frameworks_constant()
     {
         var literals = Declarations()

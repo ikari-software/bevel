@@ -18,6 +18,8 @@ internal static class Frameworks
     public const string CoreGraphics = Sys + "CoreGraphics.framework/CoreGraphics";
     public const string CoreServices = Sys + "CoreServices.framework/CoreServices";
     public const string ImageIO = Sys + "ImageIO.framework/ImageIO";
+    /// <summary>dlopen-only (LoginItemRegistrar); no DllImport binds it directly.</summary>
+    public const string ServiceManagement = Sys + "ServiceManagement.framework/ServiceManagement";
 
     public const string LibSystem = "/usr/lib/libSystem.dylib";
     public const string ObjC = "/usr/lib/libobjc.dylib";

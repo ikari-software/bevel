@@ -250,8 +250,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
 
     // ── CoreFoundation glue ─────────────────────────────────────────────
 
-    private const string CoreFoundation =
-        "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+    private const string CoreFoundation = Frameworks.CoreFoundation;
 
     private const uint kCFStringEncodingUTF8 = 0x08000100;
     private const nint kCFURLPOSIXPathStyle = 0;

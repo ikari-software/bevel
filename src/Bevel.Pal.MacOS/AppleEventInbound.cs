@@ -34,7 +34,7 @@ public static unsafe partial class AppleEventInbound
     /// <summary>Wired by the app. Invoked on the AE dispatch thread (the UI thread under Avalonia).</summary>
     public static Action<AeRequest>? Handler;
 
-    private const string Obj = "/usr/lib/libobjc.dylib";
+    private const string Obj = Frameworks.ObjC;
     [DllImport(Obj)] static extern IntPtr objc_allocateClassPair(IntPtr superclass, string name, nint extraBytes);
     [DllImport(Obj)] static extern void objc_registerClassPair(IntPtr cls);
     [DllImport(Obj)] static extern void objc_disposeClassPair(IntPtr cls);
