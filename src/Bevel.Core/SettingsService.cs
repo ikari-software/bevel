@@ -314,6 +314,51 @@ public sealed class SettingsService : ISettingsService, IDisposable
         return (s._settings, new Dictionary<string, ThemeOverrides>(s._themeOverrides));
     }
 
+    /// <summary>
+    /// <see cref="ProjectBlob"/> that REFUSES a blob it cannot parse instead of projecting defaults from
+    /// it (bevel-lej1). A peer applies whatever the core pushes as the user's real settings — and the
+    /// permissive <see cref="ParseRawOrDefault"/> turns an empty, torn, or otherwise malformed blob into an
+    /// all-defaults model, which a peer would then apply as though the user had switched back to the
+    /// Win2000 skin, one row, no overrides. A defaulted read must never masquerade as real data on a live
+    /// surface: this returns false (nothing projected) for null / blank / non-object / malformed input, and
+    /// the caller keeps what it has. A legitimately empty <c>{}</c> blob (a fresh install) still projects.
+    /// </summary>
+    public static bool TryProjectBlob(
+        string? json,
+        out BevelSettings settings,
+        out IReadOnlyDictionary<string, ThemeOverrides> overrides)
+    {
+        if (!TryParseRaw(json, out var raw))
+        {
+            settings = null!;
+            overrides = null!;
+            return false;
+        }
+        var s = new SettingsService(ProjectionOnlyDir); // never opened — projection is pure in-memory
+        s._raw = raw;
+        s.MigrateRaw();
+        s.ApplyRaw();
+        settings = s._settings;
+        overrides = new Dictionary<string, ThemeOverrides>(s._themeOverrides);
+        return true;
+    }
+
+    /// <summary>True when two canonical blobs carry the SAME settings — the same top-level keys with
+    /// structurally equal values (<see cref="JsonElement.DeepEquals"/>, so whitespace / indentation inside
+    /// a nested <c>theme:*</c> object does not count; <see cref="ComputeMergePatch"/>'s raw-text rule would
+    /// over-report those as changes). A peer compares its on-disk cache (re-serialised, so never
+    /// byte-identical) to the core's first live snapshot with this, and raises <c>Changed</c> only when
+    /// they actually differ. Either side failing to parse is "not equivalent".</summary>
+    public static bool BlobsEquivalent(string? a, string? b)
+    {
+        if (!TryParseRaw(a, out var ra) || !TryParseRaw(b, out var rb)) return false;
+        if (ra.Count != rb.Count) return false;
+        foreach (var (key, value) in ra)
+            if (!rb.TryGetValue(key, out var other) || !JsonElement.DeepEquals(value, other))
+                return false;
+        return true;
+    }
+
     /// <summary>Serialize a typed model + per-theme overrides to the canonical pruned blob — reusing the
     /// exact <see cref="SerializeRaw"/> the persist path uses (no DB, no duplicated serialization).</summary>
     public static string SerializeBlob(BevelSettings settings, IReadOnlyDictionary<string, ThemeOverrides> overrides)
@@ -566,16 +611,26 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// every process at boot; and out of the 750 ms poll on a peer's bad write (ce-review: reliability
     /// + testing). Degrading to defaults matches the "missing file yields defaults" contract.</summary>
     private static Dictionary<string, JsonElement> ParseRawOrDefault(string? json)
+        => TryParseRaw(json, out var raw) ? raw : new Dictionary<string, JsonElement>();
+
+    /// <summary>The strict parse under <see cref="ParseRawOrDefault"/>: true with the raw key→element bag
+    /// only when <paramref name="json"/> is a well-formed JSON OBJECT. Null / blank / malformed / a
+    /// non-object document all return false — the caller decides whether that means "defaults" (the
+    /// store's missing-file contract) or "refuse" (a peer applying a live snapshot, bevel-lej1).</summary>
+    internal static bool TryParseRaw(string? json, out Dictionary<string, JsonElement> raw)
     {
-        if (string.IsNullOrEmpty(json)) return new Dictionary<string, JsonElement>();
+        raw = null!;
+        if (string.IsNullOrWhiteSpace(json)) return false;
         try
         {
-            return JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement)
-                   ?? new Dictionary<string, JsonElement>();
+            var parsed = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.DictionaryStringJsonElement);
+            if (parsed is null) return false;
+            raw = parsed;
+            return true;
         }
         catch (JsonException)
         {
-            return new Dictionary<string, JsonElement>();
+            return false;
         }
     }
 

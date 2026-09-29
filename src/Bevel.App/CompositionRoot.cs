@@ -39,6 +39,29 @@ public static class CompositionRoot
         services.AddHostedService<Updates.UpdateCheckService>();
     }
 
+    /// <summary>Settings for a PEER role — Taskbar / Explorer / Desktop (core-owns-settings, bevel-6nve):
+    /// reads and writes flow through the shell core so the peer never opens settings.db. Three pieces:
+    /// <list type="bullet">
+    ///   <item>Its OWN shell-core client, keyed <c>"settings"</c>, NOT the shared window/app/tray client the
+    ///     taskbar also has: <c>RemoteSettingsService</c> connects during startup <c>LoadAsync</c>, and sharing
+    ///     the tray client would make that early connect consume the core's on-connect TraySnapshot before
+    ///     the tray adapter subscribes — leaving the split taskbar's tray empty (the tray has no reconcile
+    ///     backstop to re-derive it). A separate client keeps each connection's on-connect snapshot flowing
+    ///     to its own subscriber. Explorer / Desktop have no other client at all (their window/app/tray stay
+    ///     direct-PAL), so for them this IS the only link to the core.</item>
+    ///   <item>The on-disk snapshot cache (bevel-7s9n) the peer paints its FIRST frame from, with zero IPC,
+    ///     and writes every applied snapshot through to. Rooted at the real config dir: this is the one
+    ///     place a peer touches <c>~/.config/bevel</c>, and it is a cache of the core's state, not a store.</item>
+    ///   <item>The remote service itself, which pulls the keyed client via <c>[FromKeyedServices("settings")]</c>.</item>
+    /// </list>
+    /// DI owns the client's disposal.</summary>
+    private static void AddSettingsPeer(IServiceCollection services)
+    {
+        services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
+        services.AddSingleton(_ => new SettingsSnapshotCache(BevelConfigDir.Path));
+        services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+    }
+
     // Shared icon-pool geometry (bevel-gww.6). Co-located with the shell-core runtime dir so a
     // supervisor cleaning that dir clears the pool too. 512 slots × up to 96×96 BGRA (covers 48pt@2x
     // Retina) ≈ 19 MB, sparse: only pages for actually-published icons ever become resident.
@@ -142,16 +165,9 @@ public static class CompositionRoot
             // The split taskbar mirrors the tray via the shell core (bevel-m3.1.1): the core owns the
             // real TrayService stream and pushes items here, exactly like windows.
             services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
-            // Settings peer (core-owns-settings, bevel-6nve): reads/writes flow through the core so the
-            // taskbar never opens settings.db. It gets its OWN core client (keyed "settings"), NOT the
-            // shared window/app/tray client above: RemoteSettingsService connects during startup LoadAsync,
-            // and sharing the tray client would make that early connect consume the core's on-connect
-            // TraySnapshot before the tray adapter subscribes — leaving the split taskbar's tray empty (the
-            // tray has no reconcile backstop to re-derive it). A separate client keeps each connection's
-            // on-connect snapshot flowing to its own subscriber. RemoteSettingsService pulls the keyed
-            // client via [FromKeyedServices("settings")]; DI owns both clients' disposal.
-            services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
-            services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+            // Settings peer: its own keyed "settings" client (never the shared tray client above — see
+            // AddSettingsPeer for why) + the first-paint snapshot cache + the remote service.
+            AddSettingsPeer(services);
         }
         else
         {
@@ -175,12 +191,10 @@ public static class CompositionRoot
             }
             else
             {
-                // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL (in-process).
-                // Give them a settings-ONLY shell-core client (keyed "settings", the one RemoteSettingsService
-                // pulls via [FromKeyedServices]) so ONLY the core opens the DB; their window manager / app
-                // environment / tray above are unaffected (core-owns-settings, bevel-6nve).
-                services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
-                services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+                // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL (in-process):
+                // a settings-ONLY shell-core client so ONLY the core opens the DB; their window manager /
+                // app environment / tray above are unaffected (core-owns-settings, bevel-6nve).
+                AddSettingsPeer(services);
             }
         }
 
@@ -239,9 +253,9 @@ public static class CompositionRoot
             services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
             services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
             services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
-            // Settings peer + dedicated keyed "settings" client (bevel-6nve), same rationale as macOS.
-            services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
-            services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+            // Settings peer + dedicated keyed "settings" client + first-paint cache (bevel-6nve / 7s9n),
+            // same rationale as macOS.
+            AddSettingsPeer(services);
         }
         else
         {
@@ -261,8 +275,7 @@ public static class CompositionRoot
             else
             {
                 // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL.
-                services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
-                services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
+                AddSettingsPeer(services);
             }
         }
 
