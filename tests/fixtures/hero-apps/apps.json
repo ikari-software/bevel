@@ -1,0 +1,26 @@
+[
+  {
+    "AppId": "/Applications/Safari.app",
+    "DisplayName": "Safari",
+    "Subtitle": "Productivity",
+    "Icon": "Safari.png"
+  },
+  {
+    "AppId": "/System/Applications/Utilities/Terminal.app",
+    "DisplayName": "Terminal",
+    "Subtitle": "Utilities",
+    "Icon": "Terminal.png"
+  },
+  {
+    "AppId": "/System/Applications/Preview.app",
+    "DisplayName": "Preview",
+    "Subtitle": "Productivity",
+    "Icon": "Preview.png"
+  },
+  {
+    "AppId": "/System/Applications/Calculator.app",
+    "DisplayName": "Calculator",
+    "Subtitle": null,
+    "Icon": "Calculator.png"
+  }
+]

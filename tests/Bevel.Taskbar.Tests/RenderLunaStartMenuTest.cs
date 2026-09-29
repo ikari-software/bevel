@@ -27,12 +27,12 @@ public class RenderLunaStartMenuTest
         {
             Bevel.UI.ThemeService.Apply("luna");
 
-            var appEnv = new StubAppEnvironment(
-                new InstalledApp("com.files", "Bevel Files", null, "File manager"),
-                new InstalledApp("com.term", "Terminal", null, "Developer Tools"),
-                new InstalledApp("com.paint", "Paint", null),
-                new InstalledApp("com.web", "Web", null));
-            using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
+            // Real apps with their real icons, from the committed fixture. This used to be four stub
+            // entries and a NULL icon provider, so every program drew the shell's "unknown app" plate —
+            // four identical grey squares in the landing page's hero, under a line promising the frame
+            // was captured straight from Bevel. See HeroApps.
+            var appEnv = new HeroAppEnvironment();
+            using var model = new ShellModel(null, appEnv, new HeroIconProvider(), usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
             for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
@@ -75,7 +75,12 @@ public class RenderLunaStartMenuTest
             {
                 Dispatcher.UIThread.RunJobs();
                 frame = window.CaptureRenderedFrame();
-                if (frame is not null && frame.PixelSize.Width >= 340) break;
+                // Width alone is not settled: icons load ASYNCHRONOUSLY, so a frame can be full width
+                // with the program rows still drawing the "unknown app" plate. Capturing there made the
+                // hero's bytes depend on how fast the decode happened to be, and the drift check caught
+                // it. Wait for every program to actually have its icon.
+                var iconsIn = model.Programs.Count > 0 && model.Programs.All(p => p.IconSource is not null);
+                if (frame is not null && frame.PixelSize.Width >= 340 && iconsIn) break;
                 await Task.Delay(10);
             }
 

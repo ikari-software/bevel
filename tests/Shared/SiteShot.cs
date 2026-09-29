@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -42,8 +44,7 @@ public static class SiteShot
     /// </summary>
     public static PixelSize Save(Window window, string path, double scale = Scale)
     {
-        var logical = window.CaptureRenderedFrame()?.PixelSize
-                      ?? throw new InvalidOperationException($"nothing rendered for {path}");
+        var logical = WaitForStableFrame(window, path);
 
         using var bitmap = new RenderTargetBitmap(
             new PixelSize((int)(logical.Width * scale), (int)(logical.Height * scale)),
@@ -51,5 +52,42 @@ public static class SiteShot
         bitmap.Render(window);
         bitmap.Save(path);
         return logical;
+    }
+
+    /// <summary>
+    /// Polls until two consecutive captures are byte-identical, and returns the settled logical size.
+    ///
+    /// A shot captured mid-transition is a shot whose bytes depend on timing, and the site's drift check
+    /// compares bytes — so it reports a stale screenshot on a run where nothing changed, and everyone
+    /// learns to ignore it. The Luna task button's hover gradient was doing exactly that: same content,
+    /// slightly different highlight from one run to the next.
+    ///
+    /// Stability is checked on the RENDERED FRAME rather than on layout state, because that is what gets
+    /// written to disk — the same reason the start menu's settle loop polls the frame, not Bounds.
+    /// </summary>
+    private static PixelSize WaitForStableFrame(Window window, string path)
+    {
+        byte[]? previous = null;
+        var size = default(PixelSize);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var frame = window.CaptureRenderedFrame();
+            if (frame is not null)
+            {
+                size = frame.PixelSize;
+                using var buffer = new MemoryStream();
+                frame.Save(buffer);
+                var bytes = buffer.ToArray();
+                if (previous is not null && bytes.AsSpan().SequenceEqual(previous)) return size;
+                previous = bytes;
+            }
+            Thread.Sleep(15);
+        }
+
+        if (size != default) return size;   // never settled, but something rendered — save it and move on
+        throw new InvalidOperationException($"nothing rendered for {path}");
     }
 }
