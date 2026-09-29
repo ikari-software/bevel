@@ -37,17 +37,15 @@
                      AutomationProperties.Name="Address"
                      KeyDown="OnAddressKeyDown" />
 
-            <!-- Folder icon: BOUND to the list glyph's geometry, not a transcription of it. This used
-                 to carry its own copy of both paths, so correcting the back panel's shape in Glyphs.cs
-                 left this one still drawing a rectangle behind a trapezoid. -->
-            <Canvas Width="16" Height="16"
-                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                    Margin="4,0,0,0" IsHitTestVisible="False">
-                <shapes:Path Data="{x:Static ui:Glyphs.FolderBackGeometry}"
-                             Fill="#F0B84A" Stroke="#9C6B15" StrokeThickness="0.5" />
-                <shapes:Path Data="{x:Static ui:Glyphs.FolderFrontGeometry}"
-                             Fill="#FFD064" Stroke="#9C6B15" StrokeThickness="0.5" />
-            </Canvas>
+            <!-- Folder icon: THE list glyph, hosted — not a transcription of it. This used to carry
+                 its own copy of both paths (so correcting the back panel's shape in Glyphs.cs left it
+                 drawing a rectangle behind a trapezoid, c98431d), then bound the geometry but kept
+                 three hex literals for the fills (so it stayed the same gold under every skin while
+                 the list's folders recoloured, bevel-i9iu). GlyphIcon builds the same icon from the
+                 same token brushes and rebuilds it whenever a theme/scheme/variant switch drops them. -->
+            <ui:GlyphIcon Glyph="folder" Size="16"
+                          HorizontalAlignment="Left" VerticalAlignment="Center"
+                          Margin="4,0,0,0" IsHitTestVisible="False" />
 
             <!-- Dropdown chevron (history dropdown wired later) -->
             <shapes:Path HorizontalAlignment="Right" VerticalAlignment="Center"
