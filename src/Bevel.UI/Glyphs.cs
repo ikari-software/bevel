@@ -233,8 +233,26 @@ public static class Glyphs
     static Avalonia.Controls.Shapes.Path Vec(string data, IBrush? fill, IBrush? stroke = null, double sw = 0.5) =>
         new() { Data = ParseGeometry(data), Fill = fill, Stroke = stroke, StrokeThickness = sw };
 
-    public const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 V12.4 H1.5 Z";
+    // The back panel TAPERS to meet the front flap's bottom corners; it is not a rectangle behind a
+    // trapezoid. Drawn square (V12.4 H1.5) its vertical sides crossed outside the flap's slant from
+    // y~8.7 downwards — 0.81 units of bare back protruding on the right by the bottom edge, 0.16 on the
+    // left, plus two hard corners below it. Shared by every folder-bearing glyph (Folder, Programs,
+    // Documents, Search, the stack), so the shape is fixed once here rather than per icon.
+    //   back top-right (14.7,6.4) -> flap's bottom-right shoulder (13.85,12.6) -> left shoulder (1.67,12.6)
+    // Both new edges sit inside the flap's own edges over their whole length, so nothing pokes out at
+    // any height, and the two silhouettes meet exactly at the bottom.
+    public const string FolderBackData = "M1.5,4.3 H6 l1.4,1.4 H14 a0.7,0.7 0 0 1 0.7,0.7 L13.85,12.6 H1.67 Z";
     public const string FolderFrontData = "M1.5,6.9 H15.1 l-1.25,5.7 a0.7,0.7 0 0 1 -0.68,0.55 H2.35 a0.7,0.7 0 0 1 -0.68,-0.55 Z";
+    /// <summary>
+    /// The folder paths as parsed geometry, so XAML can bind the ONE definition instead of copying the
+    /// path data. AddressBar.axaml kept its own transcription of both paths under the comment "matches
+    /// the list glyph" — which stopped being true the moment the back panel's shape was corrected here.
+    /// </summary>
+    public static Geometry FolderBackGeometry => ParseGeometry(FolderBackData);
+
+    /// <inheritdoc cref="FolderBackGeometry"/>
+    public static Geometry FolderFrontGeometry => ParseGeometry(FolderFrontData);
+
     private const string DocPageData = "M3.4,1.5 H10 L12.6,4.1 V13.9 a0.4,0.4 0 0 1 -0.4,0.4 H3.4 a0.4,0.4 0 0 1 -0.4,-0.4 V1.9 a0.4,0.4 0 0 1 0.4,-0.4 Z";
 
     /// <summary>A circle at top-left (x,y), diameter d — drawn as an absolute-coordinate Path, NOT an
