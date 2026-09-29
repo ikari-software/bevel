@@ -190,6 +190,34 @@ jobs:
             exit 1
           fi
 
+  # ── Landing-page screenshot drift check ─────────────────────────────────────
+  #
+  #  site/shots/ is build OUTPUT that happens to be committed, and committed output rots.
+  #  Three shots had: theme-win2000.png was a one-off hand-run with no test behind it,
+  #  infopane-win9x.png was harvested while text still rendered aliased, and
+  #  startmenu-win2000.png predated the "Show Desktop" row. None of it was visible in review.
+  #
+  #  Runs on macOS because glyph rasterisation is platform-specific: a shot harvested on
+  #  Linux differs byte-for-byte from the committed one even when nothing is wrong.
+
+  site-shots-drift:
+    name: Landing page screenshot drift (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Re-harvest and compare
+        run: |
+          if ! ./site/harvest-shots.sh --check; then
+            echo "::error::site/shots/ is stale, or index.html declares the wrong size for a shot. Run './site/harvest-shots.sh' and commit the result."
+            exit 1
+          fi
+
   # ── Proto codegen drift check (bevel-vgg) ───────────────────────────────────
   #
   #  Regenerates the Swift protobuf output from proto/bevel.helper.v1.proto and fails
