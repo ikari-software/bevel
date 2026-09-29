@@ -237,6 +237,19 @@ internal static class Program
             [BuildStamp.EnvVar] = BuildStamp.Current(),
         };
 
+        // The launcher is ALSO a spawn parent (bevel-t48y: Filer windows it opens via SpawnFiler inherit
+        // this process's environment, NOT the per-child childEnv injection). Export the shell-control
+        // pairs into our OWN env so launcher-spawned children get everything a supervised child gets —
+        // without this, a launcher-spawned Filer found no core token (the supervised flow never writes
+        // the core.token file) and died after ReadNonce's 5s poll (the pid-46808 SIGABRT). Idempotent for
+        // the supervised children: CreateRoleStartInfo re-applies the same values.
+        foreach (var (key, value) in childEnv)
+            Environment.SetEnvironmentVariable(key, value);
+        // Same for the taskbar↔Filer rendezvous: the LAUNCHER now spawns Filers, so IT must publish the
+        // shared dir + nonce the taskbar dials with (PublishForChildren is idempotent — the taskbar
+        // reuses the inherited pair instead of minting its own, so both parents agree).
+        ShellCore.FilerControlEndpoint.PublishForChildren();
+
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
         // first, then the UI surfaces — desktop behind, taskbar in front (the full shell the user
         // expects). Filer stays on-demand (a window the user opens), not a supervised surface.
