@@ -43,8 +43,11 @@ public sealed class FileManagerWindowFactory
     /// a fresh operation service + controller, navigates it to <paramref name="startDirectory"/>,
     /// shows it, and returns it. Does NOT set <c>desktop.MainWindow</c> — callers decide that
     /// (only the first window created at app startup should become the main window).
+    /// <paramref name="show"/> false is the PARK variant (bevel-t48y): the window is built but
+    /// neither shown nor registered — <see cref="ParkedFilerWindowHost"/> does both on the
+    /// handoff, so a hidden parked window never shows up in the automation aggregation.
     /// </summary>
-    public FileManagerWindow Create(VfsPath startDirectory)
+    public FileManagerWindow Create(VfsPath startDirectory, bool show = true)
     {
         // Fresh per window (bevel New-Window): the conflict handler is stateless so the
         // singleton is safe to share, but the operation service owns a per-instance undo
@@ -66,9 +69,12 @@ public sealed class FileManagerWindowFactory
         // SetController and then again here, wasting a cold Home enumeration on the fresh window.
         window.SetController(controller, startDirectory);
 
-        window.Show();
-        // Track it so the automation surface (IShellSurface / M4-B) can address and enumerate it.
-        _registry.Register(window);
+        if (show)
+        {
+            window.Show();
+            // Track it so the automation surface (IShellSurface / M4-B) can address and enumerate it.
+            _registry.Register(window);
+        }
         return window;
     }
 }

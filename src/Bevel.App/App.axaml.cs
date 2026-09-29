@@ -482,7 +482,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Filer, ex.ToString());
+            RestartDiag.Log($"filer surface failed to start: {ex}"); // supervisor-only liveness: no heartbeat write (bevel-t48y)
             throw;
         }
     }
@@ -491,22 +491,30 @@ public partial class App : Application
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
         var factory = services.GetRequiredService<FileManagerWindowFactory>();
+        var cmdArgs = Environment.GetCommandLineArgs();
+        // Parked pre-warm (bevel-t48y): a --park filer builds its window HIDDEN and hands it to the
+        // parked host — the launcher's Show dial later navigates it to the requested path and shows
+        // it, turning an open into a frame instead of a process cold start. The open/search/select
+        // argv below is the COLD path (a supervised spawn or the unsupervised fallback).
+        var parked = cmdArgs.Any(a => a.Equals("--park", StringComparison.OrdinalIgnoreCase));
         // A spawned filer process (Start-menu "places") passes the folder to open via --open-path;
         // otherwise land on the user's home.
-        var openArg = Environment.GetCommandLineArgs()
+        var openArg = cmdArgs
             .FirstOrDefault(a => a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase));
         var startPath = !string.IsNullOrEmpty(openArg)
             ? new VfsPath("file", openArg.Substring("--open-path=".Length))
             : new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        var fm = factory.Create(startPath);
+        var fm = factory.Create(startPath, show: !parked);
+        if (parked)
+            services.GetRequiredService<ParkedFilerWindowHost>().SetWindow(fm);
         // Spawned via Start ▸ Search → open straight into Find mode (bevel-x6pv).
-        if (Environment.GetCommandLineArgs().Any(a => a.Equals("--search", StringComparison.OrdinalIgnoreCase)))
+        if (!parked && cmdArgs.Any(a => a.Equals("--search", StringComparison.OrdinalIgnoreCase)))
             fm.BeginSearch();
         // Spawned by the automation `reveal` verb (bevel-e7a7): --select=<item> queues a selection that
         // the FileManagerWindow applies once the target folder's listing finishes (SelectAfterLoad) —
         // the same model→view highlight the in-process reveal uses. Split-mode `reveal` is thus a plain
         // Filer spawn: no live in-process window required, no cross-process IPC.
-        var selectArg = Environment.GetCommandLineArgs()
+        var selectArg = cmdArgs
             .FirstOrDefault(a => a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(selectArg))
             fm.SelectAfterLoad(new[] { new VfsPath("file", selectArg.Substring("--select=".Length)) });
@@ -521,9 +529,8 @@ public partial class App : Application
         // wired in the supervision phase; in-process spawning stays correct within the filer
         // process.) New Tab (Ctrl+T) is out of scope.
         FileManagerWindow.NewWindowRequested += path => factory.Create(path);
-        var connected = services.GetService<Bevel.Pal.Abstractions.IShellConnectionStatus>();
-        Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Filer, connected?.IsConnected ?? true);
-        if (connected is not null)
-            connected.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
+        // No Filer heartbeat writes (bevel-t48y, supervisor-only liveness): N filer instances would
+        // clobber the single ShellRole.Filer slot in RoleHeartbeatStore — the FilerSupervisor reads
+        // exit codes instead, and liveness/diagnostics flow through RestartDiag + per-child stderr.
     }
 }

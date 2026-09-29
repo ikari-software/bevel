@@ -364,6 +364,13 @@ internal static class Program
         });
         control.Start();
 
+        // Parked pre-warm (bevel-t48y): ONE hidden --park filer so the user's first "open folder"
+        // is a Show dial — a frame — instead of a process cold start. Spawned AFTER core+taskbar
+        // are ready and the control server is up (off the first-paint critical path); a failure is
+        // logged, never fatal — opens then take the cold-spawn path until the monitor re-parks.
+        if (!filerSupervisor.ParkAsync().GetAwaiter().GetResult())
+            RestartDiag.Log("launcher: initial park spawn failed — opens cold-spawn until re-park");
+
         // Cancel the default signal action so the ordered teardown below actually runs — without this,
         // .NET terminates the launcher before it can reap its children, orphaning the whole shell.
         // RequestStop() latches the supervisor closed SYNCHRONOUSLY here so it can't respawn a child that

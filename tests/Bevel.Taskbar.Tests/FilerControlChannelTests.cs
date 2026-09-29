@@ -245,12 +245,94 @@ public sealed class FilerControlChannelTests : IDisposable
 
     /// <summary>A minimal stand-in for a Filer's in-process surface: fixed windows + per-window
     /// selection, a settable focus tick + front id, and a record of the last forwarded select.</summary>
+    // ── Show: the launcher's park handoff reaches a parked Filer (bevel-t48y) ──────────────────
+
+    [Fact]
+    public async Task Show_by_pid_round_trips_the_handoff_request()
+    {
+        var parked = StartFiler(2001);
+        var client = Client();
+
+        Assert.True(await client.ShowByPidAsync(2001, "/docs", search: true, selectPath: "/docs/x.txt", ct: Ct));
+
+        var shown = parked.Surface.LastShow;
+        Assert.NotNull(shown);
+        Assert.Equal("/docs", shown.Value.OpenPath);
+        Assert.True(shown.Value.Search);
+        Assert.Equal("/docs/x.txt", shown.Value.SelectPath);
+    }
+
+    [Fact]
+    public async Task Show_by_pid_to_a_dead_filer_returns_false()
+    {
+        var client = Client(); // nothing bound for 2999 — a crashed/never-spawned Filer
+        Assert.False(await client.ShowByPidAsync(2999, "/docs", ct: Ct));
+    }
+
+    /// <summary>A stub <see cref="IShellSurface"/> — the Show branch must never touch it (Show is the
+    /// parked-window host's job, not the automation surface's).</summary>
+    private sealed class StubSurface : IShellSurface
+    {
+        public Task<WindowRef> RevealAsync(IReadOnlyList<VfsPath> items, bool newWindow, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WindowRef> OpenAsync(VfsPath container, ViewMode? view, CancellationToken ct) => throw new NotSupportedException();
+        public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<WindowRef>> QueryWindowsAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<VfsPath>> QuerySelectionAsync(WindowRef? window, CancellationToken ct) => throw new NotSupportedException();
+        public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeParkedHost : IParkedFilerWindowHost
+    {
+        public (string OpenPath, bool Search, string? SelectPath)? LastShow;
+        public bool HasWindow => true;
+        public void Show(string openPath, bool search, string? selectPath) => LastShow = (openPath, search, selectPath);
+    }
+
+    [Fact]
+    public async Task FilerControlServer_show_delegates_to_the_parked_window_host()
+    {
+        var host = new FakeParkedHost();
+        await using var server = new FilerControlServer(new StubSurface(), new FileManagerWindowRegistry(),
+            Path.Combine(_dir, "filer-3001.sock"), _nonce, host);
+        await server.StartAsync(Ct);
+
+        var client = new UdsMessageClient(Path.Combine(_dir, "filer-3001.sock"), _nonce, FilerControlEndpoint.Capability);
+        await client.ConnectAsync(Ct);
+        var raw = await client.RequestAsync(
+            FilerProtocol.Serialize(new FilerRequest(FilerCommandKind.Show, OpenPath: "/docs", Search: true, SelectPath: "/docs/x.txt")), Ct);
+        await client.DisposeAsync();
+
+        var reply = FilerProtocol.Deserialize<FilerReply>(raw);
+        Assert.True(reply.Ok);
+        Assert.Equal(("/docs", true, "/docs/x.txt"), host.LastShow);
+    }
+
+    [Fact]
+    public async Task FilerControlServer_show_without_a_parked_host_fails_cleanly()
+    {
+        // A NON-parked Filer hosts the same server — Show must give a definite failure, never a lie.
+        await using var server = new FilerControlServer(new StubSurface(), new FileManagerWindowRegistry(),
+            Path.Combine(_dir, "filer-3002.sock"), _nonce);
+        await server.StartAsync(Ct);
+
+        var client = new UdsMessageClient(Path.Combine(_dir, "filer-3002.sock"), _nonce, FilerControlEndpoint.Capability);
+        await client.ConnectAsync(Ct);
+        var raw = await client.RequestAsync(
+            FilerProtocol.Serialize(new FilerRequest(FilerCommandKind.Show, OpenPath: "/docs")), Ct);
+        await client.DisposeAsync();
+
+        var reply = FilerProtocol.Deserialize<FilerReply>(raw);
+        Assert.False(reply.Ok);
+        Assert.Contains("park", reply.Error);
+    }
+
     private sealed class FakeSurface
     {
         private readonly Dictionary<int, string[]> _windows;
         public long FocusTicks;
         public int FrontId;
         public (int LocalId, string[] Paths)? LastSelect;
+        public (string OpenPath, bool Search, string? SelectPath)? LastShow;
 
         public FakeSurface((int Id, string[] Selection)[] windows)
         {
@@ -263,6 +345,10 @@ public sealed class FilerControlChannelTests : IDisposable
             FilerCommandKind.QueryWindows => QueryWindows(),
             FilerCommandKind.QuerySelection => QuerySelection(req.LocalWindowId),
             FilerCommandKind.Select => Select(req),
+            // The launcher's park handoff (bevel-t48y): the parked Filer is told to show its hidden
+            // window at the requested path. The fake records the handoff exactly as the real
+            // FilerControlServer would receive it.
+            FilerCommandKind.Show => Show(req),
             _ => FilerReply.Fail("unknown"),
         });
 
@@ -287,6 +373,12 @@ public sealed class FilerControlChannelTests : IDisposable
             var id = req.LocalWindowId ?? FrontId;
             if (!_windows.ContainsKey(id)) return FilerReply.Fail($"window {id} not open");
             LastSelect = (id, (req.Paths ?? Array.Empty<string>()).ToArray());
+            return new FilerReply(Ok: true);
+        }
+
+        private FilerReply Show(FilerRequest req)
+        {
+            LastShow = (req.OpenPath ?? "", req.Search, req.SelectPath);
             return new FilerReply(Ok: true);
         }
     }

@@ -350,7 +350,15 @@ public static class CompositionRoot
         // FileManagerShellSurface; the Taskbar process resolves the client that discovers + dials those
         // Filers. Both reuse the shell-core UDS transport + HMAC-nonce auth (FilerControlEndpoint).
         if (role is ShellRole.Filer)
+        {
             services.AddHostedService<FilerControlServer>();
+            // Parked pre-warm (bevel-t48y): the --park Filer's hidden window waits on this host for
+            // the launcher's Show dial. Non-Filer roles never register it (the server isn't hosted).
+            // The concrete class is registered too — App.CreateFilerSurfaceCore hands the built window
+            // to the concrete host, while FilerControlServer reads it through the interface.
+            services.AddSingleton<ParkedFilerWindowHost>();
+            services.AddSingleton<IParkedFilerWindowHost>(sp => sp.GetRequiredService<ParkedFilerWindowHost>());
+        }
         else if (role is ShellRole.Taskbar)
             services.AddSingleton(_ => new TaskbarFilerControlClient(
                 ShellCore.FilerControlEndpoint.Dir,

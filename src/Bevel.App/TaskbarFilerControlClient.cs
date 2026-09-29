@@ -115,6 +115,19 @@ public sealed class TaskbarFilerControlClient
             throw new AutomationException(reply?.Error ?? $"window id {window.Id} is no longer available.");
     }
 
+    /// <summary>The park handoff (bevel-t48y): dials ONE Filer by its pid — the launcher's
+    /// FilerSupervisor uses this to tell a parked Filer to show its window at the path. False when
+    /// the Filer is gone (its stale socket is pruned like any crashed Filer) or NACKs the show.</summary>
+    public async Task<bool> ShowByPidAsync(int pid, string openPath, bool search = false,
+        string? selectPath = null, CancellationToken ct = default)
+    {
+        var reply = await DialByPidAsync(
+            pid,
+            new FilerRequest(FilerCommandKind.Show, OpenPath: openPath, Search: search, SelectPath: selectPath),
+            ct).ConfigureAwait(false);
+        return reply is { Ok: true };
+    }
+
     // ── Dialling ─────────────────────────────────────────────────────────────────────────────────
 
     private sealed record LiveFiler(int Pid, int RegId, FilerReply Reply);

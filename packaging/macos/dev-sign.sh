@@ -37,6 +37,14 @@ fi
 # designated requirement => grant ONCE.
 APP_BUNDLE="dist/Bevel.app"
 if [ -d "$APP_BUNDLE" ]; then
+	# Strip stale seals first: a prior ad-hoc/failed signature on a nested Mach-O (observed on the
+	# ~100MB single-file bevelctl) can leave "signature indicates resources must be present" behind,
+	# and --force --deep then fails REPEATEDLY (codesign daemon) instead of overwriting it. Removing
+	# the broken signature makes the deep sign deterministic; ad-hoc output from build-app.sh is
+	# re-signed from scratch anyway, so nothing is lost.
+	for BIN in "$APP_BUNDLE/Contents/MacOS/Bevel" "$APP_BUNDLE/Contents/MacOS/bevelctl" "$APP_BUNDLE/Contents/MacOS/BevelHelper"; do
+		if [ -f "$BIN" ]; then codesign --remove-signature "$BIN" 2>/dev/null || true; fi
+	done
 	codesign --force --deep --sign "$IDENTITY" --identifier "pl.ikari.bevel" "$APP_BUNDLE"
 	codesign --force --sign "$IDENTITY" --identifier "pl.ikari.bevel.helper" "$APP_BUNDLE/Contents/MacOS/BevelHelper"
 	codesign --force --sign "$IDENTITY" --identifier "pl.ikari.bevel" "$APP_BUNDLE"

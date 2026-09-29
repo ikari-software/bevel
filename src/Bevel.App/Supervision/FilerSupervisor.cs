@@ -1,10 +1,13 @@
 using System.Collections.Concurrent;
+using Bevel.App.ShellCore;
 
 namespace Bevel.App.Supervision;
 
 /// <summary>What a supervised Filer is opened with — and what it is RESPAWNED with (crash policy:
-/// restart at last-open-path, never with window state). Immutable per logical instance.</summary>
-internal sealed record FilerSpawnRequest(string OpenPath, bool Search, string? SelectPath);
+/// restart at last-open-path, never with window state). Immutable per logical instance. A PARKED
+/// spawn (<see cref="Park"/>) carries no path: the window is built hidden at Home and is told its
+/// path only by the <c>Show</c> handoff.</summary>
+internal sealed record FilerSpawnRequest(string? OpenPath, bool Search, string? SelectPath, bool Park = false);
 
 /// <summary>
 /// One supervised Filer process. The supervisor's test seam (the <c>IRoleProcess</c> analogue):
@@ -17,6 +20,10 @@ internal interface IFilerProcess : IDisposable
 {
     /// <summary>True while the process is running.</summary>
     bool IsAlive { get; }
+
+    /// <summary>This child's OS pid — the <c>filer-&lt;pid&gt;.sock</c> the launcher dials for the
+    /// parked <c>Show</c> handoff. 0 before the first <see cref="Start"/>.</summary>
+    int Pid { get; }
 
     /// <summary>The child's exit code once it has exited, null while alive (or if unknown —
     /// a hard-killed child leaves no readable code and reads as a crash).</summary>
@@ -60,7 +67,7 @@ internal sealed class FilerSupervisor : IAsyncDisposable
     /// new open or RestartAll cycle.</summary>
     private sealed class Instance
     {
-        public required FilerSpawnRequest Request { get; init; }
+        public required FilerSpawnRequest Request { get; set; } // mutable: the park claim flips it to the open request
         public required long Key { get; init; }
         public required IFilerProcess Process { get; set; }
         // Per-instance crash backoff in POLL TICKS (clock-free, like RoleProcessSupervisor):
@@ -73,6 +80,7 @@ internal sealed class FilerSupervisor : IAsyncDisposable
     private readonly IReadOnlyList<string> _launcherArgs;
     private readonly IReadOnlyDictionary<string, string> _childEnv;
     private readonly Func<FilerSpawnRequest, long, IFilerProcess> _factory;
+    private readonly Func<int, string, bool, string?, CancellationToken, Task<bool>> _showSender;
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _maxBackoff;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
@@ -91,11 +99,15 @@ internal sealed class FilerSupervisor : IAsyncDisposable
         TimeSpan? pollInterval = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
         TimeSpan? maxBackoff = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<int, string, bool, string?, CancellationToken, Task<bool>>? showSender = null)
     {
         _launcherArgs = launcherArgs;
         _childEnv = childEnv;
         _factory = factory ?? ProductionFactory;
+        // The parked-handoff dial: (pid, path, search, select) → did the parked Filer accept the Show?
+        // Injected in tests; in production a bounded FilerControlChannel dial to filer-<pid>.sock.
+        _showSender = showSender ?? ProductionShowSender;
         _pollInterval = pollInterval ?? TimeSpan.FromSeconds(1);
         _delay = delay ?? Task.Delay;
         _maxBackoff = maxBackoff ?? TimeSpan.FromSeconds(30);
@@ -120,26 +132,104 @@ internal sealed class FilerSupervisor : IAsyncDisposable
         if (_stopped) return false;
         var request = new FilerSpawnRequest(openPath, search, selectPath);
         await _gate.WaitAsync(ct).ConfigureAwait(false);
+        Instance? claimed = null;
         try
         {
-            var instance = NewInstance(request);
-            try
+            // Parked handoff (bevel-t48y Task 4): a live parked instance is CLAIMED under this lock —
+            // its request flips to the open request — BEFORE the Show dial leaves the gate, so a second
+            // rapid open can never claim (or double-show) the same instance. If the dial then fails,
+            // the claim is reverted below and the park stays parked; the open falls back to a cold spawn.
+            claimed = FindParkedLocked();
+            if (claimed is not null)
             {
-                instance.Process.Start();
+                claimed.Request = request; // last-open-path tracking: the claim IS the open
+                _log?.Invoke($"filer supervisor: handing parked #{claimed.Key} to {openPath}");
             }
-            catch (Exception ex)
+            else
             {
-                instance.Process.Dispose();
-                // Visible failure (bevel-t48y): the old path's one Console.Error line to a
-                // detached shell was the invisible-failure class this supervisor exists to delete.
-                _log?.Invoke($"filer supervisor: spawn failed for {openPath}: {ex.Message}");
-                return false;
+                return ColdSpawnLocked(request);
             }
-            lock (_instances) _instances.Add(instance);
-            _log?.Invoke($"filer supervisor: opened #{instance.Key} at {openPath}");
-            return true;
         }
         finally { _gate.Release(); }
+
+        // Outside the gate: the dial is bounded but must not hold other opens hostage.
+        bool shown;
+        try
+        {
+            shown = await _showSender(claimed!.Process.Pid, openPath, search, selectPath, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"filer supervisor: Show dial to #{claimed.Key} faulted ({ex.Message}) — cold-spawning instead");
+            shown = false;
+        }
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (shown)
+            {
+                _log?.Invoke($"filer supervisor: parked #{claimed.Key} shown at {openPath}");
+                return ParkLockedAsync(); // keep-1: replacement park
+            }
+            // Failed handoff: un-claim. The park instance stays supervised as a park (if it died,
+            // the monitor re-parks it via the crash policy — keep-1 holds either way).
+            claimed.Request = new FilerSpawnRequest(null, false, null, Park: true);
+            _log?.Invoke($"filer supervisor: Show to #{claimed.Key} failed — park retained, cold-spawning");
+            return ColdSpawnLocked(request);
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Spawns one parked pre-warmed Filer (Task 4): a hidden <c>--park</c> child whose window
+    /// is already built, so an open is a Show dial — a frame, not a process cold start. One park at a
+    /// time (keep-1); the open handoff or the crash monitor spawns the replacement.</summary>
+    public async Task<bool> ParkAsync(CancellationToken ct = default)
+    {
+        if (_stopped) return false;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try { return ParkLockedAsync(); }
+        finally { _gate.Release(); }
+    }
+
+    private bool ParkLockedAsync()
+    {
+        if (_stopped) return false;
+        if (FindParkedLocked() is not null) return true; // keep-1: one park, never two
+        var instance = NewInstance(new FilerSpawnRequest(null, false, null, Park: true));
+        try { instance.Process.Start(); }
+        catch (Exception ex)
+        {
+            instance.Process.Dispose();
+            _log?.Invoke($"filer supervisor: park spawn failed: {ex.Message}");
+            return false;
+        }
+        lock (_instances) _instances.Add(instance);
+        _log?.Invoke($"filer supervisor: parked #{instance.Key}");
+        return true;
+    }
+
+    private Instance? FindParkedLocked() =>
+        _instances.FirstOrDefault(i => i.Request.Park && i.Process.IsAlive);
+
+    private bool ColdSpawnLocked(FilerSpawnRequest request)
+    {
+        var instance = NewInstance(request);
+        try
+        {
+            instance.Process.Start();
+        }
+        catch (Exception ex)
+        {
+            instance.Process.Dispose();
+            // Visible failure (bevel-t48y): the old path's one Console.Error line to a
+            // detached shell was the invisible-failure class this supervisor exists to delete.
+            _log?.Invoke($"filer supervisor: spawn failed for {request.OpenPath}: {ex.Message}");
+            return false;
+        }
+        lock (_instances) _instances.Add(instance);
+        _log?.Invoke($"filer supervisor: opened #{instance.Key} at {request.OpenPath}");
+        return true;
     }
 
     /// <summary>Kills and respawns every LIVE filer at its last-open-path — each comes back on the
@@ -230,7 +320,7 @@ internal sealed class FilerSupervisor : IAsyncDisposable
                     if (_stopped) break;
 
                     var code = process.ExitCode;
-                    if (code == 0)
+                    if (code == 0 && !instance.Request.Park)
                     {
                         lock (_instances) _instances.Remove(instance);
                         process.Dispose();
@@ -296,11 +386,29 @@ internal sealed class FilerSupervisor : IAsyncDisposable
         // The supervised spawn path composes children with the SAME builder as core/taskbar/desktop
         // (Task 1's generalized CreateRoleStartInfo) — a DIRECT launcher child for TCC attribution,
         // never /bin/sh/nohup-detached (the attribution breaker, Review Focus #1).
-        var extra = new List<string> { "--open-path=" + request.OpenPath };
-        if (request.Search) extra.Add("--search");
-        if (!string.IsNullOrEmpty(request.SelectPath)) extra.Add("--select=" + request.SelectPath);
+        List<string> extra;
+        if (request.Park)
+        {
+            extra = new List<string> { "--park" };
+        }
+        else
+        {
+            extra = new List<string> { "--open-path=" + request.OpenPath };
+            if (request.Search) extra.Add("--search");
+            if (!string.IsNullOrEmpty(request.SelectPath)) extra.Add("--select=" + request.SelectPath);
+        }
         var startInfo = Program.CreateRoleStartInfo(ShellRole.Filer, _launcherArgs, _childEnv, extra);
         return new FilerProcess(startInfo);
+    }
+
+    /// <summary>The parked-handoff dial: a bounded FilerControlChannel round-trip to the claimed
+    /// park's <c>filer-&lt;pid&gt;.sock</c>. The taskbar's dialer is reused — it is just a client of
+    /// the shared rendezvous, and the launcher published the same dir+nonce at boot.</summary>
+    private static async Task<bool> ProductionShowSender(int pid, string openPath, bool search,
+        string? selectPath, CancellationToken ct)
+    {
+        var client = new TaskbarFilerControlClient(FilerControlEndpoint.Dir, FilerControlEndpoint.ResolveNonce());
+        return await client.ShowByPidAsync(pid, openPath, search, selectPath, ct).ConfigureAwait(false);
     }
 
     /// <summary>Test seam: the processes currently supervised (one per live instance), so tests can

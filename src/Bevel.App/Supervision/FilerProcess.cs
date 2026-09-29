@@ -22,6 +22,10 @@ internal sealed class FilerProcess : IFilerProcess
         _startInfo.RedirectStandardError = true; // the whole point: captured, not luck
     }
 
+    /// <summary>This child's OS pid (0 before the first Start) — the launcher dials
+    /// <c>filer-&lt;pid&gt;.sock</c> for the parked Show handoff.</summary>
+    public int Pid => _process?.Id ?? 0;
+
     /// <summary>Per-child stderr log — one file per pid, next to the restart diag log.</summary>
     public string StderrLogPath => RestartDiag.FilerLogPath(_process?.Id ?? 0);
 

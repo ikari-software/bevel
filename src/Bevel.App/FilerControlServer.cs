@@ -28,23 +28,28 @@ public sealed class FilerControlServer : IHostedService, IAsyncDisposable
 {
     private readonly IShellSurface _surface;
     private readonly FileManagerWindowRegistry _registry;
+    private readonly IParkedFilerWindowHost? _parked;
     private readonly string _socketPath;
     private readonly byte[] _nonce;
     private UdsMessageServer? _server;
 
-    public FilerControlServer(IShellSurface surface, FileManagerWindowRegistry registry)
+    public FilerControlServer(IShellSurface surface, FileManagerWindowRegistry registry,
+        IParkedFilerWindowHost? parked = null)
         : this(surface, registry,
                FilerControlEndpoint.SocketPathForPid(Environment.ProcessId),
-               FilerControlEndpoint.ResolveNonce())
+               FilerControlEndpoint.ResolveNonce(),
+               parked)
     {
     }
 
     /// <summary>Test/explicit-endpoint ctor: bind a specific socket path + nonce (bevel-uldj tests dial a
     /// fake Filer without spawning a process).</summary>
-    public FilerControlServer(IShellSurface surface, FileManagerWindowRegistry registry, string socketPath, byte[] nonce)
+    public FilerControlServer(IShellSurface surface, FileManagerWindowRegistry registry, string socketPath,
+        byte[] nonce, IParkedFilerWindowHost? parked = null)
     {
         _surface = surface;
         _registry = registry;
+        _parked = parked;
         _socketPath = socketPath;
         _nonce = nonce;
     }
@@ -82,12 +87,26 @@ public sealed class FilerControlServer : IHostedService, IAsyncDisposable
                 FilerCommandKind.QueryWindows => await QueryWindowsAsync(ct),
                 FilerCommandKind.QuerySelection => await QuerySelectionAsync(req, ct),
                 FilerCommandKind.Select => await SelectAsync(req, ct),
+                // Park handoff (bevel-t48y): the launcher's FilerSupervisor dials this to turn a
+                // pre-warmed hidden window into the user's open. The window-side work is the host's
+                // (UI-thread marshalled); a NON-parked Filer has no host and answers a definite Fail.
+                FilerCommandKind.Show => ShowParked(req),
                 _ => FilerReply.Fail($"unknown command {req.Kind}"),
             };
         }
         catch (AutomationException ex) { reply = FilerReply.Fail(ex.Message); }
         catch (Exception ex) { reply = FilerReply.Fail(ex.Message); }
         return FilerProtocol.Serialize(reply);
+    }
+
+    private FilerReply ShowParked(FilerRequest req)
+    {
+        if (_parked is null || !_parked.HasWindow)
+            return FilerReply.Fail("not parked — this Filer has no hidden window to show");
+        if (string.IsNullOrEmpty(req.OpenPath))
+            return FilerReply.Fail("show needs an open path");
+        _parked.Show(req.OpenPath, req.Search, req.SelectPath);
+        return new FilerReply(Ok: true);
     }
 
     private async Task<FilerReply> QueryWindowsAsync(CancellationToken ct)

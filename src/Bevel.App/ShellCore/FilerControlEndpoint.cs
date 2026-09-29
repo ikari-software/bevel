@@ -139,6 +139,10 @@ public enum FilerCommandKind
     /// <summary>Set a window's selection. <see cref="FilerRequest.LocalWindowId"/> null = this
     /// Filer's front window.</summary>
     Select,
+    /// <summary>Park handoff (bevel-t48y): the LAUNCHER tells a parked Filer to show its hidden
+    /// window at <see cref="FilerRequest.OpenPath"/> (with Find mode / reveal-select when given).
+    /// Ok=true means the parked window accepted it.</summary>
+    Show,
 }
 
 /// <summary>A taskbar→Filer request. Flat envelope with nullable slots (mirrors
@@ -146,7 +150,13 @@ public enum FilerCommandKind
 public sealed record FilerRequest(
     FilerCommandKind Kind,
     int? LocalWindowId = null,
-    IReadOnlyList<string>? Paths = null);
+    IReadOnlyList<string>? Paths = null,
+    /// <summary>Show only: the path the parked window should navigate to and show at.</summary>
+    string? OpenPath = null,
+    /// <summary>Show only: open straight into Find mode (bevel-x6pv).</summary>
+    bool Search = false,
+    /// <summary>Show only: reveal-select this item once the folder lists (bevel-e7a7).</summary>
+    string? SelectPath = null);
 
 /// <summary>An Filer→taskbar reply. <see cref="Ok"/>=false carries <see cref="Error"/> (surfaced as
 /// an <c>AutomationException</c> on the taskbar side); the query kinds fill the matching slot.</summary>

@@ -35,8 +35,11 @@ public sealed class FilerSupervisorTests
         public volatile bool AliveField;
         public int? ExitCodeValue; // written BEFORE the volatile liveness flip; the monitor reads liveness first
         public bool FailOnStart;
+        public int Pid;
         public int StartCount;
         public int KillCount;
+
+        int IFilerProcess.Pid => Pid;
 
         public bool IsAlive => AliveField;
         public int? ExitCode => AliveField ? null : ExitCodeValue;
@@ -85,6 +88,7 @@ public sealed class FilerSupervisorTests
         {
             lock (Calls) Calls.Add((request, key));
             var made = Next?.Invoke(request) ?? new FakeFilerProcess();
+            made.Pid = 1000 + (int)key; // a process knows its pid only once spawned — key stands in
             lock (Made) Made.Add(made);
             return made;
         }
@@ -223,6 +227,157 @@ public sealed class FilerSupervisorTests
             "at least one respawn attempt");
         await Task.Delay(250); // ~12 polls — hot spinning would make ~12 more attempts
         lock (factory.Calls) Assert.InRange(factory.Calls.Count, 2, 5);
+    }
+
+    // ── park + handoff (bevel-t48y Task 4) ─────────────────────────────────────────────────────
+
+    /// <summary>Records every Show the supervisor sends (pid + open request) and answers on demand —
+    /// the seam the production supervisor fills with a FilerControlChannel dial.</summary>
+    private sealed class FakeShowSender
+    {
+        public readonly List<(int Pid, string OpenPath, bool Search, string? SelectPath)> Sent = new();
+        public Func<int, Task<bool>> Reply = _ => Task.FromResult(true);
+
+        public Task<bool> Send(int pid, string openPath, bool search, string? selectPath, CancellationToken ct)
+        {
+            lock (Sent) Sent.Add((pid, openPath, search, selectPath));
+            return Reply(pid);
+        }
+    }
+
+    [Fact]
+    public async Task ParkAsync_spawns_one_parked_child()
+    {
+        var factory = new FakeFactory();
+        await using var sup = NewSupervisor(factory);
+        sup.Start();
+
+        Assert.True(await sup.ParkAsync());
+
+        lock (factory.Calls)
+        {
+            var (req, _) = Assert.Single(factory.Calls);
+            Assert.True(req.Park);           // a parked spawn: no window, no open path
+            Assert.Null(req.OpenPath);
+        }
+        lock (factory.Made) Assert.True(Assert.Single(factory.Made).IsAlive);
+    }
+
+    [Fact]
+    public async Task OpenAsync_hands_off_to_the_parked_instance_and_reparks()
+    {
+        var factory = new FakeFactory();
+        var sender = new FakeShowSender();
+        await using var sup = new FilerSupervisor(Array.Empty<string>(), new Dictionary<string, string>(),
+            factory.Create, pollInterval: Poll, showSender: sender.Send);
+        sup.Start();
+        Assert.True(await sup.ParkAsync());
+
+        Assert.True(await sup.OpenAsync("/docs", search: true, selectPath: "/docs/x.txt"));
+
+        // The Show went to the PARKED instance's pid, with the exact open request.
+        lock (sender.Sent)
+        {
+            var (pid, path, search, select) = Assert.Single(sender.Sent);
+            Assert.Equal(1001, pid); // the first spawned instance
+            Assert.Equal("/docs", path);
+            Assert.True(search);
+            Assert.Equal("/docs/x.txt", select);
+        }
+        // Keep-1: the handoff immediately spawned a replacement park — and NO cold spawn happened
+        // (the handoff replaced it). Two live children: the claimed window + the fresh park.
+        lock (factory.Calls)
+        {
+            Assert.Equal(2, factory.Calls.Count);
+            Assert.True(factory.Calls[1].Request.Park);
+        }
+        Assert.Equal(2, sup.LiveProcessesForTests().Count);
+    }
+
+    [Fact]
+    public async Task Rapid_second_open_claims_the_replacement_never_the_same_instance()
+    {
+        var factory = new FakeFactory();
+        var sender = new FakeShowSender();
+        await using var sup = new FilerSupervisor(Array.Empty<string>(), new Dictionary<string, string>(),
+            factory.Create, pollInterval: Poll, showSender: sender.Send);
+        sup.Start();
+        Assert.True(await sup.ParkAsync());
+
+        Assert.True(await sup.OpenAsync("/a"));
+        Assert.True(await sup.OpenAsync("/b"));
+
+        // Both opens handed off — but each to a DIFFERENT parked instance (the second claimed the
+        // replacement park, never the instance already mid-handoff). No cold spawn was needed.
+        lock (sender.Sent)
+            Assert.Equal(2, sender.Sent.Select(s => s.Pid).Distinct().Count());
+        lock (factory.Calls)
+            Assert.All(factory.Calls, c => Assert.True(c.Request.Park)); // park + repark + repark
+    }
+
+    [Fact]
+    public async Task Show_failure_falls_back_to_cold_spawn_and_keeps_the_park()
+    {
+        var factory = new FakeFactory();
+        var sender = new FakeShowSender { Reply = _ => Task.FromResult(false) }; // dial failed
+        await using var sup = new FilerSupervisor(Array.Empty<string>(), new Dictionary<string, string>(),
+            factory.Create, pollInterval: Poll, showSender: sender.Send);
+        sup.Start();
+        Assert.True(await sup.ParkAsync());
+
+        Assert.True(await sup.OpenAsync("/docs")); // the fallback cold spawn still opens the window
+
+        lock (factory.Calls)
+        {
+            Assert.Equal(2, factory.Calls.Count);
+            Assert.False(factory.Calls[1].Request.Park); // cold spawn at the requested path
+            Assert.Equal("/docs", factory.Calls[1].Request.OpenPath);
+        }
+        // The parked instance was NOT consumed by the failed handoff — it stays parked (keep-1) and
+        // still alive, ready for the next open.
+        lock (factory.Made) Assert.True(factory.Made[0].IsAlive);
+    }
+
+    [Fact]
+    public async Task Parked_crash_respawns_a_park_not_a_window()
+    {
+        var factory = new FakeFactory();
+        await using var sup = NewSupervisor(factory);
+        sup.Start();
+        Assert.True(await sup.ParkAsync());
+        FakeFilerProcess parked;
+        lock (factory.Made) parked = factory.Made[0];
+
+        parked.Crash(137); // the hidden pre-warm died — keep-1 needs a fresh PARK, not a window
+
+        await WaitFor(() => { lock (factory.Calls) return factory.Calls.Count == 2; },
+            "a crashed park is re-parked");
+        lock (factory.Calls) Assert.True(factory.Calls[1].Request.Park);
+    }
+
+    [Fact]
+    public async Task RestartAll_reparks_fresh_and_respawns_live_filers_at_their_paths()
+    {
+        var factory = new FakeFactory();
+        var sender = new FakeShowSender();
+        await using var sup = new FilerSupervisor(Array.Empty<string>(), new Dictionary<string, string>(),
+            factory.Create, pollInterval: Poll, showSender: sender.Send);
+        sup.Start();
+        Assert.True(await sup.ParkAsync());
+        Assert.True(await sup.OpenAsync("/docs")); // handoff: claimed window + replacement park
+
+        await sup.RestartAllAsync();
+
+        // 4 spawns total: park, replacement park, the live window's restart (at its SHOWN path —
+        // the claim recorded it), and the park's fresh re-park (never a re-show of a stale path).
+        await WaitFor(() => { lock (factory.Calls) return factory.Calls.Count == 4; },
+            "RestartAll respawns the claimed window and re-parks");
+        lock (factory.Calls)
+        {
+            Assert.Equal("/docs", factory.Calls[2].Request.OpenPath); // claimed window restarts at its path
+            Assert.False(factory.Calls[2].Request.Park);
+            Assert.True(factory.Calls[3].Request.Park); // the park re-parks — fresh, path-less
+        }
     }
 
     private static async Task<IFilerProcess> OpenAndGrabAsync(FilerSupervisor sup, FakeFactory factory, string path)
