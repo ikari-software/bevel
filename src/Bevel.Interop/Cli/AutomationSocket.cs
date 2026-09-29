@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using Bevel.ShellCore.Ipc;
 
 namespace Bevel.Interop.Cli;
 
@@ -119,11 +120,10 @@ public sealed class AutomationSocketServer : IAsyncDisposable
             // non-traversable parent keeps other local users off it regardless of umask (INT-10 review).
             TrySetDirOwnerOnly(dir);
         }
-        if (File.Exists(_path)) File.Delete(_path);   // clear a stale socket from a crashed run
-
-        _listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        _listener.Bind(new UnixDomainSocketEndPoint(_path));
-        _listener.Listen(16);
+        // Probe-then-bind (bevel-wio0): a stale socket from a crashed run is reclaimed, a LIVE one
+        // (another shell instance's bevelctl endpoint) throws UdsSocketBusyException so this instance
+        // stands down instead of unlinking the incumbent's socket out from under it.
+        _listener = UdsSocketClaim.BindListener(_path, backlog: 16);
         TrySetOwnerOnly(_path);
 
         _cts = new CancellationTokenSource();
@@ -183,12 +183,13 @@ public sealed class AutomationSocketServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _cts?.Cancel();
-        _listener?.Dispose();
+        // Owner-only unlink: closes the listener, then removes the path only if nobody else answers
+        // there; a never-bound (stood-down) instance leaves the file alone.
+        UdsSocketClaim.ReleaseListener(_listener, _path);
         if (_acceptLoop is not null)
         {
             try { await _acceptLoop; } catch { /* shutting down */ }
         }
-        try { if (File.Exists(_path)) File.Delete(_path); } catch { /* best effort */ }
         _cts?.Dispose();
     }
 }

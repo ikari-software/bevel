@@ -69,6 +69,39 @@ public sealed class AutomationSocketTests
         Assert.Contains("unknown command", result.Output);
     }
 
+    [Fact]
+    public async Task Second_instance_on_a_live_bevelctl_socket_stands_down_and_leaves_the_first_serving()
+    {
+        // bevel-wio0: the old Start() unlinked the path unconditionally, so a second shell silently
+        // took bevelctl over and the first's exit then deleted the second's socket. Now the second
+        // stands down (Start throws) and neither its Start nor its Dispose touches the incumbent.
+        var path = TempSocket();
+        await using var first = StartServer(path, new StubAutomation());
+
+        var second = new AutomationSocketServer(path, (_, _) => Task.FromResult(new CommandResult(ExitCodes.Ok, "second")));
+        Assert.Throws<Bevel.ShellCore.Ipc.UdsSocketBusyException>(second.Start);
+        await second.DisposeAsync();
+
+        Assert.True(File.Exists(path));
+        var result = await AutomationSocketClient.SendAsync(path, new[] { "query", "version" });
+        Assert.Equal("9.9", result.Output); // answered by the FIRST server
+    }
+
+    [Fact]
+    public async Task Stale_bevelctl_socket_from_a_crashed_run_is_reclaimed()
+    {
+        var path = TempSocket();
+        // Crash: the listener's fd closes but its file outlives it (a managed Socket.Bind would delete
+        // the path on Dispose and hide the scenario — the claim's own listener does not).
+        Bevel.ShellCore.Ipc.UdsSocketClaim.BindListener(path, backlog: 1).Dispose();
+        Assert.True(File.Exists(path));
+
+        await using var server = StartServer(path, new StubAutomation()); // must not throw
+
+        var result = await AutomationSocketClient.SendAsync(path, new[] { "query", "version" });
+        Assert.Equal(ExitCodes.Ok, result.ExitCode);
+    }
+
     private sealed class StubAutomation : IShellAutomation
     {
         public Task<RevealResult> RevealAsync(IReadOnlyList<VfsPath> items, RevealOptions opts, CancellationToken ct)
