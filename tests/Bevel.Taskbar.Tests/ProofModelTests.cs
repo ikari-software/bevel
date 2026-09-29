@@ -159,7 +159,12 @@ public class ProofModelTests
         var stderr = p.StandardError.ReadToEnd();
         Assert.True(p.WaitForExit(60_000), $"bend did not finish checking {proof}");
         Assert.Equal(0, p.ExitCode);
-        Assert.Contains("All terms check", stdout + stderr);
+        // Bend's success line has been reworded across releases ("All terms check" → "ALL PROOFS CHECK");
+        // exit code 0 plus either phrasing is the pass — a wording-only drift must not fail the gate.
+        var output = stdout + stderr;
+        Assert.True(output.Contains("All terms check", StringComparison.OrdinalIgnoreCase)
+                    || output.Contains("ALL PROOFS CHECK", StringComparison.OrdinalIgnoreCase),
+            $"bend reported success (exit 0) without a recognised pass line:\n{output}");
     }
 
     // ── Proof-file parsing ────────────────────────────────────────────────
