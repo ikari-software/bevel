@@ -1,4 +1,5 @@
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -104,9 +105,10 @@ public class RenderTaskbarTest
 
     /// <summary>
     /// Regression: the sunken/pressed state is bound OneWay to <see cref="TaskItemViewModel.IsFocused"/>,
-    /// but a ToggleButton flips IsChecked locally on click. If the clicked window doesn't take focus,
-    /// that local flip must not stick — otherwise several buttons show pressed at once (the "3 buttons
-    /// pressed" bug). The click handler snaps IsChecked back to IsFocused.
+    /// and a stock ToggleButton flips IsChecked itself on click. If the clicked window doesn't take focus,
+    /// that flip must not stick — otherwise several buttons show pressed at once (the "3 buttons pressed"
+    /// bug). <see cref="TaskButton"/> never self-toggles, so the real pointer gesture leaves it alone
+    /// (bevel-zk4a; the live follow-focus coverage is in RenderPressedTaskButtonTest).
     /// </summary>
     [AvaloniaFact]
     public void Clicking_an_unfocused_task_button_does_not_leave_it_stuck_pressed()
@@ -129,14 +131,17 @@ public class RenderTaskbarTest
             .Select(c => c as ToggleButton ?? c.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault())
             .FirstOrDefault(b => b is not null);
         Assert.NotNull(button);
+        Assert.IsType<TaskButton>(button);
 
-        // Simulate the ToggleButton's local self-toggle on click (IsChecked -> true) while the window
-        // is not focused, then raise Click as the real gesture does.
-        button!.IsChecked = true;
-        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // The real gesture — pointer down + up over the button — runs the ToggleButton click path exactly
+        // as the user's click does (the stub window manager never moves focus).
+        var tl = button!.TranslatePoint(default, window)!.Value;
+        var p = new Point(tl.X + button.Bounds.Width / 2, tl.Y + button.Bounds.Height / 2);
+        window.MouseDown(p, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(p, Avalonia.Input.MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
 
-        // Not focused → must not stay pressed.
+        // Not focused → must not be pressed.
         Assert.False(button.IsChecked);
     }
 

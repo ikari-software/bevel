@@ -158,10 +158,10 @@
                      With grouping off, Items is the window VMs 1:1, so this is unchanged behaviour. -->
                 <ItemsControl.DataTemplates>
                     <DataTemplate DataType="tb:TaskItemViewModel">
-                        <!-- A checked classic ToggleButton renders with the authentic sunken/
-                             hatched active-task state. Binding is one-way: native window state,
-                             not the click gesture itself, remains authoritative. -->
-                        <ToggleButton Command="{Binding ActivateCommand}"
+                        <!-- A checked classic button renders with the authentic sunken/hatched active-
+                             task state. TaskButton never self-toggles: IsChecked is a OneWay projection
+                             of the shell's focus (bevel-zk4a), so the click can't diverge from it. -->
+                        <tb:TaskButton Command="{Binding ActivateCommand}"
                                       IsChecked="{Binding IsFocused, Mode=OneWay}"
                                       Focusable="True"
                                       AutomationProperties.Name="{Binding Title}"
@@ -174,12 +174,12 @@
                                       VerticalContentAlignment="Center"
                                       ClipToBounds="True"
                                       ContextRequested="OnTaskButtonContextRequested">
-                            <ToggleButton.Transitions>
+                            <tb:TaskButton.Transitions>
                                 <Transitions>
                                     <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
-                            </ToggleButton.Transitions>
+                            </tb:TaskButton.Transitions>
                             <!-- App-centric right-click menu (bevel-ww71): app header, Windows submenu (per-
                                  window Activate/Minimize/Close), Quit (Alt → Force Quit). Built in code —
                                  see TaskButtonMenu / OnTaskButtonContextRequested. -->
@@ -206,13 +206,13 @@
                                            TextTrimming="CharacterEllipsis"
                                            IsHitTestVisible="False" />
                             </StackPanel>
-                        </ToggleButton>
+                        </tb:TaskButton>
                     </DataTemplate>
 
                     <!-- Grouped app: one button showing icon + "Name (N)", opening a flyout that lists
                          the app's windows. IsChecked reflects whether any child window is focused. -->
                     <DataTemplate DataType="tb:TaskGroupViewModel">
-                        <ToggleButton IsChecked="{Binding IsFocused, Mode=OneWay}"
+                        <tb:TaskButton IsChecked="{Binding IsFocused, Mode=OneWay}"
                                       Focusable="True"
                                       AutomationProperties.Name="{Binding Label}"
                                       Width="{Binding Width}"
@@ -223,15 +223,15 @@
                                       VerticalContentAlignment="Center"
                                       ClipToBounds="True"
                                       ContextRequested="OnTaskButtonContextRequested">
-                            <ToggleButton.Transitions>
+                            <tb:TaskButton.Transitions>
                                 <Transitions>
                                     <DoubleTransition Property="Width" Duration="0:0:0.25" Easing="CubicEaseOut" />
                                     <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
                                 </Transitions>
-                            </ToggleButton.Transitions>
+                            </tb:TaskButton.Transitions>
                             <!-- App-centric right-click menu (bevel-ww71): app header, Windows submenu (per-
                                  window Activate/Minimize/Close), Quit (Alt → Force Quit). Built in code. -->
-                            <ToggleButton.Flyout>
+                            <tb:TaskButton.Flyout>
                                 <Flyout Placement="Top">
                                     <ItemsControl ItemsSource="{Binding Windows}" MinWidth="160">
                                         <ItemsControl.ItemTemplate>
@@ -252,7 +252,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </Flyout>
-                            </ToggleButton.Flyout>
+                            </tb:TaskButton.Flyout>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         HorizontalAlignment="{Binding ContentAlignment}"
                                         ClipToBounds="True" IsHitTestVisible="False">
@@ -274,7 +274,7 @@
                                            TextTrimming="CharacterEllipsis"
                                            IsHitTestVisible="False" />
                             </StackPanel>
-                        </ToggleButton>
+                        </tb:TaskButton>
                     </DataTemplate>
                 </ItemsControl.DataTemplates>
             </ItemsControl>
