@@ -8,23 +8,23 @@ using Bevel.Interop;
 namespace Bevel.App;
 
 /// <summary>
-/// Spawns a new <c>--role=explorer</c> process. The seam that lets the persistent-host
+/// Spawns a new <c>--role=filer</c> process. The seam that lets the persistent-host
 /// <see cref="SpawningShellSurface"/> be unit-tested with a recording fake instead of actually
 /// launching a child process (bevel-e7a7).
 /// </summary>
-public interface IExplorerSpawner
+public interface IFilerSpawner
 {
-    /// <summary>Launch an Explorer at <paramref name="path"/>. <paramref name="selectPath"/> (a
+    /// <summary>Launch a Filer at <paramref name="path"/>. <paramref name="selectPath"/> (a
     /// <c>reveal</c> target) is highlighted once its folder lists; <paramref name="search"/> opens
     /// straight into Find mode.</summary>
     void Spawn(string path, string? selectPath = null, bool search = false);
 }
 
-/// <summary>The real spawner: forwards to <see cref="Program.SpawnExplorer"/>.</summary>
-public sealed class ProcessExplorerSpawner : IExplorerSpawner
+/// <summary>The real spawner: forwards to <see cref="Program.SpawnFiler"/>.</summary>
+public sealed class ProcessFilerSpawner : IFilerSpawner
 {
     public void Spawn(string path, string? selectPath = null, bool search = false)
-        => Program.SpawnExplorer(path, search: search, selectPath: selectPath);
+        => Program.SpawnFiler(path, search: search, selectPath: selectPath);
 }
 
 /// <summary>
@@ -32,35 +32,35 @@ public sealed class ProcessExplorerSpawner : IExplorerSpawner
 /// (<see cref="IShellSurface"/>, bevel-e7a7). Bound in the TASKBAR process — the always-up host that
 /// serves the bevelctl socket and bevel:// — where there is no in-process file-manager window graph to
 /// address. Instead of building a <see cref="FileManager.FileManagerWindow"/> in-process (which in a
-/// non-Explorer process yields a malformed, surface-less window), the window-opening verbs
-/// (<c>open</c>/<c>reveal</c>) SPAWN an Explorer at the target — the split-mode equivalent of "open the
-/// window". This is what makes <c>bevelctl</c>/<c>bevel://</c> work with no Explorer already open.
+/// non-Filer process yields a malformed, surface-less window), the window-opening verbs
+/// (<c>open</c>/<c>reveal</c>) SPAWN a Filer at the target — the split-mode equivalent of "open the
+/// window". This is what makes <c>bevelctl</c>/<c>bevel://</c> work with no Filer already open.
 ///
 /// <para>The verbs that address a PRE-EXISTING live window — <c>select</c>-in-frontmost and the
-/// window/selection queries — are FORWARDED to the running Explorer processes over the
-/// taskbar↔Explorer control channel (<see cref="TaskbarExplorerControlClient"/>, bevel-uldj): the
-/// query verbs aggregate across every registered Explorer (frontmost-first) and <c>select</c> routes
-/// back to the Explorer that owns the composite <see cref="WindowRef"/>. When that channel isn't wired
-/// or no Explorer is registered, they fall back to the clear empty / "no window" result — never a
+/// window/selection queries — are FORWARDED to the running Filer processes over the
+/// taskbar↔Filer control channel (<see cref="TaskbarFilerControlClient"/>, bevel-uldj): the
+/// query verbs aggregate across every registered Filer (frontmost-first) and <c>select</c> routes
+/// back to the Filer that owns the composite <see cref="WindowRef"/>. When that channel isn't wired
+/// or no Filer is registered, they fall back to the clear empty / "no window" result — never a
 /// silent success and never a crash.</para>
 /// </summary>
 public sealed class SpawningShellSurface : IShellSurface
 {
-    // The spawned Explorer owns its own window-id space; the taskbar host cannot see it, so window
+    // The spawned Filer owns its own window-id space; the taskbar host cannot see it, so window
     // verbs hand back this opaque sentinel meaning "spawned, not addressable from here".
     private static readonly WindowRef Spawned = new(0);
 
-    private readonly IExplorerSpawner _spawner;
-    // The taskbar↔Explorer channel (bevel-uldj) that lets the window-coupled verbs reach the live
-    // Explorer processes. Null when the channel isn't wired (e.g. a non-taskbar role that still binds
+    private readonly IFilerSpawner _spawner;
+    // The taskbar↔Filer channel (bevel-uldj) that lets the window-coupled verbs reach the live
+    // Filer processes. Null when the channel isn't wired (e.g. a non-taskbar role that still binds
     // this surface, or a test that only exercises open/reveal) — the verbs then degrade to the same
     // clear empty / "no window" result the persistent host returned before the channel existed.
-    private readonly TaskbarExplorerControlClient? _explorers;
+    private readonly TaskbarFilerControlClient? _filers;
 
-    public SpawningShellSurface(IExplorerSpawner spawner, TaskbarExplorerControlClient? explorers = null)
+    public SpawningShellSurface(IFilerSpawner spawner, TaskbarFilerControlClient? filers = null)
     {
         _spawner = spawner;
-        _explorers = explorers;
+        _filers = filers;
     }
 
     public Task<WindowRef> OpenAsync(VfsPath container, ViewMode? view, CancellationToken ct)
@@ -77,28 +77,28 @@ public sealed class SpawningShellSurface : IShellSurface
         return Task.FromResult(Spawned);
     }
 
-    // ── Forwarded to the live Explorers over the taskbar↔Explorer channel (bevel-uldj) ─────────────
+    // ── Forwarded to the live Filers over the taskbar↔Filer channel (bevel-uldj) ─────────────
     //
-    // With the channel wired, these reach the running --role=explorer processes: query verbs aggregate
-    // across every registered Explorer (frontmost-first), and select routes back to the Explorer that
-    // owns the composite WindowRef. With NO Explorer registered (or the channel absent) they return the
+    // With the channel wired, these reach the running --role=filer processes: query verbs aggregate
+    // across every registered Filer (frontmost-first), and select routes back to the Filer that
+    // owns the composite WindowRef. With NO Filer registered (or the channel absent) they return the
     // same clear empty / "no window" the persistent host returned before — never a crash.
 
     public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) =>
-        _explorers is null
+        _filers is null
             ? Task.FromException(new AutomationException(
                 "selecting in an existing window is not available from the taskbar host — no live file-manager window to address."))
-            : _explorers.SelectAsync(window, items, ct);
+            : _filers.SelectAsync(window, items, ct);
 
     public Task<IReadOnlyList<WindowRef>> QueryWindowsAsync(CancellationToken ct) =>
-        _explorers is null
+        _filers is null
             ? Task.FromResult<IReadOnlyList<WindowRef>>(Array.Empty<WindowRef>())
-            : _explorers.AggregateWindowsAsync(ct);
+            : _filers.AggregateWindowsAsync(ct);
 
     public Task<IReadOnlyList<VfsPath>> QuerySelectionAsync(WindowRef? window, CancellationToken ct) =>
-        _explorers is null
+        _filers is null
             ? Task.FromResult<IReadOnlyList<VfsPath>>(Array.Empty<VfsPath>())
-            : _explorers.QuerySelectionAsync(window, ct);
+            : _filers.QuerySelectionAsync(window, ct);
 
     public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) =>
         Task.FromException(new AutomationException($"'set {prop}' is not supported from the taskbar host."));

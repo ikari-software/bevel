@@ -28,7 +28,7 @@ public sealed class FileManagerModule : IModule
 
         // Settings: the ISettingsService is now registered role-aware in CompositionRoot
         // (core-owns-settings, bevel-6nve) — the real DB-backed SettingsService for Core/All, a
-        // RemoteSettingsService peer for Taskbar/Explorer/Desktop — so this module no longer binds it.
+        // RemoteSettingsService peer for Taskbar/Filer/Desktop — so this module no longer binds it.
         services.AddTransient<SettingsWindow>();
 
         // File operations engine + its conflict handler (safe default until the M1

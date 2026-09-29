@@ -4,7 +4,7 @@ namespace Bevel.App.ShellCore;
 
 /// <summary>
 /// The peer-role settings store (core-owns-settings, bevel-6nve): the <see cref="ISettingsService"/> an
-/// Explorer / Desktop / Taskbar process gets so it NEVER opens settings.db. It is a thin projection over
+/// Filer / Desktop / Taskbar process gets so it NEVER opens settings.db. It is a thin projection over
 /// the shell-core broadcast — the core is the single opener + writer of the DB, and this caches whatever
 /// the core last pushed:
 ///

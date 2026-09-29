@@ -4,7 +4,7 @@ namespace Bevel.App;
 
 /// <summary>
 /// Single source of truth for Bevel's per-user runtime directory — the parent of the UDS sockets
-/// (<c>bevel-core</c>, <c>bevel-explorers</c>) and the memory-mapped icon pool. Every consumer routes
+/// (<c>bevel-core</c>, <c>bevel-filers</c>) and the memory-mapped icon pool. Every consumer routes
 /// through here so the peer processes agree on the paths by construction (bevel-ncfp.2 / U2).
 ///
 /// <para>On Windows the root is <c>%LOCALAPPDATA%\bevel</c> rather than <c>%TEMP%</c>: it inherits the
@@ -23,8 +23,8 @@ internal static class BevelRuntimeDir
     /// <summary>Shell-core socket + token + icon pool live here (peers must agree).</summary>
     public static string CoreDir => Path.Combine(Root, "bevel-core");
 
-    /// <summary>Taskbar↔Explorer control-channel rendezvous dir.</summary>
-    public static string ExplorersDir => Path.Combine(Root, "bevel-explorers");
+    /// <summary>Taskbar↔Filer control-channel rendezvous dir.</summary>
+    public static string FilersDir => Path.Combine(Root, "bevel-filers");
 
     /// <summary>Per-role heartbeat + health-status files the launcher watches (bevel-9h7n).
     /// Not a socket dir — no sun_path cap. Cleared at launcher boot like the quit marker.</summary>

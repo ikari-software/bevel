@@ -3,7 +3,7 @@
          xmlns:components="using:Bevel.UI"
          xmlns:fmcomp="using:Bevel.FileManager.Components"
          x:Class="Bevel.FileManager.FileManagerWindow"
-         Title="Exploring - C:\"
+         Title="Filer - C:\"
          Width="800" Height="600"
          MinWidth="640" MinHeight="480"
          WindowStartupLocation="CenterScreen">
@@ -17,13 +17,13 @@
         <fmcomp:StatusBar DockPanel.Dock="Bottom" x:Name="StatusBar" />
 
         <Grid x:Name="ContentGrid" ColumnDefinitions="200,4,*" Margin="2,0,0,2">
-            <!-- Left panel: InfoPane (default) or ExplorerBar (tree); collapses when info style = Off -->
+            <!-- Left panel: InfoPane (default) or FilerBar (tree); collapses when info style = Off -->
             <fmcomp:InfoPane x:Name="InfoPane" Grid.Column="0" IsVisible="True"
                              Title="" Description="" Instruction="" ObjectCount="" />
-            <fmcomp:ExplorerBar x:Name="ExplorerPane" Grid.Column="0" IsVisible="False"
+            <fmcomp:FilerBar x:Name="FilerPane" Grid.Column="0" IsVisible="False"
                                 Title="Folders">
                 <TreeView x:Name="TreeView" BorderThickness="0" Margin="-1,-1,-1,-1" />
-            </fmcomp:ExplorerBar>
+            </fmcomp:FilerBar>
 
             <!-- Sunken splitter -->
             <Border x:Name="LeftSplitter" Grid.Column="1" Width="4" Background="{DynamicResource Bevel.Brush.ButtonFace}"

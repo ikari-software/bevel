@@ -208,7 +208,7 @@
       </g>
     </symbol>
     <symbol id="i-themes" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="11" fill="#fff" opacity=".55"/><rect x="6" y="8" width="13" height="11" fill="#fff"/></symbol>
-    <symbol id="i-explorer" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" fill="#fff"/></symbol>
+    <symbol id="i-filer" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z" fill="#fff"/></symbol>
     <symbol id="i-taskbar" viewBox="0 0 24 24"><rect x="3" y="15" width="18" height="5" fill="#fff"/><rect x="4" y="16" width="5" height="3" fill="#2E68C4"/><rect x="4" y="5" width="14" height="7" fill="#fff" opacity=".6"/></symbol>
     <symbol id="i-vector" viewBox="0 0 24 24"><path d="M4 18c6 0 6-12 16-12" fill="none" stroke="#fff" stroke-width="2"/><rect x="2" y="16" width="4" height="4" fill="#fff"/><rect x="18" y="4" width="4" height="4" fill="#fff"/></symbol>
     <symbol id="i-native" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" fill="#fff"/><rect x="9" y="9" width="6" height="6" fill="#2E68C4"/><g stroke="#fff" stroke-width="1.6"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></g></symbol>
@@ -268,7 +268,7 @@
       </div>
       <div class="feat-grid">
         <article class="card"><div class="cap"><svg><use href="#i-themes"/></svg>Three skins, one shell</div><div class="body"><h3>Switch eras, live</h3><p>Windows 2000 by default, a glossy Luna (XP) variant, and a flat Whistler direction — swapped at runtime by two recolor engines, no restart.</p></div></article>
-        <article class="card"><div class="cap"><svg><use href="#i-explorer"/></svg>A real Explorer</div><div class="body"><h3>It actually manages files</h3><p>Folder Options, show-hidden, extension handling, view styles and four functional sidebar eras from NT 4 through Windows 7 — a working file manager, not a screenshot. Pin a folder to the taskbar and it opens as a grid of real content previews.</p></div></article>
+        <article class="card"><div class="cap"><svg><use href="#i-filer"/></svg>A real Filer</div><div class="body"><h3>It actually manages files</h3><p>Folder Options, show-hidden, extension handling, view styles and four functional sidebar eras from NT 4 through Windows 7 — a working file manager, not a screenshot. Pin a folder to the taskbar and it opens as a grid of real content previews.</p></div></article>
         <article class="card"><div class="cap"><svg><use href="#i-taskbar"/></svg>Taskbar, Start &amp; tray</div><div class="body"><h3>Live window buttons</h3><p>A Start menu you can type into, per-window task buttons with unread badges, and a system tray that mirrors the host extras — menu-bar items on macOS, notify icons on Windows — with their real icons. Right-click a browser or terminal button to jump straight to any of its tabs, with their real favicons. Sizes run from compact to Win10-style big icons.</p></div></article>
         <article class="card"><div class="cap"><svg><use href="#i-vector"/></svg>Pure vector, always</div><div class="body"><h3>No bitmaps, ever</h3><p>Every icon and control is code-drawn geometry bound to theme tokens — antialiased, Retina-crisp, and infinitely scalable.</p></div></article>
         <article class="card"><div class="cap"><svg><use href="#i-native"/></svg>Native underneath</div><div class="body"><h3>A real PAL per OS</h3><p>A multi-process shell: on macOS, sandboxed helpers over gRPC/UDS with AX + ScreenCaptureKit; on Windows, in-process Win32/COM (WinEvent + a dedicated STA worker) selected by <code>--pal=windows</code>.</p></div></article>
@@ -297,12 +297,12 @@
         </figure>
         <figure class="shot">
           <div class="frame trip">
-            <figure><img src="shots/infopane-win2000.png" width="200" height="380" loading="lazy" alt="Explorer info panel rendered in the Windows 2000 style."><figcaption class="lbl">Win2000</figcaption></figure>
-            <figure><img src="shots/infopane-winxp.png" width="200" height="380" loading="lazy" alt="Explorer info panel rendered in the Windows XP style."><figcaption class="lbl">Windows XP</figcaption></figure>
-            <figure><img src="shots/infopane-modern.png" width="200" height="380" loading="lazy" alt="Explorer navigation panel rendered in the Windows Vista and 7 style."><figcaption class="lbl">Vista / 7</figcaption></figure>
-            <figure><img src="shots/infopane-win9x.png" width="200" height="380" loading="lazy" alt="Explorer info panel rendered in the Windows 9x style."><figcaption class="lbl">Windows 9x</figcaption></figure>
+            <figure><img src="shots/infopane-win2000.png" width="200" height="380" loading="lazy" alt="Filer info panel rendered in the Windows 2000 style."><figcaption class="lbl">Win2000</figcaption></figure>
+            <figure><img src="shots/infopane-winxp.png" width="200" height="380" loading="lazy" alt="Filer info panel rendered in the Windows XP style."><figcaption class="lbl">Windows XP</figcaption></figure>
+            <figure><img src="shots/infopane-modern.png" width="200" height="380" loading="lazy" alt="Filer navigation panel rendered in the Windows Vista and 7 style."><figcaption class="lbl">Vista / 7</figcaption></figure>
+            <figure><img src="shots/infopane-win9x.png" width="200" height="380" loading="lazy" alt="Filer info panel rendered in the Windows 9x style."><figcaption class="lbl">Windows 9x</figcaption></figure>
           </div>
-          <figcaption><span class="tag">Folder Options</span> one Explorer sidebar setting, four distinct eras</figcaption>
+          <figcaption><span class="tag">Folder Options</span> one Filer sidebar setting, four distinct eras</figcaption>
         </figure>
       </div>
     </section>
@@ -362,7 +362,7 @@
               <dt>launch</dt><dd><code>Bevel.App.exe</code> → <code>--pal=windows</code></dd>
               <dt>runtime</dt><dd><code>%LOCALAPPDATA%\bevel</code></dd>
             </dl>
-            <p class="note">To put Explorer back if you set Bevel as the shell, see <code>packaging/windows/RESTORE-SHELL.md</code>.</p>
+            <p class="note">To put Filer back if you set Bevel as the shell, see <code>packaging/windows/RESTORE-SHELL.md</code>.</p>
           </div>
         </div>
         <div class="dlpanel">

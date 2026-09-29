@@ -2,11 +2,11 @@ namespace Bevel.App;
 
 /// <summary>
 /// Which shell surface this process hosts. The shell ALWAYS runs split: each surface is its own
-/// process, launched from the same executable with <c>--role=taskbar|explorer|desktop|core</c>
+/// process, launched from the same executable with <c>--role=taskbar|filer|desktop|core</c>
 /// (mirrors the <c>--pal=</c> switch) under a supervising <c>--role=launcher</c>. An argument-less
 /// launch is the launcher, which spawns the surface processes — there is no single-process mode.
 ///
-/// Splitting buys crash isolation (an Explorer crash doesn't take down the taskbar) and lets each
+/// Splitting buys crash isolation (a Filer crash doesn't take down the taskbar) and lets each
 /// process instantiate ONLY the services it resolves: MS.DI singletons are lazy, so a non-taskbar
 /// role that never resolves <c>IWindowManager</c>/<c>IAppEnvironment</c> never constructs the helper
 /// client or the <c>/Applications</c> filesystem watchers — no per-process duplication of that work.
@@ -16,8 +16,8 @@ public enum ShellRole
     /// <summary>The taskbar: Start menu, window buttons, clock. The only role that drives window management.</summary>
     Taskbar,
 
-    /// <summary>A file-manager / Explorer window.</summary>
-    Explorer,
+    /// <summary>A file-manager / Filer window.</summary>
+    Filer,
 
     /// <summary>The desktop: wallpaper + icon grid, behind everything.</summary>
     Desktop,
@@ -35,7 +35,7 @@ public enum ShellRole
 }
 
 /// <summary>
-/// Resolves the shell role from the command line: <c>--role=taskbar|explorer|desktop|core|launcher</c>.
+/// Resolves the shell role from the command line: <c>--role=taskbar|filer|desktop|core|launcher</c>.
 /// Defaults to <see cref="ShellRole.Launcher"/> so an argument-less launch is the split launcher that
 /// spawns the surface processes. Mirrors <see cref="PalSelector"/>'s <c>=</c>-form parsing; unknown
 /// values fall back to the launcher.
@@ -52,7 +52,7 @@ public static class RoleSelector
             return arg["--role=".Length..].ToLowerInvariant() switch
             {
                 "taskbar" or "bar" => ShellRole.Taskbar,
-                "explorer" or "files" or "filemanager" => ShellRole.Explorer,
+                "filer" or "files" or "filemanager" => ShellRole.Filer,
                 "desktop" => ShellRole.Desktop,
                 "core" => ShellRole.Core,
                 "launcher" or "supervisor" or "boot" => ShellRole.Launcher,

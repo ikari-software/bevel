@@ -19,14 +19,14 @@ namespace Bevel.Pal.Windows;
 /// <list type="number">
 /// <item><description><b>Own <c>Shell_TrayWnd</c>.</b> Register a window with class name
 /// <c>Shell_TrayWnd</c> first after broadcasting/receiving <c>TaskbarCreated</c>, so apps send their
-/// <c>Shell_NotifyIcon</c> (<c>NIM_ADD/MODIFY/DELETE</c>) traffic to us directly. Precondition: explorer's
+/// <c>Shell_NotifyIcon</c> (<c>NIM_ADD/MODIFY/DELETE</c>) traffic to us directly. Precondition: filer's
 /// taskbar is not running (orthogonal to set-as-shell). Clean, event-driven, but only viable in
 /// shell-replacement mode.</description></item>
 /// <item><description><b>Cross-process <c>TB_*</c> enumeration.</b> Walk
 /// <c>Shell_TrayWnd</c>→<c>ToolbarWindow32</c> (and, on <b>Win11</b>, the
 /// <c>NotifyIconOverflowWindow</c> where most icons now live — <b>poll-only</b>, no add/remove events)
 /// reading the undocumented <c>TBBUTTON</c>/<c>dwData</c> layout via <c>VirtualAllocEx</c> +
-/// <c>ReadProcessMemory</c> in explorer's address space. Windows-version and bitness sensitive;
+/// <c>ReadProcessMemory</c> in filer's address space. Windows-version and bitness sensitive;
 /// <see cref="ForwardClickAsync"/> would need the owner HWND + callback message from that same
 /// cross-process memory. Fragile — explicitly NOT shipped in v1.</description></item>
 /// </list></para>
@@ -96,7 +96,7 @@ public sealed class WindowsSystemTrayHost : ISystemTrayHost
         try
         {
             var tray = FindWindowW("Shell_TrayWnd", null);
-            if (tray == IntPtr.Zero) return;   // no explorer taskbar / not found — nothing to toggle
+            if (tray == IntPtr.Zero) return;   // no filer taskbar / not found — nothing to toggle
             var notify = FindWindowExW(tray, IntPtr.Zero, "TrayNotifyWnd", null);
             if (notify == IntPtr.Zero) return;
             ShowWindow(notify, hidden ? SW_HIDE : SW_SHOW);

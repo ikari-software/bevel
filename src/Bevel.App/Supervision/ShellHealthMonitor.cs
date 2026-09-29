@@ -91,7 +91,7 @@ internal sealed class ShellHealthMonitor
             s.DeathsNeverReady = 0;
             s.StuckRestarts = 0;
 
-            if (role is ShellRole.Taskbar or ShellRole.Desktop or ShellRole.Explorer
+            if (role is ShellRole.Taskbar or ShellRole.Desktop or ShellRole.Filer
                 && !hb.Value.CoreConnected)
             {
                 s.CommTicks++;

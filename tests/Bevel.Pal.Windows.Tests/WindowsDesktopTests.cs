@@ -103,7 +103,7 @@ public class WindowsDesktopTests
         {
             await de.ReserveWorkAreaAsync(primary.Id, DockEdge.Bottom, 40);
             Assert.True(WindowsDesktopEnvironment.TryGetWorkArea(primary.Id, out var reserved, out var fullAfter));
-            // SPI_SETWORKAREA must shrink rcWork below rcMonitor. Explorer's AppBar may claim a few
+            // SPI_SETWORKAREA must shrink rcWork below rcMonitor. Filer's AppBar may claim a few
             // extra pixels on CI, so require ≥ thickness rather than an exact full-40 height.
             Assert.True(reserved.Height < fullAfter.Height,
                 $"reserved height {reserved.Height} should be below full {fullAfter.Height}");
@@ -128,7 +128,7 @@ public class WindowsDesktopTests
         if (!OperatingSystem.IsWindows())
             return;
         if (!WindowsDockController.IsNativeTaskbarVisible())
-            return; // session-0 / no Explorer — nothing to hide
+            return; // session-0 / no Filer — nothing to hide
         using var dock = new WindowsDockController();
         await dock.SetAutoHideAsync(true);  // hide Shell_TrayWnd, capturing prior state
         Assert.False(WindowsDockController.IsNativeTaskbarVisible());

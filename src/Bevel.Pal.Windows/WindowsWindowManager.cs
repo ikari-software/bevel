@@ -326,7 +326,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
     private static void ActivateCore(IntPtr hwnd)
     {
         if (!IsWindow(hwnd)) return;
-        // SwitchToThisWindow is Explorer's own click-activate path: it restores from minimized and
+        // SwitchToThisWindow is Filer's own click-activate path: it restores from minimized and
         // raises cleanly, and (called from the taskbar process, which holds input at click time)
         // sidesteps the background-foreground restriction. No AttachThreadInput tricks.
         if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);

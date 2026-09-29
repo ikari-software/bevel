@@ -16,13 +16,13 @@ namespace Bevel.Taskbar.Tests;
 public class WindowsLifecycleTests
 {
     [Fact]
-    public void CoreDir_and_ExplorersDir_share_one_root()
+    public void CoreDir_and_FilersDir_share_one_root()
     {
         // Siblings under the same parent (compared normalized — GetTempPath() carries a trailing
         // separator on some platforms, so compare the resolved parent dirs, not the raw Root string).
         Assert.Equal(
             Path.GetDirectoryName(BevelRuntimeDir.CoreDir),
-            Path.GetDirectoryName(BevelRuntimeDir.ExplorersDir));
+            Path.GetDirectoryName(BevelRuntimeDir.FilersDir));
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class WindowsLifecycleTests
         // relocates to %LOCALAPPDATA%). If this ever changes, running peers stop finding each other.
         if (OperatingSystem.IsWindows()) return;
         Assert.Equal(Path.Combine(Path.GetTempPath(), "bevel-core"), BevelRuntimeDir.CoreDir);
-        Assert.Equal(Path.Combine(Path.GetTempPath(), "bevel-explorers"), BevelRuntimeDir.ExplorersDir);
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "bevel-filers"), BevelRuntimeDir.FilersDir);
     }
 
     [Fact]

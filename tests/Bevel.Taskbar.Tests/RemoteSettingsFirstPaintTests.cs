@@ -8,7 +8,7 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// The peer settings path a split taskbar / explorer / desktop paints from (bevel-7s9n + bevel-lej1),
+/// The peer settings path a split taskbar / filer / desktop paints from (bevel-7s9n + bevel-lej1),
 /// over a real <see cref="ShellCoreServer"/> on a live Unix socket with the real DB-backed core
 /// <see cref="SettingsService"/> behind it. What <c>App.OnFrameworkInitializationCompleted</c> reads for
 /// the first frame is <c>settings.Current</c> right after <c>LoadAsync</c> returns — so "paints Luna on

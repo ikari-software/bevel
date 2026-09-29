@@ -4,7 +4,7 @@ namespace Bevel.Core;
 
 /// <summary>
 /// A peer process's write-through cache of the LAST settings snapshot it applied from the shell core
-/// (bevel-7s9n). Peer roles (taskbar / explorer / desktop) never open <c>settings.db</c> — they get
+/// (bevel-7s9n). Peer roles (taskbar / filer / desktop) never open <c>settings.db</c> — they get
 /// their settings over the shell-core IPC — which on a cold boot usually LOSES the race with the core's
 /// socket bind (the core has to boot .NET and open SQLite before it serves). Without this file the
 /// taskbar painted its first frame on <see cref="BevelSettings"/> DEFAULTS (the Win2000 skin, one row)

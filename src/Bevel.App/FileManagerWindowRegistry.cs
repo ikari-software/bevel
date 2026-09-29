@@ -17,9 +17,9 @@ public sealed class FileManagerWindowRegistry
     private readonly object _gate = new();
     private readonly Dictionary<int, FileManagerWindow> _windows = new();
     private int _nextId = 1;
-    // Frontmost tracking (bevel-uldj): the taskbar orders Explorers frontmost-first by comparing each
-    // Explorer's newest activation tick, and "select in the frontmost window" resolves to the
-    // most-recently-activated window WITHIN an Explorer. Both are fed by the window Activated event.
+    // Frontmost tracking (bevel-uldj): the taskbar orders Filers frontmost-first by comparing each
+    // Filer's newest activation tick, and "select in the frontmost window" resolves to the
+    // most-recently-activated window WITHIN a Filer. Both are fed by the window Activated event.
     private int _frontId;
     private long _lastFocusTick;
 
@@ -47,7 +47,7 @@ public sealed class FileManagerWindowRegistry
     }
 
     /// <summary>The newest window-activation tick seen in this process (0 before any activation) — the
-    /// taskbar's frontmost-Explorer ordering key (bevel-uldj).</summary>
+    /// taskbar's frontmost-Filer ordering key (bevel-uldj).</summary>
     public long LastFocusTick { get { lock (_gate) return _lastFocusTick; } }
 
     public bool TryGet(int id, out FileManagerWindow window)

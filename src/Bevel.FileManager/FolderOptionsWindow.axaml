@@ -29,14 +29,14 @@
 
                     <TextBlock Text="Default view for new windows" FontWeight="SemiBold" FontSize="12" />
                     <ComboBox x:Name="DefaultViewCombo" Width="180" HorizontalAlignment="Left" />
-                    <TextBlock Text="New Explorer windows open in this view. Change a window's view any time from the View menu."
+                    <TextBlock Text="New Filer windows open in this view. Change a window's view any time from the View menu."
                                FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
             </TabItem>
 
             <TabItem Header="Info Panel">
                 <StackPanel Spacing="10" Margin="8">
-                    <TextBlock Text="Explorer sidebar era" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="Filer sidebar era" FontWeight="SemiBold" FontSize="12" />
                     <ComboBox x:Name="InfoPaneCombo" Width="250" HorizontalAlignment="Left" />
                     <TextBlock Text="Choose the left-side design independently of the active theme. Each reconstruction uses scalable vector geometry and gradients—never bitmap chrome."
                                FontSize="10" Foreground="Gray" TextWrapping="Wrap" />

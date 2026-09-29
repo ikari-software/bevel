@@ -428,7 +428,7 @@ public static class Glyphs
             var x = 2.5 + i * 2.0;   // 6 holes, pitch 2, symmetric in the 2..14 strip
             // Invariant, like every other computed path in this file: under a comma-decimal locale
             // (pl_PL!) culture-sensitive interpolation emits "2,5" and PathMarkupParser throws on
-            // the UI thread — one video file in an Explorer folder crashed the whole shell.
+            // the UI thread — one video file in a Filer folder crashed the whole shell.
             c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},4.35 h1 v1 h-1 Z"), Brushes.White));   // top holes
             c.Children.Add(Vec(FormattableString.Invariant($"M{x:0.##},10.65 h1 v1 h-1 Z"), Brushes.White));  // bottom holes
         }

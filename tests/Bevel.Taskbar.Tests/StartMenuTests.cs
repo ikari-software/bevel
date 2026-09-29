@@ -43,7 +43,7 @@ public class StartMenuTests
             .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
         Assert.Equal(1, opened);
 
-        // Search ▸ "For Files or Folders" drives the openSearch seam (opens Explorer in Find mode).
+        // Search ▸ "For Files or Folders" drives the openSearch seam (opens Filer in Find mode).
         var search = menu.FindControl<MenuItem>("SearchItem")!;
         search.Items.OfType<MenuItem>().First(m => ((string?)m.Header)!.StartsWith("For Files"))
             .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));

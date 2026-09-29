@@ -3,10 +3,10 @@ namespace Bevel.Core.Input;
 /// <summary>
 /// Shared "type to find" (type-ahead) matcher: feed it the characters the user types and it returns the
 /// index of the item to select. Pure logic — no UI, no <c>Key</c> decoding — so every list surface
-/// (Explorer items, the folder tree, the Start menu, the folder picker, the taskbar, the desktop grid)
+/// (Filer items, the folder tree, the Start menu, the folder picker, the taskbar, the desktop grid)
 /// can share ONE correct implementation instead of re-deriving a buggy one each time.
 ///
-/// Behaviour (classic Explorer):
+/// Behaviour (classic Filer):
 ///   • Characters typed within the reset window accumulate into a prefix ("a", "p" → "ap…").
 ///   • A pause longer than the reset window starts a fresh prefix.
 ///   • Repeating the SAME single character ("c", "c", "c") does NOT search for "cc" — it CYCLES forward

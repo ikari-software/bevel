@@ -15,9 +15,9 @@ namespace Bevel.App;
 ///
 /// <para>Also the role-aware home of <see cref="Bevel.Core.ISettingsService"/> (core-owns-settings,
 /// bevel-6nve): Core (and the Fake PAL) binds the real DB-backed <c>SettingsService</c> — the sole
-/// opener + writer of settings.db; Taskbar/Explorer/Desktop bind <c>RemoteSettingsService</c>, a peer that
+/// opener + writer of settings.db; Taskbar/Filer/Desktop bind <c>RemoteSettingsService</c>, a peer that
 /// reads the core's pushed snapshot and sends changed-keys merge patches to the core over a shell-core
-/// client. Taskbar reuses its existing client; Explorer/Desktop add a settings-only client (their
+/// client. Taskbar reuses its existing client; Filer/Desktop add a settings-only client (their
 /// window/app/tray stay direct-PAL). The Core builds NO client — it is the server.</para>
 /// </summary>
 public static class CompositionRoot
@@ -40,7 +40,7 @@ public static class CompositionRoot
         services.AddHostedService<Updates.UpdateCheckService>();
     }
 
-    /// <summary>Settings for a PEER role — Taskbar / Explorer / Desktop (core-owns-settings, bevel-6nve):
+    /// <summary>Settings for a PEER role — Taskbar / Filer / Desktop (core-owns-settings, bevel-6nve):
     /// reads and writes flow through the shell core so the peer never opens settings.db. Three pieces:
     /// <list type="bullet">
     ///   <item>Its OWN shell-core client, keyed <c>"settings"</c>, NOT the shared window/app/tray client the
@@ -48,7 +48,7 @@ public static class CompositionRoot
     ///     the tray client would make that early connect consume the core's on-connect TraySnapshot before
     ///     the tray adapter subscribes — leaving the split taskbar's tray empty (the tray has no reconcile
     ///     backstop to re-derive it). A separate client keeps each connection's on-connect snapshot flowing
-    ///     to its own subscriber. Explorer / Desktop have no other client at all (their window/app/tray stay
+    ///     to its own subscriber. Filer / Desktop have no other client at all (their window/app/tray stay
     ///     direct-PAL), so for them this IS the only link to the core.</item>
     ///   <item>The on-disk snapshot cache (bevel-7s9n) the peer paints its FIRST frame from, with zero IPC,
     ///     and writes every applied snapshot through to. Rooted at the real config dir: this is the one
@@ -160,7 +160,7 @@ public static class CompositionRoot
 
         // Window management + app environment: the single-source-of-truth split. In the taskbar
         // process these are shell-core CLIENTS (one UDS connection to the core, which owns the helper
-        // stream + the /Applications watchers). In the Core role and the (lazy, unused) explorer/desktop
+        // stream + the /Applications watchers). In the Core role and the (lazy, unused) filer/desktop
         // roles they are the DIRECT macOS implementations.
         if (role is ShellRole.Taskbar)
         {
@@ -198,12 +198,12 @@ public static class CompositionRoot
                 services.AddSingleton<ISettingsService, Bevel.Core.SettingsService>();
                 AddUpdateChecking(services);
                 // Host the helper EAGERLY only where window management actually runs: the headless core.
-                // Explorer/Desktop keep the singleton lazy, never started.
+                // Filer/Desktop keep the singleton lazy, never started.
                 services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
             }
             else
             {
-                // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL (in-process):
+                // Filer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL (in-process):
                 // a settings-ONLY shell-core client so ONLY the core opens the DB; their window manager /
                 // app environment / tray above are unaffected (core-owns-settings, bevel-6nve).
                 AddSettingsPeer(services);
@@ -257,7 +257,7 @@ public static class CompositionRoot
 
         // Window management + app environment: the same single-source-of-truth split as macOS. In the
         // taskbar process these are shell-core CLIENTS (one UDS connection to the core); in the Core and
-        // (lazy) explorer/desktop roles they are the DIRECT Windows implementations.
+        // (lazy) filer/desktop roles they are the DIRECT Windows implementations.
         if (role is ShellRole.Taskbar)
         {
             services.AddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
@@ -292,7 +292,7 @@ public static class CompositionRoot
             }
             else
             {
-                // Explorer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL.
+                // Filer / Desktop are settings PEERS but keep window/app/tray DIRECT-PAL.
                 AddSettingsPeer(services);
             }
         }
@@ -326,33 +326,33 @@ public static class CompositionRoot
         // surface (Apple Events, bevelctl, bevel://) funnels through. The window-coupled verbs reach a
         // file-manager surface; the filesystem verbs run on the VFS.
         services.AddSingleton<Bevel.Interop.IKnownFolders>(Bevel.Interop.SystemKnownFolders.Instance);
-        // The window seam is ROLE-AWARE (bevel-e7a7). The Explorer process owns a live in-process
+        // The window seam is ROLE-AWARE (bevel-e7a7). The Filer process owns a live in-process
         // FileManagerWindow graph, so it uses FileManagerShellSurface (addresses windows by registry id).
         // Every other role — crucially the persistent TASKBAR that now hosts the socket — has no such
-        // graph, so it uses SpawningShellSurface, whose open/reveal verbs spawn a --role=explorer process
+        // graph, so it uses SpawningShellSurface, whose open/reveal verbs spawn a --role=filer process
         // instead of building a malformed window in-process. This is what lets bevelctl/bevel:// open &
-        // reveal with NO Explorer already running.
-        if (role is ShellRole.Explorer)
+        // reveal with NO Filer already running.
+        if (role is ShellRole.Filer)
             services.AddSingleton<Bevel.Interop.IShellSurface, FileManagerShellSurface>();
         else
-            // The persistent host's surface (bevel-e7a7): open/reveal spawn an Explorer; the
-            // window-coupled verbs are forwarded to the live Explorers over the taskbar↔Explorer channel
+            // The persistent host's surface (bevel-e7a7): open/reveal spawn a Filer; the
+            // window-coupled verbs are forwarded to the live Filers over the taskbar↔Filer channel
             // (bevel-uldj) when its client is registered (Taskbar role, below). SpawningShellSurface's
             // channel-client ctor parameter is optional (defaults to null), so the Desktop/Core roles
             // that also bind this surface but never wire the channel keep the clear "no window" fallback.
             services.AddSingleton<Bevel.Interop.IShellSurface, SpawningShellSurface>();
-        services.AddSingleton<IExplorerSpawner, ProcessExplorerSpawner>();
+        services.AddSingleton<IFilerSpawner, ProcessFilerSpawner>();
 
-        // Taskbar↔Explorer automation channel (bevel-uldj). The Explorer process REGISTERS by hosting a
+        // Taskbar↔Filer automation channel (bevel-uldj). The Filer process REGISTERS by hosting a
         // control server that answers forwarded select/query against its own in-process
         // FileManagerShellSurface; the Taskbar process resolves the client that discovers + dials those
-        // Explorers. Both reuse the shell-core UDS transport + HMAC-nonce auth (ExplorerControlEndpoint).
-        if (role is ShellRole.Explorer)
-            services.AddHostedService<ExplorerControlServer>();
+        // Filers. Both reuse the shell-core UDS transport + HMAC-nonce auth (FilerControlEndpoint).
+        if (role is ShellRole.Filer)
+            services.AddHostedService<FilerControlServer>();
         else if (role is ShellRole.Taskbar)
-            services.AddSingleton(_ => new TaskbarExplorerControlClient(
-                ShellCore.ExplorerControlEndpoint.Dir,
-                ShellCore.ExplorerControlEndpoint.ResolveNonce()));
+            services.AddSingleton(_ => new TaskbarFilerControlClient(
+                ShellCore.FilerControlEndpoint.Dir,
+                ShellCore.FilerControlEndpoint.ResolveNonce()));
         services.AddSingleton<Bevel.Interop.IProgramSurface, AppEnvironmentProgramSurface>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
         // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
@@ -361,9 +361,9 @@ public static class CompositionRoot
         services.AddSingleton<Bevel.Interop.Cli.AutomationCommandRouter>();
 
         // Serve the bevelctl socket from the PERSISTENT host — the always-up TASKBAR (bevel-e7a7), NOT
-        // the on-demand Explorer that only exists once a window is open. The taskbar has the full
+        // the on-demand Filer that only exists once a window is open. The taskbar has the full
         // automation DI graph; its filesystem/program verbs run directly, and its window verbs spawn an
-        // Explorer via SpawningShellSurface. Exactly one process binds the fixed socket path, so there is
+        // Filer via SpawningShellSurface. Exactly one process binds the fixed socket path, so there is
         // never a second server on it. A bind failure is logged, never fatal.
         if (role is ShellRole.Taskbar)
             services.AddHostedService<AutomationSocketHost>();

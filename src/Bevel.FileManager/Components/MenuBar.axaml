@@ -45,7 +45,7 @@
         <MenuItem Header="_View">
             <MenuItem Header="T_oolbar" x:Name="ToolbarMenuItem" InputGesture="Ctrl+T" />
             <MenuItem Header="Status _Bar" x:Name="StatusBarMenuItem" InputGesture="Ctrl+Shift+S" />
-            <MenuItem Header="_Explorer Bar" x:Name="ExplorerBarMenuItem" />
+            <MenuItem Header="_Filer Bar" x:Name="FilerBarMenuItem" />
             <Separator />
             <MenuItem Header="_Large Icons" x:Name="LargeIconsItem" InputGesture="Ctrl+Shift+1" />
             <MenuItem Header="_Small Icons" x:Name="SmallIconsItem" InputGesture="Ctrl+Shift+2" />

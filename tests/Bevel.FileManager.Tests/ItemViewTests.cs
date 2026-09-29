@@ -55,7 +55,7 @@ public class ItemViewTests
 
         var src = (System.Collections.IList)view.ItemsControl.ItemsSource!;
         Assert.Equal(3, src.Count);
-        // Folders sort ahead of files (Explorer/Finder), then files by name.
+        // Folders sort ahead of files (Filer/Finder), then files by name.
         Assert.Equal(new[] { "dir", "a.txt", "b.txt" },
             src.Cast<ItemViewModel>().Select(v => v.DisplayName).ToArray());
     }

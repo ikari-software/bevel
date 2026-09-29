@@ -14,7 +14,7 @@ using Xunit;
 namespace Bevel.FileManager.Tests;
 
 /// <summary>
-/// bevel-6zs6: the Explorer's icon-only controls carry explicit screen-reader names (ToolTip.Tip is
+/// bevel-6zs6: the Filer's icon-only controls carry explicit screen-reader names (ToolTip.Tip is
 /// NOT surfaced as the accessible name). These pin that every toolbar button, the address field, and
 /// each tab's close button announce something meaningful instead of "button".
 /// </summary>

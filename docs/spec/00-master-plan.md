@@ -198,7 +198,7 @@ Residual inconsistencies found during synthesis, resolved here. "Stale text" = f
                 │                    Bevel.App  (C# / .NET 9 / Avalonia)        │
                 │                                                              │
                 │  Bevel.Desktop     Bevel.Taskbar      Bevel.FileManager       │
-                │  (icons+wallpaper) (list/start/tray)  (VFS + Explorer UI)     │
+                │  (icons+wallpaper) (list/start/tray)  (VFS + Filer UI)     │
                 │  ────────────────────────────────────────────────────────    │
                 │  Bevel.UI (chrome primitives)   Bevel.Themes.* (Win2000+stub)│
                 │  Bevel.Core (settings, supervision, file-ops, MRU, undo)     │

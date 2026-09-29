@@ -12,16 +12,16 @@ namespace Bevel.Taskbar.Tests;
 /// <summary>
 /// Covers the <c>--role</c> split's two load-bearing pieces: argument parsing (which surface a
 /// process hosts) and the composition-root gating that keeps the eagerly-started helper out of
-/// non-taskbar roles (so an explorer/desktop process doesn't spawn a redundant helper).
+/// non-taskbar roles (so a filer/desktop process doesn't spawn a redundant helper).
 /// </summary>
 public sealed class RoleSelectorTests
 {
     [Theory]
     [InlineData("--role=taskbar", ShellRole.Taskbar)]
     [InlineData("--role=bar", ShellRole.Taskbar)]
-    [InlineData("--role=explorer", ShellRole.Explorer)]
-    [InlineData("--role=files", ShellRole.Explorer)]
-    [InlineData("--role=filemanager", ShellRole.Explorer)]
+    [InlineData("--role=filer", ShellRole.Filer)]
+    [InlineData("--role=files", ShellRole.Filer)]
+    [InlineData("--role=filemanager", ShellRole.Filer)]
     [InlineData("--role=desktop", ShellRole.Desktop)]
     [InlineData("--role=TASKBAR", ShellRole.Taskbar)]      // case-insensitive
     [InlineData("--role=core", ShellRole.Core)]
@@ -36,13 +36,13 @@ public sealed class RoleSelectorTests
 
     [Fact]
     public void Picks_the_role_flag_out_of_a_mixed_argv() =>
-        Assert.Equal(ShellRole.Explorer,
-            RoleSelector.FromArgs(new[] { "--pal=macos", "--role=explorer", "--other" }));
+        Assert.Equal(ShellRole.Filer,
+            RoleSelector.FromArgs(new[] { "--pal=macos", "--role=filer", "--other" }));
 
     [Theory]
     [InlineData(ShellRole.Core, true)]       // the headless owner runs the helper
     [InlineData(ShellRole.Taskbar, false)]   // split taskbar is a shell-core CLIENT, no helper
-    [InlineData(ShellRole.Explorer, false)]
+    [InlineData(ShellRole.Filer, false)]
     [InlineData(ShellRole.Desktop, false)]
     public void Helper_is_hosted_only_for_the_core_role(ShellRole role, bool expectHosted)
     {
@@ -91,7 +91,7 @@ public sealed class RoleSelectorTests
     [Theory]
     [InlineData(ShellRole.Core, "SettingsService")]       // the headless owner is the sole DB writer
     [InlineData(ShellRole.Taskbar, "RemoteSettingsService")]  // peers read/write through the core
-    [InlineData(ShellRole.Explorer, "RemoteSettingsService")]
+    [InlineData(ShellRole.Filer, "RemoteSettingsService")]
     [InlineData(ShellRole.Desktop, "RemoteSettingsService")]
     public void Settings_service_is_the_real_one_for_core_and_remote_for_peers(ShellRole role, string expectedImpl)
     {
@@ -105,7 +105,7 @@ public sealed class RoleSelectorTests
     [Theory]
     [InlineData(ShellRole.Core, false)]       // the core is the server, never a client
     [InlineData(ShellRole.Taskbar, true)]     // shared window/app/tray client + a keyed "settings" client
-    [InlineData(ShellRole.Explorer, true)]    // settings-only client (window/app/tray stay direct-PAL)
+    [InlineData(ShellRole.Filer, true)]    // settings-only client (window/app/tray stay direct-PAL)
     [InlineData(ShellRole.Desktop, true)]
     public void Shell_core_client_is_registered_only_for_peer_roles(ShellRole role, bool expectClient)
     {
@@ -164,7 +164,7 @@ public sealed class RoleSelectorTests
     [Theory]
     [InlineData(ShellRole.Core)]
     [InlineData(ShellRole.Taskbar)]
-    [InlineData(ShellRole.Explorer)]
+    [InlineData(ShellRole.Filer)]
     [InlineData(ShellRole.Desktop)]
     public void Windows_pal_hosts_no_helper_service_in_any_role(ShellRole role)
     {
@@ -199,7 +199,7 @@ public sealed class RoleSelectorTests
     [Theory]
     [InlineData(ShellRole.Core, "SettingsService")]           // sole DB writer
     [InlineData(ShellRole.Taskbar, "RemoteSettingsService")]  // peers read/write through the core
-    [InlineData(ShellRole.Explorer, "RemoteSettingsService")]
+    [InlineData(ShellRole.Filer, "RemoteSettingsService")]
     [InlineData(ShellRole.Desktop, "RemoteSettingsService")]
     public void Windows_settings_service_is_real_for_core_and_remote_for_peers(ShellRole role, string expectedImpl)
     {

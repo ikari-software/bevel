@@ -239,7 +239,7 @@ internal static class Program
 
         // Dependency + z-order: the shell-core owner (brings up the helper + owns window/app state)
         // first, then the UI surfaces — desktop behind, taskbar in front (the full shell the user
-        // expects). Explorer stays on-demand (a window the user opens), not a supervised surface.
+        // expects). Filer stays on-demand (a window the user opens), not a supervised surface.
         //
         // The desktop surface is OFF by default (user preference: it's not useful today and just gets in
         // the way — it's launched on demand from the Start menu, bevel-gdie). Set BEVEL_ENABLE_DESKTOP=1
@@ -398,7 +398,7 @@ internal static class Program
     {
         ShellRole.Core => "core",
         ShellRole.Taskbar => "taskbar",
-        ShellRole.Explorer => "explorer",
+        ShellRole.Filer => "filer",
         ShellRole.Desktop => "desktop",
         ShellRole.Launcher => "launcher",
         _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown shell role"),
@@ -450,16 +450,16 @@ internal static class Program
         }
     }
 
-    /// <summary>Opens a Bevel Explorer window at <paramref name="filePath"/> as its OWN
-    /// <c>--role=explorer</c> process — the way the split shell hosts the file manager. Called from the
+    /// <summary>Opens a Bevel Filer window at <paramref name="filePath"/> as its OWN
+    /// <c>--role=filer</c> process — the way the split shell hosts the file manager. Called from the
     /// taskbar's Start-menu "places" and from the automation command model's window verbs
     /// (<c>open</c>/<c>reveal</c>, bevel-e7a7): creating the window in the taskbar process instead gives
-    /// it none of the explorer surface setup, so its menu mis-renders. Reuses this process's argv (minus
+    /// it none of the filer surface setup, so its menu mis-renders. Reuses this process's argv (minus
     /// role / open-path / select), so the child inherits the same PAL + control/shell-core environment.
     /// <paramref name="selectPath"/> (a <c>reveal</c> target) is handed to the child via
-    /// <c>--select=</c>, which <see cref="App.CreateExplorerSurface"/> turns into a
+    /// <c>--select=</c>, which <see cref="App.CreateFilerSurface"/> turns into a
     /// <c>SelectAfterLoad</c> once the folder lists.</summary>
-    internal static void SpawnExplorer(string filePath, bool search = false, string? selectPath = null)
+    internal static void SpawnFiler(string filePath, bool search = false, string? selectPath = null)
     {
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(processPath)) return;
@@ -469,7 +469,7 @@ internal static class Program
                      && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase)
                      && !a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase)
                      && !a.Equals("--search", StringComparison.OrdinalIgnoreCase))
-            .Append("--role=explorer")
+            .Append("--role=filer")
             .Append("--open-path=" + filePath)
             .ToList();
         if (search) childArgs.Add("--search");   // open the new window straight into Find mode (bevel-x6pv)
@@ -491,7 +491,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Bevel explorer spawn failed: {ex.Message}");
+            Console.Error.WriteLine($"Bevel filer spawn failed: {ex.Message}");
         }
     }
 

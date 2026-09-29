@@ -14,7 +14,7 @@ using Bevel.UI.Luna;
 
 namespace Bevel.FileManager.Components;
 
-/// <summary>Left Explorer sidebar with selectable era presets: Win2000/Me Web View, XP Common Tasks,
+/// <summary>Left Filer sidebar with selectable era presets: Win2000/Me Web View, XP Common Tasks,
 /// Vista/7 navigation, or a minimal Win95/NT4 panel. All native vector — no web engine. The window drives it through
 /// the same simple API (Title/Description/ObjectCount/links); the code-behind holds those values and
 /// applies them to whichever style view is active. "Off" is handled by the host, which collapses the pane.</summary>

@@ -206,7 +206,7 @@ public sealed class FileManagerControllerTests : IDisposable
     // ── New folder ─────────────────────────────────────────────────────
 
     [Fact]
-    public async Task NewFolderAsync_picks_a_free_name_like_Explorer()
+    public async Task NewFolderAsync_picks_a_free_name_like_Filer()
     {
         _controller.NavigateTo(P());
 

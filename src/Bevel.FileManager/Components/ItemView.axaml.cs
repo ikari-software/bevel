@@ -219,7 +219,7 @@ public partial class ItemView : UserControl
             case ViewMode.List:
                 // Vertical flow: items fill a column top-to-bottom, then wrap to the next column.
                 // Height is constrained (no vertical scroll) so it wraps into columns and the
-                // overflow scrolls horizontally — the classic Explorer "List" view.
+                // overflow scrolls horizontally — the classic Filer "List" view.
                 SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Disabled);
                 ItemsPresenter.ItemsPanel = Wrap(180, 18, Orientation.Vertical);
                 ItemsPresenter.ItemTemplate = ListTpl;
@@ -256,7 +256,7 @@ public partial class ItemView : UserControl
     };
 
     // Win2000 selection: the filename label gets a Highlight-colored bar with HighlightText
-    // text; the icon is left un-highlighted, exactly like classic Explorer. Colors come from
+    // text; the icon is left un-highlighted, exactly like classic Filer. Colors come from
     // the theme tokens (bevel-38y) so classic color schemes recolor selection too; the literal
     // fallbacks are the Windows Standard values, used only when no theme is loaded (bare unit
     // tests). Bound to the row's IsSelected so it tracks selection without rebuilding the row.
@@ -337,7 +337,7 @@ public partial class ItemView : UserControl
     private FuncDataTemplate<ItemViewModel> BuildDetailsTemplate() => new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        // No horizontal gridlines — classic Explorer details view has plain white rows.
+        // No horizontal gridlines — classic Filer details view has plain white rows.
         var row = new Border { Padding = new(2, 1) };
         var g = new Grid { Height = 20 };
         g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
@@ -527,7 +527,7 @@ public partial class ItemView : UserControl
     }
 
     /// <summary>The total order used by both the full sort and the streaming sorted-insert. Folders
-    /// always precede files (Explorer/Finder behaviour, independent of column and direction); within a
+    /// always precede files (Filer/Finder behaviour, independent of column and direction); within a
     /// group the chosen column decides, with a name tiebreak so the order stays deterministic
     /// (List.Sort/binary-insert aren't otherwise stable).</summary>
     internal static int CompareItems(ItemViewModel a, ItemViewModel b, SortColumn col, bool asc)
@@ -640,7 +640,7 @@ public partial class ItemView : UserControl
         if (e.ClickCount == 2 && vm is not null) { ItemActivated?.Invoke(this, new(vm)); e.Handled = true; return; }
 
         // A non-left press (right-click for the context menu) must NEVER arm a drag or start a marquee —
-        // it only moves the selection onto the item under the pointer (Explorer selects what you
+        // it only moves the selection onto the item under the pointer (Filer selects what you
         // right-click). Leaving _dragArmed set here is what made closing the menu act like a drag.
         if (!leftButton)
         {
@@ -756,7 +756,7 @@ public partial class ItemView : UserControl
         else
             pos = default;
 
-        // Right-clicking an unselected item selects it first (Explorer behaviour).
+        // Right-clicking an unselected item selects it first (Filer behaviour).
         if (vm is not null && !vm.IsSelected) SelectOne(vm);
 
         ItemContextRequested?.Invoke(this, new FileContextRequestedEventArgs(vm, pos));
@@ -816,7 +816,7 @@ public partial class ItemView : UserControl
         int cur = _lastClickIdx < 0 ? 0 : _lastClickIdx;
         // Arrow keys are VISUAL: under RTL the layout is mirrored (index 0 sits at the visual
         // right — VirtualizingWrapPanel), so the Right arrow moves toward reading-start, i.e.
-        // a LOWER index (bevel-3cd), exactly like classic Explorer on RTL Windows.
+        // a LOWER index (bevel-3cd), exactly like classic Filer on RTL Windows.
         int ahead = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft ? -1 : 1;
         int next = key switch
         {

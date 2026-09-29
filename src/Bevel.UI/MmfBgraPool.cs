@@ -10,7 +10,7 @@ namespace Bevel.UI;
 /// (e.g. <c>"/Applications/Safari.app|32"</c>) → <see cref="PalImage"/>. It is the cross-process
 /// storage substrate for the multi-process shell (phase P6, bevel-gww.6): the shell-core process
 /// decodes an icon ONCE via NSWorkspace and <see cref="TryAdd"/>s the pixels here; the taskbar and
-/// explorer UI processes map the SAME file and <see cref="TryGet"/> the pixels straight out of the
+/// filer UI processes map the SAME file and <see cref="TryGet"/> the pixels straight out of the
 /// shared pages instead of each re-decoding the same icon.
 ///
 /// <para><b>Concurrency contract — SINGLE WRITER, MANY READERS.</b> Exactly ONE process (the owner)

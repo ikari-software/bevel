@@ -25,7 +25,7 @@ public sealed class FakeWindowManager : IWindowManager
     private readonly List<ForeignWindow> _windows = new()
     {
         new ForeignWindow(new ForeignWindowId("w1"), "Untitled - Notepad", "fake.notepad", false, true, new PalRect(100, 100, 800, 600)),
-        new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.explorer", false, false, new PalRect(200, 200, 1024, 768)),
+        new ForeignWindow(new ForeignWindowId("w2"), "My Computer", "fake.filer", false, false, new PalRect(200, 200, 1024, 768)),
         // A window whose bundle id FakeTabProvider supports, so the Tabs submenu is reachable (and
         // demoable) under --pal=fake — without it the tab feature only exists against real browsers.
         new ForeignWindow(new ForeignWindowId("w3"), "Welcome — Fake Browser", FakeTabProvider.TabApp, false, false, new PalRect(300, 150, 1200, 800)),

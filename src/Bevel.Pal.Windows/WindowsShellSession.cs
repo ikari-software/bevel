@@ -17,7 +17,7 @@ namespace Bevel.Pal.Windows;
 /// <c>explorer.exe</c> back into HKCU, which would freeze the fallback instead of releasing it. A machine
 /// policy at <c>HKLM\...\Policies\System</c> value <c>Shell</c> overrides the per-user value on managed
 /// boxes; we detect it (see <see cref="IsRegisteredAsShellAsync"/>) but the toggle still reflects HKCU.
-/// Escape hatch if a broken shell locks you out: Ctrl+Alt+Del → Task Manager → Run new task → <c>explorer</c>
+/// Escape hatch if a broken shell locks you out: Ctrl+Alt+Del → Task Manager → Run new task → <c>filer</c>
 /// / <c>regedit</c> (see <c>packaging/windows/RESTORE-SHELL.md</c>).</para>
 ///
     /// <para><b>Power</b>: <see cref="ExitWindowsEx"/> for logoff/reboot/shutdown, <see cref="LockWorkStation"/>

@@ -8,7 +8,7 @@ namespace Bevel.Core;
 /// Persistent shell settings per the layered JSON model (01-architecture.md CFG-01..05).
 ///
 /// P5 (bevel-gww.5): backed by a shared SQLite DB at ~/.config/bevel/settings.db so multiple
-/// shell processes (taskbar, explorer, desktop, core) can each open it and read CONCURRENTLY,
+/// shell processes (taskbar, filer, desktop, core) can each open it and read CONCURRENTLY,
 /// with one-writer safety and a monotonically-incremented <c>version</c> that lets a process
 /// detect external writes (see <see cref="Version"/> / <see cref="ReloadIfChangedAsync"/>).
 ///
@@ -502,8 +502,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
         SetOrPrune("hideKnownExtensions", _settings.HideKnownExtensions, d.HideKnownExtensions, SettingsJsonContext.Default.Boolean);
-        SetOrPrune("explorerLeftPaneWidth", _settings.ExplorerLeftPaneWidth, d.ExplorerLeftPaneWidth, SettingsJsonContext.Default.Int32);
-        SetOrPrune("explorerFoldersOpen", _settings.ExplorerFoldersOpen, d.ExplorerFoldersOpen, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("filerLeftPaneWidth", _settings.FilerLeftPaneWidth, d.FilerLeftPaneWidth, SettingsJsonContext.Default.Int32);
+        SetOrPrune("filerFoldersOpen", _settings.FilerFoldersOpen, d.FilerFoldersOpen, SettingsJsonContext.Default.Boolean);
         SetOrPrune("defaultViewMode", _settings.DefaultViewMode, d.DefaultViewMode, SettingsJsonContext.Default.String);
         SetOrPrune("infoPaneStyle", _settings.InfoPaneStyle.ToString(), d.InfoPaneStyle.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("workAreaStrategy", _settings.WorkAreaStrategy.ToString(), d.WorkAreaStrategy.ToString(), SettingsJsonContext.Default.String);
@@ -646,8 +646,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
             HideKnownExtensions = GetBool("hideKnownExtensions") ?? false,
-            ExplorerLeftPaneWidth = GetInt("explorerLeftPaneWidth") ?? 200,
-            ExplorerFoldersOpen = GetBool("explorerFoldersOpen") ?? false,
+            FilerLeftPaneWidth = GetInt("filerLeftPaneWidth") ?? 200,
+            FilerFoldersOpen = GetBool("filerFoldersOpen") ?? false,
             DefaultViewMode = GetString("defaultViewMode") ?? "LargeIcons",
             InfoPaneStyle = Enum.TryParse<InfoPaneStyle>(GetString("infoPaneStyle"), out var ips) ? ips : InfoPaneStyle.Auto,
             WorkAreaStrategy = Enum.TryParse<WorkAreaStrategy>(GetString("workAreaStrategy"), out var was)
@@ -749,25 +749,25 @@ public sealed class BevelSettings
 
     public bool ShellEnabled { get; set; } = true;
 
-    // ── Folder Options (Explorer view/behaviour) ──────────────────────
+    // ── Folder Options (Filer view/behaviour) ──────────────────────
     public bool ShowHiddenFiles { get; set; }
 
     /// <summary>Hide the extension of files that have one (never dotfiles/extensionless) in the listing.</summary>
     public bool HideKnownExtensions { get; set; }
 
-    /// <summary>The view mode a newly-opened Explorer window/tab starts in. Stored as a string because the
+    /// <summary>The view mode a newly-opened Filer window/tab starts in. Stored as a string because the
     /// <c>ViewMode</c> enum lives in Bevel.FileManager (which Bevel.Core can't reference); the file manager
     /// parses it. Default matches the historic hard-coded LargeIcons.</summary>
     public string DefaultViewMode { get; set; } = "LargeIcons";
 
-    /// <summary>Visual style of the Explorer's left info pane (folder "webview").</summary>
+    /// <summary>Visual style of the Filer's left info pane (folder "webview").</summary>
     public InfoPaneStyle InfoPaneStyle { get; set; } = InfoPaneStyle.Auto;
 
-    /// <summary>Explorer left-pane width in px (drag the splitter to resize). Persisted so the pane keeps its size.</summary>
-    public int ExplorerLeftPaneWidth { get; set; } = 200;
+    /// <summary>Filer left-pane width in px (drag the splitter to resize). Persisted so the pane keeps its size.</summary>
+    public int FilerLeftPaneWidth { get; set; } = 200;
 
-    /// <summary>Whether the Explorer left pane shows the Folders tree (true) instead of the info pane (false).</summary>
-    public bool ExplorerFoldersOpen { get; set; }
+    /// <summary>Whether the Filer left pane shows the Folders tree (true) instead of the info pane (false).</summary>
+    public bool FilerFoldersOpen { get; set; }
 
     /// <summary>M2: work-area strategy (how the taskbar coexists with the Dock).</summary>
     public WorkAreaStrategy WorkAreaStrategy { get; set; } = WorkAreaStrategy.Nudge;
@@ -916,7 +916,7 @@ public sealed class BevelSettings
     }
 }
 
-/// <summary>Visual style of the Explorer's left info pane (the folder "webview"). Each is a native,
+/// <summary>Visual style of the Filer's left info pane (the folder "webview"). Each is a native,
 /// code-drawn vector template — not HTML — selectable in Folder Options.</summary>
 public enum InfoPaneStyle
 {

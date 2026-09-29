@@ -9,7 +9,7 @@ namespace Bevel.UI.Tests;
 /// <summary>
 /// Regression pin for a live shell crash (2026-08-17): Glyphs built computed path data with
 /// culture-sensitive interpolation, so under a comma-decimal locale (pl_PL) "2.5" rendered as
-/// "2,5", PathMarkupParser threw on the UI thread, and ONE video file in an Explorer folder
+/// "2,5", PathMarkupParser threw on the UI thread, and ONE video file in a Filer folder
 /// aborted the whole process. Every glyph must build under a comma-decimal culture.
 /// </summary>
 public class GlyphCultureTests

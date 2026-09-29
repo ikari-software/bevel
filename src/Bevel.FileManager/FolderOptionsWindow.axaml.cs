@@ -6,7 +6,7 @@ using Bevel.Core;
 namespace Bevel.FileManager;
 
 /// <summary>
-/// Folder Options — a focused Explorer view/behaviour dialog (Show hidden, Hide extensions, default view,
+/// Folder Options — a focused Filer view/behaviour dialog (Show hidden, Hide extensions, default view,
 /// info-panel style). Deliberately does NOT expose the app theme/appearance (that lives on the taskbar's
 /// Properties): opening the whole app Settings from here was the bug bevel-x1x2 fixed.
 /// </summary>

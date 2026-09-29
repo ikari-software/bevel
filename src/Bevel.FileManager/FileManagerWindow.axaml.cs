@@ -137,12 +137,12 @@ public partial class FileManagerWindow : BevelWindow
         TabStrip.TabSelected += SwitchToTabId;
         TabStrip.TabCloseRequested += CloseTabId;
 
-        // Folders toggle: swap InfoPane <-> ExplorerPane (tree)
+        // Folders toggle: swap InfoPane <-> FilerPane (tree)
         Toolbar.Folders.Click += (_, _) => ToggleFolders();
         Toolbar.Search.Click += (_, _) => ToggleSearchPane();
         SearchPane.SearchRequested += OnSearchRequested;
         SearchPane.CloseRequested += (_, _) => ToggleSearchPane();
-        ExplorerPane.CloseClicked += (_, _) => ToggleFolders();
+        FilerPane.CloseClicked += (_, _) => ToggleFolders();
 
         // Left-pane splitter (bevel-xw12): drag to resize the pane; the width is persisted.
         LeftSplitter.PointerPressed += OnSplitterPressed;
@@ -220,7 +220,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         _showTree = !_showTree;
         UpdateLeftColumn();
-        _ = _settings?.UpdateAsync(s => s.ExplorerFoldersOpen = _showTree);
+        _ = _settings?.UpdateAsync(s => s.FilerFoldersOpen = _showTree);
     }
 
     /// <summary>Shows the folders tree, the info pane, or nothing (info style = Off), and collapses the
@@ -229,7 +229,7 @@ public partial class FileManagerWindow : BevelWindow
     {
         var showLeft = _showTree || !_infoPaneOff;
         InfoPane.IsVisible = !_showTree && !_infoPaneOff;
-        ExplorerPane.IsVisible = _showTree;
+        FilerPane.IsVisible = _showTree;
         LeftSplitter.IsVisible = showLeft;
         // Clamp a persisted width against the live window so a value saved in a wide window can't crush the
         // item view in a narrower one. Bounds is 0 before the first layout — skip until it has been measured.
@@ -263,7 +263,7 @@ public partial class FileManagerWindow : BevelWindow
         if (!_draggingSplitter) return;
         _draggingSplitter = false;
         e.Pointer.Capture(null);
-        _ = _settings?.UpdateAsync(s => s.ExplorerLeftPaneWidth = _leftPaneWidth);
+        _ = _settings?.UpdateAsync(s => s.FilerLeftPaneWidth = _leftPaneWidth);
     }
 
     /// <summary>Auto → the info-pane style that matches the active theme (the XP Luna task-pane under Luna,
@@ -357,7 +357,7 @@ public partial class FileManagerWindow : BevelWindow
 
     /// <summary>Wires the controller and navigates ONCE to <paramref name="startDirectory"/> (or Home).
     /// The factory previously navigated to Home here and then again to the real start dir, so a
-    /// places-spawned Explorer kicked off a wasted Home enumeration on the fresh window before the
+    /// places-spawned Filer kicked off a wasted Home enumeration on the fresh window before the
     /// second nav superseded it (bevel-hvce). Passing the start dir here fires a single load.</summary>
     public void SetController(FileManagerController controller, VfsPath? startDirectory)
     {
@@ -510,8 +510,8 @@ public partial class FileManagerWindow : BevelWindow
     {
         _settings = settings;
         // Restore the persisted left-pane state (bevel-xw12): which pane is showing + its width.
-        _showTree = settings.Current.ExplorerFoldersOpen;
-        _leftPaneWidth = System.Math.Max(LeftPaneMinWidth, settings.Current.ExplorerLeftPaneWidth);
+        _showTree = settings.Current.FilerFoldersOpen;
+        _leftPaneWidth = System.Math.Max(LeftPaneMinWidth, settings.Current.FilerLeftPaneWidth);
         // The initial listing reflects these inputs, so a later layout-only fan-out is correctly a no-op.
         _lastListingInputs = (settings.Current.ShowHiddenFiles, settings.Current.HideKnownExtensions);
         // Open with the persisted info-pane style + column layout (Folder Options). A fresh window has no
@@ -990,7 +990,7 @@ public partial class FileManagerWindow : BevelWindow
 
     private void UpdateTitle(VfsPath path)
     {
-        Title = $"Exploring - {path.Value}";
+        Title = $"Filer - {path.Value}";
     }
 
     // ── Mutating commands (bevel-o2t) ──────────────────────────────────
@@ -1108,7 +1108,7 @@ public partial class FileManagerWindow : BevelWindow
         }
         else
         {
-            // Nothing selected — mirror Explorer and show the current folder's Properties.
+            // Nothing selected — mirror Filer and show the current folder's Properties.
             try { items = new[] { await _vfsRoot.ResolveAsync(_controller.CurrentDirectory, CancellationToken.None) }; }
             catch { return; }   // current directory raced away / couldn't resolve — nothing to show
         }

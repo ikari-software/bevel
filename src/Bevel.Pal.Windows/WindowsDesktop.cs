@@ -14,7 +14,7 @@ namespace Bevel.Pal.Windows;
 /// <see cref="SystemParametersInfo"/>(SPI_SETWORKAREA) per-monitor, computed from each monitor's
 /// <c>rcMonitor</c>, with startup reconciliation (<see cref="ResetWorkAreasToFull"/>) because
 /// SPI_SETWORKAREA is not auto-restored after a crash. The AppBar (<c>SHAppBarMessage</c>)
-/// explorer-serviced alternative is a documented TODO — see <see cref="ReserveWorkAreaAsync"/>.
+/// filer-serviced alternative is a documented TODO — see <see cref="ReserveWorkAreaAsync"/>.
 ///
 /// Every P/Invoke method is guarded with <see cref="OperatingSystem.IsWindows"/> so the assembly
 /// loads and no-ops on CI's macOS/Linux runners; nothing here P/Invokes from a constructor or static
@@ -150,7 +150,7 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
     }
 
     /// <summary>Restore a previously snapshotted work area (test cleanup — do not use
-    /// <see cref="ResetWorkAreasToFull"/> here; that would erase Explorer's own inset).</summary>
+    /// <see cref="ResetWorkAreasToFull"/> here; that would erase Filer's own inset).</summary>
     internal static void RestoreWorkArea(PalRect work)
     {
         if (!OperatingSystem.IsWindows()) return;
@@ -168,7 +168,7 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
     private static void SetWorkArea(ref RECT rect)
     {
         // SPI_SETWORKAREA takes a RECT* in pvParam; the OS applies it to the monitor containing the rect.
-        // SPIF_SENDCHANGE is required when we have just hidden Explorer's bar (bevel-h0sr): without the
+        // SPIF_SENDCHANGE is required when we have just hidden Filer's bar (bevel-h0sr): without the
         // broadcast, windows (and Avalonia's Screen list) keep the old rcWork inset and Bevel stays
         // parked above an empty native-taskbar-sized strip.
         var handle = GCHandle.Alloc(rect, GCHandleType.Pinned);
@@ -203,8 +203,8 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
     /// <summary>
     /// Best-effort hide/show of the desktop wallpaper layer. Windows paints the wallpaper on a
     /// <c>WorkerW</c> (or the <c>Progman</c> "Program Manager") window; we toggle its visibility with
-    /// <see cref="ShowWindow"/>. This is genuinely fragile — the WorkerW only exists after Explorer has
-    /// been nudged to spawn it, and in shell-mode (no Explorer) there is often nothing to hide — so a
+    /// <see cref="ShowWindow"/>. This is genuinely fragile — the WorkerW only exists after Filer has
+    /// been nudged to spawn it, and in shell-mode (no Filer) there is often nothing to hide — so a
     /// failure is swallowed and the method degrades to a no-op rather than faking success.
     /// </summary>
     public Task SetWallpaperVisibleToHostAsync(bool hostWallpaperHidden, CancellationToken ct = default)
@@ -479,7 +479,7 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
 /// <see cref="Dispose"/>, process exit). A hard kill (Job Object, 3s grace then Kill) skips those;
 /// the next launch heals the leftover hide so the machine is never left without a taskbar.
 ///
-/// Work-area (bevel-h0sr): hiding the HWND does <b>not</b> drop Explorer's AppBar reservation, so
+/// Work-area (bevel-h0sr): hiding the HWND does <b>not</b> drop Filer's AppBar reservation, so
 /// <c>rcWork</c> still insets the bottom and Windows clamps our bar into that strip. After hide we
 /// reset every monitor's work area to full <c>rcMonitor</c> (with <c>SPIF_SENDCHANGE</c>) so Bevel
 /// can sit on the physical bottom edge.
@@ -539,7 +539,7 @@ public sealed class WindowsDockController : IDockController, IDisposable
                     ShowWindow(hwnd, SW_HIDE);
                 _claimed = true;
                 WriteMarker(_priorVisible ?? true);
-                // Drop Explorer's leftover AppBar inset so our bar can sit on the physical bottom.
+                // Drop Filer's leftover AppBar inset so our bar can sit on the physical bottom.
                 _desktop?.ResetWorkAreasToFull();
             }
             else
@@ -666,7 +666,7 @@ public sealed class WindowsDockController : IDockController, IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 
-    /// <summary>Whether Explorer's primary taskbar HWND is visible. Tests use this to assert
+    /// <summary>Whether Filer's primary taskbar HWND is visible. Tests use this to assert
     /// hide/restore/Dispose actually moved OS state (PR #1 #1).</summary>
     internal static bool IsNativeTaskbarVisible()
     {

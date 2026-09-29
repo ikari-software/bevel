@@ -2,7 +2,7 @@ namespace Bevel.Core;
 
 /// <summary>
 /// The settings-store contract every UI surface talks to (bevel-6nve). Extracted from the concrete
-/// <see cref="SettingsService"/> so a role that must NOT open the SQLite DB directly (Explorer / Desktop
+/// <see cref="SettingsService"/> so a role that must NOT open the SQLite DB directly (Filer / Desktop
 /// peers) can be handed a remote, IPC-backed implementation while the DB-owning core keeps the real one —
 /// without either caller knowing which it holds.
 ///

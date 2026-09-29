@@ -316,12 +316,12 @@ packaging/windows/                    # U11: publish + deploy-to-box script + ap
 ## Open Questions
 
 - **O1 (architecture):** Core owns Win32 discovery and streams to peers (macOS-parallel) — but window **actions needing foreground rights must execute in the taskbar** (or via `AllowSetForegroundWindow`), because a background Core cannot steal foreground (F2). Confirm the discovery-in-Core / action-in-taskbar split in U2/U3. *Leaning: yes.*
-- **O2:** does `--role=explorer`-per-window hold on Windows, or start core+taskbar-only for v1 and add explorer after U8? *Leaning: core+taskbar first.*
+- **O2:** does `--role=filer`-per-window hold on Windows, or start core+taskbar-only for v1 and add filer after U8? *Leaning: core+taskbar first.*
 - **O3 (resolved into U3):** WinEvent threading = dedicated pump thread + field-held delegate (KTD-3/KTD-7).
 - **O4 (RESOLVED by research):** Windows app identity = **AUMID** for packaged/UWP apps (resolved via the `Windows.UI.Core.CoreWindow` child of `ApplicationFrameHost` → true PID → `GetApplicationUserModelId`, with `PKEY_AppUserModel_ID` as fallback), **full exe path** for classic Win32 apps. Use this string consistently across U3's `TerminateAppAsync` and U6's `RunningApp`.
 - **O5 (needs empirical check, not doc-resolvable):** the raw `HKCU\...\Winlogon\Shell` value **is** honored on Windows Home (it's not edition-gated; only the *managed* Shell Launcher feature is Enterprise/IoT/Education). But Win10/11 per-user shell-swap is less battle-tested than XP/7, so **verify on the NUCBOX's actual edition in a throwaway account** before shipping U5. A `Policies\System\Shell` value would override it (KTD-4 check).
 - **O6:** taskbar UX for windows on *other virtual desktops* — they're cloaked; filtering `DWMWA_CLOAKED` hides them (matches the real Windows taskbar's current-desktop-only behavior — confirm intent). (F17)
-- **O7:** do `bevelctl`/`AutomationSocketHost` + `ExplorerControlEndpoint` socket-dir scanning behave with stale reparse-point socket files after a crash (the taskbar client dials every file it finds)? (F17)
+- **O7:** do `bevelctl`/`AutomationSocketHost` + `FilerControlEndpoint` socket-dir scanning behave with stale reparse-point socket files after a crash (the taskbar client dials every file it finds)? (F17)
 
 ## Sources & Research
 

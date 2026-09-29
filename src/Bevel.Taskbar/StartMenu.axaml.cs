@@ -515,7 +515,7 @@ public partial class StartMenu : UserControl
 
         // Every leaf routes to a REAL action (bevel-x6pv) — nothing here is a dead no-op or hidden:
         // Control Panel + Taskbar open Bevel Settings; Network/Printers launch the matching macOS
-        // settings pane; Search opens Explorer's Find or the browser. (Log Off / Shut Down are owned by
+        // settings pane; Search opens Filer's Find or the browser. (Log Off / Shut Down are owned by
         // bevel-4vce — the shell-action semantics decision.)
         AddLeaf(SettingsItem, "Control Panel", () => { Close(); OpenSystemSettings(); });   // the OS's own settings
         AddLeaf(SettingsItem, "Bevel Settings", () => { Close(); _openSettings(); });        // Bevel's own settings
@@ -662,14 +662,14 @@ public partial class StartMenu : UserControl
 
     private void OnLunaPlaceClick(object? sender, RoutedEventArgs e)
     {
-        // Places open a Bevel Explorer window at the mapped folder (the row's Tag names it). Without this
+        // Places open a Bevel Filer window at the mapped folder (the row's Tag names it). Without this
         // the "My Documents / Pictures / Music / Computer" rows did nothing but close the menu.
         if (sender is Control { Tag: string tag })
             _openFolder(ResolvePlace(tag));
         Close();
     }
 
-    /// <summary>Maps a place row's Tag to the folder Bevel Explorer should open. "computer" opens the
+    /// <summary>Maps a place row's Tag to the folder Bevel Filer should open. "computer" opens the
     /// filesystem root; the rest resolve to the user's known folders.</summary>
     private static VfsPath ResolvePlace(string tag) => tag switch
     {

@@ -236,7 +236,7 @@ public sealed class WindowsFileOperations : IFileOperations
 }
 
 /// <summary>Opens paths with the OS default handler (ShellExecuteEx "open"), opens with a specific app,
-/// reveals in Explorer, and lists "Open With" handlers (SHAssocEnumHandlers). PreviewAsync is a
+/// reveals in Filer, and lists "Open With" handlers (SHAssocEnumHandlers). PreviewAsync is a
 /// documented no-op: Windows has no Quick Look analogue (bevel-ncfp.8 / U8).</summary>
 public sealed class WindowsFileOpener : IFileOpener
 {

@@ -62,7 +62,7 @@ internal sealed class ItemRowAutomationPeer : ControlAutomationPeer, ISelectionI
     public void RemoveFromSelection() { }
 }
 
-/// <summary>The Explorer file list. A trivial <see cref="ItemsControl"/> subclass that only overrides its
+/// <summary>The Filer file list. A trivial <see cref="ItemsControl"/> subclass that only overrides its
 /// automation peer to report a List control type, so the rows' ListItem peers sit under a proper List
 /// container. No behavioural change — virtualization, panels, templates and selection are untouched.</summary>
 internal sealed class ItemList : ItemsControl

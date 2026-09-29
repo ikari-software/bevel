@@ -10,7 +10,7 @@ namespace Bevel.App;
 /// Hosts the bevelctl socket (08-os-interop.md §3.2) in the process that owns the live file manager,
 /// dispatching each connection's argv through BevelCtlParser → <see cref="AutomationCommandRouter"/>
 /// → the one <see cref="Bevel.Interop.IShellAutomation"/> seam. Registered only for the FM-hosting
-/// roles (All / Explorer); a bind failure is logged, never fatal (a second instance simply doesn't
+/// roles (All / Filer); a bind failure is logged, never fatal (a second instance simply doesn't
 /// own the socket).
 /// </summary>
 public sealed class AutomationSocketHost : IHostedService, IAsyncDisposable

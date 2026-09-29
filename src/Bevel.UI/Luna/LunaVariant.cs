@@ -101,7 +101,7 @@ public static class LunaVariantService
         // with unreadable dark text. chromatic:false pins it to these pale stops.
         new("Luna.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
 
-        // Explorer info-pane (XP task pane), derived through per-role transforms (see TransformInfoPane).
+        // Filer info-pane (XP task pane), derived through per-role transforms (see TransformInfoPane).
         // Blue is the semantic source; each variant independently tunes surfaces, borders, text, links and
         // arrows so the hierarchy survives Silver/Black/Purple instead of inheriting the harsher chrome math.
         new("Luna.Brush.InfoPaneWatermark", true, GlossRole.Inert, new[]{ (0.0,"6787D9"),(0.5,"5075CE"),(1.0,"4A6FC9") }, LightLocked: true),

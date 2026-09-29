@@ -197,7 +197,7 @@ public partial class App : Application
             // UI font override (FNT-01) — orthogonal to the theme, so applied regardless.
             UI.FontService.Apply(settings.Current.UiFontFamily);
             // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
-            // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
+            // filer window lists a directory so a persisted "hide extensions" is honoured on first paint.
             Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = settings.Current.HideKnownExtensions;
 
             // Create only this process's surface. The shell always runs split (--role=…), so exactly
@@ -211,7 +211,7 @@ public partial class App : Application
             // fixes bevel-nji — the Swift helper enumerates only .regular apps' windows, so the
             // chrome's own transient popups (tooltips, menus) stop leaking into the taskbar's
             // foreign-window list (where they registered as windows, shifted the bar, and dismissed
-            // themselves). NOT applied to the Explorer role: its file-manager window SHOULD appear in
+            // themselves). NOT applied to the Filer role: its file-manager window SHOULD appear in
             // the taskbar.
             if (OperatingSystem.IsMacOS() && role is ShellRole.Taskbar or ShellRole.Desktop)
                 Pal.MacOS.ShellActivation.HideFromDock();
@@ -220,22 +220,22 @@ public partial class App : Application
                 CreateDesktopSurface(desktop);
             if (role is ShellRole.Taskbar)
             {
-                // Publish the taskbar↔Explorer channel's rendezvous dir + shared nonce into this
-                // process's env BEFORE any Explorer is spawned (Start-menu places, open/reveal), so every
-                // spawned Explorer inherits the same discovery root + secret and its control server binds
+                // Publish the taskbar↔Filer channel's rendezvous dir + shared nonce into this
+                // process's env BEFORE any Filer is spawned (Start-menu places, open/reveal), so every
+                // spawned Filer inherits the same discovery root + secret and its control server binds
                 // where this taskbar's client will look (bevel-uldj).
-                ShellCore.ExplorerControlEndpoint.PublishForChildren();
+                ShellCore.FilerControlEndpoint.PublishForChildren();
                 CreateTaskbarSurface(services, settings, desktop);
             }
-            if (role is ShellRole.Explorer)
-                CreateExplorerSurface(services, desktop);
+            if (role is ShellRole.Filer)
+                CreateFilerSurface(services, desktop);
 
             // bevel:// URL handler (M4-D.2 / bevel-6dc) + inbound Apple Events (M4-C / bevel-376): wired
             // in the PERSISTENT host — the always-up TASKBAR that also serves the bevelctl socket
-            // (bevel-e7a7) — so both funnel through the one AutomationCommandRouter with NO Explorer
+            // (bevel-e7a7) — so both funnel through the one AutomationCommandRouter with NO Filer
             // window required. The router's window verbs resolve to SpawningShellSurface here (open/reveal
-            // spawn an Explorer); filesystem/program verbs run directly. Wiring these only in the taskbar
-            // (never the on-demand Explorer) keeps exactly one process handling inbound automation.
+            // spawn a Filer); filesystem/program verbs run directly. Wiring these only in the taskbar
+            // (never the on-demand Filer) keeps exactly one process handling inbound automation.
             if (role is ShellRole.Taskbar)
             {
                 UrlActivation.Wire(this, services);
@@ -357,12 +357,12 @@ public partial class App : Application
             restartCore: Supervision.LauncherControl.IsSupervised ? () => RequestRestartCore() : null,
             openSettings: () => OpenTaskbarSettings(services, taskbarView),
             toggleLock: () => ToggleTaskbarLock(settings, taskbarView),
-            // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Explorer window
-            // at that folder — in-process in the single-process shell, or as its own --role=explorer
-            // process in a split launch (the taskbar process has no explorer surface).
-            openFolder: path => OpenExplorerAt(services, path),
-            // Start ▸ Search → open a Bevel Explorer already in Find mode (bevel-x6pv).
-            openSearch: () => OpenExplorerSearch(services),
+            // Start-menu "places" (My Documents/Pictures/Music/Computer) open a Bevel Filer window
+            // at that folder — in-process in the single-process shell, or as its own --role=filer
+            // process in a split launch (the taskbar process has no filer surface).
+            openFolder: path => OpenFilerAt(services, path),
+            // Start ▸ Search → open a Bevel Filer already in Find mode (bevel-x6pv).
+            openSearch: () => OpenFilerSearch(services),
             // Start ▸ Show/Hide Desktop (bevel-gdie): spawn/kill the --role=desktop child via the launcher,
             // and a state probe so the item labels itself "Show" (hidden) vs "Hide" (shown) on each open.
             toggleDesktop: ToggleDesktop,
@@ -445,53 +445,53 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Explorer surface: the initial file-manager window (opened at the user's home) plus
+    /// <summary>Filer surface: the initial file-manager window (opened at the user's home) plus
     /// the Ctrl+N new-window wiring. Built via the shared factory so the SAME object graph the
     /// modules register drives the running app (VfsRoot with file + computer providers, settings,
     /// file operations).</summary>
-    /// <summary>Opens a Bevel Explorer window at <paramref name="path"/>. In the single-process shell the
-    /// explorer surface lives in THIS process, so open in-process; in a split launch the taskbar has no
-    /// explorer surface, so spawn the file manager as its own --role=explorer process (correct window +
+    /// <summary>Opens a Bevel Filer window at <paramref name="path"/>. In the single-process shell the
+    /// filer surface lives in THIS process, so open in-process; in a split launch the taskbar has no
+    /// filer surface, so spawn the file manager as its own --role=filer process (correct window +
     /// menu setup) instead of building a malformed window in the taskbar process.</summary>
-    private static void OpenExplorerAt(IServiceProvider services, VfsPath path)
+    private static void OpenFilerAt(IServiceProvider services, VfsPath path)
     {
-        if (Role is ShellRole.Explorer)
+        if (Role is ShellRole.Filer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(path);
         else
-            Program.SpawnExplorer(path.Value);
+            Program.SpawnFiler(path.Value);
     }
 
-    /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Explorer at Home already in Find
+    /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Filer at Home already in Find
     /// mode (bevel-x6pv). In-process the factory hands back the window so we focus its Find pane; in a
-    /// split launch the explorer spawns with --search and enters Find mode itself.</summary>
-    private static void OpenExplorerSearch(IServiceProvider services)
+    /// split launch the filer spawns with --search and enters Find mode itself.</summary>
+    private static void OpenFilerSearch(IServiceProvider services)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (Role is ShellRole.Explorer)
+        if (Role is ShellRole.Filer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(new VfsPath("file", home)).BeginSearch();
         else
-            Program.SpawnExplorer(home, search: true);
+            Program.SpawnFiler(home, search: true);
     }
 
-    private static void CreateExplorerSurface(
+    private static void CreateFilerSurface(
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
         try
         {
-            CreateExplorerSurfaceCore(services, desktop);
+            CreateFilerSurfaceCore(services, desktop);
         }
         catch (Exception ex)
         {
-            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Explorer, ex.ToString());
+            Supervision.RoleHeartbeatStore.ReportFailed(ShellRole.Filer, ex.ToString());
             throw;
         }
     }
 
-    private static void CreateExplorerSurfaceCore(
+    private static void CreateFilerSurfaceCore(
         IServiceProvider services, IClassicDesktopStyleApplicationLifetime desktop)
     {
         var factory = services.GetRequiredService<FileManagerWindowFactory>();
-        // A spawned explorer process (Start-menu "places") passes the folder to open via --open-path;
+        // A spawned filer process (Start-menu "places") passes the folder to open via --open-path;
         // otherwise land on the user's home.
         var openArg = Environment.GetCommandLineArgs()
             .FirstOrDefault(a => a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase));
@@ -505,7 +505,7 @@ public partial class App : Application
         // Spawned by the automation `reveal` verb (bevel-e7a7): --select=<item> queues a selection that
         // the FileManagerWindow applies once the target folder's listing finishes (SelectAfterLoad) —
         // the same model→view highlight the in-process reveal uses. Split-mode `reveal` is thus a plain
-        // Explorer spawn: no live in-process window required, no cross-process IPC.
+        // Filer spawn: no live in-process window required, no cross-process IPC.
         var selectArg = Environment.GetCommandLineArgs()
             .FirstOrDefault(a => a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(selectArg))
@@ -517,12 +517,12 @@ public partial class App : Application
         // It instead raises this static event with the directory the new window should
         // open at (its current directory); every window's request is served by the same
         // factory, reusing the shared VfsRoot/SettingsService with fresh per-window
-        // navigation/undo state. (Cross-process Ctrl+N — spawning a new explorer PROCESS — is
-        // wired in the supervision phase; in-process spawning stays correct within the explorer
+        // navigation/undo state. (Cross-process Ctrl+N — spawning a new filer PROCESS — is
+        // wired in the supervision phase; in-process spawning stays correct within the filer
         // process.) New Tab (Ctrl+T) is out of scope.
         FileManagerWindow.NewWindowRequested += path => factory.Create(path);
         var connected = services.GetService<Bevel.Pal.Abstractions.IShellConnectionStatus>();
-        Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Explorer, connected?.IsConnected ?? true);
+        Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Filer, connected?.IsConnected ?? true);
         if (connected is not null)
             connected.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
     }

@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Bevel.FileManager.Components.ExplorerBar"
+             x:Class="Bevel.FileManager.Components.FilerBar"
              Focusable="False">
 
     <!-- Win2000 Explorer Bar: title bar + content area with sunken 3D border -->

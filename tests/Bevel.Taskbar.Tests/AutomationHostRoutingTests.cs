@@ -14,10 +14,10 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// The split-only automation host (bevel-e7a7): bevelctl/bevel:// must work with NO Explorer window
+/// The split-only automation host (bevel-e7a7): bevelctl/bevel:// must work with NO Filer window
 /// open. Covers the three seams that make that true —
-/// (1) the socket host is registered for the PERSISTENT taskbar, not the on-demand Explorer;
-/// (2) the window verbs (open/reveal) SPAWN an Explorer instead of building an in-process window;
+/// (1) the socket host is registered for the PERSISTENT taskbar, not the on-demand Filer;
+/// (2) the window verbs (open/reveal) SPAWN a Filer instead of building an in-process window;
 /// (3) the filesystem verbs still run directly against the VFS from the host process.
 /// </summary>
 public sealed class AutomationHostRoutingTests
@@ -25,11 +25,11 @@ public sealed class AutomationHostRoutingTests
     private static VfsPath P(string p) => new("file", p);
     private static CancellationToken Ct => CancellationToken.None;
 
-    // ── (1) DI: the socket host lives on the persistent role, never the Explorer ─────────────────
+    // ── (1) DI: the socket host lives on the persistent role, never the Filer ─────────────────
 
     [Theory]
     [InlineData(ShellRole.Taskbar, true)]
-    [InlineData(ShellRole.Explorer, false)]
+    [InlineData(ShellRole.Filer, false)]
     [InlineData(ShellRole.Desktop, false)]
     [InlineData(ShellRole.Core, false)]
     public void Socket_host_is_registered_only_for_the_persistent_taskbar(ShellRole role, bool expected)
@@ -45,24 +45,24 @@ public sealed class AutomationHostRoutingTests
     }
 
     [Fact]
-    public void Taskbar_gets_the_spawning_surface_and_Explorer_the_live_one()
+    public void Taskbar_gets_the_spawning_surface_and_Filer_the_live_one()
     {
         var taskbar = new ServiceCollection();
         taskbar.AddBevelModules(ShellRole.Taskbar);
         Assert.Equal(typeof(SpawningShellSurface), SurfaceImpl(taskbar));
 
-        var explorer = new ServiceCollection();
-        explorer.AddBevelModules(ShellRole.Explorer);
-        Assert.Equal(typeof(FileManagerShellSurface), SurfaceImpl(explorer));
+        var filer = new ServiceCollection();
+        filer.AddBevelModules(ShellRole.Filer);
+        Assert.Equal(typeof(FileManagerShellSurface), SurfaceImpl(filer));
 
         static Type? SurfaceImpl(IServiceCollection s) =>
             s.Last(d => d.ServiceType == typeof(IShellSurface)).ImplementationType;
     }
 
-    // ── (2) Window verbs spawn an Explorer (no live in-process window) ───────────────────────────
+    // ── (2) Window verbs spawn a Filer (no live in-process window) ───────────────────────────
 
     [Fact]
-    public async Task Open_verb_spawns_an_explorer_at_the_container()
+    public async Task Open_verb_spawns_an_filer_at_the_container()
     {
         var (router, spawner) = BuildHost();
 
@@ -74,7 +74,7 @@ public sealed class AutomationHostRoutingTests
     }
 
     [Fact]
-    public async Task Reveal_verb_spawns_an_explorer_at_the_parent_selecting_the_item()
+    public async Task Reveal_verb_spawns_an_filer_at_the_parent_selecting_the_item()
     {
         var (router, spawner) = BuildHost();
 
@@ -113,7 +113,7 @@ public sealed class AutomationHostRoutingTests
 
             Assert.Equal(ExitCodes.Ok, res.ExitCode);
             Assert.True(System.IO.Directory.Exists(System.IO.Path.Combine(work, "Made")));
-            Assert.Null(spawner.Path);   // a filesystem verb never spawns an Explorer
+            Assert.Null(spawner.Path);   // a filesystem verb never spawns a Filer
         }
         finally { try { System.IO.Directory.Delete(work, recursive: true); } catch { /* best effort */ } }
     }
@@ -130,7 +130,7 @@ public sealed class AutomationHostRoutingTests
         return (new AutomationCommandRouter(auto), spawner);
     }
 
-    private sealed class RecordingSpawner : IExplorerSpawner
+    private sealed class RecordingSpawner : IFilerSpawner
     {
         public string? Path;
         public string? SelectPath;

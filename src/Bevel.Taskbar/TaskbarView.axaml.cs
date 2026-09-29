@@ -103,7 +103,7 @@ public partial class TaskbarView : UserControl
     }
 
     /// <summary>Respawn just the shell core — the targeted fix, and the one that repairs an unlinked
-    /// core socket without disturbing open Explorer windows.</summary>
+    /// core socket without disturbing open Filer windows.</summary>
     private void OnRepairRestartCore(object? sender, RoutedEventArgs e) => _restartCore?.Invoke();
 
     /// <summary>Restart every shell process — the heavier fallback when a core respawn doesn't take.</summary>

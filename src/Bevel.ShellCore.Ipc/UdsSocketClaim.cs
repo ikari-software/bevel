@@ -17,7 +17,7 @@ public sealed class UdsSocketBusyException(string socketPath)
 /// <summary>
 /// The one correct way to take and give back a fixed-path Unix-domain socket (bevel-wio0). Every
 /// Bevel server on a well-known path (<c>core.sock</c>, <c>launcher.sock</c>, <c>bevelctl.sock</c>,
-/// the per-pid explorer sockets) goes through here so they share one policy:
+/// the per-pid filer sockets) goes through here so they share one policy:
 ///
 /// <list type="bullet">
 /// <item><b>Probe-then-bind.</b> A path that already exists is <i>connected to</i> first. A live

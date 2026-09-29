@@ -68,10 +68,10 @@ dotnet test  Bevel.sln                          # full test suite (xUnit + Avalo
 dotnet test  tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj   # one project
 
 # Run the shell for dev (Fake PAL — safe, no helper/AX prompts). Split is the ONLY mode: an
-# argument-less launch boots --role=launcher, which spawns core + taskbar (+ explorer per window):
+# argument-less launch boots --role=launcher, which spawns core + taskbar (+ filer per window):
 dotnet run --project src/Bevel.App -- --pal=fake
 dotnet run --project src/Bevel.App -- --role=launcher            # explicit; same as no --role
-dotnet run --project src/Bevel.App -- --role=explorer --open-path ~/Documents   # a single surface
+dotnet run --project src/Bevel.App -- --role=filer --open-path ~/Documents   # a single surface
 
 # Package + code-sign a dev .app (re-run after each build so TCC grants stick — ad-hoc
 # cdhash churn otherwise forces re-granting Accessibility/Screen Recording every rebuild):
@@ -96,8 +96,8 @@ build/run explicitly). See `docs/perf.md`.
 
 **Multi-process shell (the ONLY mode).** An argument-less launch boots `--role=launcher`: a **launcher**
 supervises a headless **core** process and a **taskbar** process (and a **desktop** process only when
-shown from the Start menu — off by default, bevel-gdie/dwhy), and each Explorer window spawns as its own
-`--role=explorer` process (`--open-path`). There is **no single-process mode** — `role=all` was removed
+shown from the Start menu — off by default, bevel-gdie/dwhy), and each Filer window spawns as its own
+`--role=filer` process (`--open-path`). There is **no single-process mode** — `role=all` was removed
 (bevel-dwhy). The **core** owns the Swift helper + `settings.db` and serves both to the peer processes over
 the shell-core IPC (bevel-6nve); peers never open the DB or the helper directly. `RoleProcessSupervisor`
 (in `Bevel.App/Supervision`) owns spawn/restart (and runtime add/remove for the desktop); SIGTERM handlers
@@ -111,7 +111,7 @@ must set `ctx.Cancel` or children orphan.
   `ThemeService` / `LunaVariantService` / `ColorSchemeService`.
 - `Bevel.Themes.Win2000` (default; aliases Classic.Avalonia via `BasedOn`) and `Bevel.Themes.Luna`
   (glossy vector ControlThemes). Flat/Whistler is spec-only so far (`docs/design/flat/`).
-- `Bevel.FileManager` — Explorer window + `Components/` (ItemView, InfoPane, address bar, …) + VFS UI.
+- `Bevel.FileManager` — Filer window + `Components/` (ItemView, InfoPane, address bar, …) + VFS UI.
 - `Bevel.Taskbar` — taskbar, Start menu, tray, and the background `ShellModel` (owns window/app/tray
   observable collections, updated off-thread).
 - `Bevel.Desktop` — the desktop surface window.

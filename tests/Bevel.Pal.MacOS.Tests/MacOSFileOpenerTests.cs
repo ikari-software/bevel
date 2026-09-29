@@ -3,7 +3,7 @@ using Xunit;
 namespace Bevel.Pal.MacOS.Tests;
 
 /// <summary>bevel-wxt: the local "Open With" handler enumeration (NSWorkspace LaunchServices) that
-/// feeds the Explorer's Open-With submenu. On-device only — it hits real AppKit.</summary>
+/// feeds the Filer's Open-With submenu. On-device only — it hits real AppKit.</summary>
 public class MacOSFileOpenerTests
 {
     [Fact]

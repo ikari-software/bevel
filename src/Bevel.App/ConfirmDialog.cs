@@ -57,7 +57,7 @@ public sealed class ConfirmDialog : BevelWindow
     }
 
     /// <summary>Shows the dialog and resolves to the user's choice. Uses a real modal ShowDialog when an
-    /// owner window exists; otherwise shows ownerless (an AE can arrive with no Explorer window open).
+    /// owner window exists; otherwise shows ownerless (an AE can arrive with no Filer window open).
     /// Deny is the default if the window is dismissed without a choice.</summary>
     public async Task<bool> ConfirmAsync(Window? owner)
     {

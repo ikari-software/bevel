@@ -195,7 +195,7 @@
                     <TextBlock Text="See also:" FontFamily="Tahoma, sans-serif" FontSize="11" Foreground="#202020" />
                     <StackPanel x:Name="SeeAlsoPanel" Spacing="1" />
                 </StackPanel>
-                <!-- Object count already lives in FileManager's real status bar, as it did in Explorer. -->
+                <!-- Object count already lives in FileManager's real status bar, as it did in Filer. -->
                 <TextBlock Grid.Row="5" x:Name="ObjectCountLabel" IsVisible="False" />
             </Grid>
         </ScrollViewer>
