@@ -564,7 +564,6 @@ public partial class TaskbarView : UserControl
         {
             button.PointerEntered -= OnTaskButtonPointerEntered;
             button.PointerExited -= OnTaskButtonPointerExited;
-            button.Click -= OnTaskButtonClick;
             if (ReferenceEquals(_tooltipAnchor, button))
                 HideTaskbarTooltip();
         }
@@ -588,23 +587,13 @@ public partial class TaskbarView : UserControl
         button.PointerExited -= OnTaskButtonPointerExited;
         button.PointerEntered += OnTaskButtonPointerEntered;
         button.PointerExited += OnTaskButtonPointerExited;
-        button.Click -= OnTaskButtonClick;
-        button.Click += OnTaskButtonClick;
+        // The pressed (sunken) state needs no wiring: TaskButton never self-toggles, so IsChecked stays
+        // the OneWay projection of IsFocused the template binds (bevel-zk4a).
         // A grouped-app button carries a windows-list Flyout; bind its open/close to the key-focus scope
         // so keyboard users can arrow through the group's windows (bevel-vk4n). Idempotent per flyout.
         WireFlyoutScope(button.Flyout);
     }
 
-    /// <summary>
-    /// The pressed (sunken) state is a pure reflection of the shell's exclusive focus projection —
-    /// <see cref="TaskItemViewModel.IsFocused"/>, bound OneWay to <c>IsChecked</c>. But a
-    /// <see cref="ToggleButton"/> flips <c>IsChecked</c> locally on click, and the OneWay binding only
-    /// re-asserts when <c>IsFocused</c> actually changes; when it doesn't (the clicked window doesn't
-    /// take focus, or it's already unfocused when another window later grabs focus), the local flip
-    /// sticks and the button stays pressed — leaving several buttons pressed at once. Snap it back to
-    /// <c>IsFocused</c> here so the click never diverges; the genuine pressed state then follows the
-    /// binding as focus events arrive.
-    /// </summary>
     /// <summary>Clicking a mirrored tray icon forwards the click (with its button + modifiers) to the
     /// real menu-bar status item, so the owning app reveals its menu (spec §5.5, bevel-m3.3).</summary>
     private async void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
@@ -647,20 +636,6 @@ public partial class TaskbarView : UserControl
         if (mods.HasFlag(KeyModifiers.Alt)) result |= TrayModifiers.Option;
         if (mods.HasFlag(KeyModifiers.Meta)) result |= TrayModifiers.Command;
         return result;
-    }
-
-    private void OnTaskButtonClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not ToggleButton button) return;
-        // Snap the local toggle back to the real focus projection — for a single window and for a
-        // group (whose pressed state means "some window of this app is focused"; its click opens the
-        // flyout, it doesn't toggle focus). Prevents the "stuck pressed" divergence.
-        button.IsChecked = button.DataContext switch
-        {
-            TaskItemViewModel vm => vm.IsFocused,
-            TaskGroupViewModel g => g.IsFocused,
-            _ => button.IsChecked,
-        };
     }
 
     private static ToggleButton? FindTaskButton(Control container) =>
