@@ -922,7 +922,17 @@ public partial class TaskbarView : UserControl
         // anchor, so a cap left at a taller row count parks the menu above the bar.
         StartButton.MaxHeight = StartButtonMaxHeight();
         var rows = _window?.Rows ?? 1;
-        TaskbarLog.Debug($"ApplyRowLayout rows={rows} rootHeight={RootGrid.Height} scaling={_window?.RenderScaling}");
+        // Log the WINDOW's own geometry, not just the row count. Every popup anchored inside the bar —
+        // the Start menu, task-button tooltips, the tray flyouts — derives its position from this, so if
+        // the window's Position or size disagrees with where it is drawn, they are ALL offset by the same
+        // amount. The Start-menu gap reproduced on tooltips too, which is what rules out anything
+        // specific to the Start button and points here (bevel-kclq follow-up).
+        var screen = _window?.Screens?.Primary ?? _window?.Screens?.All?.FirstOrDefault();
+        TaskbarLog.Debug(
+            $"ApplyRowLayout rows={rows} rootHeight={RootGrid.Height} scaling={_window?.RenderScaling} " +
+            $"winPos={_window?.Position} winSize={_window?.Bounds.Size} winH={_window?.Height} " +
+            $"expectedH={TaskbarTheme.HeightForRows(rows)} screen={screen?.Bounds} workArea={screen?.WorkingArea} " +
+            $"band={_window?.GetWorkAreaBand()}");
         _vm?.Tray.SetRows(rows);   // tray visible cap is PER ROW, and it lays out that many rows (bevel-m3)
         Clock.SetRows(rows);       // date drops under the time on a multi-row bar
         LayoutButtons();
