@@ -85,6 +85,11 @@ public class RenderLunaStartMenuTest
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_START_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-startmenu.png");
             frame.Save(outPath);
+
+            // Landing-page hero part. Dumped from HERE rather than rebuilt in the hero test, so the
+            // hero inherits this test's settling loop and width assertion instead of re-deriving them.
+            if (Environment.GetEnvironmentVariable("BEVEL_HERO_PARTS") is { } heroParts)
+                Bevel.TestSupport.SiteShot.Save(window, Path.Combine(heroParts, "start.png"));
         }
         finally
         {

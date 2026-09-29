@@ -68,11 +68,21 @@ BEVEL_STACKGRID_REAL_OUT="$OUT/stack-grid.png" \
   run "$TB" "FullyQualifiedName~RenderStackGridRealPalTest"
 produced "stack-grid.png"
 
-# Shots this script cannot regenerate: a hand-composited scene with no single producing test. Listed
-# so the audit below can tell "deliberately manual" from "silently dropped out of the pipeline" —
-# exactly the distinction that let theme-win2000.png rot. luna-4up.png used to be here too, until
-# Render_site_four_up took it over.
-MANUAL="hero-luna.png"
+# Nothing is hand-composited any more. The list stays so the audit can still tell "deliberately
+# manual" from "silently dropped out of the pipeline" — the distinction that let theme-win2000.png rot.
+MANUAL=""
+
+# Two passes: each component test dumps its own piece (inheriting its settling and assertions), then
+# the composite arranges them. Separate dotnet runs so the parts exist before the hero reads them.
+echo "==> hero parts"
+HERO_PARTS="$TMP/hero" && mkdir -p "$HERO_PARTS"
+BEVEL_HERO_PARTS="$HERO_PARTS" run "$TB" \
+  "FullyQualifiedName~Render_luna_start_menu_to_png|FullyQualifiedName~Render_luna_framed_window_to_png|FullyQualifiedName~Render_luna_taskbar_to_png"
+
+echo "==> hero"
+BEVEL_HERO_PARTS="$HERO_PARTS" BEVEL_HERO_OUT="$OUT/hero-luna.png" \
+  run "$TB" "FullyQualifiedName~Render_site_hero"
+produced "hero-luna.png"
 
 echo "==> audit: every shot the page references is accounted for"
 missing=0

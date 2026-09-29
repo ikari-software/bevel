@@ -167,7 +167,11 @@
 
                         <!-- Context icon floats directly through the artwork: no tile, frame or backing. -->
                         <Canvas Canvas.Left="11" Canvas.Top="9" Width="37" Height="33">
-                            <Path Data="M3,9 L12,9 L15,12 L33,12 L33,27 L3,27 Z"
+                            <!-- Back panel TAPERS to the flap's bottom corners (30,30)/(6,30). Drawn square
+                                 (L33,27 L3,27) its vertical sides sat 2.25 units outside the flap's slant by
+                                 the bottom edge, so the bare back showed down both sides with hard corners
+                                 under it. Same mistake as the shared Glyphs folder, separate drawing. -->
+                            <Path Data="M3,9 L12,9 L15,12 L33,12 L30,30 L6,30 Z"
                                   Fill="#E2C76B" Stroke="#87732B" StrokeThickness="1" />
                             <Path Data="M8,4 L28,4 L30,20 L10,21 Z" Fill="#FFFDF4" Stroke="#9AA5B0" StrokeThickness="1" />
                             <Path Data="M11,9 L26,9 M11,12 L25,12" Stroke="#82A8C2" StrokeThickness="1" />

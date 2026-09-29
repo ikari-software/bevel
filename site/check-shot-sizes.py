@@ -22,7 +22,6 @@ SCALE = 2
 # Hand-composited shots that no test produces yet, so they are still 1x. Named rather than inferred:
 # a shot that quietly fails the scale rule should be a visible exception, not an invisible pass.
 MANUAL_1X = {
-    "hero-luna.png",       # hand-composited, no producing test yet
     "theme-win2000.png",   # Avalonia mis-scales its TabControl content above 1x
 }
 

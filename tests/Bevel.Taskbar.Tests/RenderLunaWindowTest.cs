@@ -50,6 +50,10 @@ public class RenderLunaWindowTest
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_WINDOW_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-window.png");
             frame!.Save(outPath);
+
+            // Landing-page hero part — see RenderLunaStartMenuTest.
+            if (Environment.GetEnvironmentVariable("BEVEL_HERO_PARTS") is { } heroParts)
+                Bevel.TestSupport.SiteShot.Save(window, Path.Combine(heroParts, "window.png"));
         }
         finally
         {

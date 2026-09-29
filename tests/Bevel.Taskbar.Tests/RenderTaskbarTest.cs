@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -70,11 +71,21 @@ public class RenderTaskbarTest
             }
             Dispatcher.UIThread.RunJobs();
 
+            // Pin the clock. This render feeds the landing page's hero, and a live clock would change
+            // the shot's bytes every minute — the drift check would then fail on every run.
+            foreach (var clock in window.GetVisualDescendants().OfType<ClockWidget>())
+                clock.Time = new PinnedClock();
+            Dispatcher.UIThread.RunJobs();
+
             var frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_TASKBAR_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-taskbar.png");
             frame!.Save(outPath);
+
+            // Landing-page hero part — see RenderLunaStartMenuTest.
+            if (Environment.GetEnvironmentVariable("BEVEL_HERO_PARTS") is { } heroParts)
+                Bevel.TestSupport.SiteShot.Save(window, Path.Combine(heroParts, "taskbar.png"));
         }
         finally { Bevel.UI.ThemeService.Apply("win2000"); }
     }
@@ -160,5 +171,14 @@ public class RenderTaskbarTest
         public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
         public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+    }
+
+    /// <summary>A clock stopped at 21:47 UTC. The TIME ZONE is pinned too: GetLocalNow() would otherwise
+    /// convert through TimeZoneInfo.Local, so the same instant would render as a different time in CI
+    /// (UTC) than on a developer's machine, and the shot would look stale to whichever ran second.</summary>
+    private sealed class PinnedClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 1, 1, 21, 47, 0, TimeSpan.Zero);
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
 }

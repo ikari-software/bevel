@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
@@ -114,6 +115,19 @@ public partial class ClockWidget : UserControl
         UpdateTime();
     }
 
+    /// <summary>
+    /// Where the clock reads the time. Defaults to the system clock; the landing-page render pins it so
+    /// a harvested screenshot does not change every minute — a live clock makes the shot's bytes differ
+    /// on every run, which would fail the site's drift check on every run and train everyone to ignore it.
+    /// </summary>
+    public TimeProvider Time
+    {
+        get => _time;
+        set { _time = value; UpdateTime(); }   // repaint on assignment, or the display keeps the old source's reading
+    }
+
+    private TimeProvider _time = TimeProvider.System;
+
     private int _rows = 1;
 
     /// <summary>Track the taskbar row count. On a multi-row bar the date moves under the time; on a single
@@ -128,7 +142,7 @@ public partial class ClockWidget : UserControl
 
     private void UpdateTime()
     {
-        var now = DateTime.Now;
+        var now = Time.GetLocalNow().DateTime;
         var time = now.ToString(TimeFormat(_h24, _seconds));
         var date = now.ToString("ddd d MMM");
         var stacked = _showDate && _rows > 1;                 // second line only when there's vertical room
