@@ -145,6 +145,42 @@ public partial class App : Application
             // thread). Apply the whitelisted theme overrides (bevel-wym) from the loaded snapshot.
             // All roles render themed UI, so this is common to every surface.
             var settings = services.GetRequiredService<ISettingsService>();
+
+            // Cross-process live re-theming (bevel-dob / core-owns-settings bevel-6nve): a peer role's
+            // Settings/Onboarding dialog sends its change to the shell core (sole writer), which applies it
+            // and BROADCASTS a fresh snapshot to every UI process; RemoteSettingsService decodes it and
+            // raises Changed here, so a theme switch reskins every shell surface (taskbar, desktop, …), not
+            // just the process that owns the dialog. The 750 ms DB poll this used to ride is retired —
+            // the push replaces it; no process polls settings.db any more.
+            //
+            // Changed is raised on the shell-core TRANSPORT thread (the receive loop), and ThemeService /
+            // ThemeVariants / FontService mutate Application resources + Styles, which re-templates live
+            // controls — UI-thread-only work. Marshal every apply, and subscribe BEFORE the startup apply
+            // below: a peer paints from its on-disk settings cache (bevel-7s9n) and the core's live snapshot
+            // can land at any moment after LoadAsync — including between this subscription and the startup
+            // read of Current. Subscribing first means such a snapshot is applied by the (posted) handler
+            // right after this method returns; the same theme applied twice is a no-op in ThemeService.
+            settings.Changed += () => Dispatcher.UIThread.Post(() =>
+            {
+                var s = settings.Current;
+                // Gate the theme-coupled engines on the template swap succeeding (see the startup
+                // apply below) so a failed live re-template can't desync the recolour engines.
+                if (UI.ThemeService.Apply(s.ThemeId))
+                {
+                    UI.ThemeVariants.Apply(s);
+                    UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
+                }
+                UI.FontService.Apply(s.UiFontFamily);
+
+                // Folder Options → apply live to every open file-manager window: update the app-wide
+                // extension-hiding flag and re-list each window (also re-runs the hidden-file filter).
+                // Null in non-FM roles (taskbar/desktop), where the fan-out is a no-op.
+                Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = s.HideKnownExtensions;
+                if (services.GetService<FileManagerWindowRegistry>() is { } fmReg)
+                    foreach (var w in fmReg.All())
+                        w.ApplyFolderOptions();   // info-pane style + column + re-list
+            });
+
             // Theme token bundle first (PKG-03) — the baseline the user overrides layer on top of.
             // Gate the theme-COUPLED engines (colour variant + crisp bevels) on the template swap
             // actually succeeding: applying a theme's colour variant while its template failed to load
@@ -160,40 +196,9 @@ public partial class App : Application
             }
             // UI font override (FNT-01) — orthogonal to the theme, so applied regardless.
             UI.FontService.Apply(settings.Current.UiFontFamily);
-
-            // Cross-process live re-theming (bevel-dob / core-owns-settings bevel-6nve): a peer role's
-            // Settings/Onboarding dialog sends its change to the shell core (sole writer), which applies it
-            // and BROADCASTS a fresh snapshot to every UI process; RemoteSettingsService decodes it and
-            // raises Changed here, so a theme switch reskins every shell surface (taskbar, desktop, …), not
-            // just the process that owns the dialog. The 750 ms DB poll this used to ride is retired —
-            // the push replaces it.
             // Folder Options is an app-wide flag read by every ItemViewModel; seed it before the first
             // explorer window lists a directory so a persisted "hide extensions" is honoured on first paint.
             Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = settings.Current.HideKnownExtensions;
-            settings.Changed += () =>
-            {
-                var s = settings.Current;
-                // Gate the theme-coupled engines on the template swap succeeding (see the startup
-                // apply above) so a failed live re-template can't desync the recolour engines.
-                if (UI.ThemeService.Apply(s.ThemeId))
-                {
-                    UI.ThemeVariants.Apply(s);
-                    UI.ThemeOptions.ApplyCrispBevels(this, settings.ThemeOverridesFor(s.ThemeId).CrispBevels ?? false);
-                }
-                UI.FontService.Apply(s.UiFontFamily);
-
-                // Folder Options → apply live to every open file-manager window: update the app-wide
-                // extension-hiding flag and re-list each window (also re-runs the hidden-file filter).
-                // Null in non-FM roles (taskbar/desktop), where the fan-out is a no-op.
-                Bevel.FileManager.Components.ItemViewModel.HideKnownExtensions = s.HideKnownExtensions;
-                if (services.GetService<FileManagerWindowRegistry>() is { } fmReg)
-                    foreach (var w in fmReg.All())
-                        w.ApplyFolderOptions();   // info-pane style + column + re-list
-            };
-            // The 750 ms settings-DB poll (ReloadIfChangedAsync tick) is RETIRED (core-owns-settings,
-            // bevel-6nve): live updates now arrive as a shell-core broadcast that RemoteSettingsService
-            // turns into the Changed event above (peer roles), or applied by the core itself. No
-            // process polls settings.db any more.
 
             // Create only this process's surface. The shell always runs split (--role=…), so exactly
             // one block below runs and sets MainWindow to its own window. Only the taskbar role resolves

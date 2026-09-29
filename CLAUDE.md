@@ -116,8 +116,9 @@ must set `ctx.Cancel` or children orphan.
   exposed over gRPC-swift. Needs its **own** TCC grant (keyed by binary path).
 
 **Settings** persist as a single-row JSON blob in SQLite at `~/.config/bevel/settings.db`
-(`SettingsService`), polled every 750 ms so peer processes pick up changes (`settings.json` is a
-passive export). **Icons** render off-thread, cached, and are shared across processes via a
+(`SettingsService`); only the core opens it and pushes snapshots to peers over IPC — a peer paints its
+first frame from `peer-settings-cache.json` (its write-through copy of the last snapshot) so it never
+waits on the socket (`settings.json` is a passive export). **Icons** render off-thread, cached, and are shared across processes via a
 memory-mapped BGRA pool (`MmfBgraPool`).
 
 ## Codemap & Landing Site
