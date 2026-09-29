@@ -71,6 +71,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     private let selfTestLock = NSLock()
     private var selfTestDone = false
     private var liveMirroringEnabled = true
+    // The grant state the self-test last observed (bevel-qcd9). On a normal cold start Screen Recording
+    // is usually absent, so the ONE self-test run takes runSelfTest's granted=false branch — it proves
+    // discovery/AX work but never calls selfTestCapture(), because there is nothing to capture yet. If
+    // the grant arrives LATER in the same session, `guard isLiveMirroringEnabled, granted` (below) starts
+    // letting real captures through on the strength of a verdict that never actually checked one — the
+    // exact "decided once during limited mode, never revisited when live starts" shape as bevel-yduf.
+    // Tracked so ensureSelfTested can re-arm exactly once on the ungranted→granted rising edge.
+    private var grantSeenBySelfTest = false
 
     init(expectedKey: String, parentPID: pid_t = 0) {
         self.expectedKey = expectedKey
@@ -625,13 +633,30 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - Self-test gate (§5.10 / §10.1)
 
-    /// Runs the launch-time self-test exactly once (the first capture attempt triggers it), caching
-    /// whether live mirroring is safe on this OS build. Concurrent callers wait on the same result.
+    /// Runs the self-test on the first capture attempt, caching whether live mirroring is safe on this
+    /// OS build — and RE-runs it exactly once more on the ungranted→granted rising edge (bevel-qcd9), so
+    /// a grant obtained mid-session gets a real captureOk check instead of coasting on a verdict that was
+    /// computed before there was anything to capture. Concurrent callers race harmlessly (idempotent).
     private func ensureSelfTested() async {
-        if selfTestLock.withLock({ selfTestDone }) { return }
-        // A rare concurrent first-call may run the (idempotent) self-test twice — harmless.
+        let granted = CGPreflightScreenCaptureAccess()
+        let shouldRun = selfTestLock.withLock { () -> Bool in
+            let run = Self.selfTestShouldRun(
+                granted: granted, selfTestDone: selfTestDone, grantPreviouslySeen: grantSeenBySelfTest)
+            grantSeenBySelfTest = granted
+            return run
+        }
+        guard shouldRun else { return }
         let ok = await runSelfTest()
         selfTestLock.withLock { liveMirroringEnabled = ok; selfTestDone = true }
+    }
+
+    /// Pure decision for `ensureSelfTested` (bevel-qcd9), extracted so the re-arm rule is unit-testable
+    /// without a real self-test or a real Screen Recording grant (same seam pattern as
+    /// `trayGlyphLayout`). Runs when the self-test has never completed, OR when the grant has just
+    /// transitioned from absent to present — the only two moments a fresh verdict is worth its cost.
+    static func selfTestShouldRun(granted: Bool, selfTestDone: Bool, grantPreviouslySeen: Bool) -> Bool {
+        if !selfTestDone { return true }
+        return granted && !grantPreviouslySeen
     }
 
     private var isLiveMirroringEnabled: Bool { selfTestLock.withLock { liveMirroringEnabled } }

@@ -100,6 +100,39 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertTrue(ok, "self-test should pass (working capture, or limited mode without a grant)")
     }
 
+    // MARK: - Self-test re-arm on the limited→live transition (bevel-qcd9)
+
+    /// Reproduces the TRANSITION this bug is about: the self-test runs once while ungranted (the normal
+    /// cold-start case — Screen Recording is rarely pre-granted), then the grant arrives LATER in the
+    /// SAME session. Before the fix, `ensureSelfTested`'s one-shot cache meant that later arrival was
+    /// invisible: the cached verdict (computed when there was nothing to capture) kept gating live mode
+    /// forever, so `captureOk` was NEVER actually exercised for this session. This is the pure decision
+    /// `ensureSelfTested` now consults — no real self-test or real grant needed to prove the state
+    /// machine, same seam style as `trayGlyphLayout`.
+    func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
+        // 1. Never run yet → always run (first capture attempt triggers it, granted or not).
+        XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: false, selfTestDone: false, grantPreviouslySeen: false))
+        XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: true, selfTestDone: false, grantPreviouslySeen: false))
+
+        // 2. Already run, STILL ungranted on a later poll → do not re-run every 2s (this is the common
+        //    steady state before the user ever grants Screen Recording).
+        XCTAssertFalse(TrayServiceImpl.selfTestShouldRun(granted: false, selfTestDone: true, grantPreviouslySeen: false))
+
+        // 3. THE BUG: already run (while ungranted), and the grant has just appeared. The cached verdict
+        //    never called selfTestCapture() — it must get exactly one more chance to, now that there is
+        //    something real to capture. Before bevel-qcd9's fix this returned false (stuck forever).
+        XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: true, selfTestDone: true, grantPreviouslySeen: false),
+                      "a grant obtained mid-session must re-arm the self-test exactly once")
+
+        // 4. Already run AND that re-arm has happened (grantPreviouslySeen caught up) → steady state
+        //    again, no re-running on every subsequent granted poll.
+        XCTAssertFalse(TrayServiceImpl.selfTestShouldRun(granted: true, selfTestDone: true, grantPreviouslySeen: true))
+
+        // 5. A revoke-then-re-grant (System Settings toggle) is a NEW rising edge and re-arms again.
+        XCTAssertFalse(TrayServiceImpl.selfTestShouldRun(granted: false, selfTestDone: true, grantPreviouslySeen: true))
+        XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: true, selfTestDone: true, grantPreviouslySeen: false))
+    }
+
     func testOsBuildIsReadable() {
         let svc = TrayServiceImpl(expectedKey: "test-key")
         let build = svc.osBuildForTest()

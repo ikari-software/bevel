@@ -191,6 +191,42 @@ public class TrayViewModelTests
         Assert.NotNull(item.IconSource);
     }
 
+    [AvaloniaFact]
+    public async Task Limited_to_live_transition_upgrades_the_icon_to_its_full_native_resolution()
+    {
+        // Reproduces the TRANSITION bevel-qcd9 is about: the helper starts in LIMITED mode (no Screen
+        // Recording grant) sending the owning app's small 16x16 fallback icon, then the grant arrives
+        // mid-session and the SAME item is re-delivered as a live capture at full native/Retina
+        // resolution for its real on-screen bounds (a 22pt item needs 44px at 2x scale).
+        //
+        // This passes unmodified: TrayItemViewModel.Update always reassigns `_png` and re-decodes via
+        // Retint -> TrayIconTint.Process on every call (no cache keyed by item id / bundle id skips a
+        // later decode), so the C#/Avalonia layer is NOT where the reported softness lives — it always
+        // shows the full resolution of whatever bytes it was last given. That is a real, useful
+        // finding (it rules this layer OUT), but per the investigation notes it is not itself "the
+        // fix" — the fix landed on the Swift self-test gate (see bevel-qcd9). Kept as a permanent
+        // regression guard against this exact shape of bug ever being introduced in this layer.
+        var limited = TestPng.Solid(16, 200, 40, 40);   // limited-mode app icon: fixed 16x16
+        var live = TestPng.Solid(44, 200, 40, 40);      // live capture: 44x44 = a 22pt item at 2x Retina
+
+        var host = new StubTray(new TrayItem(new TrayItemId("5:50"), "Battery", IconPng: limited,
+            IsLive: false, Bounds: new PalRect(0, 0, 22, 22)));
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        await PumpUntil(() => vm.Items.Count == 1 && vm.Items[0].HasIcon);
+        var item = vm.Items.Single();
+        Assert.False(item.IsLive);
+        Assert.Equal(new Avalonia.PixelSize(16, 16), item.IconSource!.PixelSize);
+
+        // The grant arrives mid-session: the SAME item is re-delivered live, at full native resolution.
+        host.RaiseUpdated(new TrayItem(new TrayItemId("5:50"), "Battery", IconPng: live, IsLive: true,
+            Bounds: new PalRect(0, 0, 22, 22)));
+        await PumpUntil(() => item.IsLive);
+
+        Assert.True(item.IsLive);
+        Assert.Equal(new Avalonia.PixelSize(44, 44), item.IconSource!.PixelSize);   // not stuck at 16x16
+    }
+
     [Fact]
     public void Icon_state_summary_names_the_missing_grant_when_nothing_is_live()
     {
