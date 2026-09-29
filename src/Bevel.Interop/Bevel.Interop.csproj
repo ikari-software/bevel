@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
+    <!-- BCL-only UDS transport; supplies the shared probe-then-bind socket claim (bevel-wio0). -->
+    <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
   </ItemGroup>
 
 </Project>

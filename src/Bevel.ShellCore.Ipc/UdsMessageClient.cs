@@ -110,6 +110,32 @@ public sealed class UdsMessageClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// Asks whether a server that shares <paramref name="nonce"/> is serving <paramref name="socketPath"/>
+    /// right now: connect, present <see cref="UdsMessageServer.ProbeCapability"/>, read one reply,
+    /// close. True ONLY on <see cref="FrameKind.HandshakeOk"/>. False for an absent or stale path, a
+    /// refused or dropped connection, and — the case that matters — a live server holding a DIFFERENT
+    /// nonce (a foreign or hijacked socket answers Reject). Cancellation propagates so a caller can bound
+    /// a wedged server with its own timeout.
+    /// </summary>
+    public static async Task<bool> ProbeAsync(string socketPath, byte[] nonce, CancellationToken ct = default)
+    {
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        try
+        {
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), ct).ConfigureAwait(false);
+            await using var stream = new NetworkStream(socket, ownsSocket: false);
+            var hello = Handshake.BuildHelloPayload(nonce, UdsMessageServer.ProbeCapability);
+            await Framing.WriteFrameAsync(stream, FrameKind.HandshakeHello, 0, hello, ct).ConfigureAwait(false);
+            var reply = await Framing.ReadFrameAsync(stream, ct).ConfigureAwait(false);
+            return reply.Kind == FrameKind.HandshakeOk;
+        }
+        catch (Exception ex) when (ex is SocketException or IOException or InvalidDataException)
+        {
+            return false; // nobody there, or not a server we can talk to
+        }
+    }
+
+    /// <summary>
     /// Sends a request and awaits its matching response. A fresh correlation id is allocated per
     /// call and the awaiting <see cref="TaskCompletionSource{T}"/> is parked in a pending map
     /// keyed by that id, so many requests can be in flight at once and each resolves against its

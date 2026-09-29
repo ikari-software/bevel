@@ -297,6 +297,57 @@ public sealed class RoleProcessSupervisorTests
             "supervisor should kill+respawn a live-but-unhealthy core");
     }
 
+    private static string NewSocketPath()
+        => Path.Combine(Path.GetTempPath(), $"bvlsup-{Guid.NewGuid():N}"[..15] + ".sock");
+
+    [Fact]
+    public async Task Restarts_a_core_whose_socket_is_served_under_a_foreign_nonce()
+    {
+        // bevel-wio0 × bevel-hprv: after a hijack core.sock EXISTS and even ACCEPTS connections — it
+        // just belongs to the wrong core. The old File.Exists probe certified that as healthy. The
+        // production probe (CoreSocketProbe, an authenticated handshake with the launcher's nonce)
+        // must read it as unhealthy so the supervisor kills + respawns.
+        var path = NewSocketPath();
+        var ourNonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+        var foreignNonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+        await using var hijacker = new Bevel.ShellCore.Ipc.UdsMessageServer(
+            path, foreignNonce, (_, _) => ValueTask.FromResult(Array.Empty<byte>()));
+        hijacker.Start();
+        Assert.True(File.Exists(path)); // the check the old probe would have passed
+
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core }, Poll,
+            coreHealthyProbe: ct => CoreSocketProbe.IsServingAsync(path, ourNonce, ct));
+        await sup.StartAsync();
+
+        await WaitFor(() => core.KillCount >= 1 && core.StartCount >= 2,
+            "a connectable socket under a foreign nonce must not be certified as a healthy core");
+    }
+
+    [Fact]
+    public async Task Keeps_a_core_whose_socket_answers_with_the_session_nonce()
+    {
+        var path = NewSocketPath();
+        var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+        await using var ours = new Bevel.ShellCore.Ipc.UdsMessageServer(
+            path, nonce, (_, _) => ValueTask.FromResult(Array.Empty<byte>()));
+        ours.Start();
+
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core }, Poll,
+            coreHealthyProbe: ct => CoreSocketProbe.IsServingAsync(path, nonce, ct));
+        await sup.StartAsync();
+
+        await Task.Delay(Poll * 10); // well past the 3-tick unhealthy threshold
+        Assert.Equal(0, core.KillCount);
+        Assert.Equal(1, core.StartCount);
+        Assert.Equal(0, ours.ClientCount); // the probe never lingers as a client
+    }
+
     [Fact]
     public async Task Does_not_respawn_when_quit_is_requested()
     {

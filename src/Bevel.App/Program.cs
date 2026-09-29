@@ -162,7 +162,26 @@ internal static class Program
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
         var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
-        server.StartAsync().GetAwaiter().GetResult();
+        try
+        {
+            server.StartAsync().GetAwaiter().GetResult();
+        }
+        catch (UdsSocketBusyException ex)
+        {
+            // Another core is LIVE on this path (bevel-wio0). Standing down is the whole fix: the old
+            // code unlinked and rebound, orphaning the incumbent with settings.db still open. A
+            // supervised core reports the failure so its launcher Holds + alerts instead of
+            // respawning into the same wall; a bare `--role=core` just says so and exits.
+            var msg = $"another shell-core is already serving {ex.SocketPath}; this core is standing down";
+            Console.Error.WriteLine($"[core] {msg}");
+            RestartDiag.Log($"core: {msg}");
+            if (LauncherControl.IsSupervised)
+                RoleHeartbeatStore.ReportFailed(ShellRole.Core, msg);
+            Task.Run(() => server.DisposeAsync().AsTask()).GetAwaiter().GetResult(); // never bound → never unlinks
+            Task.Run(() => host.StopAsync(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
+            Environment.ExitCode = 3;
+            return;
+        }
         RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
 
         // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
@@ -188,11 +207,25 @@ internal static class Program
     /// </summary>
     private static void RunLauncher(string[] args)
     {
+        // Single instance, FIRST (bevel-wio0): everything below — clearing the quit marker and
+        // heartbeats, binding launcher.sock, spawning a core that opens settings.db — would trample a
+        // shell that is already running. The lock is held for this process's lifetime and released by
+        // the kernel on any exit, so a crash never wedges the next launch.
+        using var instance = TryTakeInstanceLock(out var incumbentPid, out var lockUnavailable);
+        if (instance is null && !lockUnavailable)
+        {
+            var who = incumbentPid > 0 ? $" (launcher pid {incumbentPid})" : "";
+            Console.Error.WriteLine($"[launcher] Bevel is already running{who}; this launch is exiting.");
+            RestartDiag.Log($"launcher: instance lock held by another shell{who} — exiting");
+            return;
+        }
+
         // Endpoints the launcher owns and hands to its children via env: the shell-core socket + nonce
         // (so core and taskbar share one authenticated channel with no token-file race) and the
         // launcher's own control socket + nonce (so the taskbar can reach us to quit/restart).
         var coreSocket = ShellCore.ShellCoreEndpoint.SocketPath;
-        var coreToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var coreNonce = RandomNumberGenerator.GetBytes(16);
+        var coreToken = Convert.ToHexString(coreNonce);
         var (controlSocket, controlNonce) = LauncherControl.CreateServerEndpoint();
 
         var childEnv = new Dictionary<string, string>
@@ -228,11 +261,14 @@ internal static class Program
         var supervisor = new RoleProcessSupervisor(
             processes,
             pollInterval: TimeSpan.FromSeconds(1),
-            coreReadyProbe: ct => WaitForFileAsync(coreSocket, TimeSpan.FromSeconds(5), ct),
+            coreReadyProbe: ct => CoreSocketProbe.WaitUntilServingAsync(coreSocket, coreNonce, TimeSpan.FromSeconds(5), ct),
             log: msg => Console.Error.WriteLine($"[launcher] {msg}"),
-            // bevel-hprv: process-alive is not "serving". A core that lost core.sock stays
-            // up in ps while every peer shows the disconnected indicator.
-            coreHealthyProbe: _ => Task.FromResult(File.Exists(coreSocket)),
+            // bevel-hprv: process-alive is not "serving". A core that lost core.sock stays up in ps
+            // while every peer shows the disconnected indicator. And (bevel-wio0) a socket that
+            // EXISTS — even one that accepts connections — is not proof it is OUR core: the probe is
+            // an authenticated handshake with this session's nonce, so a hijacked/foreign core.sock
+            // reads as unhealthy instead of being certified.
+            coreHealthyProbe: ct => CoreSocketProbe.IsServingAsync(coreSocket, coreNonce, ct),
             quitRequested: QuitRequest.Exists,
             health: new ShellHealthMonitor(BuildStamp.Current),
             onAlert: ShellHealthAlert.Show);
@@ -305,6 +341,27 @@ internal static class Program
         }).GetAwaiter().GetResult();
     }
 
+    /// <summary>Takes the single-instance lock. Contention (another shell) returns null with the
+    /// incumbent's pid. A lock that cannot be created AT ALL (unwritable config dir, exotic filesystem)
+    /// also returns null but flags <paramref name="unavailable"/>: the shell then boots unguarded with a
+    /// logged warning rather than refusing to start over a permissions quirk.</summary>
+    private static ShellInstanceLock? TryTakeInstanceLock(out int incumbentPid, out bool unavailable)
+    {
+        unavailable = false;
+        try
+        {
+            return ShellInstanceLock.TryAcquire(ShellInstanceLock.DefaultPath, ShellInstanceLock.DefaultWait, out incumbentPid);
+        }
+        catch (Exception ex) when (ex is not IOException)
+        {
+            incumbentPid = 0;
+            unavailable = true;
+            Console.Error.WriteLine($"[launcher] single-instance lock unavailable ({ex.Message}); continuing unguarded");
+            RestartDiag.Log($"launcher: instance lock unavailable: {ex}");
+            return null;
+        }
+    }
+
     /// <summary>Builds the start info for one child role process: the launcher's argv with its own
     /// <c>--role</c> replaced by the child's, plus the inherited control/shell-core environment.</summary>
     internal static ProcessStartInfo CreateRoleStartInfo(
@@ -346,14 +403,6 @@ internal static class Program
         ShellRole.Launcher => "launcher",
         _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unknown shell role"),
     };
-
-    /// <summary>Polls for a file to appear (the shell-core socket) up to <paramref name="timeout"/>.</summary>
-    private static async Task WaitForFileAsync(string path, TimeSpan timeout, CancellationToken ct)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (!File.Exists(path) && DateTime.UtcNow < deadline)
-            await Task.Delay(50, ct).ConfigureAwait(false);
-    }
 
     private static void Relaunch(IReadOnlyList<string> args)
     {

@@ -61,10 +61,21 @@ public sealed class UdsMessageServer : IAsyncDisposable
     public int ClientCount => _clients.Count;
 
     /// <summary>
-    /// Binds the UDS path and starts accepting. A stale socket file from a previous crash is
-    /// deleted first (a bound path that still exists on disk makes <c>Bind</c> fail with
-    /// EADDRINUSE). The parent directory is created 0700 — the socket is an authenticated
-    /// control channel, so it must not be reachable by other users on the box.
+    /// The handshake capability that means "just tell me you're here". A hello presenting it gets
+    /// <see cref="FrameKind.HandshakeOk"/> and is then closed WITHOUT being registered as a client —
+    /// no <see cref="ClientConnected"/>, no state snapshot — so a supervisor can ask every second
+    /// "is a server that shares MY nonce serving this path?" for the price of one HMAC. That question
+    /// (not "does the file exist", not "does anything connect") is what distinguishes a healthy core
+    /// from a hijacked or foreign one (bevel-wio0 × bevel-hprv). See <see cref="UdsMessageClient.ProbeAsync"/>.
+    /// </summary>
+    public const string ProbeCapability = "probe";
+
+    /// <summary>
+    /// Claims the UDS path (<see cref="UdsSocketClaim.BindListener"/>: probe first, reclaim only a
+    /// stale file, never a live one) and starts accepting. Throws <see cref="UdsSocketBusyException"/>
+    /// when another instance is already serving the path — the caller must stand down. The parent
+    /// directory is created 0700 — the socket is an authenticated control channel, so it must not be
+    /// reachable by other users on the box.
     /// </summary>
     public void Start()
     {
@@ -79,12 +90,7 @@ public sealed class UdsMessageServer : IAsyncDisposable
                 Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        if (File.Exists(_socketPath))
-            File.Delete(_socketPath);
-
-        _listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        _listener.Bind(new UnixDomainSocketEndPoint(_socketPath));
-        _listener.Listen(128);
+        _listener = UdsSocketClaim.BindListener(_socketPath, backlog: 128);
         _acceptLoop = AcceptLoopAsync(_cts.Token);
     }
 
@@ -129,7 +135,7 @@ public sealed class UdsMessageServer : IAsyncDisposable
             // is the wrong kind or fails the HMAC gets a Reject and the connection is dropped.
             var hello = await Framing.ReadFrameAsync(stream, ct).ConfigureAwait(false);
             if (hello.Kind != FrameKind.HandshakeHello ||
-                Handshake.ValidateHello(_nonce, hello.Payload) is null)
+                Handshake.ValidateHello(_nonce, hello.Payload) is not { } capability)
             {
                 await Framing.WriteFrameAsync(stream, FrameKind.HandshakeReject, 0, ReadOnlyMemory<byte>.Empty, ct)
                     .ConfigureAwait(false);
@@ -139,6 +145,14 @@ public sealed class UdsMessageServer : IAsyncDisposable
 
             await Framing.WriteFrameAsync(stream, FrameKind.HandshakeOk, 0, ReadOnlyMemory<byte>.Empty, ct)
                 .ConfigureAwait(false);
+
+            // A liveness probe is answered and closed here — never registered, never snapshotted
+            // (see ProbeCapability). The Ok it just read is the whole answer.
+            if (capability == ProbeCapability)
+            {
+                stream.Dispose();
+                return;
+            }
 
             conn = new ClientConnection(stream);
             conn.StartPump(this, ct);
@@ -209,8 +223,10 @@ public sealed class UdsMessageServer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Stops accepting, tears down every client, and deletes the socket file so the next
-    /// <see cref="Start"/> (this process or the next) starts from a clean path.
+    /// Stops accepting, tears down every client, and unlinks the socket file — but only if this
+    /// server still owns it (<see cref="UdsSocketClaim.ReleaseListener"/>): a path that another live
+    /// listener has since taken over, or that this instance never bound (a stood-down second
+    /// instance), is left untouched.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -218,7 +234,8 @@ public sealed class UdsMessageServer : IAsyncDisposable
             return;
 
         _cts.Cancel();
-        _listener?.Dispose(); // unblocks AcceptAsync
+        // Closes the listener (unblocks AcceptAsync) and unlinks the path only if nobody else answers there.
+        UdsSocketClaim.ReleaseListener(_listener, _socketPath);
 
         if (_acceptLoop is not null)
         {
@@ -229,9 +246,6 @@ public sealed class UdsMessageServer : IAsyncDisposable
         foreach (var conn in _clients.Values)
             conn.Dispose();
         _clients.Clear();
-
-        try { if (File.Exists(_socketPath)) File.Delete(_socketPath); }
-        catch { /* best effort — a leftover file is handled by the next Start() */ }
 
         _cts.Dispose();
     }
