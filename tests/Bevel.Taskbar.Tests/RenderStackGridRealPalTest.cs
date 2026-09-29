@@ -80,7 +80,7 @@ public class RenderStackGridRealPalTest : IDisposable
         var frame = Capture(window);
         var outPath = Environment.GetEnvironmentVariable("BEVEL_STACKGRID_REAL_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-stack-grid-real.png");
-        frame.Save(outPath);
+        Bevel.TestSupport.SiteShot.Save(window, outPath);
     }
 
     /// <summary>Paints a two-stop vertical gradient and saves it as a real PNG.</summary>

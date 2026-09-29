@@ -48,7 +48,7 @@ public class InfoPaneStyleTest
         Assert.True(frame!.PixelSize.Width >= 190, $"{tag} too narrow: {frame.PixelSize}");
 
         if (Environment.GetEnvironmentVariable("BEVEL_INFO_DIR") is { } dir)
-            frame.Save(Path.Combine(dir, $"infopane-{tag}.png"));
+            Bevel.TestSupport.SiteShot.Save(win, Path.Combine(dir, $"infopane-{tag}.png"));
     }
 
     [AvaloniaFact]

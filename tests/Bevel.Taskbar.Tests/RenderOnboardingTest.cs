@@ -92,7 +92,10 @@ public class RenderOnboardingTest
 
             var outPath = Environment.GetEnvironmentVariable("BEVEL_ONB_APPEARANCE_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-onboarding-appearance.png");
-            frame!.Save(outPath);
+            // scale: 1 — see SiteShot.Save. This dialog's TabControl content forces an intermediate
+            // composition layer, which Avalonia mis-scales above 1x (chrome at 1x, content magnified and
+            // clipped). Tracked separately; the shot stays honest rather than broken.
+            Bevel.TestSupport.SiteShot.Save(win, outPath, scale: 1);
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ } }
     }

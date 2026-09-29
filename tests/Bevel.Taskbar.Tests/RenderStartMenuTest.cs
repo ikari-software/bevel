@@ -45,7 +45,7 @@ public class RenderStartMenuTest
 
         var outPath = Environment.GetEnvironmentVariable("BEVEL_RENDER_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-startmenu-render.png");
-        frame.Save(outPath);
+        Bevel.TestSupport.SiteShot.Save(window, outPath);
     }
 
     /// <summary>

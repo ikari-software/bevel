@@ -35,10 +35,19 @@ async function inlineScriptHashes(): Promise<string> {
 
 const SCRIPT_SRC = await inlineScriptHashes();
 
-/** Cache headers by asset kind: the page itself must never go stale, its screenshots are immutable
- * enough to cache hard — they only change when a Render* test is re-harvested and redeployed. */
+/** Cache headers by asset kind.
+ *
+ * The screenshots were previously treated as immutable (a day of max-age plus a week of
+ * stale-while-revalidate) on the theory that they only change when a Render* test is re-harvested.
+ * But a re-harvest REWRITES THEM AT THE SAME URL, so that policy meant a corrected screenshot could
+ * not reach anyone who had already loaded the page for a day, and would keep being served stale for
+ * a week after. Exactly that happened: the fixed win9x info pane stayed invisible behind the cache.
+ *
+ * Immutable caching needs immutable URLs, and these URLs are deliberately stable (the page is
+ * buildless — nothing rewrites its references to add a content hash). So the shots revalidate
+ * instead. serveDir already emits an ETag, so an unchanged shot costs a 304, not a re-download. */
 function cacheControl(pathname: string): string {
-  if (pathname.startsWith("/shots/")) return "public, max-age=86400, stale-while-revalidate=604800";
+  if (pathname.startsWith("/shots/")) return "public, no-cache";
   return "public, max-age=0, must-revalidate";
 }
 

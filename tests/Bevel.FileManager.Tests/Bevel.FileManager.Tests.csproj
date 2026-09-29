@@ -19,4 +19,9 @@
     <ProjectReference Include="..\..\src\Bevel.FileManager\Bevel.FileManager.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared with the other render-test project: one definition of the landing page's asset scale. -->
+    <Compile Include="..\Shared\SiteShot.cs" Link="SiteShot.cs" />
+  </ItemGroup>
+
 </Project>

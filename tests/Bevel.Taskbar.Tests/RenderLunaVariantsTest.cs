@@ -48,7 +48,7 @@ public class RenderLunaVariantsTest
         }
     }
 
-    private static Avalonia.Media.Imaging.WriteableBitmap? RenderGallery(string title)
+    private static Bevel.UI.BevelWindow BuildGallery(string title)
     {
         var body = new StackPanel { Margin = new Thickness(14), Spacing = 10, Width = 340 };
 
@@ -86,7 +86,85 @@ public class RenderLunaVariantsTest
         };
         window.Show();
         Dispatcher.UIThread.RunJobs();
-        return window.CaptureRenderedFrame();
+        return window;
+    }
+
+    private static Avalonia.Media.Imaging.WriteableBitmap? RenderGallery(string title)
+        => BuildGallery(title).CaptureRenderedFrame();
+
+    /// <summary>
+    /// site/shots/luna-4up.png — the four colourways the landing page shows side by side.
+    ///
+    /// This was a hand-composited file with no test behind it, which is how the other unproduced shot
+    /// (theme-win2000.png) went stale for months. Layout matches what it replaces: 372x340 tiles in a
+    /// 2x2 with an 8px gutter, but the tile size is MEASURED rather than assumed.
+    /// </summary>
+    [AvaloniaFact]
+    public void Render_site_four_up()
+    {
+        var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_4UP_OUT");
+        if (string.IsNullOrEmpty(outPath)) return;   // opt-in, like the rest of this file
+
+        const int Gutter = 8;
+        var scale = Bevel.TestSupport.SiteShot.Scale;
+        int tileW = 0, tileH = 0;
+
+        try
+        {
+            Bevel.UI.ThemeService.Apply("luna");
+
+            // Each tile is rendered at SiteShot.Scale, written out, and reloaded as a plain 96-dpi
+            // bitmap. That round trip is the point: a RenderTargetBitmap carries its 192 dpi with it, and
+            // every attempt to compose those directly — DrawingContext rects, an Image with an explicit
+            // Width, an explicit Stretch — had the tile painted at one source pixel per LOGICAL unit and
+            // clipped, magnifying each cell 2x. Reloaded at 96 dpi, one unit is one device pixel through
+            // the whole composite and there is nothing left to get wrong.
+            var staging = Directory.CreateTempSubdirectory("bevel-4up-");
+            try
+            {
+                var tiles = new System.Collections.Generic.List<Avalonia.Media.Imaging.Bitmap>();
+                var colors = new[] { "Blue", "Silver", "Black", "Purple" };
+                foreach (var color in colors)
+                {
+                    Bevel.UI.Luna.LunaVariantService.Apply(color, Bevel.UI.Luna.LunaVariantService.DefaultGloss);
+                    var window = BuildGallery($"{color} · {Bevel.UI.Luna.LunaVariantService.DefaultGloss}");
+
+                    // Measure rather than assume. The file this replaces hard-coded 372x340 tiles.
+                    var frame = window.CaptureRenderedFrame()
+                                ?? throw new InvalidOperationException($"{color} gallery rendered nothing");
+                    if (tileW == 0) (tileW, tileH) = (frame.PixelSize.Width, frame.PixelSize.Height);
+                    Assert.Equal(new PixelSize(tileW, tileH), frame.PixelSize);   // a ragged grid is a bug
+
+                    var path = Path.Combine(staging.FullName, $"{color}.png");
+                    Bevel.TestSupport.SiteShot.Save(window, path);
+                    tiles.Add(new Avalonia.Media.Imaging.Bitmap(path));
+                }
+
+                var cellW = (int)(tileW * scale);
+                var cellH = (int)(tileH * scale);
+                var gap = (int)(Gutter * scale);
+                var canvas = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                    new PixelSize(cellW * 2 + gap * 3, cellH * 2 + gap * 3), new Vector(96, 96));
+                using (var ctx = canvas.CreateDrawingContext())
+                {
+                    // The gutter colour the replaced composite used, so the swap is invisible on the page.
+                    ctx.FillRectangle(new SolidColorBrush(Color.Parse("#8F8B81")),
+                        new Rect(0, 0, cellW * 2 + gap * 3, cellH * 2 + gap * 3));
+                    for (var i = 0; i < tiles.Count; i++)
+                        ctx.DrawImage(tiles[i], new Rect(
+                            gap + (i % 2) * (cellW + gap), gap + (i / 2) * (cellH + gap), cellW, cellH));
+                }
+                canvas.Save(outPath);
+                canvas.Dispose();
+                foreach (var t in tiles) t.Dispose();
+            }
+            finally { try { staging.Delete(true); } catch { /* best-effort cleanup */ } }
+        }
+        finally
+        {
+            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.ThemeService.Apply("win2000");
+        }
     }
 
     /// <summary>Renders a taskbar strip with the three task-button states (default / hover / active) on

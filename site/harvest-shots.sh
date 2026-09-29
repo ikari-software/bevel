@@ -58,15 +58,21 @@ BEVEL_RENDER_OUT="$OUT/startmenu-search.png" \
   run "$TB" "FullyQualifiedName~RenderStartMenuSearchTest"
 produced "startmenu-search.png"
 
+echo "==> Luna colourways, four up"
+BEVEL_LUNA_4UP_OUT="$OUT/luna-4up.png" \
+  run "$TB" "FullyQualifiedName~Render_site_four_up"
+produced "luna-4up.png"
+
 echo "==> Downloads stack grid"
 BEVEL_STACKGRID_REAL_OUT="$OUT/stack-grid.png" \
   run "$TB" "FullyQualifiedName~RenderStackGridRealPalTest"
 produced "stack-grid.png"
 
-# Shots this script cannot regenerate. Each is a hand-composited scene with no single producing
-# test; they are listed here so the audit below can tell "deliberately manual" from "silently
-# dropped out of the pipeline" — which is exactly the distinction that let theme-win2000.png rot.
-MANUAL="hero-luna.png luna-4up.png"
+# Shots this script cannot regenerate: a hand-composited scene with no single producing test. Listed
+# so the audit below can tell "deliberately manual" from "silently dropped out of the pipeline" —
+# exactly the distinction that let theme-win2000.png rot. luna-4up.png used to be here too, until
+# Render_site_four_up took it over.
+MANUAL="hero-luna.png"
 
 echo "==> audit: every shot the page references is accounted for"
 missing=0

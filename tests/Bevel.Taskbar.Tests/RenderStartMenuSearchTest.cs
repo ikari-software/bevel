@@ -92,7 +92,7 @@ public class RenderStartMenuSearchTest
             Assert.NotNull(frame);
             var outPath = Environment.GetEnvironmentVariable("BEVEL_RENDER_OUT")
                           ?? Path.Combine(Path.GetTempPath(), $"bevel-startmenu-search-{theme}.png");
-            frame!.Save(outPath);
+            Bevel.TestSupport.SiteShot.Save(window, outPath);
         }
         finally { Bevel.UI.ThemeService.Apply("win2000"); }
     }
