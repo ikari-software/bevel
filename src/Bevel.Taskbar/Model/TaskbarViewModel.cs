@@ -41,17 +41,25 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
             settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons, thumbnails);
         if (connection is not null)
         {
-            _isDisconnected = !connection.IsConnected;
+            // Subscribe BEFORE reading IsConnected (same discipline as App.axaml.cs's settings.Changed
+            // fix): a connection flip landing in the gap between the read and the subscribe would
+            // otherwise never invoke OnConnectionChanged for that transition, leaving IsDisconnected
+            // wrong until some LATER, unrelated flip corrects it. Subscribing first means such a flip
+            // is always observed, even if it lands between these two lines.
             connection.ConnectionChanged += OnConnectionChanged;
+            _isDisconnected = !connection.IsConnected;
         }
 
         // Strategy C (bevel-7hf4): drive menu-bar consolidation from settings — apply the current value
-        // and re-apply whenever settings change (the 750ms poll raises Changed).
+        // and re-apply whenever settings change (the 750ms poll raises Changed). Subscribe BEFORE the
+        // first read for the same reason as above: a settings snapshot landing between the read and the
+        // subscribe would otherwise be lost until the next unrelated settings change (or never, in a
+        // session with no further edits) — matching the RemoteSettingsService/App.axaml.cs discipline.
         _settings = settings;
         if (settings is not null)
         {
-            ApplyConsolidation(settings.Current.TaskbarConsolidateMenuBar);
             settings.Changed += OnSettingsChanged;
+            ApplyConsolidation(settings.Current.TaskbarConsolidateMenuBar);
         }
     }
 
