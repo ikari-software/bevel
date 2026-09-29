@@ -159,7 +159,11 @@ public class ProofModelTests
         var stderr = p.StandardError.ReadToEnd();
         Assert.True(p.WaitForExit(60_000), $"bend did not finish checking {proof}");
         Assert.Equal(0, p.ExitCode);
-        Assert.Contains("All terms check", stdout + stderr);
+        // Bend's success banner changed between releases ("All terms check" → "ALL PROOFS CHECK");
+        // accept either so a tooling upgrade doesn't read as a broken proof.
+        var output = stdout + stderr;
+        Assert.True(output.Contains("All terms check") || output.Contains("ALL PROOFS CHECK"),
+            $"bend did not report the proofs as checked:\n{output}");
     }
 
     // ── Proof-file parsing ────────────────────────────────────────────────
