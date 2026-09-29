@@ -363,9 +363,13 @@ internal static class Program
     }
 
     /// <summary>Builds the start info for one child role process: the launcher's argv with its own
-    /// <c>--role</c> replaced by the child's, plus the inherited control/shell-core environment.</summary>
+    /// <c>--role</c> replaced by the child's, plus the inherited control/shell-core environment.
+    /// <paramref name="extraChildArgs"/> (bevel-t48y) appends role-specific extras — a filer child's
+    /// <c>--open-path</c>/<c>--search</c>/<c>--select</c> — AFTER the role arg, so the supervised spawn
+    /// path composes children with the same builder as core/taskbar/desktop.</summary>
     internal static ProcessStartInfo CreateRoleStartInfo(
-        ShellRole role, IReadOnlyList<string> launcherArgs, IReadOnlyDictionary<string, string> env)
+        ShellRole role, IReadOnlyList<string> launcherArgs, IReadOnlyDictionary<string, string> env,
+        IReadOnlyList<string>? extraChildArgs = null)
     {
         var processPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("Cannot determine process path to launch role processes.");
@@ -375,6 +379,8 @@ internal static class Program
             .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase))
             .Append("--role=" + RoleToArg(role))
             .ToList();
+        if (extraChildArgs is not null)
+            childArgs.AddRange(extraChildArgs);
 
         var startInfo = CreateRestartStartInfo(processPath, entryAssemblyPath, childArgs);
         startInfo.WorkingDirectory = !string.IsNullOrEmpty(entryAssemblyPath)
@@ -450,6 +456,27 @@ internal static class Program
         }
     }
 
+    /// <summary>Builds a filer child's argv from the parent's own: the parent's args minus the
+    /// filer-scoped switches, plus <c>--role=filer</c> and the open target (and find mode / reveal-select
+    /// when given). ONE argv builder shared by the in-process fallback (<see cref="SpawnFiler"/>) and —
+    /// bevel-t48y — the launcher's supervised spawn, so both paths construct identical children.</summary>
+    internal static IReadOnlyList<string> BuildFilerArgs(
+        IEnumerable<string> parentArgs, string filePath, bool search = false, string? selectPath = null)
+    {
+        var childArgs = parentArgs
+            .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase)
+                     && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase)
+                     && !a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase)
+                     && !a.Equals("--search", StringComparison.OrdinalIgnoreCase))
+            .Append("--role=filer")
+            .Append("--open-path=" + filePath)
+            .ToList();
+        if (search) childArgs.Add("--search");   // open the new window straight into Find mode (bevel-x6pv)
+        if (!string.IsNullOrEmpty(selectPath))
+            childArgs.Add("--select=" + selectPath);   // highlight this item once its folder loads (bevel-e7a7)
+        return childArgs;
+    }
+
     /// <summary>Opens a Bevel Filer window at <paramref name="filePath"/> as its OWN
     /// <c>--role=filer</c> process — the way the split shell hosts the file manager. Called from the
     /// taskbar's Start-menu "places" and from the automation command model's window verbs
@@ -464,17 +491,7 @@ internal static class Program
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(processPath)) return;
 
-        var childArgs = Environment.GetCommandLineArgs().Skip(1)
-            .Where(a => !a.StartsWith("--role=", StringComparison.OrdinalIgnoreCase)
-                     && !a.StartsWith("--open-path=", StringComparison.OrdinalIgnoreCase)
-                     && !a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase)
-                     && !a.Equals("--search", StringComparison.OrdinalIgnoreCase))
-            .Append("--role=filer")
-            .Append("--open-path=" + filePath)
-            .ToList();
-        if (search) childArgs.Add("--search");   // open the new window straight into Find mode (bevel-x6pv)
-        if (!string.IsNullOrEmpty(selectPath))
-            childArgs.Add("--select=" + selectPath);   // highlight this item once its folder loads (bevel-e7a7)
+        var childArgs = BuildFilerArgs(Environment.GetCommandLineArgs().Skip(1), filePath, search, selectPath);
 
         try
         {
