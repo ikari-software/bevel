@@ -130,6 +130,86 @@ public class TrayViewModelTests
         Assert.All(vm.VisibleItems, i => Assert.Equal(24.0 / 22.0, i.IconW / i.IconH, 3));
     }
 
+    // ── Icon-or-placeholder (bevel-yduf) ─────────────────────────────────
+
+    /// <summary>The icon decode + tint runs off the UI thread and Posts back; pump until it lands.</summary>
+    private static async Task PumpUntil(Func<bool> done)
+    {
+        for (var i = 0; i < 200 && !done(); i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaFact]
+    public async Task An_item_without_icon_bytes_is_a_placeholder_slot_not_a_blank()
+    {
+        // The helper's limited mode sends NO bytes for a status item whose owner has no bundle id; the
+        // slot used to be a blank cell at native width — indistinguishable from "nothing mirrored".
+        var vm = new TrayViewModel(new StubTray(new TrayItem(new TrayItemId("1:10"), "Item-0", IconPng: null)));
+        vm.Start();
+        await PumpUntil(() => vm.Items.Count == 1);
+        var item = vm.Items.Single();
+
+        Assert.Null(item.IconSource);
+        Assert.False(item.HasIcon);   // → the view draws the placeholder
+        Assert.False(item.IsLive);
+    }
+
+    [AvaloniaFact]
+    public async Task An_item_with_a_decodable_icon_shows_it_and_reports_live()
+    {
+        var png = TestPng.Solid(16, 200, 40, 40);
+        var vm = new TrayViewModel(new StubTray(new TrayItem(new TrayItemId("2:20"), "Live", IconPng: png, IsLive: true)));
+        vm.Start();
+        await PumpUntil(() => vm.Items.Count == 1 && vm.Items[0].HasIcon);
+        var item = vm.Items.Single();
+
+        Assert.NotNull(item.IconSource);
+        Assert.True(item.HasIcon);
+        Assert.True(item.IsLive);
+    }
+
+    [AvaloniaFact]
+    public async Task Undecodable_icon_bytes_fall_back_to_the_placeholder()
+    {
+        // Bytes arrived but they are not a PNG (or a corrupt one): still a visible placeholder, never a
+        // silent empty cell. (The why is logged once per payload — see TrayItemViewModel.Apply.)
+        var garbage = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var host = new StubTray(new TrayItem(new TrayItemId("3:30"), "Broken", IconPng: garbage));
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        await PumpUntil(() => vm.Items.Count == 1);
+        await PumpUntil(() => false);   // let the off-thread decode attempt settle
+        var item = vm.Items.Single();
+
+        Assert.Null(item.IconSource);
+        Assert.False(item.HasIcon);
+
+        // A later update that DOES decode replaces the placeholder in place.
+        host.RaiseUpdated(new TrayItem(new TrayItemId("3:30"), "Broken", IconPng: TestPng.Solid(16, 0, 0, 200)));
+        await PumpUntil(() => item.HasIcon);
+        Assert.True(item.HasIcon);
+        Assert.NotNull(item.IconSource);
+    }
+
+    [Fact]
+    public void Icon_state_summary_names_the_missing_grant_when_nothing_is_live()
+    {
+        // The one log line that separates "mirroring works" from "the helper has no Screen Recording
+        // grant" — both look like app icons (or nothing) in the bar.
+        Assert.Null(TrayViewModel.DescribeIconState(total: 0, live: 0, appIcons: 0, placeholders: 0));
+
+        var allLive = TrayViewModel.DescribeIconState(total: 3, live: 3, appIcons: 0, placeholders: 0)!;
+        Assert.Contains("3 live capture", allLive);
+        Assert.DoesNotContain("Screen Recording", allLive);
+
+        var noneLive = TrayViewModel.DescribeIconState(total: 4, live: 0, appIcons: 3, placeholders: 1)!;
+        Assert.Contains("0 live capture", noneLive);
+        Assert.Contains("3 app-icon fallback", noneLive);
+        Assert.Contains("1 placeholder", noneLive);
+        Assert.Contains("Screen Recording grant", noneLive);
+        Assert.Contains("dev-sign.sh", noneLive);
+    }
+
     [AvaloniaFact]
     public void SetConsolidated_dedups_unchanged_values()
     {

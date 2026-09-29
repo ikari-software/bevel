@@ -387,14 +387,11 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                                        <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
-                                                               Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform"
-                                                               Margin="4" VerticalAlignment="Center"
-                                                               Focusable="True"
-                                                               AutomationProperties.Name="{Binding Tooltip}"
-                                                               ToolTip.Tip="{Binding Tooltip}"
-                                                               PointerPressed="OnTrayIconPressed"
-                                                               KeyDown="OnTrayIconKeyDown" />
+                                                        <!-- Icon-or-placeholder cell (bevel-yduf) — one definition,
+                                                             shared with the inline strip below. -->
+                                                        <tb:TrayIconCell Margin="4"
+                                                                         PointerPressed="OnTrayIconPressed"
+                                                                         KeyDown="OnTrayIconKeyDown" />
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
@@ -415,16 +412,14 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="tb:TrayItemViewModel">
-                                        <!-- NATIVE mac size (bevel-7hf4): render at the item's true on-screen
-                                             size (IconW×IconH, points) — no rescale. TrayRowsPanel bounds the
-                                             footprint (16 box-widths/row); it never resizes the icon. -->
-                                        <Image Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
-                                               Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform" Margin="1,0"
-                                               VerticalAlignment="Center" ToolTip.Tip="{Binding Tooltip}"
-                                               Focusable="True"
-                                               AutomationProperties.Name="{Binding Tooltip}"
-                                               PointerPressed="OnTrayIconPressed"
-                                               KeyDown="OnTrayIconKeyDown" />
+                                        <!-- NATIVE mac size (bevel-7hf4): the cell renders at the item's true
+                                             on-screen size (IconW×IconH, points) — no rescale. TrayRowsPanel
+                                             bounds the footprint (16 box-widths/row); it never resizes the icon.
+                                             A slot with no decodable icon draws the cell's PLACEHOLDER, not a
+                                             blank (bevel-yduf). -->
+                                        <tb:TrayIconCell Margin="1,0"
+                                                         PointerPressed="OnTrayIconPressed"
+                                                         KeyDown="OnTrayIconKeyDown" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

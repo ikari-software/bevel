@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tb="clr-namespace:Bevel.Taskbar"
+             x:Class="Bevel.Taskbar.TrayIconCell"
+             x:DataType="tb:TrayItemViewModel"
+             Focusable="True"
+             Background="Transparent"
+             VerticalAlignment="Center"
+             ToolTip.Tip="{Binding Tooltip}"
+             AutomationProperties.Name="{Binding Tooltip}">
+    <!-- One mirrored tray slot (bevel-yduf). Shared by the inline strip and the overflow flyout so the
+         two cannot drift: the same icon, the same placeholder, the same focus/automation surface.
+         NATIVE mac size (bevel-7hf4): the cell renders at the item's true on-screen size (IconW×IconH,
+         points) — no rescale. TrayRowsPanel bounds the footprint; it never resizes the icon.
+         Transparent background so the WHOLE cell is hit-testable (a stroke-only placeholder is not). -->
+    <Panel>
+        <Image IsVisible="{Binding HasIcon}"
+               Source="{Binding IconSource}" RenderOptions.BitmapInterpolationMode="HighQuality"
+               Width="{Binding IconW}" Height="{Binding IconH}" Stretch="Uniform" />
+
+        <!-- Placeholder: what a FAILED icon looks like — a hollow, ink-coloured frame with a dot,
+             at the item's native footprint. The host mirrored an item here but sent no icon bytes (the
+             helper's limited mode with no resolvable app icon) or they didn't decode. Visible on purpose:
+             a blank cell at native width reads as "nothing is mirrored", which is the wrong diagnosis.
+             Vector, bound to the bar's contrast ink token so it recolours with every skin. -->
+        <Border IsVisible="{Binding !HasIcon}"
+                Width="{Binding IconW}" Height="{Binding IconH}"
+                BorderBrush="{DynamicResource Bevel.Brush.TrayText}" BorderThickness="1"
+                CornerRadius="2" Background="Transparent" Opacity="0.6">
+            <Border Width="4" Height="4" CornerRadius="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{DynamicResource Bevel.Brush.TrayText}" />
+        </Border>
+    </Panel>
+</UserControl>

@@ -207,18 +207,72 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         var vm = new TrayItemViewModel(item) { Ink = _ink };
         vm.SetMaxHeight(MaxIconHeight(_rows));
         vm.SetScale(_iconSize / 16.0);
+        vm.PropertyChanged += OnItemIconStateChanged;
         Items.Add(vm);
         Reslice();
         RepokeConsolidation();
+        QueueIconStateSummary();
     }
 
     private void Remove(TrayItemId id)
     {
         var existing = Items.FirstOrDefault(i => i.Id.Equals(id));
         if (existing is null) return;
+        existing.PropertyChanged -= OnItemIconStateChanged;
         Items.Remove(existing);
         Reslice();
         RepokeConsolidation();
+        QueueIconStateSummary();
+    }
+
+    // ── Icon-state diagnostics (bevel-yduf) ─────────────────────────────
+
+    private void OnItemIconStateChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TrayItemViewModel.HasIcon) or nameof(TrayItemViewModel.IsLive))
+            QueueIconStateSummary();
+    }
+
+    private bool _summaryQueued;
+    private string? _lastSummary;
+
+    /// <summary>Coalesces the per-item icon-state changes (a snapshot burst decodes N icons off-thread and
+    /// lands N Apply calls) into ONE summary line per settled state — see <see cref="DescribeIconState"/>.</summary>
+    private void QueueIconStateSummary()
+    {
+        if (_summaryQueued) return;
+        _summaryQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _summaryQueued = false;
+            var summary = DescribeIconState(
+                total: Items.Count,
+                live: Items.Count(i => i.IsLive && i.HasIcon),
+                appIcons: Items.Count(i => !i.IsLive && i.HasIcon),
+                placeholders: Items.Count(i => !i.HasIcon));
+            if (summary == _lastSummary) return;
+            _lastSummary = summary;
+            if (summary is not null) TaskbarLog.Info(summary);
+        }, DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// The one line that says what the tray is actually showing (bevel-yduf). Three kinds of slot exist
+    /// and they look alike from a distance — a LIVE capture of the real status item, the owning app's
+    /// icon (the helper's limited mode, §5.5), and a placeholder (the host sent no icon bytes at all, or
+    /// they did not decode) — and the difference between "mirroring works" and "the helper has no
+    /// Screen Recording grant" is invisible in the bar. Logged only when the counts change, so the 2 s
+    /// poll doesn't spam. Null when the tray is empty (nothing to say). Pure, so it is testable.
+    /// </summary>
+    internal static string? DescribeIconState(int total, int live, int appIcons, int placeholders)
+    {
+        if (total == 0) return null;
+        var line = $"tray: {total} mirrored item(s) — {live} live capture(s), {appIcons} app-icon fallback(s), {placeholders} placeholder(s)";
+        if (live == 0)
+            line += " — no item captured live: the helper has no Screen Recording grant (keyed to the helper binary; " +
+                    "a rebuild changes its cdhash — see packaging/macos/dev-sign.sh) or its self-test disabled live " +
+                    "mirroring; look for the helper's '[BEVEL-TRAY] self-test' / 'capture' lines above";
+        return line;
     }
 
     /// <summary>Menu-bar reflow (bevel-7hf4, overlay-hide risk 5): adding/removing a real status item
@@ -294,7 +348,21 @@ public sealed class TrayItemViewModel : ObservableObject
     public string Tooltip { get => _tooltip; private set => SetProperty(ref _tooltip, value); }
     public Bitmap? IconSource { get => _iconSource; private set => SetProperty(ref _iconSource, value); }
 
+    private bool _hasIcon;
+    private bool _isLive;
+
+    /// <summary>True once a decoded icon is showing. False = the slot draws a PLACEHOLDER (bevel-yduf):
+    /// the host sent no icon bytes (limited mode with no resolvable app icon) or they failed to decode.
+    /// Never a blank cell — a blank at native width looks like nothing is mirrored at all.</summary>
+    public bool HasIcon { get => _hasIcon; private set => SetProperty(ref _hasIcon, value); }
+
+    /// <summary>True when the icon bytes are a live capture of the real status item, false when they
+    /// are the owning app's icon (the helper's limited mode, §5.5). Diagnostic — see
+    /// <see cref="TrayViewModel.DescribeIconState"/>.</summary>
+    public bool IsLive { get => _isLive; private set => SetProperty(ref _isLive, value); }
+
     private byte[]? _png;
+    private byte[]? _loggedUndecodable;
     private Color _ink = Colors.White;
 
     /// <summary>The bar's contrast ink (Bevel.Brush.TrayText). Template glyphs recolour to it; changing it
@@ -361,6 +429,7 @@ public sealed class TrayItemViewModel : ObservableObject
             OnPropertyChanged(nameof(BoxSpan));
         }
         _png = item.IconPng;
+        IsLive = item.IsLive;
         Retint();
     }
 
@@ -380,20 +449,28 @@ public sealed class TrayItemViewModel : ObservableObject
         System.Threading.Tasks.Task.Run(() =>
         {
             var img = TrayIconTint.Process(png, ink)?.Image;
-            Dispatcher.UIThread.Post(() => Apply(img, gen));
+            Dispatcher.UIThread.Post(() => Apply(img, gen, png));
         });
     }
 
-    private void Apply(Bitmap? img, int gen)
+    private void Apply(Bitmap? img, int gen, byte[]? png)
     {
         // Superseded by a newer retint while this one was off-thread — drop it (and its unmanaged memory).
         if (gen != _retintGen) { (img as IDisposable)?.Dispose(); return; }
+        // A null here is the "blank slot" of bevel-yduf. Say WHY once per icon payload (an ItemUpdated
+        // re-delivering the same bytes must not re-log), then let the view draw the placeholder.
+        if (img is null && png is { Length: > 0 } && !ReferenceEquals(png, _loggedUndecodable))
+        {
+            _loggedUndecodable = png;
+            TaskbarLog.Info($"tray: icon for '{Tooltip}' ({Id.Value}) did not decode ({png.Length} B PNG) — placeholder shown");
+        }
         // Process returns a freshly-decoded, unshared Skia bitmap on every live ItemUpdated and every ink
         // change — dispose the outgoing one or it leaks unmanaged memory per repaint (ce-review; same
         // discipline as the hover-preview and tab-favicon paths).
         var old = IconSource;
-        if (ReferenceEquals(old, img)) return;
+        if (ReferenceEquals(old, img)) { HasIcon = img is not null; return; }
         IconSource = img;
+        HasIcon = img is not null;
         (old as IDisposable)?.Dispose();
     }
 }

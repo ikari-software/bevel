@@ -471,7 +471,19 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.
-        guard isLiveMirroringEnabled, CGPreflightScreenCaptureAccess() else { return items }
+        let granted = CGPreflightScreenCaptureAccess()
+        guard isLiveMirroringEnabled, granted else {
+            // Say so in the log, once per state (bevel-yduf): from the taskbar, limited mode is
+            // indistinguishable from a broken capture — both show app icons (or nothing, for items
+            // whose owner has no bundle). The grant is keyed to THIS binary's path + cdhash, so a
+            // rebuild without re-signing (packaging/macos/dev-sign.sh) silently lands here.
+            let binary = Bundle.main.executablePath ?? CommandLine.arguments.first ?? "BevelHelper"
+            logCaptureStateIfChanged(granted
+                ? "live capture OFF: self-test disabled live mirroring on this build → limited mode (app icons)"
+                : "live capture OFF: Screen Recording not granted to \(binary) → limited mode (app icons); " +
+                  "grant it in System Settings › Privacy & Security › Screen & System Audio Recording")
+            return items
+        }
 
         // Capture each item's window by ID via the legacy CG path (U1/KTD1). Unlike ScreenCaptureKit
         // (which returns -3811 once a window leaves every display), this reads the backing store
@@ -497,8 +509,29 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // is on but nothing captures" from "mirroring is off" — the two look identical in the taskbar
         // (both show limited-mode app icons), which is exactly where bevel-p6g4 hid. `blank` counts
         // windows that captured a correctly-sized but fully-transparent image (bevel-sd6n).
-        dbg("captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))")
+        // Always logged when the ratio CHANGES (bevel-yduf) — it used to be debug-only, so a field log
+        // could not tell "0 live" from "never looked"; every poll still traces it under debug.
+        let summary = "captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))"
+        if !logCaptureStateIfChanged(summary) { dbg(summary) }
         return items
+    }
+
+    // The last capture-state line we logged. `enumerateWithCapture` runs on the 2 s poll (and
+    // concurrently from ListTrayItems), so a plain "log every time" would be noise — log transitions.
+    private let captureStateLock = NSLock()
+    private var lastCaptureState: String?
+
+    /// Logs `state` (always, not just under debug) if it differs from the last one logged.
+    /// Returns true when it logged.
+    @discardableResult
+    private func logCaptureStateIfChanged(_ state: String) -> Bool {
+        let changed: Bool = captureStateLock.withLock {
+            if lastCaptureState == state { return false }
+            lastCaptureState = state
+            return true
+        }
+        if changed { log(state) }
+        return changed
     }
 
     // NOTE: the SCK single-window capture that used to live here is GONE (bevel-p6g4). Tray capture runs
