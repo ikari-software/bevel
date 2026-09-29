@@ -1,4 +1,3 @@
-using static Bevel.Pal.MacOS.AppKitInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -21,8 +20,6 @@ internal static class LoginItemRegistrar
     private const nint StatusRequiresApproval = 2;
     private const nint StatusNotFound = 3;
 
-    private const int RTLD_LAZY = 0x1;
-
     private static bool _frameworkLoaded;
 
     /// <summary>
@@ -36,7 +33,7 @@ internal static class LoginItemRegistrar
         if (!_frameworkLoaded)
         {
             // Must load BEFORE the first GetClass("SMAppService") — GetClass caches nil forever.
-            dlopen(Frameworks.ServiceManagement, RTLD_LAZY);
+            Frameworks.Load(Frameworks.ServiceManagement);
             _frameworkLoaded = true;
         }
 

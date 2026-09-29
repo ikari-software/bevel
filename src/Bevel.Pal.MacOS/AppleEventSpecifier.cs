@@ -47,7 +47,7 @@ public static partial class AppleEventInbound
             return new AeProperty(PropertyName(SendU32(seld, Sel("typeCodeValue"))));
 
         if (form == FourCC("name"))
-            return new AeByName(cls, NSStr(Send(seld, Sel("stringValue"))) ?? "", container);
+            return new AeByName(cls, NSStr(AppKitInterop.SendIntPtr(seld, Sel("stringValue"))) ?? "", container);
 
         if (form == FourCC("indx"))
         {
@@ -72,7 +72,7 @@ public static partial class AppleEventInbound
         if (comparison == IntPtr.Zero) return null;
         var op = SendU32(DescFor(comparison, "relo"), Sel("enumCodeValue"));   // comparison operator
         var lhs = DescFor(comparison, "obj1");                                  // a property specifier
-        var value = NSStr(Send(DescFor(comparison, "obj2"), Sel("stringValue"))) ?? "";
+        var value = NSStr(AppKitInterop.SendIntPtr(DescFor(comparison, "obj2"), Sel("stringValue"))) ?? "";
         var prop = SendU32(DescFor(lhs, "seld"), Sel("typeCodeValue"));
         return new AeWhose(WhoseKey(prop), CompareOp(op), value);
     }

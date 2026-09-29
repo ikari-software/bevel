@@ -144,7 +144,7 @@ public class ProofModelTests
     [InlineData("taskbar_geometry.bend")]
     public void Bend_proofs_check(string proof)
     {
-        var path = Path.Combine(RepoRoot(), "proofs", proof);
+        var path = Path.Combine(RepoPaths.Root, "proofs", proof);
         Assert.True(File.Exists(path), $"missing proof: {path}");
 
         var bend = ResolveBend();
@@ -198,7 +198,7 @@ public class ProofModelTests
         return end.Success ? rest[..(end.Index + 1)] : rest;
     }
 
-    private static string ReadProof(string name) => File.ReadAllText(Path.Combine(RepoRoot(), "proofs", name));
+    private static string ReadProof(string name) => File.ReadAllText(Path.Combine(RepoPaths.Root, "proofs", name));
 
     /// <summary>Bend is optional dev tooling, so it is looked up rather than assumed. Absolute Homebrew
     /// paths stay out of build logic (bevel-ka6c): PATH only.</summary>
@@ -213,12 +213,4 @@ public class ProofModelTests
         return null;
     }
 
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "proofs")))
-            dir = dir.Parent;
-        return dir?.FullName
-               ?? throw new DirectoryNotFoundException("could not locate the repo root (no proofs/ above the test binary)");
-    }
 }

@@ -370,7 +370,7 @@ public sealed class StudioWindow : BevelWindow
     /// </summary>
     private void Save()
     {
-        var root = FindRepoRoot();
+        var root = RepoPaths.Root;
         if (root is null) { _status.Text = "could not locate repo root (Bevel.sln)"; return; }
 
         var luna = ThemeService.Current == "luna";
@@ -458,16 +458,6 @@ public sealed class StudioWindow : BevelWindow
         catch (Exception e) { return "error: " + e.Message; }
     }
 
-    private static string? FindRepoRoot()
-    {
-        var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null)
-        {
-            if (File.Exists(Path.Combine(d.FullName, "Bevel.sln"))) return d.FullName;
-            d = d.Parent;
-        }
-        return null;
-    }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@
        ThemeTokens.cs. Same drift-checked codegen pattern as native/helper-macos proto
        generation — run it, commit the output, CI fails if the two ever diverge. -->
   <PropertyGroup>
+    <BevelNeedsRepoPaths>true</BevelNeedsRepoPaths>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

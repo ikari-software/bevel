@@ -40,10 +40,8 @@ public static unsafe partial class AppleEventInbound
     // ObjC BOOL is a single signed byte; without I1 the default 4-byte marshalling reads three bytes
     // of stack garbage above AL and can misread success as failure (bevel-376 review).
     [DllImport(Frameworks.ObjC)] [return: MarshalAs(UnmanagedType.I1)] static extern bool class_addMethod(IntPtr cls, IntPtr sel, IntPtr imp, string types);
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr r, IntPtr s);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern uint SendU32(IntPtr r, IntPtr s);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32(IntPtr r, IntPtr s, uint a);
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_nint(IntPtr r, IntPtr s, nint a);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     static extern void SendSetHandler(IntPtr r, IntPtr s, IntPtr handler, IntPtr sel, uint cls, uint id);
 
@@ -83,9 +81,9 @@ public static unsafe partial class AppleEventInbound
         // silently disabling AE handling (bevel-376 review).
         if (!class_addMethod(handlerCls, handleSel, imp, "v@:@@")) { objc_disposeClassPair(handlerCls); return; }
         objc_registerClassPair(handlerCls);
-        var handler = Send(Send(handlerCls, Sel("alloc")), Sel("init"));
+        var handler = AppKitInterop.SendIntPtr(AppKitInterop.SendIntPtr(handlerCls, Sel("alloc")), Sel("init"));
 
-        var mgr = Send(Cls("NSAppleEventManager"), Sel("sharedAppleEventManager"));
+        var mgr = AppKitInterop.SendIntPtr(Cls("NSAppleEventManager"), Sel("sharedAppleEventManager"));
         var setSel = Sel("setEventHandler:andSelector:forEventClass:andEventID:");
         void Register(string cls, string id) => SendSetHandler(mgr, setSel, handler, handleSel, FourCC(cls), FourCC(id));
         Register("misc", "mvis");   // reveal
@@ -164,7 +162,7 @@ public static unsafe partial class AppleEventInbound
             if (SendU32(direct, Sel("descriptorType")) == typeAEList)
             {
                 var count = AppKitInterop.SendNInt(direct, Sel("numberOfItems"));
-                for (nint i = 1; i <= count; i++) Handle(Send_nint(direct, Sel("descriptorAtIndex:"), i));
+                for (nint i = 1; i <= count; i++) Handle(AppKitInterop.SendIntPtr_IntPtr(direct, Sel("descriptorAtIndex:"), i));
             }
             else
             {
@@ -247,7 +245,7 @@ public static unsafe partial class AppleEventInbound
         if (prdt != IntPtr.Zero)
         {
             var pnam = DescFor(prdt, "pnam");
-            if (pnam != IntPtr.Zero) name = NSStr(Send(pnam, Sel("stringValue")));
+            if (pnam != IntPtr.Zero) name = NSStr(AppKitInterop.SendIntPtr(pnam, Sel("stringValue")));
         }
         return new AeRequest(Verb.Make, Array.Empty<string>(), Array.Empty<AeSpecifier>(), container, name);
     }
@@ -257,10 +255,10 @@ public static unsafe partial class AppleEventInbound
         if (desc == IntPtr.Zero) return;
         var url = Send_u32(desc, Sel("coerceToDescriptorType:"), typeFileURL);
         if (url == IntPtr.Zero) return;
-        var data = Send(url, Sel("data"));
+        var data = AppKitInterop.SendIntPtr(url, Sel("data"));
         if (data == IntPtr.Zero) return;
         var len = (int)AppKitInterop.SendNInt(data, Sel("length"));
-        var bytes = Send(data, Sel("bytes"));
+        var bytes = AppKitInterop.SendIntPtr(data, Sel("bytes"));
         if (bytes == IntPtr.Zero || len <= 0) return;
         var s = Marshal.PtrToStringUTF8(bytes, len);
         if (Uri.TryCreate(s, UriKind.Absolute, out var u) && u.IsFile) into.Add(u.LocalPath);
@@ -269,7 +267,7 @@ public static unsafe partial class AppleEventInbound
     static string? NSStr(IntPtr nsString)
     {
         if (nsString == IntPtr.Zero) return null;
-        var utf8 = Send(nsString, Sel("UTF8String"));
+        var utf8 = AppKitInterop.SendIntPtr(nsString, Sel("UTF8String"));
         return utf8 == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(utf8);
     }
 }

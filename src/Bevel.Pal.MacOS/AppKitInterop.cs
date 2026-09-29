@@ -17,13 +17,6 @@ internal static class AppKitInterop
 
     private static bool _appKitLoaded;
 
-    // Public because LoginItemRegistrar dlopens a framework too; it used to declare its own copy.
-    [DllImport(Frameworks.LibSystem)]
-    public static extern IntPtr dlopen(string path, int mode);
-
-    private const int RTLD_LAZY = 0x1;
-    private const int RTLD_NOLOAD = 0x10;
-
     /// <summary>
     /// Ensures AppKit.framework is loaded into the process. Required because .NET
     /// processes don't link AppKit by default — only Foundation is available.
@@ -34,23 +27,11 @@ internal static class AppKitInterop
         if (_appKitLoaded)
             return;
 
-        // RTLD_NOLOAD: only returns non-null if already loaded, null otherwise.
-        var alreadyLoaded = dlopen(Frameworks.AppKit, RTLD_LAZY | RTLD_NOLOAD);
-        if (alreadyLoaded != IntPtr.Zero)
-        {
+        // Already-loaded is checked first so the common case costs no load attempt. A failure leaves the
+        // flag false: this is a headless or sandboxed environment, every AppKit-dependent call degrades to
+        // null/empty, and a later call may retry.
+        if (Frameworks.IsLoaded(Frameworks.AppKit) || Frameworks.Load(Frameworks.AppKit))
             _appKitLoaded = true;
-            return;
-        }
-
-        var handle = dlopen(Frameworks.AppKit, RTLD_LAZY);
-        if (handle == IntPtr.Zero)
-        {
-            // AppKit couldn't be loaded — this is a headless or sandboxed environment.
-            // All AppKit-dependent calls will return null/empty gracefully.
-            return;
-        }
-
-        _appKitLoaded = true;
     }
 
     // ------------------------------------------------------------------

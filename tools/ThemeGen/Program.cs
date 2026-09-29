@@ -8,8 +8,7 @@ using System.Text.Json;
 //   dotnet run --project tools/ThemeGen                 (from the repo root)
 //   dotnet run --project tools/ThemeGen -- <theme.json> <Tokens.axaml> <ThemeTokens.cs>
 
-var repoRoot = FindRepoRoot(AppContext.BaseDirectory)
-    ?? throw new InvalidOperationException("Bevel.sln not found above the tool — pass explicit paths.");
+var repoRoot = RepoPaths.Root;
 
 var jsonPath = args.Length > 0 ? args[0] : Path.Combine(repoRoot, "src", "Bevel.Themes.Win2000", "theme.json");
 var axamlPath = args.Length > 1 ? args[1] : Path.Combine(repoRoot, "src", "Bevel.Themes.Win2000", "Tokens.axaml");
@@ -189,14 +188,3 @@ public static class ThemeTokens
     return b.ToString();
 }
 
-static string? FindRepoRoot(string startDir)
-{
-    var dir = startDir;
-    for (var i = 0; i < 12 && dir is not null; i++)
-    {
-        if (File.Exists(Path.Combine(dir, "Bevel.sln")))
-            return dir;
-        dir = Path.GetDirectoryName(dir);
-    }
-    return null;
-}

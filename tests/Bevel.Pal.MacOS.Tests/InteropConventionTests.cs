@@ -2,90 +2,165 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Xunit;
 
 namespace Bevel.Pal.MacOS.Tests;
 
 /// <summary>
-/// Structural guard for this assembly's P/Invoke surface (bevel-uat).
+/// Structural guard for the P/Invoke surface of a PAL assembly (bevel-uat, bevel-5z2k).
 ///
-/// The duplication this prevents was never caused by a visibility barrier — <c>AppKitInterop</c> has
-/// always exposed public externs. It was caused by each new file starting its own private silo, which is
-/// a habit no code review reliably catches across 80 symbols. So it is asserted instead.
+/// Asserted by REFLECTION over the built assembly, not by regexing source. The first version of this
+/// guard used a regex that required an explicit accessibility modifier — C# defaults to private, so it
+/// silently covered 80 of 98 declarations and hid two genuine cross-file duplicates behind a green test.
+/// Reflection is complete by construction: no modifier, <c>#if</c>, formatting, nested type, partial
+/// class or new subdirectory can hide a declaration from <see cref="MethodAttributes.PinvokeImpl"/>.
+/// (Verified: <c>DllImportAttribute</c> and <c>MarshalAsAttribute</c> are reconstructed by
+/// <c>GetCustomAttribute</c> even though both are metadata pseudo-attributes.)
 ///
-/// It also asserts every DllImport names a <see cref="Frameworks"/> constant rather than a path literal,
-/// so there is exactly one place to be right about each framework's location. Note the guard sees only
-/// DllImport attributes: a path passed as a dlopen ARGUMENT is invisible to it, so those are centralised
-/// by convention (see AppKitInterop.EnsureAppKitLoaded, LoginItemRegistrar).
+/// The one thing reflection cannot see is how the author SPELLED the library — it only has the resolved
+/// string — so a single narrow source assertion covers that.
+///
+/// Written as a Theory over targets so another PAL assembly is one row, not a copied class.
 /// </summary>
 public class InteropConventionTests
 {
-    // Deliberately does NOT require an accessibility modifier. C# defaults to private, and the first
-    // version of this regex demanded (private|internal|public) -- which silently skipped 18 of the
-    // assembly's 98 declarations (all of the AppleEvent* files write a bare `static extern`), hiding two
-    // genuine cross-file duplicates behind a green test. Match anything between the attribute and
-    // `extern` instead, so how the author spelled the visibility cannot change what is covered.
-    private static readonly Regex Extern = new(
-        @"\[DllImport\(\s*(?<lib>[^,)\]]+)[^\]]*\]\s*(?:\[[^\]]*\]\s*)*" +
-        @"(?:\w+\s+)*?extern\s+[\w\.\<\>\[\]\*\?]+\s+(?<name>\w+)\s*\(",
-        RegexOptions.Compiled | RegexOptions.Singleline);
+    /// <summary>One row per guarded assembly: a type inside it, and the type holding its library paths.
+    /// Add Bevel.Pal.Windows here when its interop is consolidated (bevel-p5bx).</summary>
+    public static TheoryData<string> Targets => new() { "Bevel.Pal.MacOS" };
 
-    /// <summary>Scanned once per process. xUnit builds a fresh instance per test, so an instance field
-    /// would re-read every source file for each test — ~33 files and 258 KB, twice, for byte-identical
-    /// input.</summary>
-    private static readonly List<(string File, string Lib, string Symbol)> All = Scan().ToList();
-
-    private static IEnumerable<(string File, string Lib, string Symbol)> Scan()
+    private static (Assembly Asm, Type Paths) Resolve(string target) => target switch
     {
-        foreach (var path in Directory.EnumerateFiles(SourceDir(), "*.cs"))
+        "Bevel.Pal.MacOS" => (typeof(MacOSPermissionBroker).Assembly, typeof(MacOSPermissionBroker)
+            .Assembly.GetType("Bevel.Pal.MacOS.Frameworks", throwOnError: true)!),
+        _ => throw new ArgumentOutOfRangeException(nameof(target), target, "unknown guard target"),
+    };
+
+    private sealed record Decl(Type Type, string Member, string EntryPoint, string Library, MethodInfo Method)
+    {
+        /// <summary>Return type and parameter types, which is what distinguishes a legitimate second
+        /// declaration of a variadic-ish entry point from a copied silo. <c>objc_msgSend</c> is declared
+        /// ~22 times on purpose — C# needs one typed shape per call signature, and the ARM64 register
+        /// classification depends on it — so the entry point alone cannot be the key.</summary>
+        public string Signature =>
+            Method.ReturnType.Name + "(" +
+            string.Join(",", Method.GetParameters().Select(p => p.ParameterType.Name)) + ")";
+    }
+
+    private static List<Decl> Declarations(string target)
+    {
+        var (asm, _) = Resolve(target);
+        var decls = new List<Decl>();
+        foreach (var type in asm.GetTypes())
+        foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                                          | BindingFlags.Static | BindingFlags.DeclaredOnly))
         {
-            var text = File.ReadAllText(path);
-            if (!text.Contains("DllImport", StringComparison.Ordinal)) continue;   // most files have none
-            foreach (Match m in Extern.Matches(text))
-                yield return (Path.GetFileName(path), m.Groups["lib"].Value.Trim(), m.Groups["name"].Value);
+            if (!m.Attributes.HasFlag(MethodAttributes.PinvokeImpl)) continue;
+            var import = m.GetCustomAttribute<DllImportAttribute>();
+            Assert.NotNull(import);   // a P/Invoke without a readable DllImport would break every rule below
+            decls.Add(new Decl(type, m.Name, import!.EntryPoint ?? m.Name, import.Value, m));
         }
+        return decls;
     }
 
-    private static List<string> DuplicatedSymbols() =>
-        All.GroupBy(d => d.Symbol)
-            .Where(g => g.Select(d => d.File).Distinct().Count() > 1)
-            .Select(g => g.Key)
+    [Theory]
+    [MemberData(nameof(Targets))]
+    public void No_native_entry_point_is_declared_in_two_types(string target)
+    {
+        // Keyed on (library, entry point, SIGNATURE), not the C# member name. Two differently-named
+        // members binding the same native function with the same signature are the same duplication —
+        // that is how GeckoTabEngine's objc_msgSend_bool escaped a name-based check. The signature has to
+        // be part of the key because objc_msgSend is legitimately declared once per call shape.
+        var offenders = Declarations(target)
+            .GroupBy(d => (d.Library, d.EntryPoint, d.Signature))
+            .Where(g => g.Select(d => d.Type).Distinct().Count() > 1)
+            .Select(g => $"{g.Key.EntryPoint} {g.Key.Signature} in "
+                         + string.Join(", ", g.Select(d => $"{d.Type.Name}.{d.Member}")))
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
 
-    [Fact]
-    public void No_symbol_is_declared_in_two_files()
-    {
-        var offenders = DuplicatedSymbols();
         if (offenders.Count > 0)
-            Assert.Fail(
-                "These P/Invoke symbols are declared in more than one file. Put each in the interop " +
-                "class for its framework instead of starting a private silo:\n  " +
-                string.Join("\n  ", offenders));
+            Assert.Fail($"[{target}] These native entry points are declared in more than one type. Put " +
+                        "each in the interop class for its framework instead of starting a private " +
+                        "silo:\n  " + string.Join("\n  ", offenders));
     }
 
-    [Fact]
-    public void Every_dll_import_names_a_frameworks_constant()
+    [Theory]
+    [MemberData(nameof(Targets))]
+    public void Every_library_is_one_of_the_shared_path_constants(string target)
     {
-        var literals = All
-            .Where(d => !d.Lib.StartsWith("Frameworks.", StringComparison.Ordinal))
-            .Select(d => $"{d.File}: {d.Symbol} -> {d.Lib}")
+        var (_, paths) = Resolve(target);
+        var known = paths.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(known);
+
+        var offenders = Declarations(target)
+            .Where(d => !known.Contains(d.Library))
+            .Select(d => $"{d.Type.Name}.{d.Member} -> \"{d.Library}\"")
+            .Distinct()
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
 
-        if (literals.Count > 0)
-            Assert.Fail(
-                "These DllImports name a path directly instead of a Frameworks constant, so there is " +
-                "no single place to be right about it:\n  " + string.Join("\n  ", literals));
+        if (offenders.Count > 0)
+            Assert.Fail($"[{target}] These DllImports load a library that is not one of {paths.Name}'s " +
+                        "constants, so there is no single place to be right about its path:\n  " +
+                        string.Join("\n  ", offenders));
     }
 
-    private static string SourceDir()
+    [Theory]
+    [MemberData(nameof(Targets))]
+    public void Every_native_bool_declares_its_marshalling(string target)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "src", "Bevel.Pal.MacOS")))
-            dir = dir.Parent;
-        Assert.NotNull(dir);
-        return Path.Combine(dir!.FullName, "src", "Bevel.Pal.MacOS");
+        // The defect this prevents, found by hand during bevel-uat: a bare C# `bool` marshals as a 4-byte
+        // Win32 BOOL. AXIsProcessTrusted was declared that way in MacOSPermissionBroker, so it read four
+        // bytes of a one-byte native Boolean and let three undefined register bytes decide whether the
+        // Accessibility grant was held; the two CG screen-capture gates had it too.
+        //
+        // The rule is "explicit MarshalAs", NOT "must be U1": U1 is right for CF/CG `Boolean`
+        // (unsigned char) and I1 is right for ObjC `BOOL` (signed char), and both are legitimately here.
+        var offenders = new List<string>();
+        foreach (var d in Declarations(target))
+        {
+            if (d.Method.ReturnType == typeof(bool)
+                && d.Method.ReturnParameter.GetCustomAttribute<MarshalAsAttribute>() is null)
+                offenders.Add($"{d.Type.Name}.{d.Member} -> bare bool RETURN");
+
+            foreach (var p in d.Method.GetParameters())
+                if (p.ParameterType == typeof(bool) && p.GetCustomAttribute<MarshalAsAttribute>() is null)
+                    offenders.Add($"{d.Type.Name}.{d.Member} -> bare bool parameter '{p.Name}'");
+        }
+
+        if (offenders.Count > 0)
+            Assert.Fail($"[{target}] A bare `bool` in a P/Invoke signature marshals as a 4-byte Win32 " +
+                        "BOOL, which reads three undefined bytes over a one-byte native Boolean. Declare " +
+                        "[MarshalAs(UnmanagedType.U1)] for CF/CG Boolean or I1 for ObjC BOOL:\n  " +
+                        string.Join("\n  ", offenders));
     }
+
+    [Theory]
+    [MemberData(nameof(Targets))]
+    public void No_dll_import_names_a_path_literal_in_source(string target)
+    {
+        // The one rule reflection cannot express: it sees only the RESOLVED library string, so a literal
+        // that happens to equal a constant is indistinguishable from the constant. One unambiguous
+        // pattern — a quote immediately after the opening paren — covers it without parsing declarations.
+        var dir = Path.Combine(RepoPaths.Root, "src", target);
+        Assert.True(Directory.Exists(dir), $"missing source directory: {dir}");
+
+        var offenders = Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories)
+            .SelectMany(f => File.ReadLines(f)
+                .Select((line, i) => (f, i, line))
+                .Where(x => x.line.Contains("[DllImport(\"", StringComparison.Ordinal)))
+            .Select(x => $"{Path.GetFileName(x.f)}:{x.i + 1}: {x.line.Trim()}")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
+
+        if (offenders.Count > 0)
+            Assert.Fail($"[{target}] These DllImports write the library path inline instead of naming a " +
+                        "shared constant:\n  " + string.Join("\n  ", offenders));
+    }
+
 }

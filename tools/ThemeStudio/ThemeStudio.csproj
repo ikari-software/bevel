@@ -6,6 +6,7 @@
        measured from the Luna design plate at its true 1.32x scale, and exports theme.json-ready JSON.
        Run it with dotnet run from the tools/ThemeStudio directory. -->
   <PropertyGroup>
+    <BevelNeedsRepoPaths>true</BevelNeedsRepoPaths>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

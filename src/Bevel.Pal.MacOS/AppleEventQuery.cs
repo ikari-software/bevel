@@ -32,11 +32,9 @@ public static partial class AppleEventInbound
     /// (UI) thread; must not await a surface round-trip.</summary>
     public static Func<AeQuery, AeResult?>? QueryHandler;
 
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptr(IntPtr r, IntPtr s, IntPtr a);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_i32(IntPtr r, IntPtr s, int a);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_bool(IntPtr r, IntPtr s, [MarshalAs(UnmanagedType.I1)] bool a);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32ptr(IntPtr r, IntPtr s, uint a, IntPtr b);
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptru32(IntPtr r, IntPtr s, IntPtr a, uint b);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
 
@@ -112,13 +110,13 @@ public static partial class AppleEventInbound
         // NSStringCreate returns a +1 OWNED string; descriptorWithString: doesn't take ownership,
         // so it must be released or it leaks per reply (bevel-fo2 class). Mirror AppKitInterop.FileUrl.
         var ns = AppKitInterop.NSStringCreate(s);
-        try { return Send_ptr(AeDescClass, Sel("descriptorWithString:"), ns); }
+        try { return AppKitInterop.SendIntPtr_IntPtr(AeDescClass, Sel("descriptorWithString:"), ns); }
         finally { if (ns != IntPtr.Zero) AppKitInterop.SendVoid(ns, Sel("release")); }
     }
 
     static IntPtr PathListDesc(IReadOnlyList<string> paths)
     {
-        var list = Send(AeDescClass, Sel("listDescriptor"));
+        var list = AppKitInterop.SendIntPtr(AeDescClass, Sel("listDescriptor"));
         nint i = 1;
         foreach (var p in paths)
         {
@@ -149,7 +147,7 @@ public static partial class AppleEventInbound
         try
         {
             Marshal.Copy(bytes, 0, ptr, bytes.Length);
-            return Send_ptrnint(Cls("NSData"), Sel("dataWithBytes:length:"), ptr, bytes.Length);
+            return AppKitInterop.SendIntPtr_IntPtr_IntPtr(Cls("NSData"), Sel("dataWithBytes:length:"), ptr, bytes.Length);
         }
         finally { Marshal.FreeHGlobal(ptr); }
     }

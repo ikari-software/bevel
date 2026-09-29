@@ -30,4 +30,13 @@
     <BevelPackaging Condition="'$(BevelPackaging)' == ''">false</BevelPackaging>
   </PropertyGroup>
 
+  <!-- Repo root for dev-time projects (bevel-eabc). Opt in with
+       <BevelNeedsRepoPaths>true</BevelNeedsRepoPaths> and use RepoPaths.Root instead of walking up from
+       AppContext.BaseDirectory. Gated because it embeds an absolute build path: fine for tests and tools,
+       not for anything shipped. -->
+  <ItemGroup Condition="'$(BevelNeedsRepoPaths)' == 'true'">
+    <AssemblyMetadata Include="BevelRepoRoot" Value="$(MSBuildThisFileDirectory)" />
+    <Compile Include="$(MSBuildThisFileDirectory)build/RepoPaths.cs" Link="RepoPaths.cs" />
+  </ItemGroup>
+
 </Project>
