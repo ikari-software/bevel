@@ -1,0 +1,21 @@
+{
+  "name": "bevel-site",
+  "exports": "./main.ts",
+  "tasks": {
+    "dev": "deno serve --allow-read --watch --port 8000 main.ts",
+    "serve": "deno serve --allow-read --port 8000 main.ts"
+  },
+  "imports": {
+    "@std/http": "jsr:@std/http@1"
+  },
+  "fmt": {
+    "lineWidth": 110
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  }
+}
