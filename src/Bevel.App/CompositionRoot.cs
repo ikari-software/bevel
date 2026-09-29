@@ -21,6 +21,24 @@ namespace Bevel.App;
 /// </summary>
 public static class CompositionRoot
 {
+    /// <summary>Update checking, CORE ROLE ONLY (bevel-rkxb). Core already owns settings.db and serves
+    /// peers; if each peer polled its own feed a five-process shell would make five times the requests and
+    /// five processes would each have to decide what to do with the answer.
+    ///
+    /// The source is <see cref="Bevel.Core.Updates.NoUpdateSource"/> until Velopack is wired (bevel-ym0,
+    /// UPD-01). Registered explicitly rather than left unbound so "no update source on this build" is a
+    /// stated fact in the container, not a resolve-time failure — the same reason NullAppBadgeSource and
+    /// NullThumbnailProvider exist.</summary>
+    private static void AddUpdateChecking(IServiceCollection services)
+    {
+        services.AddSingleton<Bevel.Core.Updates.IUpdateSource>(_ => Bevel.Core.Updates.NoUpdateSource.Instance);
+        services.AddSingleton(_ => new Bevel.Core.Updates.UpdateCheckState(BevelConfigDir.Path));
+        // Registered by TYPE rather than through a factory so the descriptor carries the implementation
+        // name: RoleSelectorTests tells the helper apart from other hosted services that way, and a
+        // factory registration is opaque to it.
+        services.AddHostedService<Updates.UpdateCheckService>();
+    }
+
     // Shared icon-pool geometry (bevel-gww.6). Co-located with the shell-core runtime dir so a
     // supervisor cleaning that dir clears the pool too. 512 slots × up to 96×96 BGRA (covers 48pt@2x
     // Retina) ≈ 19 MB, sparse: only pages for actually-published icons ever become resident.
@@ -150,6 +168,7 @@ public static class CompositionRoot
                 // The shell core is the SOLE opener + writer of settings.db (core-owns-settings,
                 // bevel-6nve).
                 services.AddSingleton<ISettingsService, Bevel.Core.SettingsService>();
+                AddUpdateChecking(services);
                 // Host the helper EAGERLY only where window management actually runs: the headless core.
                 // Explorer/Desktop keep the singleton lazy, never started.
                 services.AddHostedService(sp => sp.GetRequiredService<Pal.MacOS.HelperLifecycle>());
@@ -237,6 +256,7 @@ public static class CompositionRoot
                 // The shell core is the SOLE opener + writer of settings.db (bevel-6nve). No helper to
                 // host — Windows discovery is in-process (U3), unlike the macOS Swift helper.
                 services.AddSingleton<ISettingsService, Bevel.Core.SettingsService>();
+                AddUpdateChecking(services);
             }
             else
             {

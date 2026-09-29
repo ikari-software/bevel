@@ -47,11 +47,19 @@ public sealed class RoleSelectorTests
     public void Helper_is_hosted_only_for_the_core_role(ShellRole role, bool expectHosted)
     {
         // Registration doesn't instantiate the macOS types, so this is safe to assert on any OS.
+        //
+        // Matches the HELPER registration specifically. "Hosts any IHostedService" was an accurate proxy
+        // only while the helper was the sole hosted thing; the Core role now also hosts the update
+        // checker (bevel-rkxb), so the broad form would stay green even if the helper registration were
+        // removed — which is the exact regression this test exists to catch.
         var services = new ServiceCollection();
         services.AddBevelPlatform(PalKind.MacOS, role);
 
-        var hostsAService = services.Any(d => d.ServiceType == typeof(IHostedService));
-        Assert.Equal(expectHosted, hostsAService);
+        var hostsHelper = services
+            .Where(d => d.ServiceType == typeof(IHostedService))
+            .Any(d => d.ImplementationType is null    // the helper is factory-registered; nothing else is
+                      || d.ImplementationType.Name.Contains("Helper", StringComparison.Ordinal));
+        Assert.Equal(expectHosted, hostsHelper);
     }
 
     [Fact]
@@ -161,10 +169,20 @@ public sealed class RoleSelectorTests
     public void Windows_pal_hosts_no_helper_service_in_any_role(ShellRole role)
     {
         // Unlike macOS (Core hosts the Swift helper), Windows discovery is in-process — NO role
-        // registers an IHostedService helper.
+        // registers a HELPER hosted service.
+        //
+        // Asserted against helper registrations specifically rather than "no IHostedService at all".
+        // The broader form was an accurate proxy only while the helper was the sole thing that would
+        // ever be hosted; the Core role now also hosts the update checker (bevel-rkxb), which is not a
+        // helper and is deliberately registered on both platforms. The invariant this test names is
+        // unchanged.
         var services = new ServiceCollection();
         services.AddBevelPlatform(PalKind.Windows, role);
-        Assert.False(services.Any(d => d.ServiceType == typeof(IHostedService)));
+        var helperHosts = services
+            .Where(d => d.ServiceType == typeof(IHostedService))
+            .Where(d => (d.ImplementationType?.Name ?? "").Contains("Helper", StringComparison.Ordinal))
+            .ToList();
+        Assert.Empty(helperHosts);
     }
 
     [Theory]

@@ -486,6 +486,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarOpacity", _settings.TaskbarOpacity, d.TaskbarOpacity, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarTrayOverflowCap", _settings.TaskbarTrayOverflowCap, d.TaskbarTrayOverflowCap, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarTrayIconSize", _settings.TaskbarTrayIconSize, d.TaskbarTrayIconSize, SettingsJsonContext.Default.Int32);
+        SetOrPrune("updateFeedUrl", _settings.UpdateFeedUrl, d.UpdateFeedUrl, SettingsJsonContext.Default.String);
+        SetOrPrune("updateCheckIntervalHours", _settings.UpdateCheckIntervalHours, d.UpdateCheckIntervalHours, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarConsolidateMenuBar", _settings.TaskbarConsolidateMenuBar, d.TaskbarConsolidateMenuBar, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
@@ -628,6 +630,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
             TaskbarTrayOverflowCap = GetInt("taskbarTrayOverflowCap") ?? 8,
             TaskbarTrayIconSize = GetInt("taskbarTrayIconSize") ?? 16,
+            UpdateFeedUrl = GetString("updateFeedUrl") ?? "",
+            UpdateCheckIntervalHours = GetInt("updateCheckIntervalHours")
+                ?? Updates.UpdateCheckPolicy.DefaultIntervalHours,
             TaskbarConsolidateMenuBar = GetBool("taskbarConsolidateMenuBar") ?? false,
             TaskbarLocked = GetBool("taskbarLocked") ?? false,
             TaskbarAlwaysOnTop = GetBool("taskbarAlwaysOnTop") ?? true,
@@ -809,6 +814,15 @@ public sealed class BevelSettings
 
     /// <summary>Displayed size (px) of each mirrored tray icon. Default 16 (classic).</summary>
     public int TaskbarTrayIconSize { get; set; } = 16;
+
+    /// <summary>Where to look for updates. EMPTY BY DEFAULT, and empty means disabled — a shell nobody
+    /// has configured makes no network calls. There is no default URL to point at yet: publishing one
+    /// depends on the site, which is gated on bevel-legal-branding.</summary>
+    public string UpdateFeedUrl { get; set; } = "";
+
+    /// <summary>How often to ask, in hours. Clamped to 1..168 when used; the check never applies anything
+    /// mid-session (UPD-01), it only notices.</summary>
+    public int UpdateCheckIntervalHours { get; set; } = Updates.UpdateCheckPolicy.DefaultIntervalHours;
 
     /// <summary>Strategy C (bevel-7hf4): hide the real macOS menu bar and consolidate its items into
     /// Bevel's tray. Off (default) keeps today's mirror behaviour.</summary>

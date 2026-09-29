@@ -31,7 +31,9 @@ internal static class BuildStamp
         return $"{Protocol}|{ver}|{ticks}";
     }
 
-    private static string VersionString()
+    /// <summary>The assembly's version, also used as the current version an update check
+    /// compares a feed against (bevel-rkxb).</summary>
+    internal static string VersionString()
     {
         try
         {
