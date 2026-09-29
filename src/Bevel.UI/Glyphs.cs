@@ -41,8 +41,19 @@ public static class Glyphs
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IBrush> _brushCache = new();
 
     /// <summary>Drop the resolved-brush cache. Called by the theme/scheme/variant engines after they
-    /// change the token values so the next icon build re-resolves against the new palette.</summary>
-    public static void InvalidateThemeCache() => _brushCache.Clear();
+    /// change the token values so the next icon build re-resolves against the new palette. Raises
+    /// <see cref="ThemeCacheInvalidated"/> so a glyph HOST that keeps a built icon alive (<see cref="GlyphIcon"/>)
+    /// can rebuild it — a built icon holds the brushes it was built with, and nothing else tells it they
+    /// went stale.</summary>
+    public static void InvalidateThemeCache()
+    {
+        _brushCache.Clear();
+        ThemeCacheInvalidated?.Invoke();
+    }
+
+    /// <summary>Raised after <see cref="InvalidateThemeCache"/> drops the brushes (UI thread — the theme
+    /// engines apply there). Subscribers rebuild any icon they are holding; they must unsubscribe on detach.</summary>
+    public static event Action? ThemeCacheInvalidated;
 
     /// <summary>Vertical gradient from two theme token keys (cached per token pair).</summary>
     private static IBrush VGrad(string topKey, string bottomKey, string topFallback, string bottomFallback) =>

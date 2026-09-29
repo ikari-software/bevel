@@ -22,27 +22,7 @@ public class TrayIconTintTests
     private const int N = 16;
 
     // Build a PNG where px(x,y) => (r,g,b,a).
-    private static byte[] Png(System.Func<int, int, (byte r, byte g, byte b, byte a)> px)
-    {
-        var wb = new WriteableBitmap(new PixelSize(N, N), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
-        var buf = new byte[N * N * 4];
-        for (var y = 0; y < N; y++)
-            for (var x = 0; x < N; x++)
-            {
-                var (r, g, b, a) = px(x, y);
-                var i = (y * N + x) * 4;
-                buf[i] = (byte)(b * a / 255);
-                buf[i + 1] = (byte)(g * a / 255);
-                buf[i + 2] = (byte)(r * a / 255);
-                buf[i + 3] = a;
-            }
-        using (var fb = wb.Lock())
-            for (var y = 0; y < N; y++)
-                Marshal.Copy(buf, y * N * 4, fb.Address + y * fb.RowBytes, N * 4);
-        using var ms = new MemoryStream();
-        wb.Save(ms);
-        return ms.ToArray();
-    }
+    private static byte[] Png(System.Func<int, int, (byte r, byte g, byte b, byte a)> px) => TestPng.Build(N, px);
 
     private static bool InBlock(int x, int y, int lo, int hi) => x >= lo && x < hi && y >= lo && y < hi;
 

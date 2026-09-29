@@ -81,11 +81,13 @@ public class TaskbarAccessibilityTests
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        var trayImage = window.GetVisualDescendants().OfType<Image>()
-            .FirstOrDefault(i => i.DataContext is TrayItemViewModel);
-        Assert.NotNull(trayImage);
-        Assert.True(trayImage!.Focusable);
-        Assert.Equal("Wi-Fi", AutomationProperties.GetName(trayImage));
+        // The focusable, automation-named element is the CELL (icon-or-placeholder, bevel-yduf), not
+        // the Image inside it — so an item that has no icon yet is reachable exactly like one that has.
+        var cell = window.GetVisualDescendants().OfType<TrayIconCell>()
+            .FirstOrDefault(c => c.DataContext is TrayItemViewModel);
+        Assert.NotNull(cell);
+        Assert.True(cell!.Focusable);
+        Assert.Equal("Wi-Fi", AutomationProperties.GetName(cell));
     }
 
     // ── (b) The Start menu takes focus into itself on open ───────────────
