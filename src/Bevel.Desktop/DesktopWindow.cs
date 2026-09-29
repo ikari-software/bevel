@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 using Bevel.UI;
+using Bevel.UI.Native;
 
 namespace Bevel.Desktop;
 
@@ -74,12 +75,6 @@ internal static class NativeMac
     public const int NSWindowCollectionBehaviorStationary = 1 << 4;
     public const int NSWindowCollectionBehaviorIgnoresCycle = 1 << 5;
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern void objc_msgSend_void_intptr_intptr(IntPtr receiver, IntPtr selector, int arg);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern IntPtr objc_msgSend_ret(IntPtr receiver, IntPtr selector);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern byte objc_msgSend_bool_sel(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     private static IntPtr sel_setLevel = IntPtr.Zero;
     private static IntPtr sel_setCollectionBehavior = IntPtr.Zero;
@@ -88,10 +83,10 @@ internal static class NativeMac
 
     static NativeMac()
     {
-        sel_setLevel = Selector.Get("setLevel:");
-        sel_setCollectionBehavior = Selector.Get("setCollectionBehavior:");
-        sel_window = Selector.Get("window");
-        sel_respondsToSelector = Selector.Get("respondsToSelector:");
+        sel_setLevel = MacObjC.Sel("setLevel:");
+        sel_setCollectionBehavior = MacObjC.Sel("setCollectionBehavior:");
+        sel_window = MacObjC.Sel("window");
+        sel_respondsToSelector = MacObjC.Sel("respondsToSelector:");
     }
 
     /// <summary>
@@ -104,37 +99,16 @@ internal static class NativeMac
     public static IntPtr ResolveWindow(IntPtr handle)
     {
         if (handle == IntPtr.Zero) return IntPtr.Zero;
-        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_setLevel) != 0)
+        if (MacObjC.SendByte_IntPtr(handle, sel_respondsToSelector, sel_setLevel) != 0)
             return handle; // already an NSWindow
-        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_window) != 0)
-            return objc_msgSend_ret(handle, sel_window); // NSView → its NSWindow
+        if (MacObjC.SendByte_IntPtr(handle, sel_respondsToSelector, sel_window) != 0)
+            return MacObjC.SendIntPtr(handle, sel_window); // NSView → its NSWindow
         return IntPtr.Zero;
     }
 
     public static void SetWindowLevel(IntPtr nsWindow, int level)
-        => objc_msgSend_void_intptr_intptr(nsWindow, sel_setLevel, level);
+        => MacObjC.SendVoid_Int(nsWindow, sel_setLevel, level);
 
     public static void SetCollectionBehavior(IntPtr nsWindow, int behavior)
-        => objc_msgSend_void_intptr_intptr(nsWindow, sel_setCollectionBehavior, behavior);
-}
-
-/// <summary>
-/// Thin wrapper for ObjC selector lookup.
-/// </summary>
-internal static class Selector
-{
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "sel_registerName")]
-    private static extern IntPtr sel_registerName(string name);
-
-    private static readonly Dictionary<string, IntPtr> _cache = new();
-
-    public static IntPtr Get(string name)
-    {
-        if (!_cache.TryGetValue(name, out var ptr))
-        {
-            ptr = sel_registerName(name);
-            _cache[name] = ptr;
-        }
-        return ptr;
-    }
+        => MacObjC.SendVoid_Int(nsWindow, sel_setCollectionBehavior, behavior);
 }

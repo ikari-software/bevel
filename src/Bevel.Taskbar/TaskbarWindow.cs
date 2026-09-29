@@ -10,6 +10,7 @@ using Classic.Avalonia.Theme;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
+using Bevel.UI.Native;
 
 namespace Bevel.Taskbar;
 
@@ -549,12 +550,6 @@ internal static class TaskbarNative
     public const int NSWindowCollectionBehaviorIgnoresCycle = 1 << 5;
     public const int NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 17;
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern void objc_msgSend_void_intptr_intptr(IntPtr receiver, IntPtr selector, int arg);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern IntPtr objc_msgSend_ret(IntPtr receiver, IntPtr selector);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
-    private static extern byte objc_msgSend_bool_sel(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     private static readonly IntPtr sel_setLevel;
     private static readonly IntPtr sel_setCanBecomeKeyWindow;
@@ -563,17 +558,17 @@ internal static class TaskbarNative
     private static readonly IntPtr sel_window;
     private static readonly IntPtr sel_respondsToSelector;
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_intptr_bool(IntPtr receiver, IntPtr selector, byte arg);
 
     static TaskbarNative()
     {
-        sel_setLevel = SelectorCache.Get("setLevel:");
-        sel_setCanBecomeKeyWindow = SelectorCache.Get("setCanBecomeKeyWindow:");
-        sel_setCollectionBehavior = SelectorCache.Get("setCollectionBehavior:");
-        sel_setAcceptsMouseMovedEvents = SelectorCache.Get("setAcceptsMouseMovedEvents:");
-        sel_window = SelectorCache.Get("window");
-        sel_respondsToSelector = SelectorCache.Get("respondsToSelector:");
+        sel_setLevel = MacObjC.Sel("setLevel:");
+        sel_setCanBecomeKeyWindow = MacObjC.Sel("setCanBecomeKeyWindow:");
+        sel_setCollectionBehavior = MacObjC.Sel("setCollectionBehavior:");
+        sel_setAcceptsMouseMovedEvents = MacObjC.Sel("setAcceptsMouseMovedEvents:");
+        sel_window = MacObjC.Sel("window");
+        sel_respondsToSelector = MacObjC.Sel("respondsToSelector:");
     }
 
     /// <summary>
@@ -586,46 +581,46 @@ internal static class TaskbarNative
     public static IntPtr ResolveWindow(IntPtr handle)
     {
         if (handle == IntPtr.Zero) return IntPtr.Zero;
-        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_setLevel) != 0)
+        if (MacObjC.SendByte_IntPtr(handle, sel_respondsToSelector, sel_setLevel) != 0)
             return handle; // already an NSWindow
-        if (objc_msgSend_bool_sel(handle, sel_respondsToSelector, sel_window) != 0)
-            return objc_msgSend_ret(handle, sel_window); // NSView → its NSWindow
+        if (MacObjC.SendByte_IntPtr(handle, sel_respondsToSelector, sel_window) != 0)
+            return MacObjC.SendIntPtr(handle, sel_window); // NSView → its NSWindow
         return IntPtr.Zero;
     }
 
     public static void SetWindowLevel(IntPtr nsWindow, int level)
-        => objc_msgSend_void_intptr_intptr(nsWindow, sel_setLevel, level);
+        => MacObjC.SendVoid_Int(nsWindow, sel_setLevel, level);
 
     public static void SetCanBecomeKeyWindow(IntPtr nsWindow, bool canBecomeKey)
     {
-        if (objc_msgSend_bool_sel(nsWindow, sel_respondsToSelector, sel_setCanBecomeKeyWindow) != 0)
+        if (MacObjC.SendByte_IntPtr(nsWindow, sel_respondsToSelector, sel_setCanBecomeKeyWindow) != 0)
             objc_msgSend_void_intptr_bool(nsWindow, sel_setCanBecomeKeyWindow, canBecomeKey ? (byte)1 : (byte)0);
     }
 
     /// <summary>macOS requires this for hover/pointer-enter on borderless utility windows.</summary>
     public static void SetAcceptsMouseMovedEvents(IntPtr nsWindow, bool accepts)
     {
-        if (objc_msgSend_bool_sel(nsWindow, sel_respondsToSelector, sel_setAcceptsMouseMovedEvents) != 0)
+        if (MacObjC.SendByte_IntPtr(nsWindow, sel_respondsToSelector, sel_setAcceptsMouseMovedEvents) != 0)
             objc_msgSend_void_intptr_bool(nsWindow, sel_setAcceptsMouseMovedEvents, accepts ? (byte)1 : (byte)0);
     }
 
     // ── Menu-scoped key focus helpers (bevel-vk4n) ───────────────────────
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern int objc_msgSend_int(IntPtr receiver, IntPtr selector);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern IntPtr objc_msgSend_ret_int(IntPtr receiver, IntPtr selector, int arg);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_nuint(IntPtr receiver, IntPtr selector, nuint arg);
 
     private static readonly IntPtr cls_NSWorkspace = objc_getClass("NSWorkspace");
     private static readonly IntPtr cls_NSRunningApplication = objc_getClass("NSRunningApplication");
-    private static readonly IntPtr sel_sharedWorkspace = SelectorCache.Get("sharedWorkspace");
-    private static readonly IntPtr sel_frontmostApplication = SelectorCache.Get("frontmostApplication");
-    private static readonly IntPtr sel_processIdentifier = SelectorCache.Get("processIdentifier");
-    private static readonly IntPtr sel_runningAppWithPid = SelectorCache.Get("runningApplicationWithProcessIdentifier:");
-    private static readonly IntPtr sel_activateWithOptions = SelectorCache.Get("activateWithOptions:");
-    private static readonly IntPtr sel_makeKeyAndOrderFront = SelectorCache.Get("makeKeyAndOrderFront:");
-    private static readonly IntPtr sel_keyCode = SelectorCache.Get("keyCode");
+    private static readonly IntPtr sel_sharedWorkspace = MacObjC.Sel("sharedWorkspace");
+    private static readonly IntPtr sel_frontmostApplication = MacObjC.Sel("frontmostApplication");
+    private static readonly IntPtr sel_processIdentifier = MacObjC.Sel("processIdentifier");
+    private static readonly IntPtr sel_runningAppWithPid = MacObjC.Sel("runningApplicationWithProcessIdentifier:");
+    private static readonly IntPtr sel_activateWithOptions = MacObjC.Sel("activateWithOptions:");
+    private static readonly IntPtr sel_makeKeyAndOrderFront = MacObjC.Sel("makeKeyAndOrderFront:");
+    private static readonly IntPtr sel_keyCode = MacObjC.Sel("keyCode");
 
     // NSApplicationActivateIgnoringOtherApps — bring the target app fully forward on restore.
     private const nuint NSApplicationActivateIgnoringOtherApps = 1 << 1;
@@ -635,9 +630,9 @@ internal static class TaskbarNative
     public static int FrontmostAppPid()
     {
         if (cls_NSWorkspace == IntPtr.Zero) return 0;
-        var ws = objc_msgSend_ret(cls_NSWorkspace, sel_sharedWorkspace);
+        var ws = MacObjC.SendIntPtr(cls_NSWorkspace, sel_sharedWorkspace);
         if (ws == IntPtr.Zero) return 0;
-        var app = objc_msgSend_ret(ws, sel_frontmostApplication);
+        var app = MacObjC.SendIntPtr(ws, sel_frontmostApplication);
         return app == IntPtr.Zero ? 0 : objc_msgSend_int(app, sel_processIdentifier);
     }
 
@@ -661,19 +656,19 @@ internal static class TaskbarNative
     // pointer events over the popup carry NO modifier flags. [NSEvent modifierFlags] returns the CURRENT
     // global modifier state on demand, independent of focus — poll it to drive the Quit ⇄ Force Quit swap.
 
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_getClass")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_getClass")]
     private static extern IntPtr objc_getClass(string name);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern nuint objc_msgSend_nuint(IntPtr receiver, IntPtr selector);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern IntPtr objc_msgSend_ret_nuint_ptr(IntPtr receiver, IntPtr selector, nuint mask, IntPtr block);
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "objc_msgSend")]
+    [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_ptr(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     private static readonly IntPtr cls_NSEvent = objc_getClass("NSEvent");
-    private static readonly IntPtr sel_modifierFlags = SelectorCache.Get("modifierFlags");
-    private static readonly IntPtr sel_addGlobalMonitor = SelectorCache.Get("addGlobalMonitorForEventsMatchingMask:handler:");
-    private static readonly IntPtr sel_removeMonitor = SelectorCache.Get("removeMonitor:");
+    private static readonly IntPtr sel_modifierFlags = MacObjC.Sel("modifierFlags");
+    private static readonly IntPtr sel_addGlobalMonitor = MacObjC.Sel("addGlobalMonitorForEventsMatchingMask:handler:");
+    private static readonly IntPtr sel_removeMonitor = MacObjC.Sel("removeMonitor:");
 
     private static readonly nuint NSEventModifierFlagOption = (nuint)(1UL << 19);
     private static readonly nuint NSEventMaskLeftMouseDown = (nuint)(1UL << 1);
@@ -728,7 +723,7 @@ internal static class TaskbarNative
     [StructLayout(LayoutKind.Sequential)]
     private struct BlockDescriptor { public nuint Reserved; public nuint Size; }
 
-    [DllImport("/usr/lib/libSystem.dylib", EntryPoint = "dlsym")]
+    [DllImport(MacObjC.LibSystem, EntryPoint = "dlsym")]
     private static extern IntPtr dlsym(IntPtr handle, string symbol);
     private static readonly IntPtr RTLD_DEFAULT = new(-2);
 
@@ -831,26 +826,5 @@ internal static class TaskbarNative
     }
 
     public static void SetCollectionBehavior(IntPtr nsWindow, int behavior)
-        => objc_msgSend_void_intptr_intptr(nsWindow, sel_setCollectionBehavior, behavior);
-}
-
-/// <summary>
-/// Thin wrapper for ObjC selector lookup, shared across taskbar native helpers.
-/// </summary>
-internal static class SelectorCache
-{
-    [DllImport("/usr/lib/libobjc.dylib", EntryPoint = "sel_registerName")]
-    private static extern IntPtr sel_registerName(string name);
-
-    private static readonly Dictionary<string, IntPtr> _cache = new();
-
-    public static IntPtr Get(string name)
-    {
-        if (!_cache.TryGetValue(name, out var ptr))
-        {
-            ptr = sel_registerName(name);
-            _cache[name] = ptr;
-        }
-        return ptr;
-    }
+        => MacObjC.SendVoid_Int(nsWindow, sel_setCollectionBehavior, behavior);
 }
