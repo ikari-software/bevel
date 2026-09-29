@@ -14,7 +14,7 @@ Two are here today:
 ## The catch, and how it is handled
 
 **Bend cannot see C#.** These files prove things about a *model*. A model that drifts from the code is
-worse than no model, because it still prints `All terms check`.
+worse than no model, because it still reports success (bend prints `ALL PROOFS CHECK`).
 
 So the proofs are pinned: `tests/Bevel.Taskbar.Tests/ProofModelTests.cs` **parses these files** and asserts
 that every constant and decision they assume is what the shipped C# actually produces. It reads the proof

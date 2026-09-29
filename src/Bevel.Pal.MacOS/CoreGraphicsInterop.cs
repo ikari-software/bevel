@@ -15,7 +15,13 @@ namespace Bevel.Pal.MacOS;
 internal static class CoreGraphicsInterop
 {
     /// <summary>CGRect: four doubles, sequential. (Sequential is C#'s default for a struct; stated
-    /// explicitly here because the layout is part of the ABI contract, not an implementation detail.)</summary>
+    /// explicitly because the layout is part of the ABI contract, not an implementation detail.)
+    ///
+    /// Byte-identical to <see cref="AppKitInterop.NSRect"/> — on 64-bit macOS Apple's headers literally
+    /// typedef NSRect to CGRect, and both are 4-double HFAs passed and returned in v0–v3 on ARM64 by
+    /// plain objc_msgSend (no _stret). They are kept as two C# types because one is readonly with a
+    /// constructor for CG call sites and the other is a mutable AppKit return value; if you ever need to
+    /// pass a value between an AppKit and a CG call, they are layout-compatible.</summary>
     [StructLayout(LayoutKind.Sequential)]
     internal readonly struct CGRect
     {

@@ -80,6 +80,18 @@ internal static class AppKitInterop
     [return: MarshalAs(UnmanagedType.I4)]
     public static extern int SendInt(IntPtr receiver, IntPtr selector);
 
+    /// <summary>objc_msgSend returning ObjC BOOL with no args (e.g. <c>isActive</c>). I1 because ObjC
+    /// BOOL is a signed char on ARM64 — a bare bool would marshal as a 4-byte Win32 BOOL.</summary>
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool SendBool(IntPtr receiver, IntPtr selector);
+
+    /// <summary>objc_msgSend returning ObjC BOOL with one NSUInteger arg (e.g.
+    /// <c>activateWithOptions:</c>).</summary>
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool SendBool_NUInt(IntPtr receiver, IntPtr selector, nuint arg1);
+
     /// <summary>objc_msgSend returning a pointer-width signed integer (NSInteger) — e.g. an enum status.</summary>
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     public static extern nint SendNInt(IntPtr receiver, IntPtr selector);
@@ -345,11 +357,6 @@ internal static class AppKitInterop
     // ------------------------------------------------------------------
     //  CFURL / LaunchServices (C API — no AppKit required)
     // ------------------------------------------------------------------
-
-
-    /// <summary>
-    /// Creates a CFURLRef from a file-system path. Uses CoreFoundation (always available).
-    /// </summary>
 
     /// <summary>
     /// Opens an application (or file) at the given URL using LaunchServices.

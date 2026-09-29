@@ -20,7 +20,6 @@ public static partial class AppleEventInbound
     private static readonly uint typeObjectSpecifier = FourCC("obj ");
     private static readonly uint typeAbsoluteOrdinal = FourCC("abso");
 
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern int SendInt(IntPtr r, IntPtr s);
 
     static IntPtr DescFor(IntPtr desc, string keyword) => Send_u32(desc, Sel("descriptorForKeyword:"), FourCC(keyword));
 
@@ -59,7 +58,7 @@ public static partial class AppleEventInbound
                 if (ord == FourCC("last")) return new AeByIndex(cls, -1, container);
                 return new AeEvery(cls, container, null);        // 'all ' (and any other ordinal)
             }
-            return new AeByIndex(cls, SendInt(seld, Sel("int32Value")), container);
+            return new AeByIndex(cls, AppKitInterop.SendInt(seld, Sel("int32Value")), container);
         }
 
         if (form == FourCC("test"))

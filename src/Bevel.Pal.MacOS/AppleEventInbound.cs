@@ -34,19 +34,17 @@ public static unsafe partial class AppleEventInbound
     /// <summary>Wired by the app. Invoked on the AE dispatch thread (the UI thread under Avalonia).</summary>
     public static Action<AeRequest>? Handler;
 
-    private const string Obj = Frameworks.ObjC;
-    [DllImport(Obj)] static extern IntPtr objc_allocateClassPair(IntPtr superclass, string name, nint extraBytes);
-    [DllImport(Obj)] static extern void objc_registerClassPair(IntPtr cls);
-    [DllImport(Obj)] static extern void objc_disposeClassPair(IntPtr cls);
+    [DllImport(Frameworks.ObjC)] static extern IntPtr objc_allocateClassPair(IntPtr superclass, string name, nint extraBytes);
+    [DllImport(Frameworks.ObjC)] static extern void objc_registerClassPair(IntPtr cls);
+    [DllImport(Frameworks.ObjC)] static extern void objc_disposeClassPair(IntPtr cls);
     // ObjC BOOL is a single signed byte; without I1 the default 4-byte marshalling reads three bytes
     // of stack garbage above AL and can misread success as failure (bevel-376 review).
-    [DllImport(Obj)] [return: MarshalAs(UnmanagedType.I1)] static extern bool class_addMethod(IntPtr cls, IntPtr sel, IntPtr imp, string types);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr r, IntPtr s);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern uint SendU32(IntPtr r, IntPtr s);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern nint SendNInt(IntPtr r, IntPtr s);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32(IntPtr r, IntPtr s, uint a);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_nint(IntPtr r, IntPtr s, nint a);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")]
+    [DllImport(Frameworks.ObjC)] [return: MarshalAs(UnmanagedType.I1)] static extern bool class_addMethod(IntPtr cls, IntPtr sel, IntPtr imp, string types);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send(IntPtr r, IntPtr s);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern uint SendU32(IntPtr r, IntPtr s);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32(IntPtr r, IntPtr s, uint a);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_nint(IntPtr r, IntPtr s, nint a);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
     static extern void SendSetHandler(IntPtr r, IntPtr s, IntPtr handler, IntPtr sel, uint cls, uint id);
 
     static IntPtr Cls(string n) => AppKitInterop.GetClass(n);
@@ -165,7 +163,7 @@ public static unsafe partial class AppleEventInbound
             // numberOfItems counts its internal fields — parse it whole.
             if (SendU32(direct, Sel("descriptorType")) == typeAEList)
             {
-                var count = SendNInt(direct, Sel("numberOfItems"));
+                var count = AppKitInterop.SendNInt(direct, Sel("numberOfItems"));
                 for (nint i = 1; i <= count; i++) Handle(Send_nint(direct, Sel("descriptorAtIndex:"), i));
             }
             else
@@ -261,7 +259,7 @@ public static unsafe partial class AppleEventInbound
         if (url == IntPtr.Zero) return;
         var data = Send(url, Sel("data"));
         if (data == IntPtr.Zero) return;
-        var len = (int)SendNInt(data, Sel("length"));
+        var len = (int)AppKitInterop.SendNInt(data, Sel("length"));
         var bytes = Send(data, Sel("bytes"));
         if (bytes == IntPtr.Zero || len <= 0) return;
         var s = Marshal.PtrToStringUTF8(bytes, len);

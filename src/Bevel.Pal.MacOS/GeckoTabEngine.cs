@@ -280,7 +280,7 @@ internal static class GeckoTabEngine
             for (var i = 0; i < count; i++)
             {
                 var candidate = AppKitInterop.NSArrayObjectAtIndex(apps, i);
-                if (objc_msgSend_bool(candidate, AppKitInterop.Sel("isActive")))
+                if (AppKitInterop.SendBool(candidate, AppKitInterop.Sel("isActive")))
                     return AppKitInterop.RunningAppProcessIdentifier(candidate);
             }
             return AppKitInterop.RunningAppProcessIdentifier(AppKitInterop.NSArrayObjectAtIndex(apps, 0));
@@ -300,7 +300,7 @@ internal static class GeckoTabEngine
             cls, AppKitInterop.Sel("runningApplicationWithProcessIdentifier:"), (IntPtr)pid);
         if (app == IntPtr.Zero) return;
         // NSApplicationActivateIgnoringOtherApps == 1 << 1
-        objc_msgSend_bool_nuint(app, AppKitInterop.Sel("activateWithOptions:"), 2);
+        AppKitInterop.SendBool_NUInt(app, AppKitInterop.Sel("activateWithOptions:"), 2);
     }
 
     /// <summary>The whole feature fails silently by contract, so AX action errors get a breadcrumb
@@ -311,16 +311,5 @@ internal static class GeckoTabEngine
         if (Environment.GetEnvironmentVariable("BEVEL_DEBUG_TASKBAR") != "1") return;
         Console.Error.WriteLine($"[taskbar] GECKO {action} failed: AXError {axError}");
     }
-
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private static extern bool objc_msgSend_bool(IntPtr receiver, IntPtr selector);
-
-    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private static extern bool objc_msgSend_bool_nuint(IntPtr receiver, IntPtr selector, nuint arg1);
-
-
-
 
 }

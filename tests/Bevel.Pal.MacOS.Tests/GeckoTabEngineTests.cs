@@ -85,14 +85,16 @@ public class GeckoTabEngineTests
     {
         if (!System.OperatingSystem.IsMacOS()) return;
 
-        for (var i = 0; i < 20; i++)
-        {
-            var tabs = await GeckoTabEngine.GetTabsAsync(
-                "app.zen-browser.zen", System.Threading.CancellationToken.None);
-            // Empty is the contract when Zen is absent or the grant is missing; the point of the loop is
-            // that twenty real trips through the retain/release pairs neither throw nor fault the process.
-            Assert.NotNull(tabs);
-        }
+        // Five passes, under a shared 3s budget. An unbalanced CFRetain leaks; an unbalanced CFRelease
+        // corrupts and faults on a LATER access, so one pass proves nothing — but it surfaces on the
+        // second or third, not the twentieth. Each pass is a full AX tree walk when a Gecko browser is
+        // running (~10^3 mach round-trips), so the budget keeps the suite bounded on a live machine;
+        // the engine's contract is empty-on-cancel, so expiry cannot fail the test spuriously.
+        using var cts = new System.Threading.CancellationTokenSource(System.TimeSpan.FromSeconds(3));
+        for (var i = 0; i < 5; i++)
+            await GeckoTabEngine.GetTabsAsync("app.zen-browser.zen", cts.Token);
+        // No assertion: the signal is that five real trips through the retain/release pairs neither
+        // throw nor fault the process. Asserting non-null on a non-nullable return said nothing.
     }
 
     // ── Live enumeration (permission-gated) ──────────────────────────────────

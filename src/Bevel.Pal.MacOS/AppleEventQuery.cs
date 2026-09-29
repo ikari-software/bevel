@@ -32,13 +32,13 @@ public static partial class AppleEventInbound
     /// (UI) thread; must not await a surface round-trip.</summary>
     public static Func<AeQuery, AeResult?>? QueryHandler;
 
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptr(IntPtr r, IntPtr s, IntPtr a);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_i32(IntPtr r, IntPtr s, int a);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_bool(IntPtr r, IntPtr s, [MarshalAs(UnmanagedType.I1)] bool a);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32ptr(IntPtr r, IntPtr s, uint a, IntPtr b);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptru32(IntPtr r, IntPtr s, IntPtr a, uint b);
-    [DllImport(Obj, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptr(IntPtr r, IntPtr s, IntPtr a);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_i32(IntPtr r, IntPtr s, int a);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_bool(IntPtr r, IntPtr s, [MarshalAs(UnmanagedType.I1)] bool a);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_u32ptr(IntPtr r, IntPtr s, uint a, IntPtr b);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptru32(IntPtr r, IntPtr s, IntPtr a, uint b);
+    [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern void SendVoid_ptrnint(IntPtr r, IntPtr s, IntPtr a, nint b);
 
     static IntPtr AeDescClass => Cls("NSAppleEventDescriptor");
 

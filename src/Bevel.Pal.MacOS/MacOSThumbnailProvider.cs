@@ -88,7 +88,7 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
 
     private static PalImage? RenderImage(string path, int max)
     {
-        var url = CreateUrl(path);
+        var url = CFUrlForPath(path, isDirectory: false);
         if (url == IntPtr.Zero) return null;
         try
         {
@@ -132,7 +132,7 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
 
     private static PalImage? RenderPdf(string path, int max)
     {
-        var url = CreateUrl(path);
+        var url = CFUrlForPath(path, isDirectory: false);
         if (url == IntPtr.Zero) return null;
         try
         {
@@ -207,11 +207,6 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
         return ctx;
     }
 
-    private static IntPtr CreateUrl(string path)
-    {
-        var utf8 = System.Text.Encoding.UTF8.GetBytes(path);
-        return CFURLCreateFromFileSystemRepresentation(IntPtr.Zero, utf8, utf8.Length, false);
-    }
 
     /// <summary>The ImageIO options dictionary: always produce a thumbnail (even when the file has no
     /// embedded one), cap its longest side, and apply the EXIF orientation so a phone photo is
@@ -265,15 +260,9 @@ public sealed class MacOSThumbnailProvider : IThumbnailProvider
 
     // ── Native ───────────────────────────────────────────────────────────────
 
-    private const string CoreFoundation = Frameworks.CoreFoundation;
 
     private const int kCFNumberIntType = 9;
     private const int kCGPDFCropBox = 1;
     private const int kCGInterpolationHigh = 3;
-
-
-
-
-
 
 }

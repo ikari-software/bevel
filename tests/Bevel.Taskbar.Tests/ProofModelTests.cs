@@ -15,7 +15,7 @@ namespace Bevel.Taskbar.Tests;
 /// Keeps the Bend proofs in <c>proofs/</c> honest.
 ///
 /// Bend cannot see C#, so a <c>.bend</c> file proves things about a MODEL of our logic. A model that has
-/// drifted from the code is worse than no model, because it still reports "All terms check". These tests
+/// drifted from the code is worse than no model, because bend still reports success. These tests
 /// are the anchor, and they deliberately READ THE PROOF FILES rather than restating their numbers: an
 /// inline copy of the constants would be a third source of truth, and would only catch a change made on
 /// the C# side. Parsing means a change to either side fails the build.
@@ -158,8 +158,16 @@ public class ProofModelTests
         var stdout = p.StandardOutput.ReadToEnd();
         var stderr = p.StandardError.ReadToEnd();
         Assert.True(p.WaitForExit(60_000), $"bend did not finish checking {proof}");
-        Assert.Equal(0, p.ExitCode);
-        Assert.Contains("All terms check", stdout + stderr);
+
+        // The EXIT CODE is bend's contract: 0 when every proof checks, 1 when any fails. This used to
+        // also assert the literal success banner "All terms check" — which broke on a routine bend
+        // upgrade (2.0.27 -> 2.0.32) that reworded it to "ALL PROOFS CHECK", with the proofs still
+        // checking. Never couple a test to a third-party tool's human-readable wording when it exposes
+        // a real signal. The output is still inspected, but only for a failure marker, which survives
+        // rewording better than matching a success phrase.
+        var output = stdout + stderr;
+        Assert.True(p.ExitCode == 0, $"bend rejected {proof} (exit {p.ExitCode}):\n{output}");
+        Assert.DoesNotContain("FAIL", output, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Proof-file parsing ────────────────────────────────────────────────

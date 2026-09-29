@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using static Bevel.Pal.MacOS.AppKitInterop;
 
 namespace Bevel.Pal.MacOS;

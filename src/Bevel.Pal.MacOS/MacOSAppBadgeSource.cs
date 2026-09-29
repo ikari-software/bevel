@@ -230,7 +230,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
     /// <summary>Bundle id of the .app at <paramref name="appPath"/>, or null when it has none.</summary>
     private static string? BundleIdForAppPath(string appPath)
     {
-        var url = CFURLCreateFromFileSystemRepresentation(appPath);
+        var url = CFUrlForPath(appPath, isDirectory: true);
         if (url == IntPtr.Zero)
             return null;
         try
@@ -250,7 +250,6 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
 
     // ── CoreFoundation glue ─────────────────────────────────────────────
 
-    private const string CoreFoundation = Frameworks.CoreFoundation;
 
     private const uint kCFStringEncodingUTF8 = 0x08000100;
     private const nint kCFURLPOSIXPathStyle = 0;
@@ -283,31 +282,5 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         }
         finally { Marshal.FreeHGlobal(buffer); }
     }
-
-    private static IntPtr CFURLCreateFromFileSystemRepresentation(string path)
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(path);
-        return CoreFoundationInterop.CFURLCreateFromFileSystemRepresentation(
-            IntPtr.Zero, bytes, bytes.Length, true);
-    }
-
-
-
-    /// <summary>Returns AXError (0 = kAXErrorSuccess). <paramref name="value"/> is +1 owned on success.</summary>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }

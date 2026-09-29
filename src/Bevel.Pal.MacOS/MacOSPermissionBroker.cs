@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreGraphicsInterop;
-using static Bevel.Pal.MacOS.ImageIOInterop;
 using static Bevel.Pal.MacOS.AccessibilityInterop;
 
 namespace Bevel.Pal.MacOS;

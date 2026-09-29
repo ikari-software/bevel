@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Bevel.Pal.Abstractions;
 using static Bevel.Pal.MacOS.CoreGraphicsInterop;
-using static Bevel.Pal.MacOS.ImageIOInterop;
 
 namespace Bevel.Pal.MacOS;
 
@@ -116,8 +115,5 @@ public sealed class MacOSIconProvider : IIconProvider
             AppKitInterop.SendVoid(pool, AppKitInterop.Sel("drain"));
         }
     }
-
-    // ── CoreGraphics (C API — no objc_msgSend) ──────────────────────────
-
 
 }

@@ -75,6 +75,16 @@ internal static class CoreFoundationInterop
     [DllImport(Frameworks.CoreFoundation)]
     public static extern IntPtr CFURLCopyFileSystemPath(IntPtr url, nint pathStyle);
 
+    /// <summary>A CFURLRef for a file-system path, owned by the caller (CFRelease it). Three files had
+    /// their own three-line version of this, differing only in the <paramref name="isDirectory"/> they
+    /// passed — and one of them shadowed the imported extern with a same-named wrapper, forcing a
+    /// fully-qualified call at its only call site.</summary>
+    public static IntPtr CFUrlForPath(string path, bool isDirectory)
+    {
+        var utf8 = System.Text.Encoding.UTF8.GetBytes(path);
+        return CFURLCreateFromFileSystemRepresentation(IntPtr.Zero, utf8, utf8.Length, isDirectory);
+    }
+
     // ── Bundles ───────────────────────────────────────────────────────────
     [DllImport(Frameworks.CoreFoundation)]
     public static extern IntPtr CFBundleCreate(IntPtr alloc, IntPtr bundleURL);
