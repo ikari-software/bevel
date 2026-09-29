@@ -24,8 +24,10 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public TrayViewModel(ISystemTrayHost? tray) => _tray = tray;
 
     /// <summary>Strategy C (bevel-7hf4): consolidate the real macOS menu bar into this tray (hide the
-    /// real items) or reveal it. Drives the helper's control item via the tray host; fire-and-forget
-    /// (failures are logged host-side, bounded by a deadline).</summary>
+    /// real items) or reveal it. In split mode the NATIVE hide applies IN this taskbar process (the
+    /// shell-core host's local seam — the headless core has no AppKit run loop, bevel-qpir) and the state
+    /// is forwarded to the core→helper for the poll cadence. Fire-and-forget (failures are logged
+    /// host-side, bounded by a deadline).</summary>
     public void SetConsolidated(bool consolidated)
     {
         // Dedup HERE so BOTH callers benefit — the settings-poll path (TaskbarViewModel) and the
@@ -147,15 +149,31 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
     public bool HasAnyItems { get => _hasAnyItems; private set => SetProperty(ref _hasAnyItems, value); }
 
     /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5), and promotes
-    /// it into the visible set (light LRU) so an item you use stays reachable inline.</summary>
+    /// it into the visible set (light LRU) so an item you use stays reachable inline. While CONSOLIDATED,
+    /// instead forwards with <c>park</c> (bevel-6fin): the host relocates JUST this hidden item to a
+    /// visible parked slot — Ice's self-addressed-event move, no bar reveal, works through remote
+    /// desktop — and presses it there.</summary>
     public async Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
     {
-        PromoteToVisible(id);
-        // Reveal-on-click (C2): with overlay-hide (bevel-7hf4) landed, the real items are never moved —
-        // they stay on-screen under the level-26 cover, so this click AX-presses their live coordinates
-        // directly and the resulting system menu pops above the overlay. No collapse/reveal/rehide dance.
-        return await (_tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false));
+        if (_tray is null) return false;
+        if (!_consolidated)
+        {
+            PromoteToVisible(id);
+            return await _tray.ForwardClickAsync(id, button, modifiers);
+        }
+        // Single-item reveal is a slow async round-trip (self-addressed move + reflow + press), so ignore
+        // rapid clicks while one is in flight — a second click must not race the first.
+        if (_revealBusy) return false;
+        _revealBusy = true;
+        try
+        {
+            // (No PromoteToVisible here: reordering the strip mid-reveal would shuffle it under the cursor.)
+            return await _tray.ForwardClickAsync(id, button, modifiers, park: true);
+        }
+        finally { _revealBusy = false; }
     }
+
+    private bool _revealBusy;
 
     /// <summary>Moves an item into the last inline slot if it's currently overflowed — a used item
     /// earns its place in the visible strip without reshuffling the others.</summary>

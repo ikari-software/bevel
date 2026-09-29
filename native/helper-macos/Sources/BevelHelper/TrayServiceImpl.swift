@@ -6,6 +6,11 @@ import GRPCCore
 import GRPCProtobuf
 import ScreenCaptureKit
 
+private extension CGEventField {
+    /// The private CGEventField carrying the window ID an event targets (bevel-6fin, from Ice: 0x33).
+    static let windowID = CGEventField(rawValue: 0x33)!   // swiftlint:disable:this force_unwrapping
+}
+
 /// Menu-bar status-item mirroring — the "Ice technique" (docs/spec/02-macos-platform.md §5).
 ///
 /// M3-A (this file) implements **discovery + limited mode (§5.5)**: it enumerates the menu-bar
@@ -85,32 +90,170 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         self.parentPID = parentPID
     }
 
-    // MARK: - RPC registration
+    // MARK: - Consolidation state (bevel-qpir)
 
-    /// The menu-bar control item (Strategy A), set once at startup by main(). Reached from the
-    /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
-    nonisolated(unsafe) var controlItem: MenuBarControlItem?
+    /// The shell's consolidation state, reported by the app (SetConsolidation). The NATIVE hide is owned
+    /// by the TASKBAR app process (MacMenuBarControl via ObjC interop) — this helper must never own a
+    /// status item: its hand-rolled NSApp.run() isn't a real app lifecycle, and every NSStatusBar /
+    /// NSStatusItem operation deadlocks the status-bar IPC (proven live, bevel-7hf4). This flag only
+    /// adapts the tray-poll cadence: while consolidated the tray IS the menu bar, so liveness matters most.
+    private let consolidationLock = NSLock()
+    private var _consolidationActive = false
+    private var consolidationActive: Bool {
+        consolidationLock.lock(); defer { consolidationLock.unlock() }
+        return _consolidationActive
+    }
 
-    /// Reveal-at-top click (U6/C2). When consolidated the target may be hidden off-screen, where
-    /// `forwardClick`'s on-screen lookup can't find it. Temporarily collapse the control item to bring
-    /// the items back onto the bar, forward the click there (the owning app's menu opens at the TOP,
-    /// mirroring Ice — true bottom-native is impossible, C3 is dead), then rehide on a timer.
-    /// Menu-dismiss-based rehide is the polish (see the plan's open questions).
+    /// Sync setter so async RPC handlers never touch NSLock from an async context (unlock is flagged
+    /// unavailable there) — call this, not the lock pair, from `registerMethods` closures.
+    private func setConsolidationActive(_ active: Bool) {
+        consolidationLock.lock()
+        _consolidationActive = active
+        consolidationLock.unlock()
+    }
+
+    // MARK: - Click forwarding
+
+    /// Click forwarding (bevel-6fin). When `park` is set the item is currently hidden OFF-screen by the
+    /// app-side control item — `forwardClick`'s on-screen lookup can't find it. Instead of revealing the
+    /// whole bar (the old C2 flash), relocate JUST this item to a visible parked slot (Ice's
+    /// self-addressed-event move — works off-screen, no cursor dependency, survives remote desktop) and
+    /// press it there → the owning app's menu opens at the top. Non-park is a plain forward to the
+    /// item's current on-screen position (pre-consolidation behaviour).
     func forwardClickWithReveal(
-        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) async -> Bool {
-        let wasHiding = self.controlItem?.isHidingItems ?? false
-        if wasHiding {
-            self.controlItem?.requestHidden(false)
-            try? await Task.sleep(nanoseconds: 400_000_000)   // let the timer apply + the bar reflow items back
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32,
+        park: Bool) -> Bool {
+        if park { return revealParkAndClick(itemID: itemID, button: button, modifiers: modifiers) }
+        return forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+    }
+
+    /// Single-item reveal via Ice's SELF-ADDRESSED-event move (bevel-6fin; studied from jordanbaird/Ice).
+    /// The item is hidden off-screen and we do NOT reveal the bar. We craft mouse events addressed to the
+    /// item's window + owning process (not to a screen point), un-suppress synthetic events during remote
+    /// drag, and post them to the SESSION tap — so the move lands regardless of cursor position and
+    /// survives remote desktop (unlike a cursor-warp HID-tap drag). Move this one item to a slot left of
+    /// the Clock (right of the expanded control → it stays visible), then press it so its menu opens at
+    /// the top. Restores it to hidden after a use-the-menu delay.
+    private func revealParkAndClick(
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
+        let parts = itemID.split(separator: ":")
+        guard parts.count == 2, let pid = pid_t(parts[0]), let win = Int(parts[1]) else { return false }
+        guard let (clockRect, clockWin) = clockWindow() else { return false }   // no anchor: nowhere to park
+        let dropPoint = CGPoint(x: clockRect.origin.x - 1, y: clockRect.midY)     // just LEFT of the clock
+        _ = moveItemTargeted(windowID: win, pid: pid, to: dropPoint, targetWindowID: clockWin)
+        usleep(150_000)   // let the bar reflow the moved item on-screen
+        guard let (rect, _) = onScreenRect(itemID: itemID) else { return false }  // it didn't land visible
+        let point = CGPoint(x: rect.midX, y: rect.midY)
+        let ok = pressViaAX(at: point, itemID: itemID, rightClick: button == .right)
+            || clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
+        scheduleRestore(windowID: win, pid: pid)
+        return ok
+    }
+
+    /// Auto-restore (bevel-6fin): after time to use the menu, move the revealed item back into the hidden
+    /// region so the tray returns to its consolidated state. Ice re-hides on a timer too.
+    private func scheduleRestore(windowID: Int, pid: pid_t) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            self?.restoreItem(windowID: windowID, pid: pid)
         }
-        let delivered = self.forwardClick(itemID: itemID, button: button, modifiers: modifiers)
-        if wasHiding {
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 5_000_000_000)   // leave time to use the menu, then rehide
-                self?.controlItem?.requestHidden(true)
-            }
+    }
+
+    /// Moves a parked item back to the LEFT of our control item — which, expanded, keeps everything to
+    /// its left off-screen, so the item hides again. The same self-addressed move, in reverse.
+    private func restoreItem(windowID: Int, pid: pid_t) {
+        guard let (ctrlRect, ctrlWin) = controlWindow() else { return }
+        let dropPoint = CGPoint(x: ctrlRect.origin.x - 1, y: ctrlRect.midY)
+        _ = moveItemTargeted(windowID: windowID, pid: pid, to: dropPoint, targetWindowID: ctrlWin)
+    }
+
+    /// The app-side BevelTrayControl status item's frame + window number (by window name), even when the
+    /// expanded control itself sits on-screen and everything left of it is hidden.
+    private func controlWindow() -> (CGRect, Int)? {
+        guard let wins = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowName as String] as? String) == "BevelTrayControl" {
+            if let num = w[kCGWindowNumber as String] as? Int,
+               let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary) { return (r, num) }
         }
-        return delivered
+        return nil
+    }
+
+    /// The item's current on-screen bounds + window number, matched by the windowNumber half of item_id.
+    /// Only finds items on the visible bar (menu-bar band).
+    private func onScreenRect(itemID: String) -> (CGRect, Int)? {
+        let parts = itemID.split(separator: ":")
+        guard parts.count == 2, let num = Int(parts[1]),
+              let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowNumber as String] as? Int) == num {
+            if let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 { return (r, num) }
+        }
+        return nil
+    }
+
+    /// The menu-bar Clock's frame + window number — the park anchor (rightmost always-visible system item,
+    /// right of the expanded control so a parked item left of it survives the re-hide).
+    private func clockWindow() -> (CGRect, Int)? {
+        guard let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowName as String] as? String) == "Clock" {
+            if let num = w[kCGWindowNumber as String] as? Int,
+               let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 { return (r, num) }
+        }
+        return nil
+    }
+
+    /// Ice's move (bevel-6fin): reposition a menu-bar item by posting mouse events SELF-ADDRESSED to its
+    /// window + process, not to a screen location — so it works on an off-screen item and through remote
+    /// desktop. Cmd-down "grabs" the item (location irrelevant — the window/pid fields carry the target);
+    /// the up is addressed to the TARGET window at the drop point, dropping the item there. Session tap +
+    /// remote-drag un-suppression. The down ALSO goes to the owning pid directly (Ice's ultimate delivery
+    /// is postToPid); both deliveries are harmless duplicates the responder dedupes by click-state.
+    private func moveItemTargeted(windowID: Int, pid: pid_t, to dropPoint: CGPoint, targetWindowID: Int) -> Bool {
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
+        permitRemoteEvents()
+        let grabAnywhere = CGPoint(x: 20_000, y: 20_000)
+        guard let down = itemEvent(.leftMouseDown, at: grabAnywhere, windowID: windowID, pid: pid, source: source, cmd: true, click: false),
+              let up = itemEvent(.leftMouseUp, at: dropPoint, windowID: targetWindowID, pid: pid, source: source, cmd: false, click: false)
+        else { return false }
+        down.post(tap: .cgSessionEventTap)
+        down.postToPid(pid)
+        usleep(90_000)   // let the grab settle before the drop
+        up.post(tap: .cgSessionEventTap)
+        up.postToPid(pid)
+        usleep(90_000)   // let the reposition settle before the caller reads geometry
+        return true
+    }
+
+    /// Builds a mouse CGEvent addressed to a specific menu-bar item window + process (Ice's
+    /// menuBarItemEvent): the window/process fields make macOS route it to that item regardless of cursor
+    /// position and let it ride the session tap instead of the HID stream remote desktop owns.
+    /// `cmd` = Cmd-held (the move grab); `click` sets clickState so a down/up would open the item's menu.
+    private func itemEvent(_ mouseType: CGEventType, at location: CGPoint, windowID: Int, pid: pid_t,
+                           source: CGEventSource, cmd: Bool, click: Bool) -> CGEvent? {
+        guard let e = CGEvent(mouseEventSource: source, mouseType: mouseType, mouseCursorPosition: location, mouseButton: .left)
+        else { return nil }
+        e.flags = cmd ? .maskCommand : []
+        e.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+        e.setIntegerValueField(.eventSourceUserData, value: Int64(truncatingIfNeeded: ObjectIdentifier(e).hashValue))
+        e.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+        e.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+        e.setIntegerValueField(.windowID, value: Int64(windowID))
+        if click { e.setIntegerValueField(.mouseEventClickState, value: 1) }
+        return e
+    }
+
+    /// Un-suppress synthetic events during remote-mouse-drag / suppression-interval states (Ice's
+    /// permitAllEvents) — the other half of surviving remote desktop, which intercepts the HID stream.
+    private func permitRemoteEvents() {
+        guard let src = CGEventSource(stateID: .combinedSessionState) else { return }
+        let permitAll: CGEventFilterMask = [.permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents]
+        src.setLocalEventsFilterDuringSuppressionState(permitAll, state: .eventSuppressionStateRemoteMouseDrag)
+        src.setLocalEventsFilterDuringSuppressionState(permitAll, state: .eventSuppressionStateSuppressionInterval)
     }
 
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
@@ -161,9 +304,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
                     // 2. Poll + diff until cancelled (client disconnect cancels the producer Task).
                     // Adaptive cadence (U4): refresh faster while consolidated (the tray IS the menu bar
-                    // then, so liveness matters most), slower in plain mirror mode to save CPU.
+                    // then, so liveness matters most), slower in plain mirror mode to save CPU. The state
+                    // comes from the app's SetConsolidation notify (bevel-qpir) — the hide itself is
+                    // app-side; this helper owns no status item.
                     while !Task.isCancelled {
-                        let interval: UInt64 = (self.controlItem?.isHidingItems ?? false) ? 900_000_000 : 2_000_000_000
+                        let interval: UInt64 = self.consolidationActive ? 900_000_000 : 2_000_000_000
                         try await Task.sleep(nanoseconds: interval)
                         let current = await self.enumerateWithCapture()
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
@@ -208,8 +353,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ForwardClickReply()
-                reply.delivered = await self.forwardClickWithReveal(
-                    itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
+                reply.delivered = self.forwardClickWithReveal(
+                    itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers,
+                    park: req.message.park)
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -225,11 +371,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 try AuthInterceptor.authenticate(
                     request.metadata, expectedKey: self.expectedKey, expectedCapability: "tray")
                 let req = try await ServerRequest(stream: request)
-                let enabled = req.message.enabled
-                consolidationLog("SetConsolidation RPC received enabled=\(enabled) controlItem=\(self.controlItem != nil)")
-                // Non-blocking: set the flag; the control item's main-run-loop timer applies it. Never
-                // hop to the main thread from here (that deadlocks in the status-bar IPC). Reply at once.
-                self.controlItem?.requestHidden(enabled)
+                // State notify only (bevel-qpir): the hide itself is applied by the TASKBAR app process
+                // (MacMenuBarControl via ObjC interop); this helper must never own a status item (its
+                // run loop deadlocks the status-bar IPC). We just adapt our poll cadence. Never hop to
+                // the main thread from here.
+                self.setConsolidationActive(req.message.enabled)
                 var reply = Bevel_Helper_V1_SetConsolidationReply()
                 reply.applied = true
                 return StreamingServerResponse(single: ServerResponse(message: reply))
@@ -393,12 +539,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                   rect.width >= 8, rect.width <= 400 else { continue }
 
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
-            // Self-exclusion (U3): never mirror Bevel's own control item. On macOS 26 it's owned by the
-            // Control Centre process, so the own-PID filter above can't catch it — exclude by window ID.
-            if let ctrl = controlItem?.cachedWindowID, windowNumber == Int(ctrl) { continue }
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
-            // Exclude Bevel's own app-side control item so we never mirror ourselves (its ◂◂ marker title).
+            // Self-exclusion (U3): never mirror Bevel's own app-side control item (its ◂◂ marker title —
+            // owned by the Control Centre process on macOS 26, so the own-PID filter above can't catch it).
+            // The helper no longer has a control item of its own (bevel-qpir).
             if windowName.contains("◂") { continue }
 
             // Denylist (§5, bevel-m3.4): drop items we should not mirror — iStat Menus (live graphs

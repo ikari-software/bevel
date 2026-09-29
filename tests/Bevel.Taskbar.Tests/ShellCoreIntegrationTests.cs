@@ -229,11 +229,15 @@ public sealed class ShellCoreIntegrationTests
         pal.RaiseTrayItemRemoved(Tray("1:10", "Alpha"));
         await WaitFor(() => removed.Contains("1:10"), "a removed item should stream to the client");
 
-        // Click forwarding round-trips (button + modifiers) to the real host on the core side.
+        // Click forwarding round-trips (button + modifiers + park, bevel-6fin) to the real host on the core side.
         var ok = await tray.ForwardClickAsync(new TrayItemId("2:20"), TrayButton.Right, TrayModifiers.Command);
         Assert.True(ok);
-        await WaitFor(() => pal.TrayClicks.Contains("2:20:Right:Command"),
+        await WaitFor(() => pal.TrayClicks.Contains("2:20:Right:Command:park=False"),
             "the forwarded click should reach the core's tray host with its button + modifiers");
+        var ok2 = await tray.ForwardClickAsync(new TrayItemId("1:10"), TrayButton.Left, TrayModifiers.None, park: true);
+        Assert.True(ok2);
+        await WaitFor(() => pal.TrayClicks.Contains("1:10:Left:None:park=True"),
+            "a park (single-item reveal) click should bridge through the core with park set");
     }
 
     // bevel-8ck: a tray item that appears in the subscribe→snapshot gap must NOT be lost. The core now
@@ -595,9 +599,9 @@ public sealed class ShellCoreIntegrationTests
 
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
 
-        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, bool park = false, CancellationToken ct = default)
         {
-            TrayClicks.Add($"{id.Value}:{button}:{modifiers}");
+            TrayClicks.Add($"{id.Value}:{button}:{modifiers}:park={park}");
             return Task.FromResult(true);
         }
 

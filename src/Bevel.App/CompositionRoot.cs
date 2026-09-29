@@ -163,8 +163,13 @@ public static class CompositionRoot
             // The one core connection IS the link-health source the taskbar's tray indicator tracks.
             services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
             // The split taskbar mirrors the tray via the shell core (bevel-m3.1.1): the core owns the
-            // real TrayService stream and pushes items here, exactly like windows.
-            services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
+            // real TrayService stream and pushes items here, exactly like windows. The NATIVE hide applies
+            // IN this taskbar process (bevel-qpir): the macOS control NSStatusItem needs a serviced AppKit
+            // run loop, which the headless core lacks — that is what wedged the helper's copy. Routed through
+            // the host's local seam so TrayViewModel needs no platform branch.
+            services.AddSingleton<ISystemTrayHost>(sp => new ShellCore.ShellCoreSystemTrayHost(
+                sp.GetRequiredService<ShellCore.ShellCoreClient>(),
+                applyLocalHide: hidden => Pal.MacOS.MacMenuBarControl.SetHidden(hidden)));
             // Settings peer: its own keyed "settings" client (never the shared tray client above — see
             // AddSettingsPeer for why) + the first-paint snapshot cache + the remote service.
             AddSettingsPeer(services);
@@ -252,7 +257,13 @@ public static class CompositionRoot
             services.AddSingleton<IWindowManager, ShellCore.ShellCoreWindowManager>();
             services.AddSingleton<IAppEnvironment, ShellCore.ShellCoreAppEnvironment>();
             services.AddSingleton<IShellConnectionStatus>(sp => sp.GetRequiredService<ShellCore.ShellCoreClient>());
-            services.AddSingleton<ISystemTrayHost, ShellCore.ShellCoreSystemTrayHost>();
+            // Same local-hide seam as macOS (bevel-qpir): the Windows TrayNotifyWnd toggle is in-proc Win32,
+            // so the split taskbar applies it directly — the headless core must not be the one to.
+            services.AddSingleton<Pal.Windows.WindowsSystemTrayHost>();
+            services.AddSingleton<ISystemTrayHost>(sp => new ShellCore.ShellCoreSystemTrayHost(
+                sp.GetRequiredService<ShellCore.ShellCoreClient>(),
+                applyLocalHide: hidden => { _ = sp.GetRequiredService<Pal.Windows.WindowsSystemTrayHost>()
+                    .SetNativeTrayHiddenAsync(hidden); }));
             // Settings peer + dedicated keyed "settings" client + first-paint cache (bevel-6nve / 7s9n),
             // same rationale as macOS.
             AddSettingsPeer(services);

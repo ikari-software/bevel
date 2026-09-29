@@ -78,8 +78,9 @@ service TrayService {
   // item's on-screen coordinates so the owning app reveals its menu/popover. Needs Accessibility.
   rpc ForwardClick(ForwardClickRequest) returns (ForwardClickReply);
 
-  // Turn menu-bar consolidation on/off (Strategy C): enabled=true installs + expands the control item
-  // to hide the real status items; enabled=false reveals them. Off is today's mirror behaviour.
+  // Report the shell's consolidation state (bevel-qpir): the native hide itself — the control NSStatusItem —
+  // lives in the TASKBAR app process (the helper's hand-rolled run loop deadlocks status-bar IPC, so it can
+  // never own one). The helper only uses this to adapt its tray-poll cadence (fast while consolidated).
   rpc SetConsolidation(SetConsolidationRequest) returns (SetConsolidationReply);
 }
 
@@ -92,6 +93,11 @@ message ForwardClickRequest {
   Button button = 2;
   // Modifier bitmask mirrored into the synthesized event: shift=1, control=2, option=4, command=8.
   uint32 modifiers = 3;
+  // Single-item reveal (bevel-6fin): the item is currently hidden off-screen by consolidation. Relocate
+  // JUST this item — Ice's self-addressed-event move — to a parked slot left of the Clock (right of the
+  // expanded control, so it stays visible after the re-hide), press it so its menu opens at the top, and
+  // schedule a restore back to its origin. No bar reveal, no flash.
+  bool park = 4;
 }
 
 message ForwardClickReply {
@@ -139,7 +145,8 @@ message ListTrayItemsReply {
 
 message TrayChangesRequest {}
 
-// SetConsolidation toggles Strategy C: hide the real menu bar into Bevel's tray, or reveal it.
+// SetConsolidation reports the shell's consolidation state (see the rpc comment) — the helper applies
+// nothing itself; it just polls faster while the real menu bar is hidden into Bevel's tray.
 message SetConsolidationRequest {
   bool enabled = 1;
 }

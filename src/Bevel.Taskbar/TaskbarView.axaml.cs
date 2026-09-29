@@ -630,13 +630,18 @@ public partial class TaskbarView : UserControl
 
     /// <summary>Clicking a mirrored tray icon forwards the click (with its button + modifiers) to the
     /// real menu-bar status item, so the owning app reveals its menu (spec §5.5, bevel-m3.3).</summary>
-    private async void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
         var props = e.GetCurrentPoint(c).Properties;
         var button = props.IsRightButtonPressed ? TrayButton.Right : TrayButton.Left;
         e.Handled = true;
-        await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
+        // Release the implicit pointer capture: the consolidated reveal (bevel-6fin) is a slow async
+        // round-trip (self-addressed move + press in the helper), and if this handler held the press
+        // gesture, every later click funnelled back to THIS image (observed: all clicks routing to the
+        // first-pressed icon). Fire-and-forget so the press gesture ends immediately.
+        e.Pointer.Capture(null);
+        _ = _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
     }
 
     /// <summary>Keyboard operability for a mirrored tray icon (bevel-vk4n): Enter/Space forwards a left

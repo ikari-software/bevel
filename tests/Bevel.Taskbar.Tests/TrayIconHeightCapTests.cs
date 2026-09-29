@@ -169,7 +169,7 @@ public class TrayIconHeightCapTests
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<TrayItem>>(_items.ToArray());
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
+        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, bool park = false,
             CancellationToken ct = default) => Task.FromResult(true);
 
         // Never raised here — the initial snapshot is all these tests need.

@@ -14,9 +14,17 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
 {
     private readonly ShellCoreClient _core;
 
-    public ShellCoreSystemTrayHost(ShellCoreClient core)
+    /// <summary>The NATIVE hide, applied in THIS process (bevel-qpir). The shell-core owner (the core) is
+    /// headless — no serviced AppKit run loop — so it must never own the macOS control NSStatusItem (that
+    /// is what wedged the helper: status-bar IPC needs a real run loop). The taskbar process has one (Avalonia),
+    /// so the composition root wires this to <c>MacMenuBarControl.SetHidden</c> on macOS (and the Windows
+    /// <c>TrayNotifyWnd</c> toggle on Windows). Null on PALs with no native hide.</summary>
+    private readonly Action<bool>? _applyLocalHide;
+
+    public ShellCoreSystemTrayHost(ShellCoreClient core, Action<bool>? applyLocalHide = null)
     {
         _core = core;
+        _applyLocalHide = applyLocalHide;
         _core.EventReceived += OnCoreEvent;
     }
 
@@ -65,17 +73,32 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
 
-    /// <summary>Menu-bar reclaim (spec §5.4) is owned by the core when it lands (M3-F); no-op for now.</summary>
-    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Menu-bar consolidation (bevel-qpir): (1) apply the NATIVE hide locally — in THIS taskbar
+    /// process, which has the real AppKit run loop the macOS control item needs — then (2) tell the core so
+    /// it can forward the state to the helper for its poll cadence (900ms while consolidated). Step (2) is
+    /// best-effort: a disconnected core just means the helper keeps its idle cadence until the next change.</summary>
+    public async Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
+    {
+        try { _applyLocalHide?.Invoke(hidden); }
+        catch (Exception) { /* best-effort: never hang the settings-apply path on a native failure */ }
+        if (!_core.IsConnected) return;
+        try
+        {
+            await _core.SendAsync(new CoreCommand(CoreCommandKind.SetTrayHidden, Hidden: hidden), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception) { /* best-effort cadence notify — the hide itself already applied */ }
+    }
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
-        CancellationToken ct = default)
+        bool park = false, CancellationToken ct = default)
     {
         if (!_core.IsConnected) return false;
         try
         {
             var r = await _core.SendAsync(new CoreCommand(CoreCommandKind.ForwardTrayClick,
-                TrayItemId: id.Value, TrayButton: button, TrayModifiers: modifiers), ct).ConfigureAwait(false);
+                TrayItemId: id.Value, TrayButton: button, TrayModifiers: modifiers, Park: park), ct)
+                .ConfigureAwait(false);
             return r.Ok && r.Delivered == true;
         }
         catch (IOException) { return false; }

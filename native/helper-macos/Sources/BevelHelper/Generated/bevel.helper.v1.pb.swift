@@ -37,6 +37,12 @@ public nonisolated struct Bevel_Helper_V1_ForwardClickRequest: Sendable {
   /// Modifier bitmask mirrored into the synthesized event: shift=1, control=2, option=4, command=8.
   public var modifiers: UInt32 = 0
 
+  /// Single-item reveal (bevel-6fin): the item is currently hidden off-screen by consolidation. Relocate
+  /// JUST this item — Ice's self-addressed-event move — to a parked slot left of the Clock (right of the
+  /// expanded control, so it stays visible after the re-hide), press it so its menu opens at the top, and
+  /// schedule a restore back to its origin. No bar reveal, no flash.
+  public var park: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Button: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -231,7 +237,8 @@ public nonisolated struct Bevel_Helper_V1_TrayChangesRequest: Sendable {
   public init() {}
 }
 
-/// SetConsolidation toggles Strategy C: hide the real menu bar into Bevel's tray, or reveal it.
+/// SetConsolidation reports the shell's consolidation state (see the rpc comment) — the helper applies
+/// nothing itself; it just polls faster while the real menu bar is hidden into Bevel's tray.
 public nonisolated struct Bevel_Helper_V1_SetConsolidationRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -607,7 +614,7 @@ fileprivate nonisolated let _protobuf_package = "bevel.helper.v1"
 
 nonisolated extension Bevel_Helper_V1_ForwardClickRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ForwardClickRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{1}button\0\u{1}modifiers\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{1}button\0\u{1}modifiers\0\u{1}park\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -618,6 +625,7 @@ nonisolated extension Bevel_Helper_V1_ForwardClickRequest: SwiftProtobuf.Message
       case 1: try { try decoder.decodeSingularStringField(value: &self.itemID) }()
       case 2: try { try decoder.decodeSingularEnumField(value: &self.button) }()
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.modifiers) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.park) }()
       default: break
       }
     }
@@ -633,6 +641,9 @@ nonisolated extension Bevel_Helper_V1_ForwardClickRequest: SwiftProtobuf.Message
     if self.modifiers != 0 {
       try visitor.visitSingularUInt32Field(value: self.modifiers, fieldNumber: 3)
     }
+    if self.park != false {
+      try visitor.visitSingularBoolField(value: self.park, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -640,6 +651,7 @@ nonisolated extension Bevel_Helper_V1_ForwardClickRequest: SwiftProtobuf.Message
     if lhs.itemID != rhs.itemID {return false}
     if lhs.button != rhs.button {return false}
     if lhs.modifiers != rhs.modifiers {return false}
+    if lhs.park != rhs.park {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -177,19 +177,31 @@ enum BevelHelper {
             }
         }
 
-        // Run AppKit on the main thread. The control item is created but NOT installed until
-        // consolidation is enabled (U5), so the menu bar is untouched by default. `NSApp.run()` never
-        // returns; socket cleanup happens via the atexit hook, not the (now-unreached) defer.
-        let controlItem = MenuBarControlItem()
-        gControlItem = controlItem
-        trayService.controlItem = controlItem   // U5: SetConsolidation + U3 self-exclusion reach it here
-        let delegate = HelperAppDelegate(controlItem: controlItem)
+        // Run AppKit on the main thread (the AX run loop needs a pumped NSApp; the gRPC server serves
+        // on detached NIO threads). `NSApp.run()` never returns; socket cleanup happens via the atexit
+        // hook, not the (now-unreached) defer.
+        // No control NSStatusItem here — the helper can NEVER own one: its hand-rolled NSApp.run()
+        // isn't a real app lifecycle and every status-bar operation deadlocks the status-bar IPC
+        // (proven live, bevel-7hf4). The native hide lives in the TASKBAR app process (MacMenuBarControl
+        // via ObjC interop, bevel-qpir); the app reports the state back via SetConsolidation, which only
+        // tunes this helper's poll cadence.
+        let delegate = HelperAppDelegate()
         gAppDelegate = delegate
         NSApp.delegate = delegate
         NSApp.run()
     }
 }
 
-// Retained for the process lifetime: NSApp.delegate is weak, and the control item must outlive main().
-@MainActor private var gControlItem: MenuBarControlItem?
+// Retained for the process lifetime: NSApp.delegate is weak.
 @MainActor private var gAppDelegate: HelperAppDelegate?
+
+/// Minimal app delegate: keeps NSApp's lifecycle honest (finish-launch → run) without owning any
+/// status-bar state. There is deliberately no control item here — see main() (bevel-qpir).
+@MainActor
+final class HelperAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Intentionally empty: the helper only runs AppKit for the AX run loop. Creating/owning an
+        // NSStatusItem in this process wedges it (status-bar IPC needs a real app lifecycle) — see
+        // bevel-7hf4/bevel-qpir. The native hide belongs to the TASKBAR app process.
+    }
+}

@@ -18,14 +18,6 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
 {
-    // Strategy C hide mechanism (bevel-7hf4): true = OVERLAY-HIDE (cover the on-screen items with a
-    // level-26 NSPanel so their captures stay live); false = the legacy off-screen push
-    // (MacMenuBarControl, which freezes captures). Kept as a one-line revert if a specific app freezes
-    // under full occlusion.
-    // static readonly, not const: it selects a runtime branch (overlay vs legacy hide) below, and a const
-    // would fold the unused branch to unreachable → CS0162, which CI treats as an error.
-    private static readonly bool UseOverlayHide = false;   // overlay v1 mis-covered the whole bar + killed translucency; reverted pending fix
-
     private readonly HelperLifecycle _helperLifecycle;
     private readonly ILogger<MacOSSystemTrayHost> _logger;
     private readonly IClock _clock;
@@ -33,12 +25,6 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     private CancellationTokenSource? _streamCts;
     private Task? _streamTask;
     private bool _disposed;
-
-    // Live cache of the mirrored items' screen bounds (keyed by wire item id), fed by the Changes stream
-    // and GetItemsAsync. The overlay's cover frame is the union of these; caching here keeps the platform
-    // detail out of the abstraction (ISystemTrayHost.SetNativeTrayHiddenAsync stays bounds-free).
-    private readonly object _boundsLock = new();
-    private readonly Dictionary<string, PalRect> _lastBounds = new();
 
     private static readonly Capabilities TrayCapabilities = new(
         Available: true,
@@ -76,9 +62,7 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
             var tray = GetTrayClient();
             var reply = await tray.ListTrayItemsAsync(new ListTrayItemsRequest(),
                 headers: AuthHeader(), cancellationToken: ct);
-            var items = reply.Items.Select(Map).ToList();
-            foreach (var it in items) CacheBounds(it);
-            return items;
+            return reply.Items.Select(Map).ToList();
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
         {
@@ -87,35 +71,38 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         }
     }
 
-    /// <summary>Menu-bar consolidation (Strategy C, bevel-7hf4): hide the real status items into Bevel's
-    /// tray (control-item expansion) or reveal them. Drives the helper's SetConsolidation RPC. Bounded by
-    /// a 3s deadline so a wedged helper can't hang the settings-apply path.</summary>
-    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
+    /// <summary>Consolidation state notification (bevel-qpir). The NATIVE hide — the macOS control
+    /// <c>NSStatusItem</c> — is owned by the TASKBAR process (<see cref="MacMenuBarControl"/> via the
+    /// shell-core local-hide seam), because it needs a serviced AppKit run loop and this host runs in the
+    /// headless core. This call only forwards the state to the helper's repurposed SetConsolidation RPC so
+    /// its tray-poll cadence adapts (900ms while consolidated — the tray IS the menu bar then — vs 2s idle).
+    /// Best-effort and bounded: a wedged/disconnected helper must never hang the settings-apply path.</summary>
+    public async Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
     {
-        if (_disposed) return Task.CompletedTask;
-        // Strategy C (bevel-7hf4): the hide lives in THIS app process, which has a real NSApplication run
-        // loop — NOT the gRPC helper, whose hand-rolled run loop deadlocks the status-bar IPC. Driven via
-        // ObjC interop on the AppKit main thread; the settings-apply callers are on the UI thread. No
-        // helper round-trip for the hide.
+        if (_disposed) return;
         try
         {
-            if (UseOverlayHide)
-                MacMenuBarOverlay.SetHidden(hidden, ComputeMirroredStrip());   // cover on-screen items (live captures)
-            else
-                MacMenuBarControl.SetHidden(hidden);                            // legacy off-screen push (freezes captures)
+            var tray = GetTrayClient();
+            await tray.SetConsolidationAsync(new SetConsolidationRequest { Enabled = hidden },
+                headers: AuthHeader(), cancellationToken: ct);
         }
-        catch (Exception ex) { _logger.LogWarning("consolidation apply failed: {Message}", ex.Message); }
-        return Task.CompletedTask;
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.Cancelled or StatusCode.DeadlineExceeded)
+        {
+            _logger.LogWarning("TrayService unavailable for consolidation notify: {Message}", ex.Message);
+        }
+        catch (Exception ex) { _logger.LogWarning("consolidation notify failed: {Message}", ex.Message); }
     }
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
-        CancellationToken ct = default)
+        bool park = false, CancellationToken ct = default)
     {
         if (_disposed) return false;
         // Bound the click on a wedged helper (bevel-dem): forwardClick can walk several AX calls, each
-        // capped ~1s helper-side, so a 3s deadline keeps a dead tray click from hanging the caller.
+        // capped ~1s helper-side, so a 3s deadline keeps a dead tray click from hanging the caller. The
+        // park path (bevel-6fin) additionally runs a self-addressed event move + reflow wait before the
+        // press, so give it a longer deadline.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        cts.CancelAfter(TimeSpan.FromSeconds(park ? 8 : 3));
         try
         {
             var tray = GetTrayClient();
@@ -126,6 +113,7 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                     ? ForwardClickRequest.Types.Button.Right
                     : ForwardClickRequest.Types.Button.Left,
                 Modifiers = (uint)modifiers,
+                Park = park,
             }, headers: AuthHeader(), cancellationToken: cts.Token);
             return reply.Delivered;
         }
@@ -169,15 +157,12 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                     {
                         case TrayChange.Types.Kind.Snapshot:
                         case TrayChange.Types.Kind.Added:
-                            CacheBounds(item);
                             ItemAdded?.Invoke(this, item);
                             break;
                         case TrayChange.Types.Kind.Updated:
-                            CacheBounds(item);
                             ItemUpdated?.Invoke(this, item);
                             break;
                         case TrayChange.Types.Kind.Removed:
-                            lock (_boundsLock) _lastBounds.Remove(item.Id.Value);
                             ItemRemoved?.Invoke(this, item);
                             break;
                     }
@@ -209,43 +194,6 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
 
     private Grpc.Core.Metadata AuthHeader()
         => HelperClient.BuildAuthMetadata(_helperLifecycle.NonceToken, "tray");
-
-    // ── Overlay cover-frame geometry (bevel-7hf4) ───────────────────────
-
-    /// <summary>Records a mirrored item's screen bounds for the overlay cover frame. Called on the gRPC
-    /// stream thread and from GetItemsAsync; lock-protected because <see cref="ComputeMirroredStrip"/> reads
-    /// it on the UI thread.</summary>
-    private void CacheBounds(AbstractionsTrayItem item)
-    {
-        if (item.Bounds is not { } b) return;
-        lock (_boundsLock) _lastBounds[item.Id.Value] = b;
-    }
-
-    /// <summary>The union of the mirrored items' bounds (global top-left CG points) that fall in the
-    /// primary-display menu-bar band — the exact strip the overlay must cover so the clock / Control
-    /// Center (never mirrored, right of this union) stay visible. Null when there is nothing to cover.
-    /// Cheap and pure; safe to call on the UI thread.</summary>
-    private PalRect? ComputeMirroredStrip()
-    {
-        lock (_boundsLock)
-        {
-            int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
-            var any = false;
-            foreach (var b in _lastBounds.Values)
-            {
-                if (b.Width <= 0 || b.Height <= 0) continue;
-                if (b.X < 0) continue;                 // v1: primary display only (secondary items have offset x)
-                if (b.Y > 40) continue;                // menu-bar band only (items sit at CG y ≈ 0)
-                any = true;
-                if (b.X < minX) minX = b.X;
-                if (b.Y < minY) minY = b.Y;
-                if (b.X + b.Width > maxX) maxX = b.X + b.Width;
-                if (b.Y + b.Height > maxY) maxY = b.Y + b.Height;
-            }
-            if (!any) return null;
-            return new PalRect(minX, minY, maxX - minX, maxY - minY);
-        }
-    }
 
     private static AbstractionsTrayItem Map(WireTrayItem w)
         => new(

@@ -325,8 +325,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
             case CoreCommandKind.ForwardTrayClick:
                 var delivered = await _tray.ForwardClickAsync(
                     new TrayItemId(cmd.TrayItemId ?? throw new ArgumentException("ForwardTrayClick needs TrayItemId")),
-                    cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, ct).ConfigureAwait(false);
+                    cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, park: cmd.Park, ct: ct)
+                    .ConfigureAwait(false);
                 return new CoreResponse(Ok: true, Delivered: delivered);
+            case CoreCommandKind.SetTrayHidden:
+                // The native hide itself was applied in the UI process (bevel-qpir); this only forwards the
+                // state to the helper so its tray-poll cadence adapts (fast while consolidated).
+                await _tray.SetNativeTrayHiddenAsync(cmd.Hidden, ct).ConfigureAwait(false);
+                return CoreResponse.Success();
             case CoreCommandKind.GetSettings:
                 // The on-connect bootstrap pull (a peer that connected before the snapshot, or is
                 // re-syncing) — hand back the current blob + version.

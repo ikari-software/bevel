@@ -79,6 +79,39 @@ public class TrayViewModelTests
         => Assert.False(await new TrayViewModel(null).Forward(new TrayItemId("x"), TrayButton.Left, TrayModifiers.None));
 
     [AvaloniaFact]
+    public async Task Forward_while_consolidated_requests_single_item_reveal()
+    {
+        // Consolidation on → the item is hidden off-screen; the forward must ask the host to PARK this
+        // one item (Ice's self-addressed move) rather than click its (off-screen) position.
+        var host = new StubTray(Item("9:90", "Clock"));
+        var vm = new TrayViewModel(host);
+        vm.SetConsolidated(true);
+        Assert.Contains(true, host.HiddenCalls);
+
+        var ok = await vm.Forward(new TrayItemId("9:90"), TrayButton.Left, TrayModifiers.None);
+
+        Assert.True(ok);
+        Assert.True(host.Parked);
+        Assert.Equal("9:90", host.LastForward?.Id.Value);
+    }
+
+    [AvaloniaFact]
+    public async Task Forward_while_consolidated_ignores_a_click_while_one_reveal_is_in_flight()
+    {
+        // The reveal is a slow round-trip (self-addressed move + press); a rapid second click must not
+        // race the first. The busy guard returns false without forwarding.
+        var host = new StubTray(Item("9:90", "Clock")) { ForwardGate = new TaskCompletionSource<bool>() };
+        var vm = new TrayViewModel(host);
+        vm.SetConsolidated(true);
+
+        var first = vm.Forward(new TrayItemId("9:90"), TrayButton.Left, TrayModifiers.None);
+        Assert.False(await vm.Forward(new TrayItemId("9:90"), TrayButton.Left, TrayModifiers.None));
+        Assert.True(host.Parked);
+        host.ForwardGate.SetResult(true);
+        Assert.True(await first);
+    }
+
+    [AvaloniaFact]
     public void Overflow_caps_the_visible_strip_and_the_flyout_holds_the_rest()
     {
         var host = new StubTray(Enumerable.Range(0, 10).Select(i => Item($"{i}:{i}0", $"T{i}")).ToArray());
@@ -270,6 +303,9 @@ public class TrayViewModelTests
 
         public (TrayItemId Id, TrayButton Button, TrayModifiers Modifiers)? LastForward { get; private set; }
 
+        /// <summary>True when the last forward requested single-item reveal (bevel-6fin).</summary>
+        public bool Parked { get; private set; }
+
         public List<bool> HiddenCalls { get; } = new();
 
         public Capabilities Capabilities => Capabilities.None;
@@ -280,10 +316,16 @@ public class TrayViewModelTests
             HiddenCalls.Add(hidden);
             return Task.CompletedTask;
         }
-        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        /// <summary>When set, forwards await this instead of returning instantly, so tests can hold a
+        /// forward in flight (the reveal busy-guard, bevel-6fin).</summary>
+        public TaskCompletionSource<bool>? ForwardGate { get; set; }
+
+        public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, bool park = false, CancellationToken ct = default)
         {
             LastForward = (id, button, modifiers);
-            return Task.FromResult(true);
+            Parked = park;
+            if (ForwardGate is { } gate) return await gate.Task;
+            return true;
         }
 
         public event EventHandler<TrayItem>? ItemAdded;

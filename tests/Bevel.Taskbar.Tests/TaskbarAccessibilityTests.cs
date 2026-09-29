@@ -172,7 +172,7 @@ public class TaskbarAccessibilityTests
         public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<TrayItem>>(new[] { _item });
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, bool park = false, CancellationToken ct = default)
             => Task.FromResult(true);
         public event EventHandler<TrayItem>? ItemAdded { add { } remove { } }
         public event EventHandler<TrayItem>? ItemRemoved { add { } remove { } }
