@@ -10,6 +10,10 @@
 bin/
 obj/
 [Bb]uild/
+# build/RepoPaths.cs is a hand-written SOURCE (bevel-eabc), not build output: re-include just that file.
+!/build/
+/build/*
+!/build/RepoPaths.cs
 *.user
 *.suo
 .vs/
