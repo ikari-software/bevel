@@ -26,7 +26,50 @@ internal static class LauncherControl
         SpawnDesktop = 4, // launch the --role=desktop child on demand (Start ▸ Show Desktop, bevel-gdie)
         CloseDesktop = 5, // terminate + de-supervise the desktop child (Start ▸ Hide Desktop)
         QueryDesktop = 6, // ask whether the desktop child is running; reply byte is 1 (up) / 0 (down)
+        SpawnFiler = 7,   // open a Filer window (bevel-t48y): payload = [flags][openPath][NUL][selectPath?]
     }
+
+    /// <summary>Encodes a <see cref="Command.SpawnFiler"/> request (bevel-t48y). Wire layout:
+    /// <c>[verb][flags][utf8 openPath][0x00][utf8 selectPath?]</c> — flags bit0 = search,
+    /// bit1 = has-select. NUL is safe as a separator: no filesystem path can contain one.</summary>
+    internal static byte[] EncodeSpawnFiler(string openPath, bool search, string? selectPath)
+    {
+        var flags = (byte)((search ? 1 : 0) | (string.IsNullOrEmpty(selectPath) ? 0 : 2));
+        var body = string.IsNullOrEmpty(selectPath)
+            ? System.Text.Encoding.UTF8.GetBytes(openPath)
+            : System.Text.Encoding.UTF8.GetBytes(openPath)
+                .Concat(System.Text.Encoding.UTF8.GetBytes(selectPath!).Prepend((byte)0)).ToArray();
+        return body.Prepend(flags).Prepend((byte)Command.SpawnFiler).ToArray();
+    }
+
+    /// <summary>Decodes a full <see cref="Command.SpawnFiler"/> payload (verb byte included). Null when
+    /// the payload is not a SpawnFiler verb or does not parse — the caller must IGNORE, never crash.</summary>
+    internal static (string OpenPath, bool Search, string? SelectPath)? DecodeSpawnFiler(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 3 || payload[0] != (byte)Command.SpawnFiler) return null;
+        var flags = payload[1];
+        var body = payload[2..];
+        int sep = -1;
+        if ((flags & 2) != 0)
+        {
+            sep = body.IndexOf((byte)0);
+            if (sep < 0) return null;
+        }
+        var openPath = System.Text.Encoding.UTF8.GetString(body[..(sep < 0 ? body.Length : sep)]);
+        string? selectPath = null;
+        if (sep >= 0) selectPath = System.Text.Encoding.UTF8.GetString(body[(sep + 1)..]);
+        if (openPath.Length == 0) return null;
+        return (openPath, (flags & 1) != 0, selectPath is { Length: > 0 } ? selectPath : null);
+    }
+
+    /// <summary>
+    /// Child side: ask the launcher to open a Filer window (bevel-t48y). True when the launcher acked —
+    /// the OPEN is then the launcher's responsibility (supervision, teardown, restart live there).
+    /// False when unsupervised or the launcher is unreachable: callers fall back to spawning in-process.
+    /// Bounded off-thread like <see cref="TrySend"/>, so it is UI-thread-safe but must not be on the
+    /// open hot path either way.</summary>
+    public static bool TrySpawnFiler(string openPath, bool search = false, string? selectPath = null)
+        => TrySendPayload(EncodeSpawnFiler(openPath, search, selectPath));
 
     private static string DefaultSocketPath =>
         BevelRuntimeDir.GuardSocketPath(Path.Combine(BevelRuntimeDir.CoreDir, "launcher.sock"));
@@ -67,7 +110,12 @@ internal static class LauncherControl
     /// the taskbar's quit/restart hooks (UI thread), so it must not block long or deadlock; it runs the
     /// send off the thread pool and waits with a bounded budget.
     /// </summary>
-    public static bool TrySend(Command command)
+    public static bool TrySend(Command command) => TrySendPayload(new[] { (byte)command });
+
+    /// <summary>The one bounded launcher send: <paramref name="payload"/> as-is, ack when the reply's
+    /// first byte is 1 (bevel-t48y: a verb handler may NACK with 0). Unsupervised or unreachable →
+    /// false, so callers fall back to in-process behaviour — never a throw, never a long block.</summary>
+    private static bool TrySendPayload(ReadOnlyMemory<byte> payload)
     {
         var socketPath = Environment.GetEnvironmentVariable(SocketEnv);
         var token = Environment.GetEnvironmentVariable(TokenEnv);
@@ -83,8 +131,8 @@ internal static class LauncherControl
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 await using var client = new UdsMessageClient(socketPath, nonce, "launcher");
                 await client.ConnectAsync(cts.Token).ConfigureAwait(false);
-                await client.RequestAsync(new[] { (byte)command }, cts.Token).ConfigureAwait(false);
-                return true;
+                var reply = await client.RequestAsync(payload.ToArray(), cts.Token).ConfigureAwait(false);
+                return reply.Length >= 1 && reply[0] == 1;
             }).GetAwaiter().GetResult();
         }
         catch

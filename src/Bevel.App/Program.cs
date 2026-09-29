@@ -316,6 +316,23 @@ internal static class Program
                     case LauncherControl.Command.QueryDesktop:
                         // Reply byte carries state (1 up / 0 down) instead of the plain ack below.
                         return new[] { (byte)(await supervisor.IsRoleRunningAsync(ShellRole.Desktop, ct).ConfigureAwait(false) ? 1 : 0) };
+                    // bevel-t48y: the taskbar (or any supervised role) asks the launcher to open a Filer.
+                    // TRANSITIONAL (Task 2): spawn via the same helper the taskbar used, now LAUNCHER-owned
+                    // (attribution: child of the app process, not a UI child) — Task 3 replaces this with
+                    // the FilerSupervisor (liveness ack + captured stderr + teardown/restart). An
+                    // undecodable payload NACKs (0) so the caller's fallback runs instead of a silent loss.
+                    case LauncherControl.Command.SpawnFiler:
+                        if (LauncherControl.DecodeSpawnFiler(payload.Span) is { } open)
+                        {
+                            RestartDiag.Log($"launcher: received SpawnFiler → {open.OpenPath} (search={open.Search}, select={open.SelectPath ?? "-"})");
+                            SpawnFiler(open.OpenPath, open.Search, open.SelectPath);
+                        }
+                        else
+                        {
+                            RestartDiag.Log("launcher: SpawnFiler payload undecodable — NACK");
+                            return new byte[] { 0 };
+                        }
+                        break;
                 }
             }
             return new byte[] { 1 }; // ack

@@ -20,11 +20,34 @@ public interface IFilerSpawner
     void Spawn(string path, string? selectPath = null, bool search = false);
 }
 
-/// <summary>The real spawner: forwards to <see cref="Program.SpawnFiler"/>.</summary>
+/// <summary>The in-process spawner: forwards to <see cref="Program.SpawnFiler"/> — today's
+/// detached, unsupervised spawn. Used directly by unsupervised runs and as the FALLBACK when the
+/// launcher is unreachable.</summary>
 public sealed class ProcessFilerSpawner : IFilerSpawner
 {
     public void Spawn(string path, string? selectPath = null, bool search = false)
         => Program.SpawnFiler(path, search: search, selectPath: selectPath);
+}
+
+/// <summary>
+/// The supervised-role spawner (bevel-t48y): asks the LAUNCHER to open the Filer via the
+/// <see cref="LauncherControl.Command.SpawnFiler"/> verb, so the window becomes a supervised launcher
+/// concern (teardown/restart/visibility live there). Falls back to the in-process
+/// <see cref="ProcessFilerSpawner"/> when unsupervised or when the launcher NACKs or is unreachable —
+/// an open must never silently die because the control channel had a blip.
+/// </summary>
+public sealed class LauncherFilerSpawner : IFilerSpawner
+{
+    private readonly IFilerSpawner _fallback;
+
+    public LauncherFilerSpawner(IFilerSpawner? fallback = null)
+        => _fallback = fallback ?? new ProcessFilerSpawner();
+
+    public void Spawn(string path, string? selectPath = null, bool search = false)
+    {
+        if (Bevel.App.Supervision.LauncherControl.TrySpawnFiler(path, search, selectPath)) return;
+        _fallback.Spawn(path, selectPath, search);
+    }
 }
 
 /// <summary>

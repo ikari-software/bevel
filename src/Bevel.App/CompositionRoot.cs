@@ -341,7 +341,9 @@ public static class CompositionRoot
             // channel-client ctor parameter is optional (defaults to null), so the Desktop/Core roles
             // that also bind this surface but never wire the channel keep the clear "no window" fallback.
             services.AddSingleton<Bevel.Interop.IShellSurface, SpawningShellSurface>();
-        services.AddSingleton<IFilerSpawner, ProcessFilerSpawner>();
+        // Supervised opens go through the launcher's SpawnFiler verb (bevel-t48y); the registration
+        // self-degrades to the in-process spawner when unsupervised, so one registration covers both.
+        services.AddSingleton<IFilerSpawner>(sp => new LauncherFilerSpawner());
 
         // Taskbar↔Filer automation channel (bevel-uldj). The Filer process REGISTERS by hosting a
         // control server that answers forwarded select/query against its own in-process
