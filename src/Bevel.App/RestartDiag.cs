@@ -23,4 +23,9 @@ internal static class RestartDiag
         }
         catch { /* diagnostics must never throw */ }
     }
+
+    /// <summary>Per-child stderr log for a supervised Filer (bevel-t48y): a dying peer's managed stack
+    /// exists ONLY in its stderr, so each filer's stderr is pumped here instead of vanishing with the
+    /// process (<c>bevel-peer-process-crashes</c>; the pid-46808 crash was caught only by luck).</summary>
+    public static string FilerLogPath(int pid) => Path.Combine(Path.GetTempPath(), $"bevel-filer-{pid}.log");
 }

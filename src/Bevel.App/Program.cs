@@ -32,11 +32,15 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             RestartDiag.Log($"FATAL unhandled ({role}): {e.ExceptionObject}");
-            if (role != ShellRole.Launcher)
+            // Filers skip heartbeat writes entirely (bevel-t48y, supervisor-only liveness): N
+            // instances would clobber the single ShellRole.Filer slot — the supervisor's close-vs-
+            // crash policy reads the EXIT CODE, so a crashed filer is still fully diagnosed via
+            // RestartDiag (pid-stamped above) + its per-child stderr file.
+            if (role != ShellRole.Launcher && role != ShellRole.Filer)
                 RoleHeartbeatStore.ReportFailed(role, e.ExceptionObject?.ToString() ?? "unhandled");
         };
 
-        if (role != ShellRole.Launcher)
+        if (role != ShellRole.Launcher && role != ShellRole.Filer)
             RoleHeartbeatStore.ReportStarting(role);
 
         // The launcher supervises OTHER processes and hosts no PAL/DI/UI of its own — branch before the
@@ -288,6 +292,15 @@ internal static class Program
 
         supervisor.StartAsync().GetAwaiter().GetResult();
 
+        // Filer supervision (bevel-t48y): a SIBLING of the role supervisor — the user opens N Filer
+        // windows, so these children are keyed by instance, not by role. Close-vs-crash policy
+        // (exit 0 = the user closed the window, never respawn — bevel-gdie; anything else = crash,
+        // respawn at last-open-path with backoff), stderr captured per child, torn down on Quit,
+        // restarted by RestartAll. Liveness is supervisor-only: filers write NO role heartbeats (N
+        // instances would clobber the single Filer slot and phantom-gap the health monitor).
+        var filerSupervisor = new FilerSupervisor(args, childEnv, log: msg => RestartDiag.Log(msg));
+        filerSupervisor.Start();
+
         using var stop = new ManualResetEventSlim(false);
 
         // Control server: the taskbar's quit/restart buttons arrive here and fan out to the whole shell.
@@ -300,6 +313,7 @@ internal static class Program
                     case LauncherControl.Command.RestartAll:
                         RestartDiag.Log("launcher: received RestartAll → supervisor.RestartAllAsync");
                         await supervisor.RestartAllAsync(ct).ConfigureAwait(false);
+                        await filerSupervisor.RestartAllAsync(ct).ConfigureAwait(false);
                         RestartDiag.Log("launcher: RestartAllAsync completed (children respawned in-place)");
                         break;
                     case LauncherControl.Command.RestartCore:
@@ -309,6 +323,7 @@ internal static class Program
                         // respawn a child that exits during teardown, and Quit looks like Restart
                         // (bevel-0md2 / the bevel-ply race on the quit path only).
                         supervisor.RequestStop();
+                        filerSupervisor.RequestStop();
                         stop.Set();
                         break;
                     // Desktop Show/Hide toggle (bevel-gdie): spawn/kill the --role=desktop child on demand.
@@ -329,23 +344,20 @@ internal static class Program
                     case LauncherControl.Command.QueryDesktop:
                         // Reply byte carries state (1 up / 0 down) instead of the plain ack below.
                         return new[] { (byte)(await supervisor.IsRoleRunningAsync(ShellRole.Desktop, ct).ConfigureAwait(false) ? 1 : 0) };
-                    // bevel-t48y: the taskbar (or any supervised role) asks the launcher to open a Filer.
-                    // TRANSITIONAL (Task 2): spawn via the same helper the taskbar used, now LAUNCHER-owned
-                    // (attribution: child of the app process, not a UI child) — Task 3 replaces this with
-                    // the FilerSupervisor (liveness ack + captured stderr + teardown/restart). An
-                    // undecodable payload NACKs (0) so the caller's fallback runs instead of a silent loss.
+                    // bevel-t48y: the taskbar (or any supervised role) asks the launcher to open a
+                    // Filer. The FilerSupervisor spawns it as a supervised launcher child (direct start
+                    // for TCC attribution, captured stderr, teardown/restart/close-vs-crash policy).
+                    // A failed spawn NACKs (0) so the caller's fallback runs instead of a silent loss —
+                    // and the old invisible-failure class (Process.Start of a detached shell "succeeding")
+                    // is gone: a false ack now MEANS a live supervised child.
                     case LauncherControl.Command.SpawnFiler:
                         if (LauncherControl.DecodeSpawnFiler(payload.Span) is { } open)
                         {
                             RestartDiag.Log($"launcher: received SpawnFiler → {open.OpenPath} (search={open.Search}, select={open.SelectPath ?? "-"})");
-                            SpawnFiler(open.OpenPath, open.Search, open.SelectPath);
+                            return new[] { (byte)(await filerSupervisor.OpenAsync(open.OpenPath, open.Search, open.SelectPath, ct).ConfigureAwait(false) ? 1 : 0) };
                         }
-                        else
-                        {
-                            RestartDiag.Log("launcher: SpawnFiler payload undecodable — NACK");
-                            return new byte[] { 0 };
-                        }
-                        break;
+                        RestartDiag.Log("launcher: SpawnFiler payload undecodable — NACK");
+                        return new byte[] { 0 };
                 }
             }
             return new byte[] { 1 }; // ack
@@ -356,9 +368,9 @@ internal static class Program
         // .NET terminates the launcher before it can reap its children, orphaning the whole shell.
         // RequestStop() latches the supervisor closed SYNCHRONOUSLY here so it can't respawn a child that
         // exited on its own SIGTERM before the async teardown runs (bevel-ply).
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; supervisor.RequestStop(); stop.Set(); });
-        using var winStop = Supervision.WindowsShutdownSignal.Register(() => { supervisor.RequestStop(); stop.Set(); }); // bevel-ncfp.2
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; supervisor.RequestStop(); filerSupervisor.RequestStop(); stop.Set(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; supervisor.RequestStop(); filerSupervisor.RequestStop(); stop.Set(); });
+        using var winStop = Supervision.WindowsShutdownSignal.Register(() => { supervisor.RequestStop(); filerSupervisor.RequestStop(); stop.Set(); }); // bevel-ncfp.2
         stop.Wait();
 
         // Ordered teardown off the thread pool (no lingering sync context — bevel-fu5): kill every child
@@ -367,6 +379,7 @@ internal static class Program
         Task.Run(async () =>
         {
             await supervisor.DisposeAsync().ConfigureAwait(false);
+            await filerSupervisor.DisposeAsync().ConfigureAwait(false);
             await control.DisposeAsync().ConfigureAwait(false);
         }).GetAwaiter().GetResult();
     }
@@ -531,9 +544,10 @@ internal static class Program
                 ? Path.GetDirectoryName(entryAssemblyPath) ?? startInfo.WorkingDirectory
                 : Path.GetDirectoryName(processPath) ?? startInfo.WorkingDirectory;
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                startInfo = CreateDetachedMacOSStartInfo(startInfo);
-
+            // DIRECT start — never the /bin/sh + nohup detach (bevel-t48y): a detached child loses
+            // the spawning app's TCC identity (Accessibility grants stop applying to its windows)
+            // and its stderr vanishes. The spawner here is the shell app itself, which outlives the
+            // child in every unsupervised flow, so the child inherits our stderr like any role child.
             Process.Start(startInfo);
         }
         catch (Exception ex)
