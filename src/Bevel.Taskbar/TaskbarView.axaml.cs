@@ -255,7 +255,7 @@ public partial class TaskbarView : UserControl
             _buttonSize = s.TaskbarButtonSize;
             TaskbarTheme.Configure(_buttonSize);
             _window?.ReapplyMetrics();     // resize + re-anchor + refresh band; raises RowsChanged → ApplyRowLayout
-            StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
+            StartButton.MaxHeight = StartButtonMaxHeight();
             ReapplyButtonHeights();
             ApplyTaskIconMetric();         // bigger/smaller glyphs follow the tier, live (bevel-c54t)
         }
@@ -286,6 +286,21 @@ public partial class TaskbarView : UserControl
             $"barH={_window?.Height} rows={_window?.Rows} heightForRows={TaskbarTheme.HeightForRows(_window?.Rows ?? 1)} " +
             $"band={_window?.GetWorkAreaBand()} scaling={_window?.RenderScaling}");
     }
+
+    /// <summary>
+    /// The Start button's height cap: it grows with the bar, but never past <see cref="StartMaxRows"/>
+    /// rows — and never past the bar it actually sits in.
+    ///
+    /// The second clamp is the bevel-kclq fix. This used to be a flat HeightForRows(StartMaxRows), i.e.
+    /// 86 for a 3-row cap, which looks harmless on a 2-row bar because 86 &gt; 58 so the cap never binds
+    /// on HEIGHT. It binds on PLACEMENT: the Start menu's popup is anchored above the Start button, so a
+    /// button the layout treats as 86 tall puts the anchor at the 3-row position and the menu floats one
+    /// RowHeight above the bar. Measured on device at rows=2: the popup's bottom landed at y=1355, which
+    /// is exactly HeightForRows(3)=86 off the screen bottom plus the Win2000 skin's 1px button margin,
+    /// where the bar's own top is 1383.
+    /// </summary>
+    private double StartButtonMaxHeight()
+        => TaskbarTheme.HeightForRows(Math.Min(_window?.Rows ?? 1, StartMaxRows));
 
     /// <summary>Re-applies the current button-height tier to every realized window button (bevel-cust).
     /// <see cref="WireTaskButton"/> only sets Height when a container is first realized, so a live size
@@ -476,7 +491,7 @@ public partial class TaskbarView : UserControl
             WindowButtonScroller.ScrollChanged += (_, _) => UpdateOverflowChevrons();
         }
 
-        StartButton.MaxHeight = TaskbarTheme.HeightForRows(StartMaxRows);
+        StartButton.MaxHeight = StartButtonMaxHeight();
         ApplyRowLayout();
         // A posted pass after the scroller has real bounds, so the initially-seeded buttons get a
         // width (they start at 0) even if their SizeChanged fired before we subscribed. Also wires
@@ -894,6 +909,9 @@ public partial class TaskbarView : UserControl
     private void ApplyRowLayout()
     {
         RootGrid.Height = TaskbarTheme.HeightForRows(_window?.Rows ?? 1);
+        // Track the row count here too (bevel-kclq): the Start button's cap feeds the Start menu's popup
+        // anchor, so a cap left at a taller row count parks the menu above the bar.
+        StartButton.MaxHeight = StartButtonMaxHeight();
         var rows = _window?.Rows ?? 1;
         TaskbarLog.Debug($"ApplyRowLayout rows={rows} rootHeight={RootGrid.Height} scaling={_window?.RenderScaling}");
         _vm?.Tray.SetRows(rows);   // tray visible cap is PER ROW, and it lays out that many rows (bevel-m3)
