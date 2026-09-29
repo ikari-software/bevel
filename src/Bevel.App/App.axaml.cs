@@ -368,7 +368,12 @@ public partial class App : Application
             toggleDesktop: ToggleDesktop,
             desktopRunning: Supervision.LauncherControl.QueryDesktopRunning,
             // Tab enumeration for the task-button menu's Tabs section (bevel-a40b).
-            tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>());
+            tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>(),
+            // A peer's settings.Current can be stale at this exact moment (a cold/stale on-disk cache,
+            // or the core connect still in flight) — handing the service itself lets TaskbarView catch
+            // up on its OWN ISettingsService.Changed the moment the real snapshot lands, instead of
+            // staying frozen at whatever TaskbarRows/etc. Initialize saw here (bevel-kclq regression).
+            settingsService: settings);
         // Start the background shell model (subscribes to window events + enumerates installed
         // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model.

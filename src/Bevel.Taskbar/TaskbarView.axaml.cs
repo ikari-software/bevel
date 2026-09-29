@@ -122,7 +122,8 @@ public partial class TaskbarView : UserControl
         Action? openSearch = null,
         Action? toggleDesktop = null,
         Func<bool?>? desktopRunning = null,
-        ITabProvider? tabProvider = null)
+        ITabProvider? tabProvider = null,
+        Bevel.Core.ISettingsService? settingsService = null)
     {
         // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
@@ -167,6 +168,39 @@ public partial class TaskbarView : UserControl
         _fontSize = settings.TaskbarFontSize;
         _bgColor = settings.TaskbarBackgroundColor;
         _opacity = settings.TaskbarOpacity;
+
+        // Peer-settings arrival race (bevel-kclq regression, 2026-09-29): a split-process taskbar's
+        // ISettingsService (RemoteSettingsService) can paint its FIRST snapshot — the one every field
+        // above was just read from — before the persisted values actually land (a stale/cold on-disk
+        // cache, or a core connect that is still in flight). When the real snapshot then arrives, it
+        // fires only ISettingsService.Changed; nothing upstream (App.OnFrameworkInitializationCompleted's
+        // generic Changed handler applies theme/folder-options only) was pushing a LATE correction into
+        // an already-built TaskbarWindow/TaskbarView. Concretely: TaskbarWindow gets constructed with the
+        // stale TaskbarRows, OnLoaded computes StartButton.MaxHeight from that stale row count, and the
+        // Start menu (anchored above the button) stays parked at the WRONG row's height for the rest of
+        // the session — restarting is the only thing that picks up a by-then-warm cache. Wiring the
+        // correction here — the same call ApplyLiveSettings already gets from the two LOCAL apply paths
+        // (ToggleTaskbarLock, the Properties dialog) — closes the race generally, for every field this
+        // method seeds, not just rows. Idempotent: TaskbarWindow.SetRows is a no-op when unchanged.
+        _settingsService = settingsService;
+        if (_settingsService is not null && !_settingsServiceWired)
+        {
+            _settingsServiceWired = true;
+            _settingsService.Changed += OnSettingsServiceChanged;
+        }
+    }
+
+    private Bevel.Core.ISettingsService? _settingsService;
+    private bool _settingsServiceWired;
+
+    /// <summary>Fired off the shell-core transport thread (or synchronously for an in-process fake) —
+    /// marshal to the UI thread before touching any control, exactly like App's own settings.Changed
+    /// handler does.</summary>
+    private void OnSettingsServiceChanged()
+    {
+        var service = _settingsService;
+        if (service is null) return;
+        Dispatcher.UIThread.Post(() => ApplyLiveSettings(service.Current));
     }
 
     /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>
