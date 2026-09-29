@@ -85,6 +85,10 @@ internal static class TaskbarLog
     /// <summary>Always-on (not debug-gated) line for a state the user can SEE but cannot explain from
     /// the bar alone — e.g. the tray drawing placeholders because no icon arrived (bevel-yduf). Callers
     /// must rate-limit themselves (log on change, not per poll); this is stderr, the process log.</summary>
-    public static void Info(string message) =>
-        Console.Error.WriteLine($"[TASKBAR {DateTime.Now:HH:mm:ss.fff}] {message}");
+    public static void Info(string message)
+    {
+        var line = $"[TASKBAR {DateTime.Now:HH:mm:ss.fff}] {message}";
+        Console.Error.WriteLine(line);
+        WriteToFile(line);   // always-on lines matter MOST in a Finder launch, where stderr is discarded
+    }
 }

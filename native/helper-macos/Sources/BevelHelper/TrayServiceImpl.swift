@@ -815,12 +815,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return pngFromIcon(NSWorkspace.shared.icon(forFile: appPath))
     }
 
-    /// Renders an NSImage into a fixed 16×16 PNG (mirrors WindowServiceImpl's sizing so the reply
-    /// stays small and well under gRPC's message limit — tray icons never need more).
+    /// Renders an NSImage into a PNG at the display's PIXEL density.
+    ///
+    /// This used to be a hard 16x16 on the reasoning that "tray icons never need more". They do: 16 is a
+    /// LOGICAL size, and on a Retina display a 16pt icon occupies 32 physical pixels, so every app-icon
+    /// fallback was rasterised at exactly half the resolution it is drawn at and looked soft next to the
+    /// live captures, which come back at backing-store resolution via .bestResolution. The tray icon size
+    /// is also user-configurable up to 32pt, so the ceiling is 32pt x the backing scale.
+    ///
+    /// Still bounded and still small: 64x64 RGBA on a 2x display is a few KB, far under the gRPC limit.
     private func pngFromIcon(_ icon: NSImage) -> Data {
-        let target = NSSize(width: 16, height: 16)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
+        let points = 32.0                                   // the tray-size slider's maximum
+        let pixels = Int((points * scale).rounded())
+        let target = NSSize(width: points, height: points)
         guard let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16,
+            bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else {
             return Data()
