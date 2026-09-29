@@ -68,9 +68,21 @@ python3 "$PKG/verify-bundle.py" "$OUT/publish-app/Bevel.App"
 echo "==> Publishing bevelctl"
 dotnet publish "$ROOT/src/bevelctl/bevelctl.csproj" "${PUBLISH_ARGS[@]}" -o "$OUT/publish-cli"
 
-echo "==> Assembling $APP"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Assemble into a STAGING directory that is not named *.app, then move it into place at the end.
+#
+# Two reasons, both learned the hard way. (1) macOS App Management protection: the moment
+# Contents/MacOS/<CFBundleExecutable> exists inside a directory named Bevel.app, the OS treats it as an
+# app bundle and refuses further writes from a process without the App Management grant — so the app
+# payload and bevelctl would land and the BevelHelper copy would fail with EPERM, mid-assembly.
+# (2) Atomicity: an aborted build used to leave a HALF-BUILT dist/Bevel.app with no Info.plist, which
+# looks launchable and dies at startup on a missing assembly. Staging means a failed build leaves the
+# previous bundle untouched and nothing half-formed to launch.
+STAGE="$OUT/.Bevel.app.staging"
+echo "==> Assembling $APP (staging in $STAGE)"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
+APP_FINAL="$APP"
+APP="$STAGE"
 
 # App payload → Contents/MacOS; the apphost is renamed to CFBundleExecutable (Bevel).
 cp -R "$OUT/publish-app/." "$APP/Contents/MacOS/"
@@ -104,5 +116,11 @@ test -f "$APP/Contents/Resources/Bevel.sdef"
 # dist/Bevel.app AND the dist/publish-app intermediate. rm -rf above only clears $APP, so this marker
 # in $OUT survives rebuilds.
 : > "$OUT/.metadata_never_index"
+
+# Only now does it become a *.app — after every file is in place and validated, so the protection
+# above can never catch a partial bundle, and a failed build never replaces a working one.
+rm -rf "$APP_FINAL"
+mv "$STAGE" "$APP_FINAL"
+APP="$APP_FINAL"
 
 echo "==> Built $APP (unsigned). Next: sign-app.sh (Developer ID + notarytool profile 'bevel')."
