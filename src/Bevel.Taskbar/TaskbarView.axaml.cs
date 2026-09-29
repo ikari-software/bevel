@@ -266,6 +266,27 @@ public partial class TaskbarView : UserControl
         LayoutButtons();
     }
 
+    /// <summary>
+    /// Traces where the Start menu's popup actually landed against the bar it was anchored to
+    /// (bevel-kclq: the menu can open a whole row-height above the taskbar).
+    ///
+    /// Kept because that bug is STATEFUL, not static — the geometry measures correct at steady state
+    /// in both a headless repro and a live session, and a restart clears it. It only appears after the
+    /// bar's geometry changes under a menu that has already been built, so catching it needs the
+    /// numbers at the moment of opening, in the session where it went wrong. Debug-gated, so it costs
+    /// nothing unless BEVEL_DEBUG_TASKBAR is set. Remove once the placement is fixed and covered.
+    /// </summary>
+    private void TraceMenuPlacement()
+    {
+        if (!TaskbarLog.IsEnabled || _startMenu is null) return;
+        var host = _startMenu.MenuPopupControl.Host as Avalonia.Controls.Primitives.PopupRoot;
+        TaskbarLog.Debug(
+            $"kclq placement popupTop={(host is null ? null : (Point?)host.PointToScreen(default).ToPoint(1.0))} " +
+            $"popupSize={host?.Bounds.Size} startBtnTop={StartButton.PointToScreen(default).ToPoint(1.0)} " +
+            $"barH={_window?.Height} rows={_window?.Rows} heightForRows={TaskbarTheme.HeightForRows(_window?.Rows ?? 1)} " +
+            $"band={_window?.GetWorkAreaBand()} scaling={_window?.RenderScaling}");
+    }
+
     /// <summary>Re-applies the current button-height tier to every realized window button (bevel-cust).
     /// <see cref="WireTaskButton"/> only sets Height when a container is first realized, so a live size
     /// change needs this sweep over the existing buttons.</summary>
@@ -396,7 +417,11 @@ public partial class TaskbarView : UserControl
             // also focuses its first item on open (StartMenu.OpenAsync).
             if (_startMenu is not null)
             {
-                _startMenu.MenuPopupControl.Opened += (_, _) => EnterMenuScope();
+                _startMenu.MenuPopupControl.Opened += (_, _) =>
+                {
+                    EnterMenuScope();
+                    TraceMenuPlacement();
+                };
                 _startMenu.MenuPopupControl.Closed += (_, _) => ExitMenuScope();
             }
 
