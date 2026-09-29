@@ -278,7 +278,7 @@ internal static class Program
         using var stop = new ManualResetEventSlim(false);
 
         // Control server: the taskbar's quit/restart buttons arrive here and fan out to the whole shell.
-        var control = new UdsMessageServer(controlSocket, controlNonce, async (payload, ct) =>
+        var control = new UdsMessageServer(controlSocket, controlNonce, async (_, payload, ct) =>
         {
             if (payload.Length >= 1)
             {

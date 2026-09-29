@@ -71,7 +71,7 @@ public sealed class ExplorerControlServer : IHostedService, IAsyncDisposable
     /// thread (transport thread); the surface marshals to the UI thread itself, so this never blocks it.
     /// Any fault becomes an <see cref="ExplorerReply.Fail"/> the taskbar re-raises as an
     /// AutomationException — the caller always gets a definite answer.</summary>
-    private async ValueTask<byte[]> HandleAsync(ReadOnlyMemory<byte> payload, CancellationToken ct)
+    private async ValueTask<byte[]> HandleAsync(Guid clientId, ReadOnlyMemory<byte> payload, CancellationToken ct)
     {
         ExplorerReply reply;
         try

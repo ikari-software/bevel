@@ -116,20 +116,20 @@ public sealed class RoleSelectorTests
         Assert.Equal(expectClient, hasClient);
     }
 
-    // bevel-6nve regression guard: the split taskbar's settings peer MUST get its own keyed "settings"
-    // core client, separate from the shared window/app/tray client. Sharing one client made settings'
-    // early startup connect eat the core's on-connect TraySnapshot (no tray reconcile backstop), so the
-    // split taskbar came up with an empty tray.
+    // bevel-4zfs regression guard: the split taskbar's settings peer SHARES the one client now. The old
+    // keyed "settings" client existed only because the core pushed its snapshot on CONNECT — the settings
+    // peer's early LoadAsync connect would eat the TraySnapshot before the tray adapter subscribed. The
+    // session protocol gated that push behind Hello, so exactly ONE non-keyed ShellCoreClient must be
+    // registered for the whole process, and the settings peer uses it.
     [Fact]
-    public void Split_taskbar_settings_uses_a_dedicated_keyed_client_not_the_shared_tray_client()
+    public void Split_taskbar_settings_shares_the_one_core_client()
     {
         var services = new ServiceCollection();
         services.AddBevelPlatform(PalKind.MacOS, ShellRole.Taskbar);
 
-        var sharedClient = services.Any(d => d.ServiceType == typeof(ShellCoreClient) && d.ServiceKey is null);
-        var settingsClient = services.Any(d => d.ServiceType == typeof(ShellCoreClient) && (d.ServiceKey as string) == "settings");
-        Assert.True(sharedClient, "expected a shared (non-keyed) window/app/tray core client");
-        Assert.True(settingsClient, "expected a dedicated keyed \"settings\" core client for RemoteSettingsService");
+        var clients = services.Where(d => d.ServiceType == typeof(ShellCoreClient)).ToList();
+        Assert.Single(clients);
+        Assert.True(clients[0].ServiceKey is null, "the process's single core client must be non-keyed (shared)");
     }
 
     // ── Windows PAL wiring (bevel-ncfp.1 / U1) ───────────────────────────────────────────────────

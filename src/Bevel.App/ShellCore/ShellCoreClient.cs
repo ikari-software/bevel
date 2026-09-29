@@ -10,10 +10,15 @@ namespace Bevel.App.ShellCore;
 /// broadcasts into <see cref="CoreEvent"/>s, and fans them to subscribers. Commands go out via
 /// <see cref="SendAsync"/> (request/response).
 ///
+/// <para>Session protocol (bevel-4zfs): the core pushes NOTHING on connect — the snapshot race class is
+/// deleted by giving the CLIENT the session start. A role wires every adapter (which subscribe in their
+/// ctors), then calls <see cref="StartSessionAsync"/>: Hello → the core pushes the four stamped snapshots.
+/// Every event carries (epoch, seq); a gap or an epoch change re-baselines via an automatic re-Hello.</para>
+///
 /// <para>Resilience (bevel — taskbar reconnect): the underlying transport delegates reconnect to
 /// its caller, so this owns it. A background supervisor watches for the transport's
 /// <see cref="UdsMessageClient.Disconnected"/> signal and re-dials with capped exponential backoff.
-/// On success the core re-pushes its on-connect snapshot, so window/app state re-syncs on its own.
+/// On success the client re-Hellos, so the snapshot burst rebuilds window/app/tray state on its own.
 /// <see cref="IsConnected"/>/<see cref="ConnectionChanged"/> expose the link health so a UI can show
 /// a disconnected indicator during the gap.</para>
 /// </summary>
@@ -31,6 +36,25 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     private readonly Task _supervisor;
     private volatile bool _connected;
     private bool _everConnected; // guarded by _connectGate; distinguishes first connect from a reconnect
+
+    // ── Session protocol (bevel-4zfs) ────────────────────────────────────────────
+    // The core pushes NOTHING on connect. This client owns the session start: once the role has wired
+    // every adapter it calls StartSessionAsync (Hello); the core replies, then pushes the four stamped
+    // snapshots. Every event carries (epoch, seq): a NEW epoch (the core's projection was rebuilt — e.g.
+    // the startup seed finished) re-baselines the tracker, and a SEQ GAP means a lost frame — the client
+    // re-issues Hello (rate-limited) instead of silently diverging. Reconnects re-Hello automatically: the
+    // adapters are still subscribed, so the snapshot burst rebuilds everything.
+    private readonly object _sessionGate = new();
+    private bool _sessionStarted;   // set by StartSessionAsync; auto-Hello applies from then on
+    private int _epoch;             // 0 = no baseline yet (pre-Hello deltas apply but don't gap-check)
+    private long _seq;
+    private long _lastAutoHelloTick; // Environment.TickCount64 — rate-limits gap-triggered re-Hellos
+
+    /// <summary>Raised whenever the client sends Hello — first session start, reconnect, or gap-triggered
+    /// re-sync (bevel-4zfs). Diagnostics/tests.</summary>
+    public event Action? HelloSent;
+
+    private const long MinAutoHelloIntervalMs = 2000;
 
     /// <summary>Raised (on a transport receive-loop thread) for every decoded core broadcast — the
     /// adapters filter by <see cref="CoreEvent.Kind"/> and marshal onto their own dispatcher.</summary>
@@ -50,14 +74,16 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             CoreEvent evt;
             try { evt = CoreProtocol.Deserialize<CoreEvent>(raw); }
             catch { return; } // a frame we can't parse (version skew) is dropped, not fatal
+            TrackSequence(evt);
             EventReceived?.Invoke(evt);
         };
         _client.Disconnected += OnTransportDisconnected;
         _supervisor = ReconnectSupervisorAsync(_lifetime.Token);
     }
 
-    /// <summary>Connects (idempotent, retry-safe). Subscribers should attach to <see cref="EventReceived"/>
-    /// BEFORE the first connect so the core's on-connect snapshot isn't missed.</summary>
+    /// <summary>Connects (idempotent, retry-safe). Connecting alone receives NOTHING (bevel-4zfs) — attach
+    /// subscribers to <see cref="EventReceived"/> and then call <see cref="StartSessionAsync"/>, which is
+    /// what makes the core push the snapshots.</summary>
     public async Task EnsureConnectedAsync(CancellationToken ct = default)
     {
         if (_connected) return;
@@ -79,6 +105,72 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             throw;
         }
     }
+
+    /// <summary>Starts the session (bevel-4zfs): Hello → the core pushes the four stamped snapshots to
+    /// THIS client. Call ONCE, after every adapter (windows/apps/tray/settings) is constructed and
+    /// subscribed — that ordering is the whole point: the client owns when state arrives, so the snapshot
+    /// can never be eaten by a too-early connect. Idempotent; a reconnect re-Hellos on its own.</summary>
+    public async Task StartSessionAsync(CancellationToken ct = default)
+    {
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        lock (_sessionGate) _sessionStarted = true;
+        await SendHelloAsync().ConfigureAwait(false);
+    }
+
+    private async Task SendHelloAsync()
+    {
+        HelloSent?.Invoke();
+        await _client.RequestAsync(CoreProtocol.Serialize(new CoreCommand(CoreCommandKind.Hello)), _lifetime.Token)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Session-sequence tracking (bevel-4zfs). A stamped event from a NEW epoch re-baselines (it is
+    /// the head of a snapshot burst — the core rebuilt its projection); within the tracked epoch a seq gap
+    /// means a lost frame — re-Hello, rate-limited. Unstamped events (an older core) apply without tracking.
+    /// Runs on the transport receive loop; the re-Hello is fire-and-forget off-thread so the loop never
+    /// blocks on its own request.</summary>
+    private void TrackSequence(CoreEvent evt)
+    {
+        if (evt.Seq is not { } seq || evt.Epoch is not { } epoch) return;
+        var resync = false;
+        lock (_sessionGate)
+        {
+            if (epoch != _epoch)
+            {
+                _epoch = epoch;
+                _seq = seq;
+                return;
+            }
+            if (seq != _seq + 1)
+            {
+                resync = true;
+                _seq = seq;
+            }
+            else
+            {
+                _seq = seq;
+            }
+        }
+        if (resync)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    lock (_sessionGate)
+                    {
+                        if (Environment.TickCount64 - _lastAutoHelloTick < MinAutoHelloIntervalMs) return;
+                        _lastAutoHelloTick = Environment.TickCount64;
+                    }
+                    await SendHelloAsync().ConfigureAwait(false);
+                }
+                catch { /* rate-limited retry on the next gap; the transport's own reconnect handles the dead-link case */ }
+            });
+    }
+
+    /// <summary>Test seam (InternalsVisibleTo): feeds a synthetic event through the session-sequence
+    /// tracker exactly as the transport would — the gap tests inject a lost frame without a real loss,
+    /// and assert the auto-Hello. Does NOT raise <see cref="EventReceived"/>, so adapters see nothing.</summary>
+    internal void NoteSessionEventForTest(CoreEvent evt) => TrackSequence(evt);
 
     /// <summary>Sends a command and awaits the core's correlated response, connecting first if needed.</summary>
     public async Task<CoreResponse> SendAsync(CoreCommand cmd, CancellationToken ct = default)
@@ -105,12 +197,26 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             if (_connected) return;
             await _client.ConnectAsync(ct).ConfigureAwait(false);
             _connected = true;
+            // Reconnects re-start the session themselves (bevel-4zfs): the core pushes nothing on
+            // connect, and the adapters are still subscribed, so the Hello burst rebuilds everything.
+            var rehello = false;
+            lock (_sessionGate)
+            {
+                if (_sessionStarted && _everConnected) rehello = true;
+                _epoch = 0; _seq = 0;   // the new connection's burst re-baselines
+            }
             // Log on the connected transition (not per path), so a reconnect via EITHER the lazy
             // command path or the supervisor reports once. First connect is silent.
             if (_everConnected)
                 Console.Error.WriteLine("[shellcore] link restored");
             _everConnected = true;
             ConnectionChanged?.Invoke(this, true);
+            if (rehello)
+                _ = Task.Run(async () =>
+                {
+                    try { await SendHelloAsync().ConfigureAwait(false); }
+                    catch { /* the supervisor retries the whole link if this failed */ }
+                });
         }
         finally
         {

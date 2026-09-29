@@ -1,5 +1,4 @@
 using Bevel.Core;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.App.ShellCore;
 
@@ -33,12 +32,14 @@ namespace Bevel.App.ShellCore;
 /// the store version is monotonic: a lower-or-equal version (a duplicate on-connect push, or a stale core
 /// answering a reconnect) is dropped.</para>
 ///
-/// <para>This gets its OWN <see cref="ShellCoreClient"/> (the DI-keyed <c>"settings"</c> client), distinct
-/// from the window-manager / app-environment / tray adapters' client in a split taskbar. That separation is
-/// deliberate: this service connects during startup <see cref="LoadAsync"/>, and if it shared the tray
-/// client that early connect would consume the core's on-connect tray snapshot before the tray adapter
-/// subscribes (the tray has no reconcile backstop), leaving the split taskbar's tray empty. DI owns the
-/// keyed client's disposal; <see cref="Dispose"/> only detaches the event subscription, never tears it down.</para>
+/// <para><b>One client per process (bevel-4zfs).</b> This shares the SAME <see cref="ShellCoreClient"/> as the
+/// window/app/tray adapters — the old DI-keyed second <c>"settings"</c> connection existed only because the
+/// core used to push its snapshot burst the moment ANY client connected, so this service's early
+/// LoadAsync connect would eat the tray's snapshot before the tray adapter subscribed. The session
+/// protocol deleted that race class: nothing is pushed on connect; the settings bootstrap is a
+/// GetSettings PULL (request/response, not the stream), and the taskbar's Hello — sent after every
+/// adapter is subscribed — is what delivers the stream snapshots. DI owns the client's disposal;
+/// <see cref="Dispose"/> only detaches the event subscription, never tears it down.</para>
 /// </summary>
 public sealed class RemoteSettingsService : ISettingsService, IAsyncDisposable
 {
@@ -61,19 +62,32 @@ public sealed class RemoteSettingsService : ISettingsService, IAsyncDisposable
     /// <inheritdoc />
     public event Action? Changed;
 
-    /// <param name="client">The keyed <c>"settings"</c> shell-core client (see the type docs).</param>
-    /// <param name="cache">The on-disk snapshot cache the first paint reads and every apply writes through
-    /// to; null disables caching (the pre-cache connect-or-defaults behaviour, used by a few tests).</param>
-    public RemoteSettingsService(
-        [FromKeyedServices("settings")] ShellCoreClient client,
-        SettingsSnapshotCache? cache = null)
+    /// <summary>Constructor subscription: the live snapshots arrive on the stream thread (Hello's burst,
+    /// epoch re-pushes) AND on a link restore — see <see cref="OnLinkRestored"/>.</summary>
+    public RemoteSettingsService(ShellCoreClient client, SettingsSnapshotCache? cache = null)
     {
         _client = client;
         _cache = cache;
-        // Arm the subscription in the ctor — BEFORE any connect — so the core's on-connect
+        // Arm the subscription in the ctor — BEFORE any session start — so the Hello burst's
         // SettingsSnapshot is never missed (same discipline the window/app adapters follow).
         _client.EventReceived += OnCoreEvent;
+        // A settings peer never starts a SESSION (that's a window/tray concern), so a reconnect has no
+        // auto re-Hello to deliver a fresh burst — re-PULL on every link restore instead (bevel-4zfs).
+        _client.ConnectionChanged += OnLinkRestored;
     }
+
+    /// <summary>Link restored → re-pull the blob in the background (bevel-4zfs). The version guard in
+    /// <see cref="ApplySnapshot"/> dedups this against an in-flight GetSettings and drops stale answers;
+    /// a failure is just the next retry — the reconnect supervisor owns the link itself.</summary>
+    private void OnLinkRestored(object? _, bool connected)
+    {
+        if (connected) _ = PullLiveSnapshotInBackgroundAsync();
+    }
+
+    /// <param name="client">The process's ONE shell-core client (shared with the window/app/tray adapters
+    /// where the role has them — see the type docs for why sharing is safe now).</param>
+    /// <param name="cache">The on-disk snapshot cache the first paint reads and every apply writes through
+    /// to; null disables caching (the pre-cache connect-or-defaults behaviour, used by a few tests).</param>
 
     /// <inheritdoc />
     public BevelSettings Current { get { lock (_gate) return _current; } }
@@ -342,6 +356,7 @@ public sealed class RemoteSettingsService : ISettingsService, IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _client.EventReceived -= OnCoreEvent;
+        _client.ConnectionChanged -= OnLinkRestored;
     }
 
     public ValueTask DisposeAsync()

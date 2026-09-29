@@ -55,7 +55,7 @@ public sealed class ExplorerControlChannelTests : IDisposable
         var surface = new FakeSurface(windows);
         var server = new UdsMessageServer(
             Path.Combine(_dir, $"explorer-{pid}.sock"), _nonce,
-            async (payload, ct) =>
+            async (_, payload, ct) =>
             {
                 var req = ExplorerProtocol.Deserialize<ExplorerRequest>(payload.Span);
                 var reply = await surface.HandleAsync(req);

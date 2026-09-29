@@ -75,6 +75,16 @@ public enum CoreEventKind
     SettingsChanged,
 }
 
+// ── Session protocol (bevel-4zfs) ─────────────────────────────────────────
+// The core pushes NOTHING on connect. A client that has wired all its subscribers sends Hello; the
+// core replies, then pushes the four stamped snapshots to that client alone. Every server→client event
+// carries (Epoch, Seq): the epoch bumps whenever the core's projection is rebuilt discontinuously (the
+// startup seed), and seq is gapless within an epoch — a client that sees an epoch change or a seq gap
+// knows it missed something and re-issues Hello instead of silently going stale. This deletes the
+// whole startup-race class in one place: the snapshot can no longer be "eaten" by a too-early connect
+// (the client owns the session start), the seed's no-broadcast hole becomes the epoch bump, and the
+// tray gains a pull backstop (GetTrayItems).
+
 /// <summary>
 /// A core-&gt;UI broadcast. One envelope with nullable payload slots (rather than a type hierarchy)
 /// keeps the JSON flat and the STJ round-trip trivial; <see cref="Kind"/> says which slot is set.
@@ -90,7 +100,14 @@ public sealed record CoreEvent(
     /// <summary>SettingsSnapshot / SettingsChanged: the canonical settings JSON blob (bevel-6nve).</summary>
     string? SettingsJson = null,
     /// <summary>SettingsSnapshot / SettingsChanged: the settings store version the blob was read at.</summary>
-    int? SettingsVersion = null);
+    int? SettingsVersion = null,
+    /// <summary>Session stamp (bevel-4zfs): which projection generation this event belongs to. The epoch
+    /// bumps on every discontinuous rebuild (startup seed completion); a client seeing a new epoch adopts
+    /// the accompanying snapshot burst as its fresh baseline.</summary>
+    int? Epoch = null,
+    /// <summary>Session stamp (bevel-4zfs): gapless within an epoch. A gap means a lost frame — the client
+    /// re-issues Hello (rate-limited) rather than diverging silently.</summary>
+    long? Seq = null);
 
 /// <summary>Which <c>IWindowManager</c>/<c>IAppEnvironment</c> action a <see cref="CoreCommand"/> requests.</summary>
 public enum CoreCommandKind
@@ -120,6 +137,15 @@ public enum CoreCommandKind
     /// just forwards the state to the Swift helper so its tray-poll cadence adapts (900ms consolidated vs
     /// 2s idle). The state rides <see cref="CoreCommand.Hidden"/>.</summary>
     SetTrayHidden,
+    /// <summary>UI→core: session start (bevel-4zfs). Sent once the client has attached all its subscribers;
+    /// the core replies, then pushes the four stamped snapshots to this client alone.</summary>
+    Hello,
+    /// <summary>UI→core: re-push the stamped snapshots to this client (bevel-4zfs) — a late-attaching
+    /// adapter or a detected sequence gap asks for a fresh baseline.</summary>
+    Resync,
+    /// <summary>UI→core: pull the mirrored tray items (bevel-4zfs) — the tray's backstop; every other
+    /// projection already had a pull (EnumerateWindows / EnumerateInstalledApps / GetSettings).</summary>
+    GetTrayItems,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -157,7 +183,9 @@ public sealed record CoreResponse(
     /// <summary>GetSettings: the current settings JSON blob (bevel-6nve).</summary>
     string? SettingsJson = null,
     /// <summary>GetSettings: the settings store version the blob was read at.</summary>
-    int? SettingsVersion = null)
+    int? SettingsVersion = null,
+    /// <summary>GetTrayItems: the core's current mirrored-tray projection (bevel-4zfs).</summary>
+    IReadOnlyList<TrayItem>? TrayItems = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

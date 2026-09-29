@@ -61,10 +61,13 @@ public sealed class ShellCoreIntegrationTests
         var wm = new ShellCoreWindowManager(core);
         wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
 
-        // The snapshot is pushed the moment the connection authenticates; connect explicitly so the
-        // adapters (which subscribed in their ctors) see it — nothing else has sent a command yet.
+        // Session protocol (bevel-4zfs): the snapshot arrives only on Hello — sent after the adapters
+        // (which subscribed in their ctors) are wired. Connect alone must deliver nothing.
         await core.EnsureConnectedAsync(Ct);
-        await WaitFor(() => opened.Count == 2, "snapshot should replay both seeded windows as WindowOpened");
+        await Task.Delay(150);
+        Assert.Empty(opened);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => opened.Count == 2, "Hello should replay both seeded windows as WindowOpened");
         Assert.Equal(new[] { "a", "b" }, opened.OrderBy(x => x).ToArray());
 
         // Installed apps are a pull (round-trip), not a pushed event.
@@ -221,7 +224,7 @@ public sealed class ShellCoreIntegrationTests
         tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
         tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
 
-        await core.EnsureConnectedAsync(Ct);
+        await core.StartSessionAsync(Ct);
         await WaitFor(() => added.Count == 2, "tray snapshot should replay both seeded items as ItemAdded");
 
         pal.RaiseTrayItemAdded(Tray("3:30", "Gamma"));
@@ -260,10 +263,136 @@ public sealed class ShellCoreIntegrationTests
         var added = new ConcurrentBag<string>();
         tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
 
-        await core.EnsureConnectedAsync(Ct);
-        // All three — the two seeded AND the gap add — must be in the connect snapshot.
+        await core.StartSessionAsync(Ct);
+        // All three — the two seeded AND the gap add — must be in the Hello snapshot.
         await WaitFor(() => added.Contains("3:30") && added.Contains("1:10") && added.Contains("2:20"),
             "the item added during the snapshot gap must survive into the client's snapshot");
+    }
+
+    // ── Session protocol (bevel-4zfs) ─────────────────────────────────────────
+
+    // 6. The tray's new pull backstop: GetTrayItems answers the core's live projection as plain
+    //    request/response — no Hello needed, no dependence on the stream, which is what makes the
+    //    tray finally reconcilable like windows/apps/settings.
+    [Fact]
+    public async Task GetTrayItems_pull_answers_the_cores_projection_without_a_session()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"), Tray("2:20", "Beta"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+
+        var items = await tray.GetItemsAsync(Ct);   // connects lazily; no StartSessionAsync anywhere
+
+        Assert.Equal(new[] { "1:10", "2:20" }, items.Select(i => i.Id.Value).OrderBy(v => v).ToArray());
+    }
+
+    // 7. Seed completion = epoch bump. A client that Hello'd while the core was still seeding got the
+    //    empty epoch-1 snapshot; when the seed lands, the core bumps the epoch and re-pushes the fresh
+    //    snapshots WITHOUT the client reconnecting. This is the principled version of the old
+    //    BroadcastSnapshot band-aid — and the reason the tray no longer strands on an empty snapshot.
+    [Fact]
+    public async Task Seed_completion_bumps_the_epoch_and_repushes_without_a_reconnect()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        // Stall the window seed: each fault costs one 150ms retry, so ~25 faults hold the core in its
+        // seeding window long enough for the client to connect and Hello mid-seed.
+        for (var i = 0; i < 25; i++)
+            pal.EnumerateFaults.Enqueue(new TransportFault("gRPC call disposed."));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        var startTask = server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var snapshots = new ConcurrentBag<(int Epoch, int Windows)>();
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.WindowSnapshot)
+                snapshots.Add((e.Epoch ?? 0, (e.Windows ?? Array.Empty<ForeignWindow>()).Count));
+        };
+
+        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED: empty projection, epoch 1
+        await WaitFor(() => snapshots.Any(s => s.Epoch == 1),
+            "the mid-seed Hello should deliver an epoch-1 snapshot");
+        Assert.True(snapshots.All(s => s.Windows == 0), "the projection is still empty while the seed is stalled");
+
+        await startTask;                    // seed completes -> epoch bump + re-push to everyone
+
+        await WaitFor(() => snapshots.Any(s => s.Epoch == 2 && s.Windows == 1),
+            "the epoch bump must re-push the seeded snapshot without a reconnect");
+        Assert.True(core.IsConnected, "the link never dropped — the re-push rode the same connection");
+        Assert.Equal(1, server.ClientCount);
+    }
+
+    // 8. A detected seq gap re-issues Hello (rate-limited) — the safety net that replaces the tray's
+    //    missing reconcile backstop. The gap is injected through the client's internal test seam; the
+    //    re-Hello is observable via HelloSent.
+    [Fact]
+    public async Task A_sequence_gap_re_issues_Hello_without_a_reconnect()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var hellos = 0;
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+        var last = (epoch: 0, seq: 0L);
+        core.EventReceived += e =>
+        {
+            if (e.Epoch is { } ep && e.Seq is { } sq && sq > last.seq) last = (ep, sq);
+        };
+
+        await core.StartSessionAsync(Ct);
+        Assert.Equal(1, hellos);
+        await WaitFor(() => last.epoch != 0, "the Hello burst should establish a baseline");
+
+        // A frame "lost": the next event the client sees jumps the seq.
+        core.NoteSessionEventForTest(new CoreEvent(CoreEventKind.TrayItemAdded,
+            TrayItem: Tray("9:99", "Ghost"), Epoch: last.epoch, Seq: last.seq + 100));
+
+        await WaitFor(() => hellos == 2, "a detected gap must re-issue Hello (rate-limited)");
+        Assert.True(core.IsConnected, "the gap healed over the same link");
+    }
+
+    // 9. Sharing one client is the whole point (the taskbar's settings peer and the tray adapters ride
+    //    the SAME connection now): a settings pull before any Hello must not eat anyone's snapshot —
+    //    the tray still gets its full snapshot when the session starts.
+    [Fact]
+    public async Task A_settings_pull_before_Hello_does_not_eat_the_later_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var settings = new RemoteSettingsService(core);    // subscribes to the shared stream
+        await settings.LoadAsync(Ct);                       // connect + GetSettings PULL — before any Hello
+
+        var tray = new ShellCoreSystemTrayHost(core);      // subscribed AFTER the early connect
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        await core.StartSessionAsync(Ct);                  // the session starts NOW
+        await WaitFor(() => added.Contains("1:10"),
+            "the tray must receive its snapshot even though the settings peer connected first");
     }
 
     // bevel-8ck: the mirror case — an item REMOVED in the gap must not linger as a ghost. The snapshot
@@ -285,7 +414,7 @@ public sealed class ShellCoreIntegrationTests
         var added = new ConcurrentBag<string>();
         tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
 
-        await core.EnsureConnectedAsync(Ct);
+        await core.StartSessionAsync(Ct);
         await WaitFor(() => added.Contains("2:20"), "the surviving item should be in the snapshot");
         // Give any erroneous "1:10" a chance to arrive, then assert it never did (removed-in-gap wins).
         await Task.Delay(150);
@@ -362,7 +491,7 @@ public sealed class ShellCoreIntegrationTests
                 if (e.Kind == CoreEventKind.SettingsSnapshot) gotSnapshot.TrySetResult(e);
                 if (e.Kind == CoreEventKind.SettingsChanged) gotChange.TrySetResult(e);
             };
-            await client.EnsureConnectedAsync(Ct);
+            await client.StartSessionAsync(Ct);
 
             var snap = await gotSnapshot.Task.WaitAsync(Timeout);
             Assert.Contains("taskbarOpacity", snap.SettingsJson!);
@@ -480,7 +609,7 @@ public sealed class ShellCoreIntegrationTests
         var opened = new ConcurrentBag<string>();
         var wm = new ShellCoreWindowManager(core);
         wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
-        await core.EnsureConnectedAsync(Ct);
+        await core.StartSessionAsync(Ct);
         await WaitFor(() => opened.Contains("a"), "the retried seed should still replay the window");
         Assert.Contains("a", opened);
     }
@@ -505,7 +634,7 @@ public sealed class ShellCoreIntegrationTests
         var opened = new ConcurrentBag<string>();
         var wm = new ShellCoreWindowManager(core);
         wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
-        await core.EnsureConnectedAsync(Ct);
+        await core.StartSessionAsync(Ct);
         await WaitFor(() => opened.Contains("a"), "a failing apps/tray seed must not empty the window projection");
         Assert.Contains("a", opened);           // windows still seeded despite apps/tray failing
     }

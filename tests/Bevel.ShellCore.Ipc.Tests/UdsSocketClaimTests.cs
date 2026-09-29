@@ -22,7 +22,7 @@ public sealed class UdsSocketClaimTests
     private static byte[] NewNonce() => RandomNumberGenerator.GetBytes(32);
 
     private static UdsMessageServer NewServer(string path, byte[] nonce) =>
-        new(path, nonce, (_, _) => ValueTask.FromResult(Array.Empty<byte>()));
+        new(path, nonce, (_, _, _) => ValueTask.FromResult(Array.Empty<byte>()));
 
     /// <summary>A bare listener on the path. Disposing it closes the fd and leaves the file behind —
     /// what a crashed owner leaves. (A managed <c>Socket.Bind</c> would NOT do: .NET deletes a bound

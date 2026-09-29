@@ -24,11 +24,11 @@ public sealed class UdsMessageTransportTests
 
     private static UdsMessageServer StartServer(
         string path, byte[] nonce,
-        Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>>? onRequest = null)
+        Func<Guid, ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>>? onRequest = null)
     {
         var server = new UdsMessageServer(
             path, nonce,
-            onRequest ?? ((_, _) => ValueTask.FromResult(Array.Empty<byte>())));
+            onRequest ?? ((_, _, _) => ValueTask.FromResult(Array.Empty<byte>())));
         server.Start();
         return server;
     }
@@ -142,7 +142,7 @@ public sealed class UdsMessageTransportTests
         var nonce = NewNonce();
         // Handler transforms the payload so we can assert the RIGHT reply came back per request:
         // it appends a byte and, to stress correlation, adds a small variable delay per request.
-        await using var server = StartServer(path, nonce, async (req, ct) =>
+        await using var server = StartServer(path, nonce, async (_, req, ct) =>
         {
             var n = req.Span[0];
             await Task.Delay(n % 7, ct); // jitter so responses can complete out of send order
@@ -195,7 +195,7 @@ public sealed class UdsMessageTransportTests
         var path = NewSocketPath();
         var nonce = NewNonce();
         // Echo handler.
-        await using var server = StartServer(path, nonce, (req, _) => ValueTask.FromResult(req.ToArray()));
+        await using var server = StartServer(path, nonce, (_, req, _) => ValueTask.FromResult(req.ToArray()));
 
         await using var client = new UdsMessageClient(path, nonce, "shell");
         await client.ConnectAsync(Ct);

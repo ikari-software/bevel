@@ -40,6 +40,37 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // goes null and handlers mutate the projection directly.
     private List<Action>? _seedBuffer = new();
 
+    // Session stamps (bevel-4zfs), guarded by _gate. Every event is stamped (epoch, seq). The EPOCH is
+    // global: it bumps when the projection is rebuilt discontinuously (the startup seed), which also
+    // re-pushes fresh snapshots to every client. The SEQ is PER-CLIENT and gapless: a global seq would let
+    // one client's Hello burst consume numbers the others never see — phantom gaps, re-Hello cascade.
+    // Stamping and enqueuing under the same lock keeps each client's frame order equal to its seq order.
+    private int _epoch = 1;
+    private readonly Dictionary<Guid, long> _seqByClient = new();
+
+    /// <summary>Next per-client seq (caller holds <see cref="_gate"/>). Creates the counter on first use; a
+    /// client that vanished leaves a stale long behind, pruned by <see cref="PruneStaleClients"/>.</summary>
+    private long NextSeq(Guid clientId)
+    {
+        var seq = (_seqByClient.TryGetValue(clientId, out var s) ? s : 0) + 1;
+        _seqByClient[clientId] = seq;
+        return seq;
+    }
+
+    /// <summary>Drops per-client seq counters for clients no longer connected (reconnects get a fresh
+    /// Guid, so without this the map grows with every link bounce). Amortized — runs when the map
+    /// outgrows the live set. Caller holds <see cref="_gate"/>.</summary>
+    private void PruneStaleClients()
+    {
+        if (_seqByClient.Count <= _server.ClientCount + 8) return;
+        var live = _server.ClientIds;
+        foreach (var id in _seqByClient.Keys.Where(id => !live.Contains(id)).ToArray())
+            _seqByClient.Remove(id);
+    }
+
+    // Session accounting for diagnostics/tests: how many clients have started a session (Hello'd).
+    private int _sessionsStarted;
+
     public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, ISystemTrayHost tray,
         ISettingsService settings, string socketPath, byte[] nonce)
     {
@@ -48,8 +79,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
         _tray = tray;
         _settings = settings;
         _server = new UdsMessageServer(socketPath, nonce, HandleRequestAsync);
-        _server.ClientConnected += PushSnapshot;
     }
+
+    /// <summary>Clients that have started a session (sent Hello) — diagnostics/tests. A connected-but-not-
+    /// Hello'd client deliberately receives NOTHING: the session protocol (bevel-4zfs) exists so the CLIENT
+    /// owns when the snapshot arrives, after its subscribers are attached.</summary>
+    public int SessionsStarted => _sessionsStarted;
 
     /// <summary>Number of connected UI processes (for supervision/diagnostics).</summary>
     public int ClientCount => _server.ClientCount;
@@ -112,17 +147,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
             foreach (var apply in _seedBuffer!)
                 apply();
             _seedBuffer = null;
-        }
 
-        // Re-push the now-seeded projection to EVERY already-connected client. _server.Start() runs before
-        // the (helper-dependent, ~2-10s) seed above so peers get settings promptly — but that means a
-        // cold-boot peer connects DURING seeding and its on-connect PushSnapshot carried an EMPTY tray, and
-        // ItemAdded/window deltas that fired during seeding were buffered (replayed into the projection
-        // above) but never broadcast. Windows/apps self-heal via their reconcile backstops; the TRAY has
-        // none ("the stream is the source of truth"), so without this a split taskbar strands on an empty
-        // tray. Snapshots are idempotent — a client replaces its projection, settings dedups by version —
-        // so a client that connected after seeding (already has the full snapshot) is unaffected.
-        BroadcastSnapshot();
+            // Seed complete = the projection was just rebuilt discontinuously: bump the epoch (bevel-4zfs)
+            // and push fresh stamped snapshots to EVERY client. This replaces the old un-stamped
+            // BroadcastSnapshot band-aid: a client that Hello'd during seeding got empty windows/tray,
+            // and the deltas that fired during seeding were buffered — never broadcast. The epoch bump
+            // tells clients the new burst is their authoritative baseline, and the snapshots self-heal
+            // every projection (idempotent replaces; settings dedups by version).
+            _epoch++;
+            foreach (var evt in BuildSnapshotEvents())
+                BroadcastStamped(evt);
+        }
     }
 
     /// <summary>Runs <paramref name="enumerate"/>, tolerating the whole startup race window: the helper
@@ -166,45 +201,51 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Builds the four projection snapshots (windows/apps/tray/settings) as of now. Shared by the
-    /// on-connect push and the post-seed re-broadcast so both send an identical, consistent set.</summary>
-    private (CoreEvent Windows, CoreEvent Apps, CoreEvent Tray, CoreEvent Settings) BuildSnapshots()
+    /// <summary>Builds the four projection snapshots (windows/apps/tray/settings) as of now, epoch-stamped
+    /// (bevel-4zfs). Caller must hold <see cref="_gate"/> so the projection + epoch stay consistent; the
+    /// per-client SEQ is stamped at send time by the push paths.</summary>
+    private CoreEvent[] BuildSnapshotEvents()
     {
-        CoreEvent windowSnapshot, appSnapshot, traySnapshot;
+        var windowSnapshot = new CoreEvent(CoreEventKind.WindowSnapshot, Windows: _windowById.Values.ToArray(),
+            Epoch: _epoch);
+        var appSnapshot = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: _installed,
+            Epoch: _epoch);
+        var traySnapshot = new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: _trayById.Values.ToArray(),
+            Epoch: _epoch);
+        // The settings blob lives in the service (its own single-writer discipline), not the _gate-guarded
+        // projection — SnapshotJson/Version are cheap in-memory reads.
+        var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
+            SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version,
+            Epoch: _epoch);
+        return [windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot];
+    }
+
+    /// <summary>Stamp + broadcast one event to EVERY client (bevel-4zfs). Under <see cref="_gate"/>, so
+    /// per-client seq assignment and enqueue order can never invert — frame order on every client equals
+    /// its own seq order. Every server→client event goes through here or <see cref="PushSnapshotTo"/>.
+    /// Frames are serialized per client (seqs differ) — payloads are small; that is the price of gaplessness.</summary>
+    private void BroadcastStamped(CoreEvent evt)
+    {
         lock (_gate)
         {
-            windowSnapshot = new CoreEvent(CoreEventKind.WindowSnapshot, Windows: _windowById.Values.ToArray());
-            appSnapshot = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: _installed);
-            traySnapshot = new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: _trayById.Values.ToArray());
+            PruneStaleClients();
+            foreach (var id in _server.ClientIds)
+                _server.SendToClient(id, CoreProtocol.Serialize(evt with { Seq = NextSeq(id) }));
         }
-        // The settings blob lives in the service (its own single-writer discipline), not the _gate-guarded
-        // projection, so it is snapshotted outside the lock. SnapshotJson/Version are cheap in-memory reads.
-        var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
-            SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version);
-        return (windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot);
     }
 
-    // ── Snapshot on connect (synchronous — see the field comment) ────────
-    private void PushSnapshot(Func<ReadOnlyMemory<byte>, ValueTask> sendToClient)
+    /// <summary>Push a fresh stamped snapshot burst to ONE client (Hello/Resync, bevel-4zfs): the four
+    /// snapshots get that client's next four gapless seqs, under <see cref="_gate"/>, so the burst cannot
+    /// interleave against a concurrent <see cref="BroadcastStamped"/>. A delta landing before the burst
+    /// applies to state the burst then replaces wholesale; one after it applies normally. Both converge.</summary>
+    private void PushSnapshotTo(Guid clientId)
     {
-        var (windows, apps, tray, settings) = BuildSnapshots();
-        // Fire-and-forget: the transport funnels these through the client's ordered write channel,
-        // so the snapshots (and any later broadcast) stay in order; a dead client is the
-        // transport's problem, not ours.
-        _ = sendToClient(CoreProtocol.Serialize(windows));
-        _ = sendToClient(CoreProtocol.Serialize(apps));
-        _ = sendToClient(CoreProtocol.Serialize(tray));
-        _ = sendToClient(CoreProtocol.Serialize(settings));
-    }
-
-    /// <summary>Re-push the full projection to EVERY connected client (see the call site in StartAsync).</summary>
-    private void BroadcastSnapshot()
-    {
-        var (windows, apps, tray, settings) = BuildSnapshots();
-        _server.Broadcast(CoreProtocol.Serialize(windows));
-        _server.Broadcast(CoreProtocol.Serialize(apps));
-        _server.Broadcast(CoreProtocol.Serialize(tray));
-        _server.Broadcast(CoreProtocol.Serialize(settings));
+        lock (_gate)
+        {
+            PruneStaleClients();
+            foreach (var evt in BuildSnapshotEvents())
+                _server.SendToClient(clientId, CoreProtocol.Serialize(evt with { Seq = NextSeq(clientId) }));
+        }
     }
 
     // ── PAL events -> projection update + delta broadcast ────────────────
@@ -219,7 +260,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById.Remove(w.Id.Value)); return; }
             _windowById.Remove(w.Id.Value);
         }
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.WindowClosed, Window: w)));
+        BroadcastStamped(new CoreEvent(CoreEventKind.WindowClosed, Window: w));
     }
 
     private void UpsertAndBroadcast(ForeignWindow w, CoreEventKind kind)
@@ -229,7 +270,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
             _windowById[w.Id.Value] = w;
         }
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, Window: w)));
+        BroadcastStamped(new CoreEvent(kind, Window: w));
     }
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps)
@@ -239,14 +280,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _installed = apps); return; }
             _installed = apps;   // keep the connect-time snapshot fresh for future clients too
         }
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: apps)));
+        BroadcastStamped(new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: apps));
     }
 
     private void OnAppLaunched(object? _, RunningApp a) =>
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.AppLaunched, App: a)));
+        BroadcastStamped(new CoreEvent(CoreEventKind.AppLaunched, App: a));
 
     private void OnAppTerminated(object? _, RunningApp a) =>
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.AppTerminated, App: a)));
+        BroadcastStamped(new CoreEvent(CoreEventKind.AppTerminated, App: a));
 
     private void OnTrayItemAdded(object? _, TrayItem t) => UpsertTrayAndBroadcast(t, CoreEventKind.TrayItemAdded);
     private void OnTrayItemUpdated(object? _, TrayItem t) => UpsertTrayAndBroadcast(t, CoreEventKind.TrayItemUpdated);
@@ -258,7 +299,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById.Remove(t.Id.Value)); return; }
             _trayById.Remove(t.Id.Value);
         }
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t)));
+        BroadcastStamped(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t));
     }
 
     private void UpsertTrayAndBroadcast(TrayItem t, CoreEventKind kind)
@@ -268,16 +309,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById[t.Id.Value] = t); return; }
             _trayById[t.Id.Value] = t;
         }
-        _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(kind, TrayItem: t)));
+        BroadcastStamped(new CoreEvent(kind, TrayItem: t));
     }
 
     // ── UI commands -> real PAL ──────────────────────────────────────────
-    private async ValueTask<byte[]> HandleRequestAsync(ReadOnlyMemory<byte> payload, CancellationToken ct)
+    private async ValueTask<byte[]> HandleRequestAsync(Guid clientId, ReadOnlyMemory<byte> payload, CancellationToken ct)
     {
         CoreResponse response;
         try
         {
-            response = await ExecuteAsync(CoreProtocol.Deserialize<CoreCommand>(payload.Span), ct).ConfigureAwait(false);
+            response = await ExecuteAsync(CoreProtocol.Deserialize<CoreCommand>(payload.Span), clientId, ct)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -286,10 +328,25 @@ public sealed class ShellCoreServer : IAsyncDisposable
         return CoreProtocol.Serialize(response);
     }
 
-    private async Task<CoreResponse> ExecuteAsync(CoreCommand cmd, CancellationToken ct)
+    private async Task<CoreResponse> ExecuteAsync(CoreCommand cmd, Guid clientId, CancellationToken ct)
     {
         switch (cmd.Kind)
         {
+            // Session protocol (bevel-4zfs): the snapshots arrive ONLY on the client's say-so — after it has
+            // attached all its subscribers — and go to the ASKING client alone. Hello starts the session;
+            // Resync re-baselines a late-attaching adapter or a gap-detected client.
+            case CoreCommandKind.Hello:
+                Interlocked.Increment(ref _sessionsStarted);
+                PushSnapshotTo(clientId);
+                return CoreResponse.Success();
+            case CoreCommandKind.Resync:
+                PushSnapshotTo(clientId);
+                return CoreResponse.Success();
+            // The tray's pull backstop (bevel-4zfs): every other projection had a pull; the tray was the
+            // only stream-only one, which is exactly why its races were unhealable before.
+            case CoreCommandKind.GetTrayItems:
+                lock (_gate)
+                    return new CoreResponse(Ok: true, TrayItems: _trayById.Values.ToArray());
             case CoreCommandKind.EnumerateWindows:
                 return new CoreResponse(Ok: true, Windows: await _windows.EnumerateAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.Activate:
@@ -343,8 +400,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 await _settings.ApplyPatchJsonAsync(
                     cmd.SettingsPatchJson ?? throw new ArgumentException("ApplySettingsUpdate needs SettingsPatchJson"),
                     ct).ConfigureAwait(false);
-                _server.Broadcast(CoreProtocol.Serialize(new CoreEvent(CoreEventKind.SettingsChanged,
-                    SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version)));
+                BroadcastStamped(new CoreEvent(CoreEventKind.SettingsChanged,
+                    SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version));
                 return CoreResponse.Success();
             default:
                 return CoreResponse.Fail($"unknown command {cmd.Kind}");

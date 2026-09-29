@@ -413,6 +413,14 @@ public partial class App : Application
         // ToggleTaskbarLock — a bare `_ = UpdateAsync(...)` swallowed a SaveAsync fault into an
         // unobserved task exception (ce-review: reliability).
         taskbarWin.RowsChanged += rows => PersistRows(settings, rows);
+        // Session protocol (bevel-4zfs): the core pushes NOTHING on connect. Every adapter (windows /
+        // apps / tray / settings) is now constructed and subscribed, so START THE SESSION — the Hello
+        // snapshot burst lands on a fully-wired client and can never be eaten by a too-early connect.
+        // (The connection is the ShellCoreClient only in split mode; on the Fake PAL it's the always-
+        // connected stub and this is a no-op.) Fire-and-forget: the burst arrives on the transport
+        // thread and the adapters marshal onto their own dispatchers.
+        if (connection is ShellCore.ShellCoreClient coreSession)
+            _ = coreSession.StartSessionAsync();
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
         Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Taskbar, connection?.IsConnected ?? true);

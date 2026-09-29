@@ -311,7 +311,7 @@ public sealed class RoleProcessSupervisorTests
         var ourNonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         var foreignNonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         await using var hijacker = new Bevel.ShellCore.Ipc.UdsMessageServer(
-            path, foreignNonce, (_, _) => ValueTask.FromResult(Array.Empty<byte>()));
+            path, foreignNonce, (_, _, _) => ValueTask.FromResult(Array.Empty<byte>()));
         hijacker.Start();
         Assert.True(File.Exists(path)); // the check the old probe would have passed
 
@@ -332,7 +332,7 @@ public sealed class RoleProcessSupervisorTests
         var path = NewSocketPath();
         var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         await using var ours = new Bevel.ShellCore.Ipc.UdsMessageServer(
-            path, nonce, (_, _) => ValueTask.FromResult(Array.Empty<byte>()));
+            path, nonce, (_, _, _) => ValueTask.FromResult(Array.Empty<byte>()));
         ours.Start();
 
         var log = new List<string>();

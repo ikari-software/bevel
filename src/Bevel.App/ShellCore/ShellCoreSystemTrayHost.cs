@@ -68,10 +68,22 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         }
     }
 
-    /// <summary>The tray arrives as the TraySnapshot event burst on connect (like windows), so the
-    /// pull is empty — the stream is the source of truth.</summary>
-    public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
+    /// <summary>The tray's pull backstop (bevel-4zfs): GetTrayItems asks the core's live projection for
+    /// the current set — every other projection always had a pull (windows/apps/settings); the tray was
+    /// stream-only, which is exactly why its races were unhealable before the session protocol. The
+    /// stream (Hello snapshot + deltas) remains the primary feed; this is the reconcile path.</summary>
+    public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var r = await _core.SendAsync(new CoreCommand(CoreCommandKind.GetTrayItems), ct).ConfigureAwait(false);
+            return r.TrayItems ?? Array.Empty<TrayItem>();
+        }
+        catch
+        {
+            return Array.Empty<TrayItem>(); // a pull during a dropped link is just empty — the stream re-syncs
+        }
+    }
 
     /// <summary>Menu-bar consolidation (bevel-qpir): (1) apply the NATIVE hide locally — in THIS taskbar
     /// process, which has the real AppKit run loop the macOS control item needs — then (2) tell the core so

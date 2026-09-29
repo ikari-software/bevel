@@ -1,4 +1,5 @@
 using Bevel.Core;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Bevel.Desktop;
 using Bevel.FileManager;
 using Bevel.Pal.Abstractions;
@@ -57,8 +58,14 @@ public static class CompositionRoot
     /// DI owns the client's disposal.</summary>
     private static void AddSettingsPeer(IServiceCollection services)
     {
-        services.AddKeyedSingleton<ShellCore.ShellCoreClient>("settings", (_, _) => ShellCore.ShellCoreEndpoint.CreateClient());
+        // ONE client per process (bevel-4zfs). The old DI-keyed second "settings" connection existed only
+        // because the core pushed its snapshot burst on CONNECT — so the settings peer's early LoadAsync
+        // connect would eat the tray snapshot before the tray adapter subscribed. The session protocol
+        // deleted that race: nothing is pushed on connect, so the peer shares the SAME client as the
+        // window/app/tray adapters (the taskbar branch registers it first; TryAdd keeps that one).
+        services.TryAddSingleton(_ => ShellCore.ShellCoreEndpoint.CreateClient());
         services.AddSingleton(_ => new SettingsSnapshotCache(BevelConfigDir.Path));
+        // Both ctor params are the registered singletons: the shared client + the snapshot cache.
         services.AddSingleton<ISettingsService, ShellCore.RemoteSettingsService>();
     }
 

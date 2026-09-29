@@ -24,7 +24,7 @@ public sealed class UdsMessageServer : IAsyncDisposable
 {
     private readonly string _socketPath;
     private readonly byte[] _nonce;
-    private readonly Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>> _onRequest;
+    private readonly Func<Guid, ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>> _onRequest;
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<Guid, ClientConnection> _clients = new();
 
@@ -35,8 +35,10 @@ public sealed class UdsMessageServer : IAsyncDisposable
     /// <summary>
     /// Raised once per client, right after a successful handshake and before any request from
     /// that client is processed. The handler is given a <c>sendToThisClient</c> delegate that
-    /// enqueues a Broadcast-kind frame to ONLY the new client — the hook for pushing an initial
-    /// state snapshot. The snapshot is enqueued ahead of the client's request loop and of any
+    /// enqueues a Broadcast-kind frame to ONLY the new client — a transport-level hook. The
+    /// shell-core protocol no longer pushes state here: its session layer gates the snapshot behind a
+    /// Hello REQUEST (bevel-4zfs) because push-on-connect is exactly the race that ate snapshots
+    /// when a client's subscribers attached late. The snapshot is enqueued ahead of the request loop.
     /// later <see cref="Broadcast"/>, so a just-connected UI sees "full state, then deltas".
     /// </summary>
     public event Action<Func<ReadOnlyMemory<byte>, ValueTask>>? ClientConnected;
@@ -44,13 +46,15 @@ public sealed class UdsMessageServer : IAsyncDisposable
     /// <param name="socketPath">Filesystem path to bind the listening UDS to.</param>
     /// <param name="nonce">Per-session shared secret; the HMAC key both sides must agree on.</param>
     /// <param name="onRequest">
-    /// Invoked once per client <see cref="FrameKind.Request"/>; its returned bytes are sent
-    /// back as a <see cref="FrameKind.Response"/> carrying the request's correlation id.
+    /// Invoked once per client <see cref="FrameKind.Request"/>, with the CLIENT ID of the requester; its
+    /// returned bytes are sent back as a <see cref="FrameKind.Response"/> carrying the request's
+    /// correlation id. The id also targets <see cref="SendToClient"/> — the per-client push the session
+    /// protocol needs (bevel-4zfs).
     /// </param>
     public UdsMessageServer(
         string socketPath,
         byte[] nonce,
-        Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>> onRequest)
+        Func<Guid, ReadOnlyMemory<byte>, CancellationToken, ValueTask<byte[]>> onRequest)
     {
         _socketPath = socketPath ?? throw new ArgumentNullException(nameof(socketPath));
         _nonce = nonce ?? throw new ArgumentNullException(nameof(nonce));
@@ -59,6 +63,10 @@ public sealed class UdsMessageServer : IAsyncDisposable
 
     /// <summary>Number of currently-authenticated clients. Exposed mainly for tests/diagnostics.</summary>
     public int ClientCount => _clients.Count;
+
+    /// <summary>The ids of currently-authenticated clients — the targets <see cref="SendToClient"/> and
+    /// the server's per-client session stamping iterate (bevel-4zfs).</summary>
+    public IReadOnlyCollection<Guid> ClientIds => _clients.Keys.ToArray();
 
     /// <summary>
     /// The handshake capability that means "just tell me you're here". A hello presenting it gets
@@ -105,6 +113,18 @@ public sealed class UdsMessageServer : IAsyncDisposable
         var buffer = payload.ToArray(); // detach from the caller's buffer; frames are read-only downstream
         foreach (var client in _clients.Values)
             client.Enqueue(FrameKind.Broadcast, correlationId: 0, buffer);
+    }
+
+    /// <summary>
+    /// Sends a Broadcast frame to ONE client (by the id the request handler received) — the per-client
+    /// push the session protocol needs: Hello's snapshot burst goes to the ASKING client alone, never
+    /// to the whole set (bevel-4zfs). Enqueue-only and quiet on an unknown/vanished id, like
+    /// <see cref="Broadcast"/>.
+    /// </summary>
+    public void SendToClient(Guid clientId, ReadOnlyMemory<byte> payload)
+    {
+        if (_clients.TryGetValue(clientId, out var client))
+            client.Enqueue(FrameKind.Broadcast, correlationId: 0, payload.ToArray());
     }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
@@ -203,7 +223,7 @@ public sealed class UdsMessageServer : IAsyncDisposable
         byte[] response;
         try
         {
-            response = await _onRequest(frame.Payload, ct).ConfigureAwait(false);
+            response = await _onRequest(conn.Id, frame.Payload, ct).ConfigureAwait(false);
         }
         catch
         {
