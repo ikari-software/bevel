@@ -77,8 +77,16 @@ dotnet run --project src/Bevel.App -- --role=explorer --open-path ~/Documents   
 # cdhash churn otherwise forces re-granting Accessibility/Screen Recording every rebuild):
 ./packaging/macos/build-app.sh && ./packaging/macos/dev-sign.sh
 
-# Reload a running dev shell:
-pkill -9 -f "Bevel.App" && <relaunch the launcher>
+# Stop a running dev shell — ASK IT KINDLY. Never kill -9.
+# Bevel hides the macOS Dock while it runs and restores it from AppDomain.ProcessExit
+# (MacOSDockController), which SIGTERM reaches and SIGKILL does not. kill -9 therefore leaves the
+# user's Dock hidden until the NEXT clean start notices and self-heals. Signal the LAUNCHER (the
+# argument-less process) — it drives the clean shutdown of core, taskbar and helper; signalling a
+# child instead just gets it respawned by the supervisor.
+pkill -f "dist/Bevel.app/Contents/MacOS/Bevel$"      # SIGTERM, no -9
+# Best of all, when the UI is alive: Start > Turn Off.
+# If it is genuinely wedged and -9 is unavoidable, restore the Dock by hand afterwards:
+#   defaults write com.apple.dock autohide -bool false && killall Dock
 ```
 
 Benchmarks live in `benchmarks/Bevel.Benchmarks` (BenchmarkDotNet; **not** in `Bevel.sln` —
