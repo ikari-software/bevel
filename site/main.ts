@@ -8,8 +8,32 @@
  * Serves from this directory: `/` and `/index.html` both return the page, `/shots/*` the real renders.
  */
 import { serveDir } from "jsr:@std/http@1/file-server";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const ROOT = new URL(".", import.meta.url).pathname;
+
+/**
+ * CSP script hashes, derived at boot from the page we actually serve.
+ *
+ * index.html carries one small inline script (the theme toggle). A hand-written hash would rot the
+ * moment that script changed, and the failure is silent -- the toggle simply stops working. Hashing the
+ * served file instead means the policy can never disagree with the page. Throws rather than degrading:
+ * a page whose script is blocked should fail loudly at boot, not quietly in the browser.
+ */
+async function inlineScriptHashes(): Promise<string> {
+  const html = await Deno.readTextFile(`${ROOT}index.html`);
+  const bodies = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  if (bodies.length === 0) return "'none'";
+
+  const hashes: string[] = [];
+  for (const body of bodies) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+    hashes.push(`'sha256-${encodeBase64(digest)}'`);
+  }
+  return hashes.join(" ");
+}
+
+const SCRIPT_SRC = await inlineScriptHashes();
 
 /** Cache headers by asset kind: the page itself must never go stale, its screenshots are immutable
  * enough to cache hard — they only change when a Render* test is re-harvested and redeployed. */
@@ -37,11 +61,13 @@ export default {
 
     if (response.ok || response.status === 304) {
       response.headers.set("cache-control", cacheControl(pathname));
-      // The page is entirely self-contained — fonts and favicon are inline data URIs, and there is no
-      // script at all — so it can afford a strict policy rather than the usual permissive default.
+      // The page is self-contained — fonts and favicon are inline data URIs, and its only script is the
+      // theme toggle — so it can afford a strict policy rather than the usual permissive default. The
+      // script is allowed by HASH, not by 'unsafe-inline', so an injected script still cannot run.
       response.headers.set(
         "content-security-policy",
-        "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        `default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src data:; ` +
+          `script-src ${SCRIPT_SRC}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       );
       response.headers.set("x-content-type-options", "nosniff");
       response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
