@@ -4,6 +4,7 @@
 # the separate cert-gated step (bevel-nsk / 09-engineering-plan §M5). Idempotent.
 #
 #   Env: RID (default osx-arm64) · CONFIG (Release) · VERSION (0.1.0) · BUILD (1) · OUT (<repo>/dist)
+#        CLEAN (1) — start from clean intermediates (see below); CLEAN=0 for a fast incremental dev iteration.
 #
 set -euo pipefail
 
@@ -11,6 +12,7 @@ RID="${RID:-osx-arm64}"
 CONFIG="${CONFIG:-Release}"
 VERSION="${VERSION:-0.1.0}"
 BUILD="${BUILD:-1}"
+CLEAN="${CLEAN:-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="${OUT:-$ROOT/dist}"
@@ -33,8 +35,35 @@ PUBLISH_ARGS=(-c "$CONFIG" -r "$RID" --self-contained true -p:BevelPackaging=tru
 	-p:PublishReadyToRun=true
 	-p:DebugType=none -p:DebugSymbols=false -v quiet)
 
+# Clean-by-default (bevel-9pgv). A dist build once crash-looped the taskbar on
+# `XamlLoadException: No precompiled XAML found for Bevel.Taskbar.TaskbarView` and shipped a 0-byte
+# Luna DLL — a corrupted incremental state, not a tree bug (clean publishes of the same tree boot).
+# The hazard is structural: Avalonia's CompileAvaloniaXamlTask rewrites obj/<cfg>/net10.0/<proj>.dll IN
+# PLACE after CoreCompile with no inputs/outputs of its own, so an interrupted or concurrent Release build
+# can leave plain IL (no compiled XAML) in obj/, and PublishReadyToRun + PublishSingleFile crossgen and
+# bundle whatever they find. The packaged artifact must not inherit whatever obj/ happens to hold, so the
+# release path removes every $CONFIG obj/ + bin/ dir under src/ and third_party/ (the whole App + CLI
+# graph, crossgen cache included) plus the previous publish dirs, then publishes from scratch. Deliberately
+# NOT `dotnet clean`: Clean needs a restore whose assets file already carries the RID target, and a plain
+# `dotnet build`/`dotnet test` leaves one that doesn't (NETSDK1047) — the rm is restore-independent. Debug
+# dirs are untouched, so the dev loop keeps its incremental state. Costs a full rebuild (~1 min on top of
+# the composite crossgen, which dominates anyway). CLEAN=0 keeps the incremental fast path for dev
+# iteration — the verify-bundle gate below still guards it.
+if [ "$CLEAN" != "0" ]; then
+	echo "==> Cleaning $CONFIG intermediates under src/ and third_party/ — CLEAN=0 to skip"
+	find "$ROOT/src" "$ROOT/third_party" -type d \( -path "*/obj/$CONFIG" -o -path "*/bin/$CONFIG" \) -prune -exec rm -rf {} +
+	rm -rf "$OUT/publish-app" "$OUT/publish-cli"
+fi
+
 echo "==> Publishing Bevel.App ($CONFIG / $RID, single-file)"
 dotnet publish "$ROOT/src/Bevel.App/Bevel.App.csproj" "${PUBLISH_ARGS[@]}" -o "$OUT/publish-app"
+
+# Gate (bevel-9pgv): prove the bundle carries every UI assembly's compiled XAML + `!AvaloniaResources`
+# before it becomes dist/Bevel.app. Fails the build loudly instead of shipping an artifact whose taskbar
+# throws XamlLoadException at first paint. python3 comes with the Xcode CLT that `swift build` below
+# already requires.
+echo "==> Verifying Avalonia payloads in the single-file bundle"
+python3 "$PKG/verify-bundle.py" "$OUT/publish-app/Bevel.App"
 
 echo "==> Publishing bevelctl"
 dotnet publish "$ROOT/src/bevelctl/bevelctl.csproj" "${PUBLISH_ARGS[@]}" -o "$OUT/publish-cli"
