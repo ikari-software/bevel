@@ -1,0 +1,7 @@
+# Bevel Desktop — https://bevel.ikari.software/
+User-agent: *
+Allow: /
+Allow: /agents.txt
+Allow: /updates/
+
+Sitemap: https://bevel.ikari.software/sitemap.xml

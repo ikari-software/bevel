@@ -23,6 +23,11 @@ DMG release lane exist. `Bevel.Pal.Windows` / `Bevel.Pal.Linux` and Flat are sti
 
 See open work with `bd ready`; the design spec is in [`docs/spec/`](docs/spec/).
 
+**Site:** [bevel.ikari.software](https://bevel.ikari.software/) (canonical). Alias:
+[ikari.software/bevel-desktop](https://ikari.software/bevel-desktop) → 301 to the former.
+Static Velopack feed directory (empty until first release):
+`https://bevel.ikari.software/updates` — set `updateFeedUrl` to that when you want checks on.
+
 ## Trademarks
 
 Bevel Desktop is an independent, open-source software project developed by ikari.software.

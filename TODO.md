@@ -46,8 +46,10 @@ Bevel-drawn Browser/Console/Viewer/Calculator (SVG in `src/`). Apple PNGs remove
 Re-harvested `site/shots/` (hero Start badge is BevelMark). App icon: `packaging/macos/BevelMark.svg` → `build-icns.sh` → `Bevel.icns`; site `#logo` is the cube.
 
 ### Not yet scheduled (raise with the owner; each needs its own discussion)
-- Git-repo theme install UX + `theme.json` provenance (see parked asks).
+- Git-repo theme install UX + `theme.json` provenance → bead **`bevel-te20`**.
 - Clearance search for the cube mark (optional; parked).
+- Attach `bevel.ikari.software` on Deno Deploy (`bevel-site`) + push site; deploy ikari-software alias.
+- Opt-in `updateFeedUrl=https://bevel.ikari.software/updates` once you want checks (default stays empty).
 - Commit housekeeping when asked.
 
 ## Two pre-existing test failures · `bevel-yslj` ✅ fixed

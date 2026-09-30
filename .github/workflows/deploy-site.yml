@@ -4,7 +4,8 @@
 # file plus real screenshots harvested from the Render* tests, so there is nothing to compile and no
 # framework to boot. Keeping it buildless means a re-harvested screenshot is one commit from live.
 #
-# The custom domain bevel.run is attached in the Deno Deploy dashboard, NOT here.
+# Custom domain: bevel.ikari.software is attached in the Deno Deploy dashboard (project bevel-site),
+# NOT here. Alias: ikari.software/bevel-desktop → 301 to the canonical host (ikari-software repo).
 name: Deploy site
 
 on:
