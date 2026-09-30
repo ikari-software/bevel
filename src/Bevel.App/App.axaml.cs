@@ -518,7 +518,15 @@ public partial class App : Application
             .FirstOrDefault(a => a.StartsWith("--select=", StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(selectArg))
             fm.SelectAfterLoad(new[] { new VfsPath("file", selectArg.Substring("--select=".Length)) });
-        desktop.MainWindow = fm;
+        // A parked filer must NOT set MainWindow: Avalonia's classic lifetime AUTO-SHOWS MainWindow
+        // at startup (StartCore → ShowMainWindow), so assigning the hidden window materializes it on
+        // screen — the user then sees a Filer they never opened, and every close is answered by the
+        // supervisor's keep-1 respawn: an uncloseable window (live bug, bevel-t48y Task 5). With no
+        // MainWindow the app stays headless like the core role (ShutdownMode is the default
+        // OnLastWindowClose: the app runs with zero shown windows and exits when the handed-off
+        // window is closed — the normal close that must never respawn).
+        if (!parked)
+            desktop.MainWindow = fm;
 
         // File > New Window (Ctrl+N): FileManagerWindow lives in Bevel.FileManager, which
         // Bevel.App references but not vice versa, so it cannot call the factory directly.
