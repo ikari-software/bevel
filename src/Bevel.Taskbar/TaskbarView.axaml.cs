@@ -45,6 +45,10 @@ public partial class TaskbarView : UserControl
     private bool _alwaysOnTop = true;
     private bool _showDesktop;
     private int _fontSize;
+    /// <summary>Start badge edge from the theme's <c>Bevel.Metric.StartBadgeSize</c> (live via resource observable).</summary>
+    private double _startBadgeSize = StartLogo.DefaultSize;
+    /// <summary>User option: the full glass-and-core mark even at small size (Appearance tab).</summary>
+    private bool _startBadgeFullDetail;
     private string _bgColor = "";
     private int _opacity = 100;
     private TaskbarWindow? _window;
@@ -165,6 +169,7 @@ public partial class TaskbarView : UserControl
         _showDesktop = settings.TaskbarShowDesktopButton;
         Clock.Configure(settings.TaskbarShowClock, settings.TaskbarClock24Hour, settings.TaskbarClockShowSeconds, settings.TaskbarClockShowDate);
         ApplyStart(settings.TaskbarShowStart, settings.TaskbarStartLabel);
+        _startBadgeFullDetail = settings.StartBadgeFullDetail;   // the OnLoaded size observable does the first build
         _fontSize = settings.TaskbarFontSize;
         _bgColor = settings.TaskbarBackgroundColor;
         _opacity = settings.TaskbarOpacity;
@@ -204,6 +209,11 @@ public partial class TaskbarView : UserControl
     }
 
     /// <summary>Sets the Start button's visibility and caption (empty caption = logo only).</summary>
+    /// <summary>Rebuilds the Start badge from the current theme size + the user's detail option. Cheap (a
+    /// handful of vector paths), so theme switches and the Appearance checkbox just call it.</summary>
+    private void RebuildStartBadge()
+        => StartLogoHost.Content = StartLogo.For(_startBadgeSize, _startBadgeFullDetail);
+
     private void ApplyStart(bool show, string label)
     {
         StartButton.IsVisible = show;
@@ -249,6 +259,11 @@ public partial class TaskbarView : UserControl
     {
         Clock.Configure(s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
         ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
+        if (_startBadgeFullDetail != s.StartBadgeFullDetail)
+        {
+            _startBadgeFullDetail = s.StartBadgeFullDetail;
+            RebuildStartBadge();
+        }
         _grouping = s.TaskbarGrouping;
         _vm?.SetGrouping(_grouping);
         _sort = s.TaskbarWindowSort;
@@ -456,8 +471,15 @@ public partial class TaskbarView : UserControl
                     if (v is Avalonia.Media.ISolidColorBrush b) _vm?.Tray.SetInk(b.Color);
                 }));
 
-            // Host-OS badge on the Start button: Windows flag / Apple / Tux, self-drawn vectors.
-            StartLogoHost.Content = StartLogo.For(16);
+            // Start-button badge: the Bevel mark (Tux on Linux), sized by the theme's StartBadgeSize metric.
+            // A resource observable fires the initial value and every theme switch, so the badge rebuilds at
+            // the new size (and detail level) live.
+            this.GetResourceObservable("Bevel.Metric.StartBadgeSize").Subscribe(
+                new Avalonia.Reactive.AnonymousObserver<object?>(v =>
+                {
+                    _startBadgeSize = v is double d and > 0 ? d : StartLogo.DefaultSize;
+                    RebuildStartBadge();
+                }));
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
 

@@ -10,6 +10,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Decision tables (BevelMark.LayersFor/Edges) are internal; their tests live in Bevel.UI.Tests. -->
+    <InternalsVisibleTo Include="Bevel.UI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- BevelWindow inherits Classic.Avalonia's ClassicWindow for Win2000 client chrome.
          Vendored in-tree under third_party/classic-avalonia (see NOTICE.md). -->
     <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />

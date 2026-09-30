@@ -118,9 +118,9 @@
                 </MenuFlyout>
             </Button.ContextFlyout>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
-                <!-- OS badge injected in code (StartLogo): Windows flag / Apple / Tux by host OS. -->
-                <ContentControl x:Name="StartLogoHost"
-                                Width="16" Height="16" VerticalAlignment="Center" />
+                <!-- Badge injected in code (StartLogo): the Bevel mark, or Tux on Linux. It sizes itself from
+                     Bevel.Metric.StartBadgeSize, so no fixed Width/Height here. -->
+                <ContentControl x:Name="StartLogoHost" VerticalAlignment="Center" />
                 <TextBlock x:Name="StartLabelText" Text="Start" VerticalAlignment="Center" />
             </StackPanel>
         </Button>

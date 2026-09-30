@@ -53,6 +53,24 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Start_badge_full_detail_is_off_by_default_and_round_trips_when_on()
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        Assert.False(service.Current.StartBadgeFullDetail);
+
+        await service.UpdateAsync(s => s.StartBadgeFullDetail = true);
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+        Assert.True(reloaded.Current.StartBadgeFullDetail);
+        Assert.Contains("startBadgeFullDetail", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+
+        // Back to the default: the key is pruned, not stored as an explicit false.
+        await reloaded.UpdateAsync(s => s.StartBadgeFullDetail = false);
+        Assert.DoesNotContain("startBadgeFullDetail", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+    }
+
+    [Fact]
     public async Task Unknown_keys_survive_a_load_save_cycle()
     {
         Directory.CreateDirectory(_dir);

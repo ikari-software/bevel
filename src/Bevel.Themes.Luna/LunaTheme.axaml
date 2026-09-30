@@ -78,6 +78,9 @@
             <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#EAF2FF" />
             <!-- XP Start is flush to the screen's left/top/bottom edges (square-left pill). -->
             <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
+            <!-- Edge (px) of the square Start badge. 20 leaves the italic "start" label clear of the pill's
+                 rounded end; 24 would need the 74px pill widened. -->
+            <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>
 
             <!-- Taskbar task-button (ToggleButton) chrome: a glossy blue that reads as a button on the
                  blue bar; :checked = the active window, rendered SUNKEN (darker top) like XP's pressed-in

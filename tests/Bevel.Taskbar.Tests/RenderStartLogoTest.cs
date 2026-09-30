@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -9,54 +12,88 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// Dev-only visual render of all three Start-button OS badges (Windows flag / Apple / Tux) side by
-/// side to a PNG, so the hand-drawn vector geometry can be eyeballed on any host OS — the live app
-/// only ever shows the current platform's badge. Also a smoke test that each variant renders.
+/// Dev-only visual render of the Start-button badges (Bevel mark at 16/20/32/96 + Tux) on the Classic
+/// and Luna Start faces to a PNG, so the vector geometry can be eyeballed on any host OS — the live app
+/// only ever shows one badge. Plus guards that no vendor logo badge can come back.
 /// </summary>
 public class RenderStartLogoTest
 {
     [AvaloniaFact]
-    public void Render_all_three_badges_to_png()
+    public void Render_badges_to_png_on_classic_and_luna_faces()
     {
-        var row = new StackPanel
+        // Real sizes on both Start faces, so the mark is judged where it actually lives: the Start badge
+        // (20, glass), the same badge with the "Detailed" option on, the About-box size (96, full), and Tux.
+        static Control Row(IBrush face) => new Border
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 24,
-            Margin = new Avalonia.Thickness(24),
+            Background = face,
+            Padding = new Avalonia.Thickness(16),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 24,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    StartLogo.Build(StartLogo.Kind.Bevel, 16),
+                    StartLogo.Build(StartLogo.Kind.Bevel, 20),
+                    StartLogo.Build(StartLogo.Kind.Bevel, 20, fullDetail: true),
+                    StartLogo.Build(StartLogo.Kind.Bevel, 32),
+                    StartLogo.Build(StartLogo.Kind.Bevel, 96),
+                    StartLogo.Build(StartLogo.Kind.Tux, 96),
+                },
+            },
         };
-        foreach (var kind in new[] { StartLogo.Kind.Windows, StartLogo.Kind.Apple, StartLogo.Kind.Tux })
-            row.Children.Add(StartLogo.Build(kind, 96));
 
         var window = new Window
         {
             SystemDecorations = SystemDecorations.None,
             SizeToContent = SizeToContent.WidthAndHeight,
-            Background = Brushes.Silver, // classic Start-button face, so black marks read
-            Content = row,
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    Row(new SolidColorBrush(Color.Parse("#D4D0C8"))),   // Classic button face
+                    Row(new SolidColorBrush(Color.Parse("#3C9A2E"))),   // Luna Start pill
+                },
+            },
         };
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
         var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
-        Assert.True(frame!.PixelSize.Width > 250, $"row too narrow: {frame.PixelSize}");
+        Assert.True(frame!.PixelSize.Width > 300, $"row too narrow: {frame.PixelSize}");
 
         var outPath = Environment.GetEnvironmentVariable("BEVEL_RENDER_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-startlogo-render.png");
         frame.Save(outPath);
     }
 
-    [AvaloniaFact]
-    public void Apple_badge_has_a_vector_drop_shadow()
+    [Fact]
+    public void Only_the_bevel_mark_and_tux_exist_as_badges()
     {
-        // The Apple mark (bevel-dotj) carries a subtle DropShadowEffect for depth on the Start face — a
-        // render effect, so it stays vector + antialiased (no bitmap). Navigate Viewbox → Canvas → Path.
-        var badge = StartLogo.Build(StartLogo.Kind.Apple, 16);
-        var canvas = Assert.IsType<Canvas>(Assert.IsType<Viewbox>(badge).Child);
-        var path = Assert.IsType<Avalonia.Controls.Shapes.Path>(canvas.Children[0]);
+        // Guard against reintroducing a vendor logo: embedding the Windows flag or the Apple mark in the
+        // Start button is the highest-risk IP item (bevel-legal-branding). There is no Kind for either.
+        Assert.Equal(new[] { "Bevel", "Tux" }, Enum.GetNames<StartLogo.Kind>().OrderBy(n => n));
+    }
 
-        var shadow = Assert.IsType<Avalonia.Media.DropShadowEffect>(path.Effect);
-        Assert.True(shadow.Opacity > 0 && shadow.Opacity < 1, "shadow should be subtle, not opaque");
-        Assert.True(shadow.BlurRadius > 0, "shadow should be soft");
+    [AvaloniaFact]
+    public void Vendor_badge_assets_are_not_shipped()
+    {
+        foreach (var name in new[] { "windows.svg", "apple.svg", "apple.png", "windows.png" })
+            Assert.False(Avalonia.Platform.AssetLoader.Exists(
+                new Uri($"avares://Bevel.Taskbar/Assets/StartBadge/{name}")), $"{name} must not ship");
+        Assert.True(Avalonia.Platform.AssetLoader.Exists(
+            new Uri("avares://Bevel.Taskbar/Assets/StartBadge/tux.svg")), "Linux keeps Tux");
+    }
+
+    [AvaloniaFact]
+    public void Linux_keeps_tux_everywhere_else_gets_the_bevel_mark()
+    {
+        var badge = StartLogo.For(20);
+        var canvas = Assert.IsType<Canvas>(Assert.IsType<Viewbox>(badge).Child);
+        // The Bevel mark is a fixed 100-unit canvas; Tux's is its own SVG viewBox.
+        if (OperatingSystem.IsLinux()) Assert.NotEqual(100, canvas.Width);
+        else Assert.Equal(100, canvas.Width);
     }
 }

@@ -128,6 +128,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
         RowsSlider.ValueChanged += OnRowsChanged;
         CrispBevelsCheck.IsCheckedChanged += OnCrispBevelsChanged;
+        StartBadgeDetailCheck.IsCheckedChanged += OnStartBadgeDetailChanged;
         ShowClockCheck.IsCheckedChanged += OnClockChanged;
         Clock24Check.IsCheckedChanged += OnClockChanged;
         ClockSecondsCheck.IsCheckedChanged += OnClockChanged;
@@ -212,6 +213,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         RowsSlider.Value = s.TaskbarRows;
         RowsValue.Text = $"{s.TaskbarRows} row{(s.TaskbarRows == 1 ? "" : "s")}";
         RefreshCrispBevels();
+        StartBadgeDetailCheck.IsChecked = s.StartBadgeFullDetail;
 
         ShowStartCheck.IsChecked = s.TaskbarShowStart;
         StartLabelBox.Text = s.TaskbarStartLabel;
@@ -425,6 +427,13 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         var mode = (TaskbarButtonLabels)LabelModeCombo.SelectedIndex;
         if (_settings.Current.TaskbarButtonLabels == mode) return;
         await PersistAndApply(s => s.TaskbarButtonLabels = mode);
+    }
+
+    private async void OnStartBadgeDetailChanged(object? sender, RoutedEventArgs e)
+    {
+        if (StartBadgeDetailCheck.IsChecked is not { } v) return;
+        if (_settings.Current.StartBadgeFullDetail == v) return;
+        await PersistAndApply(s => s.StartBadgeFullDetail = v);
     }
 
     private async void OnMiddleClickChanged(object? sender, RoutedEventArgs e)

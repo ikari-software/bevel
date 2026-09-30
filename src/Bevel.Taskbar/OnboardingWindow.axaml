@@ -330,6 +330,12 @@
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
+                            <CheckBox x:Name="StartBadgeDetailCheck"
+                                      Content="Detailed Start badge" FontSize="11" Margin="0,4,0,0" />
+                            <TextBlock Text="Show the full glass cube with its inner core on the Start button. At this small size it is busier than the simplified cube, so it is off by default."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Font size" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <Slider x:Name="FontSizeSlider" Minimum="9" Maximum="16"

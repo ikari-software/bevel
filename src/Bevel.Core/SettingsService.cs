@@ -534,6 +534,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("updateFeedUrl", _settings.UpdateFeedUrl, d.UpdateFeedUrl, SettingsJsonContext.Default.String);
         SetOrPrune("updateCheckIntervalHours", _settings.UpdateCheckIntervalHours, d.UpdateCheckIntervalHours, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarConsolidateMenuBar", _settings.TaskbarConsolidateMenuBar, d.TaskbarConsolidateMenuBar, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("startBadgeFullDetail", _settings.StartBadgeFullDetail, d.StartBadgeFullDetail, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarShowDesktopButton", _settings.TaskbarShowDesktopButton, d.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
@@ -689,6 +690,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             UpdateCheckIntervalHours = GetInt("updateCheckIntervalHours")
                 ?? Updates.UpdateCheckPolicy.DefaultIntervalHours,
             TaskbarConsolidateMenuBar = GetBool("taskbarConsolidateMenuBar") ?? false,
+            StartBadgeFullDetail = GetBool("startBadgeFullDetail") ?? false,
             TaskbarLocked = GetBool("taskbarLocked") ?? false,
             TaskbarAlwaysOnTop = GetBool("taskbarAlwaysOnTop") ?? true,
             TaskbarShowDesktopButton = GetBool("taskbarShowDesktopButton") ?? false,
@@ -861,6 +863,11 @@ public sealed class BevelSettings
 
     /// <summary>Taskbar background opacity 20–100 (%); 100 = fully opaque. Tints the bar, not its text.</summary>
     public int TaskbarOpacity { get; set; } = 100;
+
+    /// <summary>Show the full Bevel mark (glass cube with its inner core) on the Start button even at its
+    /// small size. Off (default) uses the simplified glass cube, which stays cleaner at 20px; the core
+    /// reads as a busier blob there. Ignored where the badge is Tux (Linux).</summary>
+    public bool StartBadgeFullDetail { get; set; }
 
     // ── System tray (bevel-cust.tray) ───────────────────────────────────────────────────────────
 
