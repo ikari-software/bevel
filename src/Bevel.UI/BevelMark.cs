@@ -9,7 +9,8 @@ namespace Bevel.UI;
 
 /// <summary>
 /// Bevel's own mark: a glass cube outlined in a continuous spectrum — the Start badge, the About box,
-/// and (later) the app icon. Code-drawn vector in a 100-unit box, so it is crisp at any size and DPI.
+/// and the app icon (<c>packaging/macos/BevelMark.svg</c> / <c>Bevel.icns</c>). Code-drawn vector in a
+/// 100-unit box, so it is crisp at any size and DPI.
 ///
 /// Two optical sizes of ONE mark, sharing the same silhouette, spectrum edges and glass treatment:
 /// <list type="bullet">

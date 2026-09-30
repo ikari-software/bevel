@@ -202,11 +202,31 @@
     <linearGradient id="btile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5A9BF0"/><stop offset=".5" stop-color="#2E68C4"/><stop offset="1" stop-color="#14305E"/></linearGradient>
     <symbol id="logo" viewBox="0 0 1024 1024">
       <rect width="1024" height="1024" rx="230" fill="url(#btile)"/>
-      <rect width="1024" height="1024" rx="230" fill="#fff" opacity="0"/>
-      <g>
-        <path d="M352 292h100v440H352zM452 292h104a110 110 0 0 1 0 220H452zM452 512h128a110 110 0 0 1 0 220H452z" fill="#3E6293" transform="translate(6,7)"/>
-        <path d="M352 292h100v440H352zM452 292h104a110 110 0 0 1 0 220H452zM452 512h128a110 110 0 0 1 0 220H452z" fill="#fff" transform="translate(-6,-7)"/>
-        <path d="M352 292h100v440H352zM452 292h104a110 110 0 0 1 0 220H452zM452 512h128a110 110 0 0 1 0 220H452z" fill="#EAF1FC"/>
+      <!-- BevelMark (same geometry as packaging/macos/BevelMark.svg / BevelMark.cs), inset on the tile -->
+      <g transform="translate(152,152) scale(7.2)" fill="none">
+        <path d="M50 50 86 71 50 92 14 71Z" fill="#9DB8EA" fill-opacity="0.30"/>
+        <path d="M50 8 86 29V71L50 50Z" fill="#4A74C4" fill-opacity="0.22"/>
+        <path d="M50 8 14 29V71L50 50Z" fill="#8FB0EC" fill-opacity="0.22"/>
+        <path d="M50 8V29M86 29 68 39.5M86 71 68 60.5M50 92V71M14 71 32 60.5M14 29 32 39.5" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M50 29 68 39.5 50 50 32 39.5Z" fill="#F2F7FF"/>
+        <path d="M32 39.5 50 50V71L32 60.5Z" fill="#6E9BE6"/>
+        <path d="M50 50 68 39.5V60.5L50 71Z" fill="#2B5DB4"/>
+        <path d="M32 39.5 50 29 68 39.5" stroke="#FFB14D" stroke-opacity="0.95" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M68 39.5V60.5" stroke="#B7E64A" stroke-opacity="0.95" stroke-width="3.6" stroke-linecap="round"/>
+        <path d="M32 39.5V60.5" stroke="#7C88FF" stroke-opacity="0.95" stroke-width="3.6" stroke-linecap="round"/>
+        <path d="M50 50V71" stroke="#2BD4D0" stroke-opacity="0.95" stroke-width="3.6" stroke-linecap="round"/>
+        <path d="M50 8 86 29 50 50 14 29Z" fill="#EAF2FF" fill-opacity="0.38"/>
+        <path d="M14 29 50 50V92L14 71Z" fill="#7BA3E6" fill-opacity="0.34"/>
+        <path d="M50 50 86 29V71L50 92Z" fill="#3A66BC" fill-opacity="0.40"/>
+        <path d="M50 8 86 29" stroke="#FF8A1F" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M86 29V71" stroke="#C6E32B" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M86 71 50 92" stroke="#34D68A" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M50 92 14 71" stroke="#22C3F6" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M14 71V29" stroke="#6B7BFF" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M14 29 50 8" stroke="#FF4D8D" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M14 29 50 50" stroke="#FFC233" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M50 50 86 29" stroke="#8BE04A" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M50 50V92" stroke="#2BD4D0" stroke-width="4.5" stroke-linecap="round"/>
       </g>
     </symbol>
     <symbol id="i-themes" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="11" fill="#fff" opacity=".55"/><rect x="6" y="8" width="13" height="11" fill="#fff"/></symbol>
