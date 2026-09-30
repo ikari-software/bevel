@@ -93,19 +93,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Current window snapshot keyed by CGWindowID, updated by reconciliation poll.
     private let stateLock = NSLock()
-    /// Consecutive offscreen-no-ax ticks per cg id (guarded by stateLock). A closed window leaves a
-    /// CG tombstone for a few SECONDS; a LIVE window that fails AX correlation while sitting on
-    /// another Mission Control space reads exactly the same per-tick (kCGWindowIsOnscreen is false
-    /// for other-space windows — Jump Desktop keeps a real session window there for hours).
-    private var ghostTicks: [CGWindowID: Int] = [:]
-    /// Windows that survived the tombstone window (still listed by CG after several seconds):
-    /// trusted live — kept without re-counting until they vanish from the CG list entirely (the
-    /// closed-diff then reaps the button). A real tombstone that outlives the window is self-
-    /// correcting the same way: once the CG list drops the entry, the button closes.
-    private var trustedOffscreen = Set<CGWindowID>()
-    /// Pids we have already flipped AXManualAccessibility on (Electron/Chromium): the flag is
-    /// sticky per app process; re-setting it every tick is just log noise.
-    private var axManualFlipped = Set<pid_t>()
+    /// Off-screen + AX-less windows: live (other Space / AX-less app) vs closed-window tombstone.
+    private let offscreenTracker = OffscreenWindowTracker()
     private var windowStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
 
     /// Running-but-windowless regular apps (bevel-ww71), keyed by bundle id. Each is a synthetic
@@ -553,27 +542,144 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
-    /// Build a full `TaskbarWindow` descriptor for a CGWindowList entry, correlating
-    /// to AX for minimized/focus state and loading the app icon.
+    // MARK: - Snapshot pass
+
+    /// Everything ONE listing pass learns once and shares with every `describe()` call, so a pass is
+    /// a consistent picture (one CG query, one AX correlation, one Spaces read) instead of each
+    /// window re-deriving its own slightly different world.
+    private struct SnapshotPass {
+        /// CGWindowList layer-0 entries, front-to-back (z-order).
+        let entries: [[String: Any]]
+        let axMap: [CGWindowID: AXUIElement]
+        /// The effective foreign frontmost app — the one whose window gets the pressed state.
+        let foregroundPID: pid_t?
+        let spaces: SpaceContext
+        /// Ids CG reports on-screen. Precomputed: a pass sees thousands of layer-0 ghost entries, and a
+        /// per-window linear scan of `entries` made a pass O(n²).
+        let onScreen: Set<CGWindowID>
+        /// Rank of each on-screen window in true front-to-back order (0 = frontmost). Sourced from the
+        /// on-screen-only CG list — the `.optionAll` list's order is NOT depth.
+        let zRank: [CGWindowID: Int]
+
+        func isOnScreen(_ id: CGWindowID) -> Bool { onScreen.contains(id) }
+    }
+
+    /// Capture one pass. `forReconcile` marks the 500ms poll, the only caller that has side effects:
+    /// it registers AX observers for new window owners and advances the off-screen tombstone
+    /// counters (ListWindows/snapshot calls must stay read-only or they would double-count ticks).
+    private func beginPass(forReconcile: Bool) -> SnapshotPass {
+        let entries = layer0Entries(options: .optionAll)
+        let pids = Set(entries.compactMap { $0[kCGWindowOwnerPID as String] as? pid_t })
+        if forReconcile { ensureObservers(for: pids) }
+        let axMap = correlateAXElements(forPIDs: pids, entries: entries)
+        let ids = entries.compactMap { $0[kCGWindowNumber as String] as? CGWindowID }
+        let onScreen = Set(entries.compactMap { entry -> CGWindowID? in
+            (entry[kCGWindowIsOnscreen as String] as? Bool) == true ? entry[kCGWindowNumber as String] as? CGWindowID : nil
+        })
+        let pass = SnapshotPass(
+            entries: entries,
+            axMap: axMap,
+            foregroundPID: effectiveForeignFrontmost(NSWorkspace.shared.frontmostApplication?.processIdentifier),
+            spaces: SpaceContext.capture(),
+            onScreen: onScreen,
+            zRank: trueZOrder()
+        )
+        if forReconcile {
+            offscreenTracker.advance(
+                candidates: Set(ids.filter { axMap[$0] == nil && !onScreen.contains($0) }),
+                listed: Set(ids)
+            )
+        }
+        return pass
+    }
+
+    /// Front-to-back rank of every on-screen layer-0 window. A separate, small query on purpose:
+    /// only `.optionOnScreenOnly` is ordered by depth.
+    private func trueZOrder() -> [CGWindowID: Int] {
+        var rank: [CGWindowID: Int] = [:]
+        for entry in layer0Entries(options: .optionOnScreenOnly) {
+            if let id = entry[kCGWindowNumber as String] as? CGWindowID { rank[id] = rank.count }
+        }
+        return rank
+    }
+
+    /// The taskbar's windows for a pass, with the pressed state resolved. This is the
+    /// single readable chain: admit each CG entry (`describe`) → resolve which one has focus.
+    private func listWindows(_ pass: SnapshotPass) -> [Bevel_Helper_V1_TaskbarWindow] {
+        var kept = pass.entries.compactMap { describe(entry: $0, pass: pass) }
+        markFocusedWindow(in: &kept, pass: pass)
+        return kept
+    }
+
+    /// Press exactly one window: the foreground app's focused one (see `FocusResolver` for the
+    /// ladder — identity, nothing-focused, unidentifiable-focus fallback).
+    private func markFocusedWindow(in kept: inout [Bevel_Helper_V1_TaskbarWindow], pass: SnapshotPass) {
+        guard let fpid = pass.foregroundPID else { return }
+        let candidates = kept.compactMap { win -> FocusResolver.Candidate? in
+            guard win.pid == Int32(fpid), let id = CGWindowID(win.windowID) else { return nil }
+            return FocusResolver.Candidate(
+                cgID: id,
+                isOnScreen: pass.isOnScreen(id),
+                isMinimized: win.isMinimized,
+                axElement: pass.axMap[id],
+                zRank: pass.zRank[id] ?? Int.max
+            )
+        }
+        guard !candidates.isEmpty else { return }
+
+        let evidence = FocusEvidence.read(pid: fpid)
+        let focused = FocusResolver.focusedWindow(evidence: evidence, windows: candidates)
+        dbg("focus pid=\(fpid) evidence=\(evidence.debugLabel) → \(focused.map { "cg=\($0)" } ?? "none")")
+        if let focused, let idx = kept.firstIndex(where: { $0.windowID == String(focused) }) {
+            kept[idx].isFocused = true
+        }
+    }
+
+    // MARK: - Admission
+
+    /// Build a full `TaskbarWindow` descriptor for a CGWindowList entry, or nil when the entry is not
+    /// a taskbar window. Shared by BOTH `enumerateWindows()` (ListWindows + Changes snapshot) AND the
+    /// reconciliation poll so the two paths produce identical descriptors (bevel-m2.1 / bevel-m2.3).
     ///
-    /// Shared by BOTH `enumerateWindows()` (ListWindows + Changes snapshot) AND the
-    /// reconciliation poll so the two paths produce identical rich descriptors.
-    /// Previously the poll path built its own icon-less, `isMinimized`-hardcoded
-    /// descriptors, so windows opened after startup showed no icon (bevel-m2.1) and
-    /// minimized windows were diffed as closed and dropped from the taskbar
-    /// (bevel-m2.3). One builder keeps the paths from drifting again.
-    private func describe(
-        entry: [String: Any],
-        axMap: [CGWindowID: AXUIElement],
-        effectiveFrontmost: pid_t?
-    ) -> Bevel_Helper_V1_TaskbarWindow? {
+    /// Reads top to bottom as the admission pipeline: Dock app? → descriptor → AX state → stable
+    /// title → ordered drop gates. Focus is NOT decided here — it is per-app, so the pass resolves it
+    /// once for the foreground app (`markFocusedWindow`).
+    private func describe(entry: [String: Any], pass: SnapshotPass) -> Bevel_Helper_V1_TaskbarWindow? {
         guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID else { return nil }
         let pid = entry[kCGWindowOwnerPID as String] as? pid_t ?? 0
-        let ownerName = entry[kCGWindowOwnerName as String] as? String ?? "?"
+        guard let app = dockApp(pid: pid, cgID: cgID, ownerName: entry[kCGWindowOwnerName as String] as? String ?? "?")
+        else { return nil }
 
-        // Only apps that appear in the Dock (regular activation policy) belong on the
-        // taskbar. This drops menu-bar-only agents (.accessory) and background daemons
-        // (.prohibited), which were flooding the bar with non-window entries.
+        var win = baseDescriptor(entry: entry, cgID: cgID, pid: pid, app: app)
+
+        if let axWin = pass.axMap[cgID], let reason = applyAXState(to: &win, axWin: axWin) {
+            dbg("drop cg=\(cgID) '\(win.appName)' reason=\(reason)")
+            return nil
+        }
+
+        // AX/CG can expose an empty title for one reconciliation tick while an existing window is
+        // being renamed. Identity is the stable CGWindowID, not its mutable title: retain the last
+        // accepted title while that same PID/window remains AX-correlated. Without this, the no-title
+        // gate below emits CLOSED then OPENED on the next 500ms poll, making the button shrink and
+        // regrow instead of updating in place.
+        let previousTitle: String? = stateLock.withLock {
+            guard let previous = windowStore[cgID], previous.pid == win.pid else { return nil }
+            return previous.title
+        }
+        win.title = titleForStableDiff(current: win.title, previous: previousTitle, hasAXWindow: pass.axMap[cgID] != nil)
+
+        if let reason = dropReason(for: win, cgID: cgID, entry: entry, pass: pass) {
+            dbg("drop cg=\(cgID) '\(win.appName)' reason=\(reason)")
+            return nil
+        }
+
+        dbg("keep cg=\(cgID) '\(win.appName)' title='\(win.title)' min=\(win.isMinimized) frame=\(win.frame.width)x\(win.frame.height) hasAX=\(pass.axMap[cgID] != nil)")
+        return win
+    }
+
+    /// Only apps that appear in the Dock (regular activation policy) belong on the taskbar — this
+    /// drops menu-bar-only agents (.accessory) and background daemons (.prohibited).
+    private func dockApp(pid: pid_t, cgID: CGWindowID, ownerName: String) -> NSRunningApplication? {
         guard let app = NSRunningApplication(processIdentifier: pid) else {
             dbg("drop cg=\(cgID) '\(ownerName)' pid=\(pid) reason=no-running-app")
             return nil
@@ -582,7 +688,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             dbg("drop cg=\(cgID) '\(app.localizedName ?? ownerName)' pid=\(pid) reason=activationPolicy=\(app.activationPolicy.rawValue)")
             return nil
         }
+        return app
+    }
 
+    private func baseDescriptor(
+        entry: [String: Any], cgID: CGWindowID, pid: pid_t, app: NSRunningApplication
+    ) -> Bevel_Helper_V1_TaskbarWindow {
         var win = Bevel_Helper_V1_TaskbarWindow()
         win.windowID = String(cgID)
         win.title = entry[kCGWindowName as String] as? String ?? ""
@@ -603,132 +714,91 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             rect.height = clampToInt32((bounds["Height"] as? CGFloat) ?? 0)
             win.frame = rect
         }
-
-        if let axWin = axMap[cgID] {
-            // isMinimized — read FIRST, because the subrole/title filters below must exempt
-            // minimized windows (bevel-m2.3). Minimized windows are off-screen, so `.optionAll`
-            // on the CGWindowList query is required; CGWindowList alone cannot report it.
-            var minVal: CFTypeRef?
-            let minRes = AXUIElementCopyAttributeValue(axWin, kAXMinimizedAttribute as CFString, &minVal)
-            win.isMinimized = (minRes == .success) && (minVal as? Bool == true)
-
-            // Standard windows only — excludes panels, sheets, popovers, tooltips and other
-            // non-standard subroles that regular apps also expose at layer 0. Minimized windows
-            // are exempt: some apps (e.g. Jump Desktop) report a non-standard subrole such as
-            // AXDialog for a *miniaturized* window, but it was a real taskbar window and must
-            // stay listed while minimized (bevel-m2.3) — otherwise its button vanishes on minimize.
-            if !win.isMinimized, let subrole = nonStandardSubrole(of: axWin) {
-                dbg("drop cg=\(cgID) '\(win.appName)' reason=subrole=\(subrole)")
-                return nil
-            }
-
-            // Window title from AX. kCGWindowName needs Screen Recording (usually not
-            // granted → empty, so the label fell back to the bundle id); AX titles need
-            // only Accessibility, so read from AX whenever the CG title is blank.
-            if win.title.isEmpty {
-                var titleVal: CFTypeRef?
-                if AXUIElementCopyAttributeValue(axWin, kAXTitleAttribute as CFString, &titleVal) == .success,
-                   let t = titleVal as? String {
-                    win.title = t
-                }
-            }
-        } else {
-            win.isMinimized = false
-        }
-
-        // Closed-window removal (bevel-m2.3): a window that has just been closed can leave a brief
-        // CGWindowList tombstone — its name and bounds survive for a moment after the NSWindow is torn
-        // down, so kCGWindowName still yields a title and the frame is non-zero. Such an entry has NO live
-        // AX element, so we cannot confirm it as MINIMIZED (which must stay listed) and it is off-screen
-        // (`.optionAll` surfaced it; it is absent from the on-screen list). That makes it a closed/ghost
-        // window, not a real taskbar window — otherwise its title-bearing tombstone sails past every drop
-        // gate below and the button lingers for seconds. On-screen windows (real, even when AX is
-        // unavailable) and AX-correlated minimized windows both keep a live signal and are unaffected.
-        if axMap[cgID] == nil, (entry[kCGWindowIsOnscreen as String] as? Bool) != true {
-            let (promoted, ticks) = stateLock.withLock { () -> (Bool, Int) in
-                if trustedOffscreen.contains(cgID) { return (true, 0) }
-                ghostTicks[cgID, default: 0] += 1
-                let n = ghostTicks[cgID] ?? 0
-                // Still CG-listed after several seconds: a tombstone leaves the list within
-                // seconds, so this is a live window (other space / permanent AX gap) — promote.
-                if n >= 8 {
-                    trustedOffscreen.insert(cgID)
-                    ghostTicks.removeValue(forKey: cgID)
-                    return (true, n)
-                }
-                return (false, n)
-            }
-            if promoted {
-                dbg("keep cg=\(cgID) '\(win.appName)' trusted-offscreen (live: other space / permanent AX gap)")
-            } else {
-                dbg("keep cg=\(cgID) '\(win.appName)' offscreen-no-ax tick \(ticks)/8 — unconfirmed tombstone (other-space / AX gap)")
-            }
-        } else {
-            stateLock.withLock { ghostTicks.removeValue(forKey: cgID) }
-        }
-
-        // AX/CG can expose an empty title for one reconciliation tick while an existing
-        // window is being renamed. Identity is the stable CGWindowID, not its mutable title:
-        // retain the last accepted title while that same PID/window remains AX-correlated.
-        // Without this, the no-title gate below emits CLOSED and then OPENED on the next
-        // 500ms poll, making the taskbar button shrink and regrow instead of updating in place.
-        let previousTitle: String? = stateLock.withLock {
-            guard let previous = windowStore[cgID], previous.pid == win.pid else { return nil }
-            return previous.title
-        }
-        win.title = titleForStableDiff(
-            current: win.title,
-            previous: previousTitle,
-            hasAXWindow: axMap[cgID] != nil
-        )
-
-        win.isFocused = isTaskbarFocusedWindow(
-            cgID: cgID,
-            pid: pid,
-            axMap: axMap,
-            effectiveFrontmost: effectiveFrontmost
-        )
-
-        // Drop phantom windows: a layer-0 CGWindow with a zero-area frame is not a
-        // real user window (system overlays, off-screen scaffolding) and would show
-        // as an empty taskbar button. Minimized windows are kept regardless — they
-        // must stay on the taskbar (bevel-m2.3) and may report no on-screen frame.
-        if (win.frame.width <= 0 || win.frame.height <= 0) && !win.isMinimized {
-            dbg("drop cg=\(cgID) '\(win.appName)' reason=zero-frame")
-            return nil
-        }
-
-        // A real taskbar window has a title. Every genuine user window exposes one
-        // (via AX or CGWindowList); the flood of title-less layer-0 windows — full-width
-        // 30px strips, 1x1/64x64/500x500 placeholders with no AX — are not real windows.
-        // Minimized windows are exempt so they stay listed (bevel-m2.3).
-        if win.title.isEmpty && !win.isMinimized {
-            dbg("drop cg=\(cgID) '\(win.appName)' reason=no-title hasAX=\(axMap[cgID] != nil)")
-            return nil
-        }
-
-        // Bevel hosts both shell chrome and ordinary applications (File Manager/Explorer) in
-        // the parent process. Excluding the whole PID hid every first-party app from its own
-        // taskbar. Only reserved shell surfaces and transient Avalonia popups (tooltips, menus)
-        // are dropped; File Manager / Explorer windows are legal taskbar windows.
-        if isShellChrome(pid: pid, title: win.title) {
-            dbg("drop cg=\(cgID) '\(win.appName)' reason=shell-chrome title='\(win.title)'")
-            return nil
-        }
-        if isBevelTransient(
-            pid: pid,
-            cgID: cgID,
-            axMap: axMap,
-            isMinimized: win.isMinimized,
-            frameWidth: Int(win.frame.width),
-            frameHeight: Int(win.frame.height)
-        ) {
-            dbg("drop cg=\(cgID) '\(win.appName)' reason=bevel-transient title='\(win.title)'")
-            return nil
-        }
-
-        dbg("keep cg=\(cgID) '\(win.appName)' title='\(win.title)' min=\(win.isMinimized) frame=\(win.frame.width)x\(win.frame.height) hasAX=\(axMap[cgID] != nil)")
         return win
+    }
+
+    /// Fold the window's live AX state into the descriptor: minimized flag, AX title fallback.
+    /// Returns a drop reason when AX proves this is not a standard window.
+    private func applyAXState(to win: inout Bevel_Helper_V1_TaskbarWindow, axWin: AXUIElement) -> String? {
+        // isMinimized — read FIRST, because the subrole filter below must exempt minimized windows
+        // (bevel-m2.3). Minimized windows are off-screen, so `.optionAll` is required on the CG query.
+        var minVal: CFTypeRef?
+        let minRes = AXUIElementCopyAttributeValue(axWin, kAXMinimizedAttribute as CFString, &minVal)
+        win.isMinimized = (minRes == .success) && (minVal as? Bool == true)
+
+        // Standard windows only — excludes panels, sheets, popovers and other non-standard subroles
+        // that regular apps also expose at layer 0. Minimized windows are exempt: some apps (Jump
+        // Desktop) report a non-standard subrole such as AXDialog for a *miniaturized* window that
+        // was a real taskbar window and must stay listed (bevel-m2.3).
+        if !win.isMinimized, let subrole = nonStandardSubrole(of: axWin) {
+            return "subrole=\(subrole)"
+        }
+
+        // kCGWindowName needs Screen Recording (often not granted → empty); AX titles need only
+        // Accessibility, so read from AX whenever the CG title is blank.
+        if win.title.isEmpty {
+            var titleVal: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWin, kAXTitleAttribute as CFString, &titleVal) == .success,
+               let t = titleVal as? String {
+                win.title = t
+            }
+        }
+        return nil
+    }
+
+    /// The ordered drop gates. First hit wins and names itself for the debug log. The gates are
+    /// independent (every one is a plain drop), so order only decides which reason is reported and
+    /// keeps the expensive ones behind the cheap ones.
+    private func dropReason(
+        for win: Bevel_Helper_V1_TaskbarWindow,
+        cgID: CGWindowID,
+        entry: [String: Any],
+        pass: SnapshotPass
+    ) -> String? {
+        let pid = pid_t(win.pid)
+        let hasAX = pass.axMap[cgID] != nil
+        let gates: [() -> String?] = [
+            // A zero-area layer-0 window is a system overlay / off-screen scaffolding, not a user
+            // window. Minimized windows are exempt (they may report no on-screen frame).
+            { (win.frame.width <= 0 || win.frame.height <= 0) && !win.isMinimized ? "zero-frame" : nil },
+            // Every genuine user window exposes a title (AX or CG); the flood of title-less layer-0
+            // windows (30px strips, 1x1/64x64/500x500 placeholders) are not real windows.
+            { win.title.isEmpty && !win.isMinimized ? "no-title hasAX=\(hasAX)" : nil },
+            // Costly (a WindowServer round-trip per off-screen window), so it runs AFTER the cheap gates
+            // above have already dropped the flood of title-less / zero-area ghosts.
+            { self.isUnconfirmedOffscreenGhost(cgID: cgID, hasAX: hasAX, entry: entry, spaces: pass.spaces)
+                ? "offscreen-no-ax (unconfirmed tombstone)" : nil },
+            // Bevel hosts shell chrome AND ordinary apps (Filer) in the parent process: drop only
+            // the reserved chrome surfaces and transient Avalonia popups, never the whole PID.
+            { self.isShellChrome(pid: pid, title: win.title) ? "shell-chrome title='\(win.title)'" : nil },
+            { self.isBevelTransient(
+                pid: pid, cgID: cgID, axMap: pass.axMap, isMinimized: win.isMinimized,
+                frameWidth: Int(win.frame.width), frameHeight: Int(win.frame.height))
+                ? "bevel-transient title='\(win.title)'" : nil },
+        ]
+        for gate in gates { if let reason = gate() { return reason } }
+        return nil
+    }
+
+    /// Closed-window removal (bevel-m2.3): a just-closed window leaves a CGWindowList tombstone whose
+    /// name and bounds survive for a while, so it sails past every title/frame gate and the button
+    /// lingers. A tombstone has no AX element and is off-screen — which is ALSO what a live window
+    /// on another Space looks like (AX only lists the current Space). Only those two facts are
+    /// ambiguous, so resolve them in order of certainty:
+    ///
+    /// 1. On a Space no display is showing → definitely live (a tombstone stays on the Space it died
+    ///    on). Keep it, and activation will switch Spaces.
+    /// 2. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
+    ///    (hidden AX-less apps); until then treat it as a tombstone.
+    ///
+    /// On-screen windows and AX-correlated windows (incl. minimized) carry a live signal and are
+    /// never affected.
+    private func isUnconfirmedOffscreenGhost(
+        cgID: CGWindowID, hasAX: Bool, entry: [String: Any], spaces: SpaceContext
+    ) -> Bool {
+        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return false }
+        if spaces.isOnOtherSpace(cgID) { return false }
+        return !offscreenTracker.isConfirmedLive(cgID)
     }
 
     /// Internal for focused unit coverage via `@testable import BevelHelper`.
@@ -796,39 +866,6 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
-    /// Ghost-focus fallback (the Kiro/Nessie "never registers as active" class): Electron/Tauri
-    /// apps can report their AX focused window as a title-less scaffolding surface this pass DROPS
-    /// (no-title / offscreen-no-ax ghosts), or expose no correlatable AX tree at all — so the app's
-    /// real, visible window never matches the identity check and the pressed state never lands,
-    /// while the user is unambiguously IN the app. When the effective-frontmost app has NO focused
-    /// kept window, press its TOPMOST kept window in z-order (the caller's array preserves
-    /// CGWindowList's front-to-back order): clicking a window raises it to the app's top, so that
-    /// is the surface the user is looking at. Applies to the sole-window case identically.
-    private func ghostFocusedWindowID(
-        _ windows: [Bevel_Helper_V1_TaskbarWindow],
-        effectiveFrontmost: pid_t?
-    ) -> CGWindowID? {
-        guard let fpid = effectiveFrontmost else { return nil }
-        guard !windows.contains(where: { $0.pid == Int32(fpid) && $0.isFocused }) else { return nil }
-        guard let top = windows.first(where: { $0.pid == Int32(fpid) }),
-              let cg = UInt64(top.windowID).map({ CGWindowID($0) })
-        else { return nil }
-        dbg("focus-fallback cg=\(top.windowID) '\(top.appName)' — frontmost app's AX focus is unresolvable; pressing its topmost kept window")
-        return cg
-    }
-
-    /// Pressed-state: true when `cgID` is the focused window of the snapshot's effective frontmost
-    /// foreign app (resolved once via `effectiveForeignFrontmost`).
-    private func isTaskbarFocusedWindow(
-        cgID: CGWindowID,
-        pid: pid_t,
-        axMap: [CGWindowID: AXUIElement],
-        effectiveFrontmost: pid_t?
-    ) -> Bool {
-        guard let effectiveFrontmost, pid == effectiveFrontmost else { return false }
-        return isFocusedWindow(cgID: cgID, axMap: axMap, pid: pid)
-    }
-
     /// Preserve presentation data across a transient observation gap without changing identity.
     /// Internal for focused unit coverage via `@testable import BevelHelper`.
     func titleForStableDiff(current: String, previous: String?, hasAXWindow: Bool) -> String {
@@ -843,16 +880,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Enumerate all layer-0 windows (including minimized), each with a full
     /// AX-correlated descriptor. Backs ListWindows and the Changes snapshot.
     func enumerateWindows() -> [Bevel_Helper_V1_TaskbarWindow] {
-        let entries = layer0Entries(options: .optionAll)
-        let pidSet = Set(entries.compactMap { $0[kCGWindowOwnerPID as String] as? pid_t })
-        let axMap = correlateAXElements(forPIDs: pidSet, entries: entries)
-        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
-        var windows = entries.compactMap { describe(entry: $0, axMap: axMap, effectiveFrontmost: effectiveFrontmost) }
-        if let cg = ghostFocusedWindowID(windows, effectiveFrontmost: effectiveFrontmost),
-           let idx = windows.firstIndex(where: { $0.windowID == String(cg) }) {
-            windows[idx].isFocused = true
-        }
+        var windows = listWindows(beginPass(forReconcile: false))
         // Append the last-computed app-presence entries (bevel-ww71) so ListWindows + the Changes snapshot
         // carry windowless-running apps too. The 500ms reconcile keeps `appStore` current.
         windows.append(contentsOf: stateLock.withLock { Array(appStore.values) })
@@ -962,25 +990,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             var axWindows: CFTypeRef?
             let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axWindows)
             guard result == .success, let windowList = axWindows as? [AXUIElement] else {
-                if debugWindows {
-                    let cgCount = cgByPID[pid]?.count ?? 0
-                    dbg("correlate pid=\(pid) AXWindows query failed (\(result.rawValue)) — \(cgCount) CG candidate(s) uncorrelatable")
-                }
-                // Chromium/Electron ships with its accessibility API DISABLED (kAXErrorAPIDisabled,
-                // -25211) until VoiceOver or the app itself turns it on — the whole app then has NO
-                // window identity (focus falls back to z-order, activation degrades to app-level).
-                // AXManualAccessibility is the documented Chromium switch: flip it once and the AX
-                // tree materializes within a few ticks, unlocking per-window identity (Kiro class).
-                if result.rawValue == -25211, !axManualFlipped.contains(pid) {
-                    AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-                    _ = axManualFlipped.insert(pid)
-                    dbg("correlate pid=\(pid) AX API disabled → set AXManualAccessibility=true (Electron/Chromium); tree materializes shortly")
-                }
+                // No window identity for this app: Electron builds can answer kAXErrorAPIDisabled
+                // (-25211) for their whole AX tree, and AX never lists other-Space windows. Its
+                // windows stay listed from CGWindowList; focus falls back via `FocusResolver` and
+                // activation goes through the WindowServer (`ActivationPlan`).
+                dbg("correlate pid=\(pid) AXWindows unavailable (\(result.rawValue)) — \(cgByPID[pid]?.count ?? 0) CG window(s) stay AX-less")
                 continue
-            }
-            if debugWindows, !windowList.isEmpty || !(cgByPID[pid]?.isEmpty ?? true) {
-                let cgCount = cgByPID[pid]?.count ?? 0
-                dbg("correlate pid=\(pid) axWindows=\(windowList.count) cgCandidates=\(cgCount)")
             }
 
             for axWin in windowList {
@@ -1049,54 +1064,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return nil
     }
 
-    /// Determine whether a CGWindowID is the focused window of its owning app.
-    private func isFocusedWindow(cgID: CGWindowID, axMap: [CGWindowID: AXUIElement], pid: pid_t) -> Bool {
-        // Query the app's focused window via AX — do not require axMap[cgID]; correlation
-        // can fail for one tick while the window is still the real foreground surface.
-        var focused: CFTypeRef?
-        let axApp = AXUIElementCreateApplication(pid)
-        // R18 convention: bound the AX round-trip — this runs per window per 500ms reconcile tick,
-        // and without the cap a beachballing frontmost app stalls each query for the default AX
-        // timeout (~6s), freezing the poll (review: correctness+adversarial, validated).
-        _ = _AXUIElementSetMessagingTimeout(axApp, 1.0)
-        let result = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focused)
-        guard result == .success, let focusedElem = focused else { return false }
-        // A misbehaving app's AX server can return an unexpected CFType here; verify the
-        // runtime type before casting so a bad value falls back to "not focused" instead
-        // of crashing the whole helper. (`as?` on CF types is a compile error — the static
-        // cast "always succeeds" — so guard on the CFTypeID, then the cast cannot fail.)
-        guard CFGetTypeID(focusedElem) == AXUIElementGetTypeID() else { return false }
-        let focusedAX = focusedElem as! AXUIElement
-
-        // Element identity is authoritative when we have a correlated AX element for this window.
-        // axMap already worked around `_AXUIElementGetWindow`'s unreliability (via the frame-match
-        // fallback), so a SECOND SPI round-trip here — resolving the focused element back to a
-        // CGWindowID — just reintroduces that flakiness and can mis-map focus to the wrong window
-        // of a multi-window app. Compare the app's focused-window element to axMap[cgID] directly.
-        if let axWin = axMap[cgID] {
-            let match = CFEqual(axWin, focusedAX)
-            if debugWindows {
-                var fcg: CGWindowID = 0
-                let ok = _AXUIElementGetWindow(focusedAX, &fcg) == .success
-                dbg("focus? cg=\(cgID) identity=\(match) spiFocusedCG=\(ok ? String(fcg) : "n/a")")
-            }
-            return match
-        }
-        // No correlated AX element for this CGWindowID (the SPI could not map it at all) — fall
-        // back to the focused-window SPI round-trip as a best effort.
-        var focusedCGID: CGWindowID = 0
-        if _AXUIElementGetWindow(focusedAX, &focusedCGID) == .success {
-            return focusedCGID == cgID
-        }
-        return false
-    }
-
     // MARK: - Window control actions
 
-    /// Resolve the owning PID (always) and the window-level AXUIElement (best-effort) for a CGWindowID.
+    /// Resolve a CGWindowID to a `WindowTarget`: owning PID (always), window-level AXUIElement (best-effort),
+    /// and whether the window lives on another Space.
     /// Some apps (notably Apple Music) expose no correlated AX window element, so callers that only
     /// need to bring the app forward must not hard-fail on a missing window element.
-    private func resolveWindow(windowID: String) throws -> (pid: pid_t, axWin: AXUIElement?) {
+    private func resolveWindow(windowID: String) throws -> WindowTarget {
         guard let cgID = CGWindowID(windowID) else {
             throw RPCError(code: .invalidArgument, message: "Invalid window_id: \(windowID)")
         }
@@ -1108,7 +1082,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             throw RPCError(code: .notFound, message: "Window \(windowID) not found")
         }
         let axMap = correlateAXElements(forPIDs: [pid], entries: [entry])
-        return (pid, axMap[cgID])
+        return WindowTarget(
+            pid: pid, cgID: cgID, axWin: axMap[cgID],
+            isOnOtherSpace: SpaceContext.capture().isOnOtherSpace(cgID)
+        )
     }
 
     /// The window-level AX element, required by callers that act ON the window itself (minimize,
@@ -1152,38 +1129,14 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return
         }
 
-        let (pid, axWin) = try resolveWindow(windowID: windowID)
-        raiseAppThenWindow(pid: pid, axWin: axWin)
-    }
-
-    /// Bring `pid`'s app frontmost, THEN raise the specific window LAST (bevel-nxic). Order matters:
-    ///
-    /// 1. App activation FIRST — `kAXFrontmostAttribute` is the accessibility-native activation and the
-    ///    ONLY step available for apps without a window AX element; `NSRunningApplication.activate` is the
-    ///    belt-and-suspenders for apps whose app-level AX is ALSO restricted (Apple Music — no window AX
-    ///    element AND no app-AX activation), since it isn't accessibility-dependent. This is what actually
-    ///    brings a window up when Bevel's taskbar sits at a high window level holding key focus.
-    /// 2. `AXRaise` the target window LAST — it only reorders WITHIN the app, and app activation preserves
-    ///    the app's internal window order, so raising AFTER the app comes forward guarantees the clicked
-    ///    window ends topmost, with no sibling window landing on top afterward. `axWin == nil` (Apple
-    ///    Music: no correlated window element) simply skips the raise — the app-frontmost step still
-    ///    brought the app (and its window) forward.
-    func raiseAppThenWindow(pid: pid_t, axWin: AXUIElement?) {
-        let appElement = AXUIElementCreateApplication(pid)
-        _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
-        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-        NSRunningApplication(processIdentifier: pid)?.activate()
-
-        if let axWin {
-            _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-        }
+        WindowActivator.perform(try resolveWindow(windowID: windowID))
     }
 
     /// De-miniaturize (only if minimized) THEN activate, as one op (bevel-nxic). Collapsing the taskbar's
     /// old Restore-then-Activate two-RPC dance removes the round-trip gap where the second call could
     /// `AXRaise` before the window finished materializing and land it mid-stack. Clearing `kAXMinimized`
-    /// kicks off the de-miniaturize; `raiseAppThenWindow` then activates the app and raises the window
-    /// LAST, so the clicked window reliably ends frontmost.
+    /// kicks off the de-miniaturize; `WindowActivator` then runs the activation ladder (see `ActivationPlan`),
+    /// raising the window LAST so the clicked window reliably ends frontmost.
     func restoreAndActivate(windowID: String) throws {
         // App-presence entry ("app:<bundle>"): no window — activating the app IS the reopen (shared path).
         if windowID.hasPrefix("app:") {
@@ -1191,12 +1144,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return
         }
 
-        let (pid, axWin) = try resolveWindow(windowID: windowID)
+        let target = try resolveWindow(windowID: windowID)
         // Best-effort de-miniaturize: a non-minimized window no-ops here and still activates below.
-        if let axWin {
+        if let axWin = target.axWin {
             AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, false as CFTypeRef)
         }
-        raiseAppThenWindow(pid: pid, axWin: axWin)
+        WindowActivator.perform(target)
     }
 
     /// Quit (or force-quit) every running instance of an app by bundle id (bevel-ww71). Graceful
@@ -1768,41 +1721,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     private func reconcile() {
-        let ownPID = getpid()
-
-        // `.optionAll` so minimized windows stay in the set — otherwise they would
-        // be diffed as CLOSED and dropped from the taskbar every poll (bevel-m2.3).
-        let entries = layer0Entries(options: .optionAll)
-
-        // Ensure AXObservers are registered for all window owners.
-        let currentPIDs = Set(entries.compactMap { $0[kCGWindowOwnerPID as String] as? pid_t })
-        ensureObservers(for: currentPIDs)
-
-        // Build fresh descriptors via the SAME builder ListWindows uses, so the poll
-        // path carries icons + minimized state (bevel-m2.1 / bevel-m2.3).
-        let axMap = correlateAXElements(forPIDs: currentPIDs.subtracting([ownPID]), entries: entries)
-        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
-
+        // One pass = one consistent picture. `.optionAll` inside `beginPass` keeps minimized windows in
+        // the set (else they'd be diffed as CLOSED every poll, bevel-m2.3); the SAME builder ListWindows
+        // uses means the poll path carries icons + minimized state (bevel-m2.1 / bevel-m2.3).
+        let kept = listWindows(beginPass(forReconcile: true))
         var newStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
-        var keptZOrdered: [Bevel_Helper_V1_TaskbarWindow] = []   // CGWindowList front-to-back order
-        for entry in entries {
-            guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID,
-                  let win = describe(entry: entry, axMap: axMap, effectiveFrontmost: effectiveFrontmost)
-            else { continue }
-            newStore[cgID] = win
-            keptZOrdered.append(win)
-        }
-        if let cg = ghostFocusedWindowID(keptZOrdered, effectiveFrontmost: effectiveFrontmost) {
-            newStore[cg]?.isFocused = true
-        }
-
-        // Prune tombstone counters for ids the CG list no longer carries at all (window fully
-        // gone) so the dicts stay bounded by live windows.
-        let seenIds = Set(entries.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
-        stateLock.withLock {
-            ghostTicks = ghostTicks.filter { seenIds.contains($0.key) }
-            trustedOffscreen.formIntersection(seenIds)   // gone from the CG list → untrust (closed-diff owns the rest)
+        for win in kept {
+            if let id = CGWindowID(win.windowID) { newStore[id] = win }
         }
 
         // Diff against the store using only the windows we actually keep — describe()
