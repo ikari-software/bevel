@@ -1,4 +1,7 @@
+using Avalonia;
 using Avalonia.Controls.Primitives;
+using Avalonia.VisualTree;
+using System.Linq;
 
 namespace Bevel.Taskbar;
 
@@ -22,4 +25,19 @@ public sealed class TaskButton : ToggleButton
 
     /// <summary>Never self-toggle: pressed means focused, and only the shell decides focus.</summary>
     protected override void Toggle() { }
+
+    /// <summary>Debug probe (bevel-zk4a live hunt): every IsChecked flip of every strip button, so
+    /// a live "model focused but button unchecked" splits cleanly into feed vs binding vs render.</summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ToggleButton.IsCheckedProperty)
+        {
+            var face = this.GetVisualDescendants().OfType<Avalonia.Controls.Border>()
+                .FirstOrDefault(b => b.Name == "Face");
+            var faceBg = face?.Background?.ToString() ?? "(no template part)";
+            TaskbarLog.Debug($"BUTTON '{Avalonia.Automation.AutomationProperties.GetName(this)}' IsChecked -> {change.NewValue} " +
+                $"pseudo:checked={Classes.Contains(":checked")} Face.Bg={faceBg} Border={face?.BorderBrush}");
+        }
+    }
 }

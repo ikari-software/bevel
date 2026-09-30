@@ -324,6 +324,7 @@ public sealed class ShellModel : IDisposable
         {
             var title = Find(focusedId ?? "")?.Title ?? "(none)";
             TaskbarLog.Debug($"FOCUS -> id={focusedId ?? "(null)"} title='{title}'");
+            TaskbarLog.Debug($"APPLYFOCUS vms=[{string.Join(",", Windows.Select(v => $"{v.Id.Value}={v.IsFocused}"))}]");
         }
         _focusedWindowId = focusedId;
         foreach (var vm in Windows)

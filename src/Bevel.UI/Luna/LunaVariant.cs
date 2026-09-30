@@ -118,11 +118,14 @@ public static class LunaVariantService
             (0.0,"5A97F0"),(0.5,"2F6FE0"),(0.5,"215FD8"),(1.0,"4483EC")}),
         new("Luna.Brush.TaskButtonHover", true, GlossRole.Control, new[]{
             (0.0,"79ABF2"),(0.5,"4384E4"),(1.0,"5695EC")}),
-        // Active window's task button: a LIT, brighter highlight (not XP's sunken-darker, which vanishes
-        // into a dark bar under Black/Purple). Brighter than default + hover with a bright border so the
-        // focused window reads on every variant.
+        // Active window's task button: XP-authentic PRESSED-IN (bevel-zk4a) — the darker inset
+        // gradient, darker than both the resting and the hover button, matching the Win2000 sunken
+        // semantics. (An earlier design made this LIT/brighter-than-hover for dark-variant contrast;
+        // that read as "hovered", indistinguishable from the pointer state — the user-facing symptom
+        // that reopened the bead. Dark variants keep readability via the checked BORDER + the Band
+        // contrast machinery; the bar stays visibly lighter than the pressed-in button.)
         new("Luna.Brush.TaskButtonChecked", true, GlossRole.Control, new[]{
-            (0.0,"9CC4FF"),(0.5,"5590EE"),(0.5,"427EE8"),(1.0,"72A9F6")}),
+            (0.0,"1B4EA8"),(0.5,"2559BC"),(0.5,"2559BC"),(1.0,"2E63C8")}),
         new("Luna.Brush.CaptionButton", true, GlossRole.Control, new[]{
             (0.0,"5AA6FF"),(0.5,"1E70EF"),(0.5,"0D57E6"),(1.0,"3F8BF3")}),
 
@@ -143,7 +146,7 @@ public static class LunaVariantService
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
         Surface.Solid("Luna.Brush.TaskButtonBorder", true, "1C4D9C"),
-        Surface.Solid("Luna.Brush.TaskButtonCheckedBorder", true, "2A5DB8"),
+        Surface.Solid("Luna.Brush.TaskButtonCheckedBorder", true, "0B2456"),
         Surface.Solid("Luna.Brush.CaptionButtonBorder", true, "0A3EA8"),
         Surface.Solid("Luna.Brush.ButtonBorder", true, "7B9EBD", maxLight: 0.62),
         Surface.Solid("Luna.Brush.ButtonBorderDefault", true, "2C628B"),

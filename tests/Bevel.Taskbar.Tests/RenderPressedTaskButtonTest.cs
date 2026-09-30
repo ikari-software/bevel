@@ -86,6 +86,10 @@ public class RenderPressedTaskButtonTest
                 var (focused, other) = ButtonRects(view, window);
                 AssertFacesDiffer(frame, focused, other, $"Luna {color}");
                 AssertBordersDiffer(frame, focused, other, $"Luna {color}");
+                // PRESSED SEMANTICS (bevel-zk4a live regression): "distinct" once passed with the
+                // checked face LIT brighter-than-hover, which read on screen as "hovered, never
+                // pressed". The active button must read as pressed-in: DARKER than the resting face.
+                AssertFaceIsDarker(frame, focused, other, $"Luna {color}");
             }
         }
         finally
@@ -276,6 +280,16 @@ public class RenderPressedTaskButtonTest
         for (var y = y0; y < y1; y++)
             for (var x = x0; x < x1; x++) { sum += Luminance(frame, x, y); n++; }
         return sum / n;
+    }
+
+    /// <summary>The pressed face must be DARKER than the resting one — the XP pressed-in semantics.
+    /// Guards against the "distinct but lit" design regression that read as hover.</summary>
+    private static void AssertFaceIsDarker(WriteableBitmap frame, Rect focused, Rect other, string skin)
+    {
+        var pressed = FaceLuminance(frame, focused);
+        var resting = FaceLuminance(frame, other);
+        Assert.True(resting - pressed > 8,
+            $"{skin}: pressed face {pressed:F1} should be darker than the resting face {resting:F1} (pressed-in, not lit)");
     }
 
     private static void AssertFacesDiffer(WriteableBitmap frame, Rect focused, Rect other, string skin = "Win2000")
