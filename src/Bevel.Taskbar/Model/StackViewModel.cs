@@ -26,9 +26,11 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     private readonly IAppEnvironment? _appEnv;
     private readonly IconLoader _icons;
     private readonly PreviewLoader _previews;
+    private readonly object _watcherGate = new();
     private FileSystemWatcher? _watcher;
     private Bitmap? _folderIcon;
     private bool _hasNew;
+    private bool _disposed;
 
     public StackViewModel(string folderPath, IAppEnvironment? appEnv, IconLoader icons,
         PreviewLoader? previews = null)
@@ -42,7 +44,12 @@ public sealed class StackViewModel : ObservableObject, IDisposable
         Name = FriendlyName(folderPath);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync);
         _ = LoadFolderIconAsync();
-        StartWatching();
+        // NEVER arm the watcher on the UI thread. Default stack is ~/Downloads; on modern macOS
+        // Directory.Exists / FSEventStreamCreate on that path can block the calling thread on a
+        // Files-and-Folders TCC dialog until the user answers. TaskbarViewModel constructs stacks
+        // during surface bring-up, so a sync StartWatching hung ReportReady past ShellHealthMonitor's
+        // 15s Starting budget → kill ×3 → Hold StartupStuck (bevel-llfm). Arm off-thread instead.
+        _ = Task.Run(StartWatching);
     }
 
     public string FolderPath { get; }
@@ -128,16 +135,25 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     {
         try
         {
-            if (!Directory.Exists(FolderPath)) return;
-            _watcher = new FileSystemWatcher(FolderPath)
+            if (_disposed || !Directory.Exists(FolderPath)) return;
+            var watcher = new FileSystemWatcher(FolderPath)
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite,
                 IncludeSubdirectories = false,
                 EnableRaisingEvents = true,
             };
-            _watcher.Created += OnFolderChanged;
-            _watcher.Renamed += OnFolderChanged;
-            _watcher.Changed += OnFolderChanged;
+            watcher.Created += OnFolderChanged;
+            watcher.Renamed += OnFolderChanged;
+            watcher.Changed += OnFolderChanged;
+            lock (_watcherGate)
+            {
+                if (_disposed)
+                {
+                    watcher.Dispose();
+                    return;
+                }
+                _watcher = watcher;
+            }
         }
         catch (Exception ex)
         {
@@ -161,12 +177,18 @@ public sealed class StackViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        if (_watcher is null) return;
-        _watcher.Created -= OnFolderChanged;
-        _watcher.Renamed -= OnFolderChanged;
-        _watcher.Changed -= OnFolderChanged;
-        _watcher.Dispose();
-        _watcher = null;
+        _disposed = true;
+        FileSystemWatcher? watcher;
+        lock (_watcherGate)
+        {
+            watcher = _watcher;
+            _watcher = null;
+        }
+        if (watcher is null) return;
+        watcher.Created -= OnFolderChanged;
+        watcher.Renamed -= OnFolderChanged;
+        watcher.Changed -= OnFolderChanged;
+        watcher.Dispose();
     }
 }
 

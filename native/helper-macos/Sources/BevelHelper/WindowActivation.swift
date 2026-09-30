@@ -55,28 +55,20 @@ enum WindowActivator {
     static func perform(_ target: WindowTarget) {
         let steps = ActivationPlan.steps(hasAX: target.axWin != nil, isOnOtherSpace: target.isOnOtherSpace)
         dbg("activate cg=\(target.cgID) pid=\(target.pid) otherSpace=\(target.isOnOtherSpace) hasAX=\(target.axWin != nil) steps=\(steps)")
-        var switchedTo: Int?
         for step in steps {
             switch step {
             case .switchSpace:
                 let r = SkyLight.switchToSpace(ofWindow: target.cgID)
-                switchedTo = r.toSpace
                 dbg("  switchSpace → ok=\(r.ok) already=\(r.alreadyCurrent) focused=\(r.displayFocused) clicked=\(r.clicked) display=\(r.displayUUID ?? "?") \(r.fromSpace.map(String.init) ?? "?")->\(r.toSpace.map(String.init) ?? "?") currents=\(SkyLight.currentSpaceIDs().sorted())")
             case .activateApp:
                 activateApp(pid: target.pid)
                 dbg("  activateApp")
             case .focusViaWindowServer:
-                // Prefer the Space we just switched to; otherwise the window's current Space ids.
-                let space = switchedTo ?? SkyLight.spaceIDs(ofWindow: target.cgID).first
-                // Address THIS window first, then pin the Space's front-PSN. Reversing those lets
-                // setFrontOnSpace briefly activate the app while AX still reports a sibling as
-                // focused — broadcastFocusForApp then stamps the wrong Jump session as pressed.
+                // Address THIS window by WindowServer id. Do not follow with setFrontOnSpace —
+                // that re-activates the app PSN and can fire didActivateApplication while AX still
+                // reports a sibling as focused (sibling_steal via broadcastFocusForApp).
                 let ok = SkyLight.focusWindow(pid: target.pid, cgID: target.cgID)
                 dbg("  focusViaWindowServer → \(ok)")
-                if let space {
-                    let pinned = SkyLight.setFrontOnSpace(space, pid: target.pid)
-                    dbg("  setFrontOnSpace \(space) → \(pinned)")
-                }
                 if !ok {
                     activateApp(pid: target.pid)
                     dbg("  focusViaWindowServer fallback activateApp")

@@ -583,7 +583,9 @@ public partial class TaskbarView : UserControl
     }
 
     /// <summary>Win2000 hover delay (SPI_GETMOUSEHOVERTIME default).</summary>
-    private static readonly TimeSpan TooltipShowDelay = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan TooltipShowDelay = TimeSpan.FromMilliseconds(150);
+    /// <summary>Stale-then-refresh hover previews (bevel-c04q). Shared across buttons — capacity-bounded.</summary>
+    private readonly WindowPreviewCache _previewCache = new();
 
     private void OnButtonContainerPrepared(object? sender, ContainerPreparedEventArgs e)
     {
@@ -718,26 +720,37 @@ public partial class TaskbarView : UserControl
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
 
-        // Live thumbnail (bevel-gcd). Tag the request so a superseded/late capture can't paint a stale or
-        // wrong-window image (the same ToggleButton container gets rebound to another window by the
-        // virtualizing strip); bound it with a timeout so a wedged helper can't leak an in-flight task per
-        // hover (review: reliability/adversarial). 0/0 = let the helper apply its default size.
+        // Stale-then-update (bevel-c04q): paint a cached PNG immediately so hover feels instant;
+        // refresh from CaptureWindow in the background and swap when a fresher frame arrives.
         var gen = ++_previewGeneration;
+        var windowKey = vm.Id.Value;
+        if (_previewCache.TryGet(windowKey, out var stale) && stale.Length > 0)
+            TryApplyPreviewPng(stale, gen, anchor, button, vm);
+
         byte[]? png = null;
         if (_vm?.Model is { } model)
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try { png = await model.CaptureWindowAsync(vm.Id, 240, 160, cts.Token); }
-            catch { png = null; }   // timeout / transport / capture failure → no preview, never crash
+            catch { png = null; }   // timeout / transport / capture failure → keep stale (if any)
         }
-        // Bail unless this is still the current request AND the same button still shows the same window.
-        if (gen != _previewGeneration || png is null || png.Length == 0) return;
+        if (gen != _previewGeneration) return;
+        if (png is null || png.Length == 0) return;
+        if (!ReferenceEquals(_tooltipAnchor, anchor) || !TooltipPopup.IsOpen
+            || !ReferenceEquals(button.DataContext, vm)) return;
+        _previewCache.Set(windowKey, png);
+        TryApplyPreviewPng(png, gen, anchor, button, vm);
+    }
+
+    private void TryApplyPreviewPng(byte[] png, int gen, Control anchor, ToggleButton button, TaskItemViewModel vm)
+    {
+        if (gen != _previewGeneration) return;
         if (!ReferenceEquals(_tooltipAnchor, anchor) || !TooltipPopup.IsOpen
             || !ReferenceEquals(button.DataContext, vm)) return;
         try
         {
             using var ms = new System.IO.MemoryStream(png);
-            (PreviewImage.Source as IDisposable)?.Dispose();   // release the previous bitmap (no per-hover leak)
+            (PreviewImage.Source as IDisposable)?.Dispose();
             PreviewImage.Source = new Avalonia.Media.Imaging.Bitmap(ms);
             PreviewFrame.IsVisible = true;
         }

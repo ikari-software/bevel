@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices   // AXIsProcessTrustedWithOptions + kAXTrustedCheckOptionPrompt (TCC prompt)
+import ApplicationServices   // AXIsProcessTrusted (TCC registration, no prompt)
 import Foundation
 import GRPCCore
 import GRPCNIOTransportHTTP2
@@ -105,27 +105,22 @@ enum BevelHelper {
 
         // ScreenCaptureKit (tray live capture, §5.3) needs a WindowServer/CGS connection, which a bare
         // CLI process lacks — SCScreenshotManager otherwise aborts with CGS_REQUIRE_INIT. Bring up
-        // NSApplication as a prohibited agent (headless: no Dock tile, no menu bar) to establish it.
+        // NSApplication as a headless agent to establish it.
         _ = NSApplication.shared
-        // .accessory (was .prohibited): a prohibited agent can't present the TCC prompts below, so the
-        // helper never appears in the Accessibility / Screen Recording lists — forcing the user to add it
-        // by hand from inside the .app bundle. .accessory is still headless (no Dock tile, no Cmd-Tab, no
-        // menu bar) but may request permission. Still establishes the CGS connection ScreenCaptureKit needs.
+        // .accessory (was .prohibited): still headless (no Dock tile, no Cmd-Tab, no menu bar) but can
+        // appear in Privacy panes when the USER grants via Bevel's onboarding / System Settings. Do NOT
+        // present TCC prompts here — see below.
         NSApp.setActivationPolicy(.accessory)
 
-        // Register with TCC and PROMPT once, so a Finder-launched helper asks for — and shows up in —
-        // Accessibility (window control) and Screen Recording (live tray icons) on its own, instead of the
-        // user having to drag BevelHelper out of the bundle. Both self-gate: they only prompt when the
-        // grant is missing and are no-ops once granted. (From a terminal it "just works" only because TCC
-        // attributes the grant to the already-authorised terminal — Finder launches get neither for free.)
-        if !AXIsProcessTrusted() {
-            // The key is the CFString value of kAXTrustedCheckOptionPrompt; use the literal so Swift 6
-            // strict concurrency doesn't flag the global 'var' as shared mutable state.
-            _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        }
-        if !CGPreflightScreenCaptureAccess() {
-            _ = CGRequestScreenCaptureAccess()
-        }
+        // Register with TCC WITHOUT prompting (bevel-llfm). Prompting at helper boot
+        // (AXIsProcessTrustedWithOptions(prompt:true) / CGRequestScreenCaptureAccess) blocks the main
+        // thread on the system dialog; Ping never answers; HelperProcessHost times out at 5s and KILLS
+        // the helper while the dialog is still open — so a grant attaches to a dead process, the next
+        // spawn prompts again, and the launcher Holds StartupStuck after three taskbar restarts.
+        // Preflight / trusted-check only register the identity in Privacy lists when missing; the
+        // interactive grant path is MacOSPermissionBroker.RequestAsync (onboarding Grant buttons).
+        _ = AXIsProcessTrusted()
+        _ = CGPreflightScreenCaptureAccess()
 
         let watchdog = ReverseWatchdog(parentPID: args.parentPID)
         Task { await watchdog.run() }

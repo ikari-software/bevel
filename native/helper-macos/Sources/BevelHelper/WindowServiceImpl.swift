@@ -128,6 +128,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// another app's window), so the taskbar pressed-state can follow focus that didn't originate
     /// from a taskbar click. Same lifetime/threading contract as `launchObserverToken`.
     private var activateObserverToken: NSObjectProtocol?
+    /// While `WindowActivator.perform` runs, `didActivateApplication` can fire with AX still
+    /// pointing at a Jump sibling on a hidden Space — that would stamp the wrong pressed button.
+    /// Guarded by `stateLock`; Activate/RestoreAndActivate set it around the ladder and then emit
+    /// an explicit `.focused` for the requested `cgID`.
+    private var suppressActivateFocusBroadcast = false
     /// NSWorkspace active-Space-change hook token. Fires when the user switches macOS Spaces
     /// (desktops). Each Space shows a different on-screen window set, but AX/CGWindowList emit no
     /// per-window notification for the switch, so without this the taskbar could only converge on
@@ -479,6 +484,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// (no Screen Recording permission, window gone, or capture error) — the caller shows no preview.
     private func captureWindowThumbnail(windowID: CGWindowID, maxWidth: Int, maxHeight: Int) async -> Data {
         guard CGPreflightScreenCaptureAccess() else { return Data() }
+        let maxW = maxWidth > 0 ? Double(maxWidth) : 240
+        let maxH = maxHeight > 0 ? Double(maxHeight) : 160
+
+        // Fast path (bevel-c04q): CGWindowListCreateImage is ~10–50× cheaper than a cold
+        // SCShareableContent + SCScreenshotManager round-trip for hover thumbnails. Prefer it when
+        // it returns pixels; fall back to ScreenCaptureKit for minimized / complex windows.
+        if let fast = Self.cgWindowListThumbnail(windowID: windowID, maxW: maxW, maxH: maxH), !fast.isEmpty {
+            return fast
+        }
+
         // Bound the whole capture (cold SCShareableContent + screenshot) so a slow first-call CGS/SCK
         // init after a Screen-Recording grant can never hang the RPC (bevel-1275). On timeout the caller
         // keeps the limited-mode app icon — identical to any other capture failure. The .NET side carries
@@ -493,8 +508,6 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
             let w = scWindow.frame.width, h = scWindow.frame.height
             guard w > 1, h > 1 else { return Data() }
-            let maxW = maxWidth > 0 ? Double(maxWidth) : 240
-            let maxH = maxHeight > 0 ? Double(maxHeight) : 160
             let fit = min(maxW / w, maxH / h, 1.0)      // never upscale past the window's point size
             let scale = fit * 2                          // capture at 2x the fitted size → crisp downscale in the UI
             let config = SCStreamConfiguration()
@@ -509,6 +522,45 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
         }
         return result ?? Data()
+    }
+
+    /// Best-effort hover thumbnail via the legacy CGWindowList path (dlsym — SDK marks it
+    /// unavailable since macOS 15, but the symbol still exists and is ~10–50× cheaper than SCK for
+    /// on-screen windows). Returns nil/empty when unavailable — caller falls back to SCK.
+    private static func cgWindowListThumbnail(windowID: CGWindowID, maxW: Double, maxH: Double) -> Data? {
+        typealias CreateImageFn = @convention(c) (
+            CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption
+        ) -> Unmanaged<CGImage>?
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+            return nil
+        }
+        let create = unsafeBitCast(sym, to: CreateImageFn.self)
+        guard let unmanaged = create(
+            .null,
+            .optionIncludingWindow,
+            windowID,
+            [.boundsIgnoreFraming, .bestResolution]
+        ) else { return nil }
+        let cgImage = unmanaged.takeRetainedValue()
+        guard cgImage.width > 1, cgImage.height > 1 else { return nil }
+        let w = Double(cgImage.width), h = Double(cgImage.height)
+        let fit = min(maxW / w, maxH / h, 1.0)
+        let outW = max(2, Int((w * fit).rounded()))
+        let outH = max(2, Int((h * fit).rounded()))
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: outW, pixelsHigh: outH,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )
+        guard let rep else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .medium
+        NSImage(cgImage: cgImage, size: NSSize(width: w, height: h))
+            .draw(in: NSRect(x: 0, y: 0, width: outW, height: outH),
+                  from: .zero, operation: .copy, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
     }
 
     /// Runs `operation` but returns nil if it hasn't finished within `seconds` — a bound around a
@@ -1129,7 +1181,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return
         }
 
-        WindowActivator.perform(try resolveWindow(windowID: windowID))
+        let target = try resolveWindow(windowID: windowID)
+        performActivation(target)
     }
 
     /// De-miniaturize (only if minimized) THEN activate, as one op (bevel-nxic). Collapsing the taskbar's
@@ -1149,7 +1202,45 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         if let axWin = target.axWin {
             AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, false as CFTypeRef)
         }
+        performActivation(target)
+    }
+
+    /// Run the activation ladder with activate-focus broadcasts suppressed, then pin focus to
+    /// `target.cgID` so a mid-ladder sibling AX report cannot win the pressed state.
+    private func performActivation(_ target: WindowTarget) {
+        stateLock.lock()
+        suppressActivateFocusBroadcast = true
+        stateLock.unlock()
+        defer {
+            stateLock.lock()
+            suppressActivateFocusBroadcast = false
+            stateLock.unlock()
+        }
         WindowActivator.perform(target)
+        broadcastPinnedFocus(target)
+    }
+
+    /// Emit `.focused` for the window the taskbar asked to activate — not whatever AX still
+    /// reports as focused mid-ladder (Jump sibling on another Space).
+    private func broadcastPinnedFocus(_ target: WindowTarget) {
+        if let axWin = target.axWin, let change = focusedWindowChange(cgID: target.cgID, element: axWin) {
+            dbg("activate-focus-pin pid=\(target.pid) cg=\(target.cgID) '\(change.window.appName)' title='\(change.window.title)'")
+            broadcast(change)
+            return
+        }
+        stateLock.lock()
+        let stored = windowStore[target.cgID]
+        stateLock.unlock()
+        guard var stored else {
+            dbg("activate-focus-pin pid=\(target.pid) cg=\(target.cgID) skipped=no-descriptor")
+            return
+        }
+        stored.isFocused = true
+        var change = Bevel_Helper_V1_WindowChange()
+        change.kind = .focused
+        change.window = stored
+        dbg("activate-focus-pin pid=\(target.pid) cg=\(target.cgID) '\(stored.appName)' title='\(stored.title)' via=store")
+        broadcast(change)
     }
 
     /// Quit (or force-quit) every running instance of an app by bundle id (bevel-ww71). Graceful
@@ -1376,6 +1467,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// through the eligibility-gated `buildTaskbarWindowFromAX`. Only real Dock apps own taskbar
     /// focus — our own `.accessory` shell chrome activating (taskbar/desktop) must not reset it.
     private func broadcastFocusForApp(pid: pid_t) {
+        // Mid-ladder suppress: Activate/RestoreAndActivate pin focus explicitly after perform.
+        if stateLock.withLock({ suppressActivateFocusBroadcast }) {
+            dbg("activate-focus drop pid=\(pid) reason=suppressed-during-activate")
+            return
+        }
+
         guard let app = NSRunningApplication(processIdentifier: pid),
               app.activationPolicy == .regular else { return }
 

@@ -319,6 +319,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             }
             else
             {
+                // Optimistic pressed state (bevel-c04q): don't wait on the Activate RPC to light the button.
+                IsFocused = true;
                 await _windows.ActivateAsync(Id);
             }
             TaskbarLog.Debug($"CLICK done id={Id.Value} ({action})");
