@@ -17,6 +17,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 {
     private readonly IWindowManager _windows;
     private readonly TaskButtonClickPolicy _clicks;
+    /// <summary>Optimistic focus claims go through the shell's exclusive projection (bevel-yslj /
+    /// bevel-c04q). Null in unit tests that construct a lone VM with no strip.</summary>
+    private readonly Action<string?>? _claimFocus;
     private string _title = "";
     private bool _isFocused;
     private bool _isMinimized;
@@ -29,10 +32,15 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <param name="clicks">Click semantics for this button (bevel-au94); defaults to the taskbar
     /// process's shared policy, which <c>TaskbarView</c> keeps in step with the settings poll.</param>
-    public TaskItemViewModel(ForeignWindow w, IWindowManager windows, TaskButtonClickPolicy? clicks = null)
+    /// <param name="claimFocus">Shell-owned exclusive focus claim (see <c>ShellModel.ClaimFocus</c>).
+    /// Optimistic click/minimize must use this — never write <see cref="IsFocused"/> directly when a
+    /// strip of siblings exists, or two buttons can stay pressed (bevel-yslj).</param>
+    public TaskItemViewModel(ForeignWindow w, IWindowManager windows, TaskButtonClickPolicy? clicks = null,
+        Action<string?>? claimFocus = null)
     {
         _windows = windows;
         _clicks = clicks ?? TaskButtonClickPolicy.Shared;
+        _claimFocus = claimFocus;
         Id = w.Id;
         AppId = w.AppId;
         IsAppPresence = w.IsAppPresence;
@@ -231,6 +239,16 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Sets focus from the shell's exclusive foreground projection.</summary>
     public void SetFocused(bool focused) => IsFocused = focused;
 
+    /// <summary>Optimistic focus edit: prefer the shell claim so exclusivity holds; fall back to a
+    /// direct write only when this VM was built without a strip (lone-unit tests).</summary>
+    private void ClaimFocus(string? focusedId)
+    {
+        if (_claimFocus is not null)
+            _claimFocus(focusedId);
+        else
+            IsFocused = focusedId is not null && focusedId == Id.Value;
+    }
+
     // ── Unread / attention badge (bevel-ijln) ───────────────────────────
     //
     // The count an app publishes for itself — Slack's unread, Mail's inbox — sourced from the
@@ -314,13 +332,16 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             }
             else if (minimize)
             {
-                IsMinimized = true; IsFocused = false;   // optimistic: button un-presses + dims immediately
+                IsMinimized = true;
+                // Optimistic: un-press immediately via the exclusive projection (null = nothing pressed).
+                ClaimFocus(null);
                 await _windows.MinimizeAsync(Id);
             }
             else
             {
-                // Optimistic pressed state (bevel-c04q): don't wait on the Activate RPC to light the button.
-                IsFocused = true;
+                // Optimistic pressed state (bevel-c04q): don't wait on the Activate RPC to light the
+                // button — but claim through ShellModel so siblings clear (bevel-yslj).
+                ClaimFocus(Id.Value);
                 await _windows.ActivateAsync(Id);
             }
             TaskbarLog.Debug($"CLICK done id={Id.Value} ({action})");

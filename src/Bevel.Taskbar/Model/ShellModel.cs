@@ -317,6 +317,10 @@ public sealed class ShellModel : IDisposable
     });
     private static readonly TimeSpan ReconcileInterval = TimeSpan.FromSeconds(2);
 
+    /// <summary>UI thread. Exactly one taskbar button may appear pressed at a time. Also the
+    /// optimistic-click entry point for <see cref="TaskItemViewModel"/> (bevel-c04q / bevel-yslj).</summary>
+    internal void ClaimFocus(string? focusedId) => ApplyExclusiveFocus(focusedId);
+
     /// <summary>UI thread. Exactly one taskbar button may appear pressed at a time.</summary>
     private void ApplyExclusiveFocus(string? focusedId)
     {
@@ -383,7 +387,7 @@ public sealed class ShellModel : IDisposable
     /// template's transition grows it in (XP-style). Icon is decoded off-thread.</summary>
     private TaskItemViewModel CreateItem(ForeignWindow w)
     {
-        var vm = new TaskItemViewModel(w, _windows!);
+        var vm = new TaskItemViewModel(w, _windows!, claimFocus: ClaimFocus);
         LoadWindowIcon(vm, w.IconPng); // decode off-thread, assign on UI thread
         // Seed the unread pill from the last poll (bevel-ijln) so a button born on the instant event
         // path already carries its app's badge instead of waiting out the next backstop tick.

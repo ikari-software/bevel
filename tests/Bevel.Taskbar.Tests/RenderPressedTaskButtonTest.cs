@@ -118,11 +118,13 @@ public class RenderPressedTaskButtonTest
         var buttons = Buttons(view);
         Assert.Equal(new bool?[] { true, false }, buttons.Select(b => b.IsChecked));
 
-        // A real pointer click on the unfocused button (the window manager stub doesn't move focus).
+        // A real pointer click on the unfocused button: optimistic exclusive press (bevel-c04q /
+        // bevel-yslj) lights THAT button and clears the previous one — even though the stub WM
+        // has not yet raised ForegroundChanged.
         Click(window, buttons[1]);
-        Assert.Equal(new bool?[] { true, false }, buttons.Select(b => b.IsChecked));
+        Assert.Equal(new bool?[] { false, true }, buttons.Select(b => b.IsChecked));
 
-        // Focus then genuinely lands on it: exactly that button is pressed.
+        // Focus then genuinely lands on it: still exactly that button is pressed.
         wm.RaiseForeground(Win("w1", "Window 2", focused: true));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(new bool?[] { false, true }, buttons.Select(b => b.IsChecked));
@@ -194,8 +196,9 @@ public class RenderPressedTaskButtonTest
 
         // Seed the buttons at their steady-state width/opacity so the render doesn't catch the grow-in
         // animation, then Start the model so the stub's focus events drive the exclusive-focus projection.
+        // claimFocus wires optimistic clicks through ApplyExclusiveFocus (bevel-yslj).
         foreach (var w in windows)
-            model.Windows.Add(new TaskItemViewModel(w, wm, clicks) { Width = 150, Opacity = 1 });
+            model.Windows.Add(new TaskItemViewModel(w, wm, clicks, claimFocus: model.ClaimFocus) { Width = 150, Opacity = 1 });
         model.Start();
         Dispatcher.UIThread.RunJobs();
         return (window, view, model, wm);

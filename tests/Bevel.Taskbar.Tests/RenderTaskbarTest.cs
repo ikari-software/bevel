@@ -115,14 +115,14 @@ public class RenderTaskbarTest
     }
 
     /// <summary>
-    /// Regression: the sunken/pressed state is bound OneWay to <see cref="TaskItemViewModel.IsFocused"/>,
-    /// and a stock ToggleButton flips IsChecked itself on click. If the clicked window doesn't take focus,
-    /// that flip must not stick — otherwise several buttons show pressed at once (the "3 buttons pressed"
-    /// bug). <see cref="TaskButton"/> never self-toggles, so the real pointer gesture leaves it alone
-    /// (bevel-zk4a; the live follow-focus coverage is in RenderPressedTaskButtonTest).
+    /// Clicking an unfocused task button optimistically presses it (bevel-c04q) via the shell's
+    /// exclusive focus claim — and <see cref="TaskButton"/> itself never self-toggles (bevel-zk4a),
+    /// so the pressed face comes only from the <c>IsFocused</c> binding. The stub WM never raises
+    /// <c>ForegroundChanged</c>, so the optimistic claim sticks until a real focus event; that is
+    /// product behaviour, not a stuck ToggleButton (bevel-yslj).
     /// </summary>
     [AvaloniaFact]
-    public void Clicking_an_unfocused_task_button_does_not_leave_it_stuck_pressed()
+    public void Clicking_an_unfocused_task_button_optimistically_presses_it_exclusively()
     {
         var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
@@ -133,9 +133,9 @@ public class RenderTaskbarTest
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        // One UNFOCUSED window.
+        // One UNFOCUSED window, wired through the shell claim so exclusivity holds.
         var fw = new ForeignWindow(new ForeignWindowId("w0"), "Window", "App", false, false, default);
-        model.Windows.Add(new TaskItemViewModel(fw, wm) { Width = 150, Opacity = 1 });
+        model.Windows.Add(new TaskItemViewModel(fw, wm, claimFocus: model.ClaimFocus) { Width = 150, Opacity = 1 });
         Dispatcher.UIThread.RunJobs();
 
         var button = view.WindowButtonAreaControl.GetRealizedContainers()
@@ -143,17 +143,18 @@ public class RenderTaskbarTest
             .FirstOrDefault(b => b is not null);
         Assert.NotNull(button);
         Assert.IsType<TaskButton>(button);
+        Assert.False(button!.IsChecked);
 
         // The real gesture — pointer down + up over the button — runs the ToggleButton click path exactly
         // as the user's click does (the stub window manager never moves focus).
-        var tl = button!.TranslatePoint(default, window)!.Value;
+        var tl = button.TranslatePoint(default, window)!.Value;
         var p = new Point(tl.X + button.Bounds.Width / 2, tl.Y + button.Bounds.Height / 2);
         window.MouseDown(p, Avalonia.Input.MouseButton.Left);
         window.MouseUp(p, Avalonia.Input.MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
 
-        // Not focused → must not be pressed.
-        Assert.False(button.IsChecked);
+        // Optimistic exclusive press (bevel-c04q): lit via IsFocused binding, not ToggleButton self-check.
+        Assert.True(button.IsChecked);
     }
 
     /// <summary>No-op window manager so TaskItemViewModel's activate command has a target.</summary>
