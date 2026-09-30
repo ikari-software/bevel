@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a5a5a"/><stop offset="1" stop-color="#1a1a1a"/></linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a4a8a"/><stop offset=".5" stop-color="#0A246A"/><stop offset="1" stop-color="#0A246A"/></linearGradient>
+  </defs>
+  <rect x="8" y="12" width="48" height="40" rx="4" fill="#000" opacity=".2"/>
+  <rect x="8" y="10" width="48" height="40" rx="4" fill="url(#w)"/>
+  <rect x="8" y="10" width="48" height="10" rx="4" fill="url(#cap)"/>
+  <rect x="8" y="16" width="48" height="4" fill="url(#cap)"/>
+  <text x="14" y="17" font-family="Verdana,sans-serif" font-size="7" fill="#fff" font-weight="700">Console</text>
+  <path d="M18 28 L26 34 L18 40" fill="none" stroke="#9f9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="30" y1="40" x2="46" y2="40" stroke="#9f9" stroke-width="3" stroke-linecap="round"/>
+</svg>

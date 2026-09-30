@@ -1,24 +1,24 @@
 [
   {
-    "AppId": "/Applications/Safari.app",
-    "DisplayName": "Safari",
+    "AppId": "bevel.fixture.browser",
+    "DisplayName": "Browser",
     "Subtitle": "Productivity",
-    "Icon": "Safari.png"
+    "Icon": "Browser.png"
   },
   {
-    "AppId": "/System/Applications/Utilities/Terminal.app",
-    "DisplayName": "Terminal",
+    "AppId": "bevel.fixture.console",
+    "DisplayName": "Console",
     "Subtitle": "Utilities",
-    "Icon": "Terminal.png"
+    "Icon": "Console.png"
   },
   {
-    "AppId": "/System/Applications/Preview.app",
-    "DisplayName": "Preview",
+    "AppId": "bevel.fixture.viewer",
+    "DisplayName": "Viewer",
     "Subtitle": "Productivity",
-    "Icon": "Preview.png"
+    "Icon": "Viewer.png"
   },
   {
-    "AppId": "/System/Applications/Calculator.app",
+    "AppId": "bevel.fixture.calculator",
     "DisplayName": "Calculator",
     "Subtitle": null,
     "Icon": "Calculator.png"

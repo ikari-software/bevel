@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8F4FF"/><stop offset="1" stop-color="#7EB3E0"/></linearGradient>
+    <radialGradient id="lens" cx=".35" cy=".35" r=".65"><stop offset="0" stop-color="#eef9ff"/><stop offset=".55" stop-color="#6aa8d8"/><stop offset="1" stop-color="#2a5a88"/></radialGradient>
+  </defs>
+  <rect x="14" y="8" width="36" height="46" rx="3" fill="#000" opacity=".15"/>
+  <rect x="14" y="6" width="36" height="46" rx="3" fill="url(#p)" stroke="#5a7a9a" stroke-width="1"/>
+  <rect x="18" y="12" width="28" height="20" rx="1" fill="#fff" opacity=".7"/>
+  <path d="M20 28 L28 20 L34 25 L40 18 L46 28 Z" fill="#6a9bcc"/>
+  <circle cx="40" cy="40" r="14" fill="#000" opacity=".2"/>
+  <circle cx="40" cy="38" r="14" fill="url(#lens)" stroke="#222" stroke-width="3"/>
+  <circle cx="35" cy="33" r="4" fill="#fff" opacity=".45"/>
+  <!-- Handle attached at the SW rim, extending down-left. -->
+  <rect x="27" y="47" width="6" height="15" rx="2.5" transform="rotate(-45 30 47)" fill="#444"/>
+</svg>
