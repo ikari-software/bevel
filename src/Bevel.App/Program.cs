@@ -142,6 +142,9 @@ internal static class Program
     /// </summary>
     private static void RunShellCore(IHost host)
     {
+        // BEVEL_DEBUG_WINDOWS=1 mirror (Kiro/Nessie focus hunt): persist the helper's window
+        // diagnostics in the diag log — its stderr is the only AX-level witness we have.
+        Bevel.Pal.MacOS.HelperDiagnostics.DebugLine += line => RestartDiag.Log($"helper: {line}");
         // Start hosted services — for Core that's HelperLifecycle, which brings up the Swift helper the
         // window manager talks to. Non-blocking; the helper degrades gracefully if it can't start.
         host.Start();

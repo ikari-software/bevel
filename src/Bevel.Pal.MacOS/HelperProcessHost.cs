@@ -109,7 +109,15 @@ internal sealed class HelperProcessHost : IHelperProcessHost
         _helperProcess.OutputDataReceived += (_, e) =>
         { if (e.Data is not null) _logger.LogInformation("helper: {Line}", e.Data); };
         _helperProcess.ErrorDataReceived += (_, e) =>
-        { if (e.Data is not null) _logger.LogWarning("helper! {Line}", e.Data); };
+        {
+            if (e.Data is null) return;
+            _logger.LogWarning("helper! {Line}", e.Data);
+            // BEVEL_DEBUG_WINDOWS=1 diagnostics survive the GUI launch: stderr goes nowhere when the
+            // shell is LaunchServices-launched, so mirror the helper's window-debug lines into the
+            // persistent diag log (bevel-restart.log) — the only witness an AX/focus hunt has.
+            if (e.Data.StartsWith("[BEVEL-WIN]", StringComparison.Ordinal))
+                HelperDiagnostics.Raise(e.Data);
+        };
         _helperProcess.BeginOutputReadLine();
         _helperProcess.BeginErrorReadLine();
 

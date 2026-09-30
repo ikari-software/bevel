@@ -93,6 +93,19 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Current window snapshot keyed by CGWindowID, updated by reconciliation poll.
     private let stateLock = NSLock()
+    /// Consecutive offscreen-no-ax ticks per cg id (guarded by stateLock). A closed window leaves a
+    /// CG tombstone for a few SECONDS; a LIVE window that fails AX correlation while sitting on
+    /// another Mission Control space reads exactly the same per-tick (kCGWindowIsOnscreen is false
+    /// for other-space windows — Jump Desktop keeps a real session window there for hours).
+    private var ghostTicks: [CGWindowID: Int] = [:]
+    /// Windows that survived the tombstone window (still listed by CG after several seconds):
+    /// trusted live — kept without re-counting until they vanish from the CG list entirely (the
+    /// closed-diff then reaps the button). A real tombstone that outlives the window is self-
+    /// correcting the same way: once the CG list drops the entry, the button closes.
+    private var trustedOffscreen = Set<CGWindowID>()
+    /// Pids we have already flipped AXManualAccessibility on (Electron/Chromium): the flag is
+    /// sticky per app process; re-setting it every tick is just log noise.
+    private var axManualFlipped = Set<pid_t>()
     private var windowStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
 
     /// Running-but-windowless regular apps (bevel-ww71), keyed by bundle id. Each is a synthetic
@@ -632,8 +645,26 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // gate below and the button lingers for seconds. On-screen windows (real, even when AX is
         // unavailable) and AX-correlated minimized windows both keep a live signal and are unaffected.
         if axMap[cgID] == nil, (entry[kCGWindowIsOnscreen as String] as? Bool) != true {
-            dbg("drop cg=\(cgID) '\(win.appName)' reason=offscreen-no-ax (closed/ghost)")
-            return nil
+            let (promoted, ticks) = stateLock.withLock { () -> (Bool, Int) in
+                if trustedOffscreen.contains(cgID) { return (true, 0) }
+                ghostTicks[cgID, default: 0] += 1
+                let n = ghostTicks[cgID] ?? 0
+                // Still CG-listed after several seconds: a tombstone leaves the list within
+                // seconds, so this is a live window (other space / permanent AX gap) — promote.
+                if n >= 8 {
+                    trustedOffscreen.insert(cgID)
+                    ghostTicks.removeValue(forKey: cgID)
+                    return (true, n)
+                }
+                return (false, n)
+            }
+            if promoted {
+                dbg("keep cg=\(cgID) '\(win.appName)' trusted-offscreen (live: other space / permanent AX gap)")
+            } else {
+                dbg("keep cg=\(cgID) '\(win.appName)' offscreen-no-ax tick \(ticks)/8 — unconfirmed tombstone (other-space / AX gap)")
+            }
+        } else {
+            stateLock.withLock { ghostTicks.removeValue(forKey: cgID) }
         }
 
         // AX/CG can expose an empty title for one reconciliation tick while an existing
@@ -765,6 +796,27 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
     }
 
+    /// Ghost-focus fallback (the Kiro/Nessie "never registers as active" class): Electron/Tauri
+    /// apps can report their AX focused window as a title-less scaffolding surface this pass DROPS
+    /// (no-title / offscreen-no-ax ghosts), or expose no correlatable AX tree at all — so the app's
+    /// real, visible window never matches the identity check and the pressed state never lands,
+    /// while the user is unambiguously IN the app. When the effective-frontmost app has NO focused
+    /// kept window, press its TOPMOST kept window in z-order (the caller's array preserves
+    /// CGWindowList's front-to-back order): clicking a window raises it to the app's top, so that
+    /// is the surface the user is looking at. Applies to the sole-window case identically.
+    private func ghostFocusedWindowID(
+        _ windows: [Bevel_Helper_V1_TaskbarWindow],
+        effectiveFrontmost: pid_t?
+    ) -> CGWindowID? {
+        guard let fpid = effectiveFrontmost else { return nil }
+        guard !windows.contains(where: { $0.pid == Int32(fpid) && $0.isFocused }) else { return nil }
+        guard let top = windows.first(where: { $0.pid == Int32(fpid) }),
+              let cg = UInt64(top.windowID).map({ CGWindowID($0) })
+        else { return nil }
+        dbg("focus-fallback cg=\(top.windowID) '\(top.appName)' — frontmost app's AX focus is unresolvable; pressing its topmost kept window")
+        return cg
+    }
+
     /// Pressed-state: true when `cgID` is the focused window of the snapshot's effective frontmost
     /// foreign app (resolved once via `effectiveForeignFrontmost`).
     private func isTaskbarFocusedWindow(
@@ -797,6 +849,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
         var windows = entries.compactMap { describe(entry: $0, axMap: axMap, effectiveFrontmost: effectiveFrontmost) }
+        if let cg = ghostFocusedWindowID(windows, effectiveFrontmost: effectiveFrontmost),
+           let idx = windows.firstIndex(where: { $0.windowID == String(cg) }) {
+            windows[idx].isFocused = true
+        }
         // Append the last-computed app-presence entries (bevel-ww71) so ListWindows + the Changes snapshot
         // carry windowless-running apps too. The 500ms reconcile keeps `appStore` current.
         windows.append(contentsOf: stateLock.withLock { Array(appStore.values) })
@@ -906,7 +962,25 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             var axWindows: CFTypeRef?
             let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &axWindows)
             guard result == .success, let windowList = axWindows as? [AXUIElement] else {
+                if debugWindows {
+                    let cgCount = cgByPID[pid]?.count ?? 0
+                    dbg("correlate pid=\(pid) AXWindows query failed (\(result.rawValue)) — \(cgCount) CG candidate(s) uncorrelatable")
+                }
+                // Chromium/Electron ships with its accessibility API DISABLED (kAXErrorAPIDisabled,
+                // -25211) until VoiceOver or the app itself turns it on — the whole app then has NO
+                // window identity (focus falls back to z-order, activation degrades to app-level).
+                // AXManualAccessibility is the documented Chromium switch: flip it once and the AX
+                // tree materializes within a few ticks, unlocking per-window identity (Kiro class).
+                if result.rawValue == -25211, !axManualFlipped.contains(pid) {
+                    AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+                    _ = axManualFlipped.insert(pid)
+                    dbg("correlate pid=\(pid) AX API disabled → set AXManualAccessibility=true (Electron/Chromium); tree materializes shortly")
+                }
                 continue
+            }
+            if debugWindows, !windowList.isEmpty || !(cgByPID[pid]?.isEmpty ?? true) {
+                let cgCount = cgByPID[pid]?.count ?? 0
+                dbg("correlate pid=\(pid) axWindows=\(windowList.count) cgCandidates=\(cgCount)")
             }
 
             for axWin in windowList {
@@ -1711,11 +1785,24 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let effectiveFrontmost = effectiveForeignFrontmost(frontmostPID)
 
         var newStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
+        var keptZOrdered: [Bevel_Helper_V1_TaskbarWindow] = []   // CGWindowList front-to-back order
         for entry in entries {
             guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID,
                   let win = describe(entry: entry, axMap: axMap, effectiveFrontmost: effectiveFrontmost)
             else { continue }
             newStore[cgID] = win
+            keptZOrdered.append(win)
+        }
+        if let cg = ghostFocusedWindowID(keptZOrdered, effectiveFrontmost: effectiveFrontmost) {
+            newStore[cg]?.isFocused = true
+        }
+
+        // Prune tombstone counters for ids the CG list no longer carries at all (window fully
+        // gone) so the dicts stay bounded by live windows.
+        let seenIds = Set(entries.compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
+        stateLock.withLock {
+            ghostTicks = ghostTicks.filter { seenIds.contains($0.key) }
+            trustedOffscreen.formIntersection(seenIds)   // gone from the CG list → untrust (closed-diff owns the rest)
         }
 
         // Diff against the store using only the windows we actually keep — describe()
