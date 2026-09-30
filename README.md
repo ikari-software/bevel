@@ -1,11 +1,11 @@
 # Bevel
 
 **Bevel** is a cross-platform desktop **shell replacement** — a themable desktop,
-taskbar (window list, start menu, system tray, clock) and a Windows-2000-Explorer-style
+taskbar (window list, start menu, system tray, clock) and an integrated classic-style
 file manager — all fully owner-drawn in C# / [Avalonia](https://avaloniaui.net/). It targets
-**macOS today** (Windows and Linux PALs are planned). The default look is the Windows 2000
-"Classic" theme, with a switchable **Luna** (XP) theme and a Flat/Whistler theme in design.
-Identifiers are frozen: reverse-DNS `pl.ikari.bevel`, URL scheme `bevel://`.
+**macOS today** (Windows and Linux PALs are planned). The default skin is **Bevel 1999
+Industrial**, with switchable **Bevel 2001 Blue** and a **Bevel Flat (preview)** theme in
+design. Identifiers are frozen: reverse-DNS `pl.ikari.bevel`, URL scheme `bevel://`.
 
 The full design lives in [`docs/spec/`](docs/spec/) — start with
 [`00-master-plan.md`](docs/spec/00-master-plan.md) and
@@ -14,14 +14,24 @@ The full design lives in [`docs/spec/`](docs/spec/) — start with
 ## Status
 
 Working macOS shell, well past the bootstrap. The taskbar (window list with grouping,
-Start menu, adaptive system tray, clock), the Win2000 + Luna theme engines, a multi-process
-split (`--role` launcher/core/taskbar + per-window Explorer processes), a real macOS platform
-layer with a Swift helper (window/tray enumeration over gRPC/UDS), and a Windows-2000-style
-file manager (navigation, tabs, streaming enumeration, drag-drop, rename, Folder Options,
-selectable info panel) are all implemented. Code-signing + notarization + a DMG release lane
-exist. `Bevel.Pal.Windows` / `Bevel.Pal.Linux` and a Flat theme are still to come.
+Start menu, adaptive system tray, clock), the Bevel 1999 Industrial + Bevel 2001 Blue theme
+engines, a multi-process split (`--role` launcher/core/taskbar + per-window Filer processes),
+a real macOS platform layer with a Swift helper (window/tray enumeration over gRPC/UDS), and
+a classic-style file manager (navigation, tabs, streaming enumeration, drag-drop, rename,
+Folder Options, selectable info panel) are all implemented. Code-signing + notarization + a
+DMG release lane exist. `Bevel.Pal.Windows` / `Bevel.Pal.Linux` and Flat are still to come.
 
 See open work with `bd ready`; the design spec is in [`docs/spec/`](docs/spec/).
+
+## Trademarks
+
+Bevel is an independent, open-source software project developed by ikari.software. Bevel is
+not affiliated with, endorsed by, sponsored by, or associated with Microsoft Corporation,
+Apple Inc., or the Linux Foundation. Microsoft, Windows, Windows 2000, Windows XP, Windows
+Vista, and the Windows logo are registered trademarks of Microsoft Corporation. Apple, macOS,
+and the Apple logo are registered trademarks of Apple Inc. Linux is the registered trademark
+of Linus Torvalds. Tux the penguin was created by Larry Ewing (lewing@isc.tamu.edu) using
+The GIMP. All third-party marks are used strictly in a descriptive and referential capacity.
 
 ## Layout
 
@@ -38,7 +48,7 @@ src/
   Bevel.Interop            # ObjC interop + automation control socket (bevel:// / CLI)
   Bevel.UI                 # shared chrome (BevelWindow, Glyphs, theming services)
   Bevel.Themes.Win2000     # default theme (aliases Classic.Avalonia.Theme)
-  Bevel.Themes.Luna        # Luna (XP) glossy vector ControlThemes
+  Bevel.Themes.Luna        # Bevel 2001 Blue glossy vector ControlThemes
   Bevel.Desktop            # desktop surface window
   Bevel.Taskbar            # taskbar, Start menu, tray, background ShellModel
   Bevel.FileManager        # Explorer window + components + VFS UI

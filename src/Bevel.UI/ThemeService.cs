@@ -33,8 +33,8 @@ public static class ThemeService
     /// <summary>Selectable themes as (persisted id, display name). "win2000" is the frozen default id.</summary>
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
-        ("win2000", "Bevel Classic"),
-        ("luna", "Bevel Luna (XP)"),
+        ("win2000", "Bevel 1999 Industrial"),
+        ("luna", "Bevel 2001 Blue"),
         ("flat", "Bevel Flat (preview)"),
     };
 

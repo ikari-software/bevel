@@ -45,8 +45,8 @@ exposed, including whether Apple's and Microsoft's published trademark/logo guid
 in-product use of this shape, and whether Tux's licence (the original Larry Ewing terms) differs.
 
 **2. Era and product names in marketing copy.** The product's *in-app* theme names are already
-neutralised — the user sees "Bevel Classic", "Bevel Luna (XP)", "Bevel Flat (preview)". But the
-public landing page currently uses, as descriptive copy: "Windows 2000" (5 occurrences), "Windows
+neutralised — the user sees "Bevel 1999 Industrial", "Bevel 2001 Blue", "Bevel Flat (preview)".
+But the public landing page previously used, as descriptive copy: "Windows 2000" (5 occurrences), "Windows
 XP", "Windows 9x", "Windows Vista", "Whistler", and "Luna". "Luna" and "Whistler" are Microsoft's
 own names/codenames for the Windows XP visual style and for XP itself. The page also describes a
 file manager as an "Explorer" and its parts as a "Start menu". Questions: which of these are
@@ -95,11 +95,10 @@ metric-compatible substitutes for these, and is a *metric-compatible* clone itse
 registered marks in the relevant Nice classes (9, 42) in the EU, Poland, US and UK, and any obvious
 conflicts in software.
 
-**8. Disclaimers.** The page currently carries one line in the footer: *"an homage, reimagined — not
-affiliated with Microsoft"*. Questions: what does a disclaimer actually achieve legally (as opposed
-to reputationally), where must it appear to have any effect, and what wording is materially
-stronger? Note the page does not currently disclaim Apple at all, despite showing Apple's logo and
-icons.
+**8. Disclaimers.** The page and About box now carry a multi-vendor trademarks notice (Microsoft,
+Apple, Linux Foundation) plus the Larry Ewing Tux credit. The old one-liner *"an homage,
+reimagined — not affiliated with Microsoft"* is retired. Remaining counsel questions: what a
+disclaimer achieves legally, and whether prominence is enough for launch.
 
 ## What I want back
 
