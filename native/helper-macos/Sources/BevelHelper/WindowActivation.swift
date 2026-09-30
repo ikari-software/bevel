@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import Foundation
 
 /// A window the taskbar asked us to bring forward, with everything the activation ladder needs.
 struct WindowTarget {
@@ -10,14 +11,20 @@ struct WindowTarget {
     /// (AX only lists the current Space's windows).
     let axWin: AXUIElement?
     /// On a Space no display is showing right now — activating it must switch Spaces.
+    /// Multi-monitor: compared against the SET of per-display current Spaces.
     let isOnOtherSpace: Bool
 }
 
 enum ActivationStep: Equatable {
-    /// App-level activation (`kAXFrontmost` + `NSRunningApplication.activate`). The only step that
-    /// works when Bevel's high-level taskbar holds key focus (bevel-nxic).
+    /// Switch the owning display onto this window's Space (Show/Hide/SetCurrent).
+    /// Required because `focusViaWindowServer` does not switch Spaces.
+    case switchSpace
+    /// App-level activation (`kAXFrontmost` + `NSRunningApplication.activate`). Needed when
+    /// Bevel's non-activating taskbar holds the click (bevel-nxic) — but alone it fronts the
+    /// *app*, so a multi-Space app can flash the wrong sibling; always follow with
+    /// `focusViaWindowServer` when we have a window id.
     case activateApp
-    /// Address the window by its WindowServer id (SkyLight): works without AX, and crosses Spaces.
+    /// Address the window by its WindowServer id (SkyLight): works without AX; does not switch Spaces.
     case focusViaWindowServer
     /// `AXRaise` — reorders within the app; must come last so the clicked window ends topmost.
     case raiseViaAX
@@ -28,30 +35,56 @@ enum ActivationStep: Equatable {
 enum ActivationPlan {
     static func steps(hasAX: Bool, isOnOtherSpace: Bool) -> [ActivationStep] {
         if isOnOtherSpace {
-            // App-level activation would land on whichever Space macOS picks for the app; only the
-            // window-addressed call can go to THIS window's Space.
-            return hasAX ? [.focusViaWindowServer, .raiseViaAX] : [.focusViaWindowServer]
+            // App-level activation would land on whichever Space macOS picks for the app; only an
+            // explicit Space switch + window-addressed focus reaches THIS window's Space.
+            return hasAX
+                ? [.switchSpace, .focusViaWindowServer, .raiseViaAX]
+                : [.switchSpace, .focusViaWindowServer]
         }
-        // No AX element means AXRaise is impossible (Kiro-class apps): activate the app, then make
-        // the specific window key through the WindowServer instead.
-        return hasAX ? [.activateApp, .raiseViaAX] : [.activateApp, .focusViaWindowServer]
+        // Always window-address after app activate: bare activateApp lets a multi-window app
+        // (several fullscreen Spaces on one display) front the wrong sibling.
+        return hasAX
+            ? [.activateApp, .focusViaWindowServer, .raiseViaAX]
+            : [.activateApp, .focusViaWindowServer]
     }
 }
 
 enum WindowActivator {
+    private static let debugWindows = ProcessInfo.processInfo.environment["BEVEL_DEBUG_WINDOWS"] == "1"
+
     static func perform(_ target: WindowTarget) {
-        for step in ActivationPlan.steps(hasAX: target.axWin != nil, isOnOtherSpace: target.isOnOtherSpace) {
+        let steps = ActivationPlan.steps(hasAX: target.axWin != nil, isOnOtherSpace: target.isOnOtherSpace)
+        dbg("activate cg=\(target.cgID) pid=\(target.pid) otherSpace=\(target.isOnOtherSpace) hasAX=\(target.axWin != nil) steps=\(steps)")
+        var switchedTo: Int?
+        for step in steps {
             switch step {
+            case .switchSpace:
+                let r = SkyLight.switchToSpace(ofWindow: target.cgID)
+                switchedTo = r.toSpace
+                dbg("  switchSpace → ok=\(r.ok) already=\(r.alreadyCurrent) focused=\(r.displayFocused) clicked=\(r.clicked) display=\(r.displayUUID ?? "?") \(r.fromSpace.map(String.init) ?? "?")->\(r.toSpace.map(String.init) ?? "?") currents=\(SkyLight.currentSpaceIDs().sorted())")
             case .activateApp:
                 activateApp(pid: target.pid)
+                dbg("  activateApp")
             case .focusViaWindowServer:
-                // SkyLight unavailable → plain app activation still gets the user into the app.
-                if !SkyLight.focusWindow(pid: target.pid, cgID: target.cgID) {
+                // Prefer the Space we just switched to; otherwise the window's current Space ids.
+                let space = switchedTo ?? SkyLight.spaceIDs(ofWindow: target.cgID).first
+                // Address THIS window first, then pin the Space's front-PSN. Reversing those lets
+                // setFrontOnSpace briefly activate the app while AX still reports a sibling as
+                // focused — broadcastFocusForApp then stamps the wrong Jump session as pressed.
+                let ok = SkyLight.focusWindow(pid: target.pid, cgID: target.cgID)
+                dbg("  focusViaWindowServer → \(ok)")
+                if let space {
+                    let pinned = SkyLight.setFrontOnSpace(space, pid: target.pid)
+                    dbg("  setFrontOnSpace \(space) → \(pinned)")
+                }
+                if !ok {
                     activateApp(pid: target.pid)
+                    dbg("  focusViaWindowServer fallback activateApp")
                 }
             case .raiseViaAX:
                 if let axWin = target.axWin {
-                    _ = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
+                    let rc = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
+                    dbg("  raiseViaAX → \(rc.rawValue)")
                 }
             }
         }
@@ -64,5 +97,10 @@ enum WindowActivator {
         _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+
+    private static func dbg(_ msg: @autoclosure () -> String) {
+        guard debugWindows else { return }
+        FileHandle.standardError.write(Data(("[BEVEL-WIN] " + msg() + "\n").utf8))
     }
 }

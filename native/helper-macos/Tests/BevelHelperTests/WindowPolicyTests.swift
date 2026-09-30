@@ -79,16 +79,36 @@ final class SpaceContextTests: XCTestCase {
 
 final class ActivationPlanTests: XCTestCase {
     func testAXWindowOnCurrentSpaceKeepsTheOriginalLadder() {
-        XCTAssertEqual(ActivationPlan.steps(hasAX: true, isOnOtherSpace: false), [.activateApp, .raiseViaAX])
+        XCTAssertEqual(ActivationPlan.steps(hasAX: true, isOnOtherSpace: false),
+                       [.activateApp, .focusViaWindowServer, .raiseViaAX])
     }
 
     func testAXLessWindowIsMadeKeyThroughTheWindowServerAfterAppActivation() {
-        XCTAssertEqual(ActivationPlan.steps(hasAX: false, isOnOtherSpace: false), [.activateApp, .focusViaWindowServer])
+        XCTAssertEqual(ActivationPlan.steps(hasAX: false, isOnOtherSpace: false),
+                       [.activateApp, .focusViaWindowServer])
     }
 
-    func testOtherSpaceWindowSkipsAppActivationSoTheSpaceSwitchGoesToThatWindow() {
-        XCTAssertEqual(ActivationPlan.steps(hasAX: false, isOnOtherSpace: true), [.focusViaWindowServer])
-        XCTAssertEqual(ActivationPlan.steps(hasAX: true, isOnOtherSpace: true), [.focusViaWindowServer, .raiseViaAX])
+    func testOtherSpaceWindowSwitchesSpaceThenFocusesThroughTheWindowServer() {
+        XCTAssertEqual(ActivationPlan.steps(hasAX: false, isOnOtherSpace: true),
+                       [.switchSpace, .focusViaWindowServer])
+        XCTAssertEqual(ActivationPlan.steps(hasAX: true, isOnOtherSpace: true),
+                       [.switchSpace, .focusViaWindowServer, .raiseViaAX])
+    }
+
+    func testSwitchSpaceIsFirstOnOtherSpacePlans() {
+        for ax in [true, false] {
+            let steps = ActivationPlan.steps(hasAX: ax, isOnOtherSpace: true)
+            XCTAssertEqual(steps.first, .switchSpace)
+            XCTAssertFalse(ActivationPlan.steps(hasAX: ax, isOnOtherSpace: false).contains(.switchSpace))
+        }
+    }
+
+    func testSameSpacePlansAlwaysWindowAddressSoMultiSpaceAppsDoNotFrontASibling() {
+        for ax in [true, false] {
+            let steps = ActivationPlan.steps(hasAX: ax, isOnOtherSpace: false)
+            XCTAssertTrue(steps.contains(.focusViaWindowServer))
+            XCTAssertEqual(steps.first, .activateApp)
+        }
     }
 
     func testRaiseIsAlwaysLastSoTheClickedWindowEndsTopmost() {
