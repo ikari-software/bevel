@@ -1,5 +1,5 @@
 /**
- * Static file server for the Bevel Desktop landing page (bevel.ikari.software).
+ * Static file server for the Bevel Desktop landing page (bevel.run).
  *
  * The page is a single self-contained HTML file plus its screenshots — no build step, no framework.
  * ikari.software next door is a Fresh app; this deliberately is not, because there is nothing here that
@@ -8,7 +8,7 @@
  * Serves from this directory: `/` and `/index.html` both return the page, `/shots/*` the real renders,
  * plus `/robots.txt`, `/agents.txt`, `/sitemap.xml`, and `/updates/*` (Velopack feed stubs).
  *
- * Canonical host is https://bevel.ikari.software/ — ikari.software/bevel-desktop is a 301 alias.
+ * Canonical host is https://bevel.run/ — ikari.software/bevel-desktop is a 301 alias.
  */
 import { serveDir } from "jsr:@std/http@1/file-server";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";

@@ -48,8 +48,8 @@ Re-harvested `site/shots/` (hero Start badge is BevelMark). App icon: `packaging
 ### Not yet scheduled (raise with the owner; each needs its own discussion)
 - Git-repo theme install UX + `theme.json` provenance → bead **`bevel-te20`**.
 - Clearance search for the cube mark (optional; parked).
-- Attach `bevel.ikari.software` on Deno Deploy (`bevel-site`) + push site; deploy ikari-software alias.
-- Opt-in `updateFeedUrl=https://bevel.ikari.software/updates` once you want checks (default stays empty).
+- Attach `bevel.run` on Deno Deploy (`bevel-site`) + push site; deploy ikari-software alias.
+- Opt-in `updateFeedUrl=https://bevel.run/updates` once you want checks (default stays empty).
 - Commit housekeeping when asked.
 
 ## Two pre-existing test failures · `bevel-yslj` ✅ fixed

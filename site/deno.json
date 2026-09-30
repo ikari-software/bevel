@@ -17,5 +17,11 @@
         "recommended"
       ]
     }
+  },
+  "deploy": {
+    "org": "ikari",
+    "app": "bevel-site"
   }
 }
+
+

@@ -1,11 +1,7 @@
-# Deploys the Bevel landing page (site/) to Deno Deploy.
+# Deploys the Bevel landing page (site/) to Deno Deploy (new platform).
 #
-# Modelled on the ikari-software workflow, minus the build step: the page is one self-contained HTML
-# file plus real screenshots harvested from the Render* tests, so there is nothing to compile and no
-# framework to boot. Keeping it buildless means a re-harvested screenshot is one commit from live.
-#
-# Custom domain: bevel.ikari.software is attached in the Deno Deploy dashboard (project bevel-site),
-# NOT here. Alias: ikari.software/bevel-desktop → 301 to the canonical host (ikari-software repo).
+# Custom domain bevel.run is attached in the Deno Deploy dashboard (app bevel-site), NOT here.
+# Alias: ikari.software/bevel-desktop → 301 to https://bevel.run/ (ikari-software repo).
 name: Deploy site
 
 on:
@@ -16,7 +12,6 @@ on:
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
-# One deploy at a time; a newer push supersedes an in-flight one rather than racing it.
 concurrency:
   group: deploy-site
   cancel-in-progress: true
@@ -26,7 +21,6 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # required by deployctl's OIDC auth
       contents: read
 
     steps:
@@ -38,16 +32,12 @@ jobs:
         with:
           deno-version: v2.x
 
-      # Catches a broken server before it reaches the edge. The page itself is static, so this is the
-      # only thing here that can fail at runtime.
       - name: Check
         working-directory: site
         run: |
           deno check main.ts
           deno fmt --check main.ts
 
-      # Every image the page references must exist. A missing screenshot is invisible in review and
-      # obvious on the live site, which is the wrong way round.
       - name: Verify every referenced screenshot exists
         working-directory: site
         run: |
@@ -60,7 +50,6 @@ jobs:
       - name: Deploy
         working-directory: site
         run: |
-          deno install -gArf jsr:@deno/deployctl
-          deployctl deploy --project=bevel-site --entrypoint=main.ts --prod
+          deno deploy --org ikari --app bevel-site --prod --non-interactive --json
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}

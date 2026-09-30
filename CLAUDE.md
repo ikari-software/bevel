@@ -140,7 +140,7 @@ memory-mapped BGRA pool (`MmfBgraPool`).
   harvested from the `Render*` tests (beads memory `site-real-screenshots`). **When a user-facing
   feature, theme, colourway, or skin lands, update the page to match** — re-harvest the screenshot into
   `site/shots/` rather than hand-drawing one, and keep the copy honest (no faked shots for things that
-  don't exist yet). Canonical host: **https://bevel.ikari.software/** (Deno Deploy project `bevel-site`);
+  don't exist yet). Canonical host: **https://bevel.run/** (Deno Deploy project `bevel-site`);
   alias `https://ikari.software/bevel-desktop` 301s there. Also serves `/robots.txt`, `/agents.txt`, and
   `/updates/` (Velopack static feed stubs).
 

@@ -1,7 +1,7 @@
 # agents.txt
 # Standard: https://agents-txt.com
 # Product: Bevel Desktop
-# Canonical: https://bevel.ikari.software/
+# Canonical: https://bevel.run/
 
 # This origin is a marketing + update-feed host. No agent-interaction
 # protocols (MCP, A2A, agent payments, agent auth) are offered here.

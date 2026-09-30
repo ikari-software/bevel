@@ -3,7 +3,7 @@
 Canonical base URL for Velopack (`UPD-01` / `bevel-ym0`):
 
 ```
-https://bevel.ikari.software/updates
+https://bevel.run/updates
 ```
 
 Point `updateFeedUrl` at that directory (not at a single JSON file). Velopack
