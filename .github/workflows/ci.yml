@@ -131,15 +131,16 @@ jobs:
             --output .publish/${{ matrix.artifact-name }}
 
       - name: Upload artifact
-        # Persist build output only for main and release tags. PR / m0* runs still publish
-        # (the self-contained-build gate that matters) but no longer park ~181 MB per run in
-        # org Actions storage. Tags stay included so the tag-gated sign job can download them.
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        # Only on release tags. Every main push was parking ~180 MB × 3 RIDs + helper into Actions
+        # artifact storage (org quota is 2 GB shared); once full, every CI run went red on upload
+        # and then on the Actions minutes budget. PRs still gate on the publish step; release-macos.yml
+        # builds its own signed DMG and does not consume these artifacts.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           path: .publish/${{ matrix.artifact-name }}
-          retention-days: 7
+          retention-days: 3
 
   # ── Swift native helper build (macOS only) ──────────────────────────────────
 
@@ -153,15 +154,13 @@ jobs:
         run: swift build --package-path native/helper-macos --configuration release
 
       - name: Upload BevelHelper binary
-        # Persist build output only for main and release tags. PR / m0* runs still publish
-        # (the self-contained-build gate that matters) but no longer park ~181 MB per run in
-        # org Actions storage. Tags stay included so the tag-gated sign job can download them.
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        # Tags only — see publish job. Keeps Actions artifact storage from filling on every main push.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: BevelHelper
           path: native/helper-macos/.build/release/BevelHelper
-          retention-days: 7
+          retention-days: 3
 
   # ── Theme token codegen drift check (bevel-51t / MET-01) ────────────────────
   #

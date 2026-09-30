@@ -18,7 +18,8 @@ namespace Bevel.Core.Tests.Interop;
 /// </summary>
 public sealed class AutomationSocketTests
 {
-    private static string TempSocket() => Path.Combine("/tmp", $"bvl-{Guid.NewGuid():N}.sock");
+    private static string TempSocket() =>
+        Path.Combine(Path.GetTempPath(), $"bvl-{Guid.NewGuid():N}"[..12] + ".sock");
 
     private static AutomationSocketServer StartServer(string path, IShellAutomation automation)
     {
@@ -90,6 +91,9 @@ public sealed class AutomationSocketTests
     [Fact]
     public async Task Stale_bevelctl_socket_from_a_crashed_run_is_reclaimed()
     {
+        // Windows: Socket.Dispose deletes BoundFileName — no leftover stale socket file to reclaim.
+        if (OperatingSystem.IsWindows()) return;
+
         var path = TempSocket();
         // Crash: the listener's fd closes but its file outlives it (a managed Socket.Bind would delete
         // the path on Dispose and hide the scenario — the claim's own listener does not).

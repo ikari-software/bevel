@@ -62,6 +62,10 @@ public sealed class UdsSocketClaimTests
     [Fact]
     public async Task Stale_socket_of_a_dead_owner_is_reclaimed()
     {
+        // Windows: Socket.Dispose deletes the bound UDS path (BoundFileName), so a "crash left the
+        // file behind" fixture cannot be built — see UdsSocketClaim.BindListener. Unix keeps the file.
+        if (OperatingSystem.IsWindows()) return;
+
         var path = NewSocketPath();
         RawListener(path).Dispose(); // owner "crashed": file present, nobody behind it
         Assert.True(File.Exists(path));
@@ -90,6 +94,10 @@ public sealed class UdsSocketClaimTests
     [Fact]
     public async Task Dispose_leaves_a_path_another_live_listener_has_since_taken()
     {
+        // Windows: disposing our managed listener File.Delete()s the path by BoundFileName even when
+        // another process has since rebound it — owner-only unlink is Unix (raw-fd) only.
+        if (OperatingSystem.IsWindows()) return;
+
         var path = NewSocketPath();
         var server = NewServer(path, NewNonce());
         server.Start();
@@ -116,6 +124,13 @@ public sealed class UdsSocketClaimTests
         Assert.True(UdsSocketClaim.IsServing(path));  // live
 
         live.Dispose();
+        if (OperatingSystem.IsWindows())
+        {
+            // Managed Dispose already removed the path — "stale file present" does not apply.
+            Assert.False(File.Exists(path));
+            Assert.False(UdsSocketClaim.IsServing(path));
+            return;
+        }
         Assert.True(File.Exists(path));
         Assert.False(UdsSocketClaim.IsServing(path)); // stale: file present, ECONNREFUSED
         File.Delete(path);

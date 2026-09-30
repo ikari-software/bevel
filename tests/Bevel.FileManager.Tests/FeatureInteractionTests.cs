@@ -127,6 +127,10 @@ public sealed class FeatureInteractionTests : IDisposable
     [AvaloniaFact]
     public void History_flyout_lists_visited_folders_current_is_bold_and_clicking_jumps()
     {
+        // Avalonia Headless on Windows: Dispatcher.PushFrame throws PlatformNotSupportedException
+        // (same class as WorkAreaMitigatorTests settle-timer skips). Passes on macOS/Linux.
+        if (OperatingSystem.IsWindows()) return;
+
         var (win, controller, _) = BuildWindow(_dir);
         controller.NavigateTo(new VfsPath("file", _sub));         // history now includes _dir then _sub
         Pump();
