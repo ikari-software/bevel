@@ -417,6 +417,30 @@ public sealed class RoleProcessSupervisorTests
     }
 
     [Fact]
+    public async Task VersionSkew_with_a_relaunch_hook_relauunches_the_whole_shell_once()
+    {
+        // Children always respawn from the CURRENT on-disk bundle, so child-vs-launcher skew can
+        // only mean the RUNNING launcher predates the bundle (rebuild-while-running). The correct
+        // heal is ONE whole-shell relaunch — not the old burn-3-restarts-then-Hold cascade the
+        // user watched flicker the shell 2-3 times on every version switch.
+        var log = new List<string>();
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var stale = 0;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { taskbar }, Poll,
+            health: new ShellHealthMonitor(() => "new", skewRestartBudget: 3),
+            heartbeat: _ => Hb(ShellRole.Taskbar, HeartbeatStatus.Ready, stamp: "old"),
+            onLauncherStale: () => Interlocked.Increment(ref stale));
+        await sup.StartAsync();
+
+        await WaitFor(() => stale >= 1, "skew should fire the whole-shell relaunch hook");
+        await Task.Delay(Poll * 5);
+        Assert.Equal(1, stale);            // fired exactly once — no restart/hold cascade
+        Assert.Equal(0, taskbar.KillCount); // the child is NOT killed: the relaunch teardown owns that
+        Assert.True(taskbar.IsAlive);
+    }
+
+    [Fact]
     public async Task Ready_taskbar_without_a_core_link_restarts_the_core()
     {
         var log = new List<string>();

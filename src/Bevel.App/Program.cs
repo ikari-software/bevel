@@ -275,11 +275,25 @@ internal static class Program
         QuitRequest.Clear();
         RoleHeartbeatStore.ClearAll();
 
-        var supervisor = new RoleProcessSupervisor(
+        // The stop latch exists BEFORE the supervisor so the skew hook can close over it: a
+        // VersionSkew verdict means the RUNNING launcher predates the on-disk bundle (children
+        // always respawn from the current bundle, so only the launcher side can be stale). One
+        // clean whole-shell relaunch replaces the old burn-3-restarts-then-Hold cascade that
+        // flickered the shell 2-3 times on every version switch.
+        using var stop = new ManualResetEventSlim(false);
+        var launcherStale = false;
+        RoleProcessSupervisor supervisor = null!;
+        supervisor = new RoleProcessSupervisor(
             processes,
             pollInterval: TimeSpan.FromSeconds(1),
             coreReadyProbe: ct => CoreSocketProbe.WaitUntilServingAsync(coreSocket, coreNonce, TimeSpan.FromSeconds(5), ct),
             log: msg => Console.Error.WriteLine($"[launcher] {msg}"),
+            onLauncherStale: () =>
+            {
+                launcherStale = true;
+                supervisor.RequestStop();   // halt child respawns: the whole shell is about to quit
+                stop.Set();                 // wake the main thread for the ordered teardown below
+            },
             // bevel-hprv: process-alive is not "serving". A core that lost core.sock stays up in ps
             // while every peer shows the disconnected indicator. And (bevel-wio0) a socket that
             // EXISTS — even one that accepts connections — is not proof it is OUR core: the probe is
@@ -300,8 +314,6 @@ internal static class Program
         // instances would clobber the single Filer slot and phantom-gap the health monitor).
         var filerSupervisor = new FilerSupervisor(args, childEnv, log: msg => RestartDiag.Log(msg));
         filerSupervisor.Start();
-
-        using var stop = new ManualResetEventSlim(false);
 
         // Control server: the taskbar's quit/restart buttons arrive here and fan out to the whole shell.
         var control = new UdsMessageServer(controlSocket, controlNonce, async (_, payload, ct) =>
@@ -389,6 +401,16 @@ internal static class Program
             await filerSupervisor.DisposeAsync().ConfigureAwait(false);
             await control.DisposeAsync().ConfigureAwait(false);
         }).GetAwaiter().GetResult();
+
+        // Whole-shell relaunch AFTER teardown (bevel-t48y follow-up): the new instance's
+        // single-instance lock wait (3s) covers the milliseconds between Relaunch() returning and
+        // this process exiting (the lock releases at exit) — and LaunchServices `open -n` keeps
+        // the app's TCC identity, so Accessibility/Screen-Recording grants carry across the swap.
+        if (launcherStale)
+        {
+            RestartDiag.Log("launcher: skew teardown complete → whole-shell relaunch from the current bundle");
+            Relaunch(args);
+        }
     }
 
     /// <summary>Takes the single-instance lock. Contention (another shell) returns null with the

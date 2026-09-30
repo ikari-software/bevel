@@ -37,6 +37,11 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
     private readonly ShellHealthMonitor? _health;
     private readonly Func<ShellRole, RoleHeartbeat?>? _heartbeat;
     private readonly Action<HealthVerdict>? _onAlert;
+    // Whole-shell relaunch on launcher skew (bevel-t48y follow-up / the "2-3 relaunches" report):
+    // fires ONCE when a VersionSkew verdict is observed. Null = the legacy heal (restart children,
+    // skew again, Hold after the budget) — kept for tests and unsupervised callers.
+    private readonly Action? _onLauncherStale;
+    private bool _launcherStaleFired;
     // One native/status alert per role per hold episode — Observe returns Hold every later
     // tick, and popping a dialog per second would be the new invisible-failure mode.
     private readonly HashSet<ShellRole> _alerted = new();
@@ -67,7 +72,8 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         Func<bool>? quitRequested = null,
         ShellHealthMonitor? health = null,
         Func<ShellRole, RoleHeartbeat?>? heartbeat = null,
-        Action<HealthVerdict>? onAlert = null)
+        Action<HealthVerdict>? onAlert = null,
+        Action? onLauncherStale = null)
     {
         if (processes.Count == 0) throw new ArgumentException("Supervise at least one process.", nameof(processes));
         _processes = processes.ToList(); // own a private, mutable copy — runtime add/remove edits this list, not the caller's
@@ -81,6 +87,7 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         _health = health;
         _heartbeat = heartbeat ?? (health is null ? null : RoleHeartbeatStore.Read);
         _onAlert = onAlert;
+        _onLauncherStale = onLauncherStale;
     }
 
     /// <summary>Starts every process in order (core → UIs), then launches the crash-monitor loop.</summary>
@@ -407,6 +414,26 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                 alive = false;
             }
             return verdict;
+        }
+
+        // Launcher skew is un-healable by child restarts: a respawned child always comes back from
+        // the CURRENT on-disk bundle, so a child-vs-launcher stamp mismatch can only mean the
+        // RUNNING launcher predates the bundle (rebuild-while-running / version switch). The old
+        // heal burned the skew budget restarting children that came back skewed every time, Held,
+        // and waited for a manual relaunch — the "shell relaunches everything 2-3 times" symptom.
+        // With a hook wired (the launcher), skew means: relaunch the WHOLE shell, one clean cycle.
+        if (verdict.Fault == HealthFault.VersionSkew && _onLauncherStale is not null)
+        {
+            // With a hook wired, EVERY skew verdict is committed to the relaunch decision: fire the
+            // hook once, and later ticks (a slow-quit launcher still observing skew) never fall
+            // through to the legacy child-kill path.
+            if (!_launcherStaleFired)
+            {
+                _launcherStaleFired = true;
+                _log?.Invoke($"supervisor: {verdict.Fault} {verdict.Target} ({verdict.Detail}) — the running launcher predates the bundle on disk; relaunching the whole shell");
+                _onLauncherStale();
+            }
+            return verdict; // no child kill/respawn: the relaunch teardown owns the children
         }
 
         if (verdict.Action == HealthAction.Restart)
