@@ -1,5 +1,11 @@
 # Research brief: Bevel branding, trade dress and third-party marks
 
+> **Status (2026-09-30):** Owner decisions landed — product name **Bevel Desktop**; trade dress
+> accepted as redesign + deep customisability; **no hosted theme gallery** (git repos OK);
+> theme-package licensing detail is **TBD**. Parked residual asks:
+> [`open-questions-parked.md`](open-questions-parked.md). This brief remains the research packet
+> for a later counsel pass; it is not a build gate.
+>
 > Paste the section below the line into a deep-research tool. It is written to be self-contained —
 > it does not assume the reader can see this repository.
 >

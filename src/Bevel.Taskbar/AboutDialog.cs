@@ -28,7 +28,7 @@ public sealed class AboutDialog : BevelWindow
 
         var title = new TextBlock
         {
-            Text = "Bevel",
+            Text = "Bevel Desktop",
             FontSize = 22,
             FontWeight = FontWeight.Bold,
             Margin = new Thickness(0, 0, 0, 2),
@@ -36,7 +36,7 @@ public sealed class AboutDialog : BevelWindow
 
         var tagline = new TextBlock
         {
-            Text = "A contemporary desktop shell for macOS, Windows, and Linux.",
+            Text = "A contemporary, themable desktop shell for macOS, Windows, and Linux.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.85,
             Margin = new Thickness(0, 0, 0, 10),
@@ -79,8 +79,8 @@ public sealed class AboutDialog : BevelWindow
             Margin = new Thickness(0, 0, 0, 8),
             Text =
                 "Trademarks and Compatibility Notice\n" +
-                "Bevel is an independent, open-source software project developed by ikari.software. " +
-                "Bevel is not affiliated with, endorsed by, sponsored by, or associated with Microsoft Corporation, " +
+                "Bevel Desktop is an independent, open-source software project developed by ikari.software. " +
+                "Bevel Desktop is not affiliated with, endorsed by, sponsored by, or associated with Microsoft Corporation, " +
                 "Apple Inc., or the Linux Foundation.\n" +
                 "Microsoft, Windows, Windows 2000, Windows XP, Windows Vista, and the Windows logo are registered " +
                 "trademarks of Microsoft Corporation in the United States and other countries. Apple, macOS, and the " +

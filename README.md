@@ -1,6 +1,6 @@
-# Bevel
+# Bevel Desktop
 
-**Bevel** is a cross-platform desktop **shell replacement** — a themable desktop,
+**Bevel Desktop** is a cross-platform desktop **shell replacement** — a themable desktop,
 taskbar (window list, start menu, system tray, clock) and an integrated classic-style
 file manager — all fully owner-drawn in C# / [Avalonia](https://avaloniaui.net/). It targets
 **macOS today** (Windows and Linux PALs are planned). The default skin is **Bevel 1999
@@ -25,13 +25,17 @@ See open work with `bd ready`; the design spec is in [`docs/spec/`](docs/spec/).
 
 ## Trademarks
 
-Bevel is an independent, open-source software project developed by ikari.software. Bevel is
-not affiliated with, endorsed by, sponsored by, or associated with Microsoft Corporation,
-Apple Inc., or the Linux Foundation. Microsoft, Windows, Windows 2000, Windows XP, Windows
-Vista, and the Windows logo are registered trademarks of Microsoft Corporation. Apple, macOS,
-and the Apple logo are registered trademarks of Apple Inc. Linux is the registered trademark
-of Linus Torvalds. Tux the penguin was created by Larry Ewing (lewing@isc.tamu.edu) using
-The GIMP. All third-party marks are used strictly in a descriptive and referential capacity.
+Bevel Desktop is an independent, open-source software project developed by ikari.software.
+Bevel Desktop is not affiliated with, endorsed by, sponsored by, or associated with Microsoft
+Corporation, Apple Inc., or the Linux Foundation. Microsoft, Windows, Windows 2000, Windows XP,
+Windows Vista, and the Windows logo are registered trademarks of Microsoft Corporation. Apple,
+macOS, and the Apple logo are registered trademarks of Apple Inc. Linux is the registered
+trademark of Linus Torvalds. Tux the penguin was created by Larry Ewing (lewing@isc.tamu.edu)
+using The GIMP. All third-party marks are used strictly in a descriptive and referential
+capacity.
+
+Parked clearance / theme-licensing questions: [`docs/legal/open-questions-parked.md`](docs/legal/open-questions-parked.md).
+Third-party themes: **no hosted gallery**; install from **git repositories** only. Package licensing / install disclaimers remain **TBD**.
 
 ## Layout
 
