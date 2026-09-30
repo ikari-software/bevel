@@ -403,25 +403,15 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         if (verdict.Fault != HealthFault.None)
             _log?.Invoke($"supervisor: health {verdict.Fault} {verdict.Action} {verdict.Target}: {verdict.Detail}");
 
-        if (verdict.Action == HealthAction.Hold)
-        {
-            if (_alerted.Add(verdict.Target))
-                _onAlert?.Invoke(verdict);
-            if (verdict.Target == p.Role && alive)
-            {
-                try { p.Kill(); } catch { /* already gone */ }
-                RoleHeartbeatStore.Clear(p.Role);
-                alive = false;
-            }
-            return verdict;
-        }
-
         // Launcher skew is un-healable by child restarts: a respawned child always comes back from
         // the CURRENT on-disk bundle, so a child-vs-launcher stamp mismatch can only mean the
         // RUNNING launcher predates the bundle (rebuild-while-running / version switch). The old
         // heal burned the skew budget restarting children that came back skewed every time, Held,
         // and waited for a manual relaunch — the "shell relaunches everything 2-3 times" symptom.
         // With a hook wired (the launcher), skew means: relaunch the WHOLE shell, one clean cycle.
+        // This MUST come before the Hold branch: the monitor turns the (budget+1)th skew observation
+        // into Hold, and a slow-quitting launcher keeps ticking — Hold would kill the child and pop
+        // the alert, i.e. the very cascade this path exists to prevent.
         if (verdict.Fault == HealthFault.VersionSkew && _onLauncherStale is not null)
         {
             // With a hook wired, EVERY skew verdict is committed to the relaunch decision: fire the
@@ -434,6 +424,19 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                 _onLauncherStale();
             }
             return verdict; // no child kill/respawn: the relaunch teardown owns the children
+        }
+
+        if (verdict.Action == HealthAction.Hold)
+        {
+            if (_alerted.Add(verdict.Target))
+                _onAlert?.Invoke(verdict);
+            if (verdict.Target == p.Role && alive)
+            {
+                try { p.Kill(); } catch { /* already gone */ }
+                RoleHeartbeatStore.Clear(p.Role);
+                alive = false;
+            }
+            return verdict;
         }
 
         if (verdict.Action == HealthAction.Restart)
