@@ -371,8 +371,8 @@ public sealed class WindowsFileOpener : IFileOpener
     private static extern void SHAssocEnumHandlers(string pszExtra, int afFilter, out IEnumAssocHandlers ppEnumHandler);
 }
 
-/// <summary>Real per-file/per-type icons: SHGetFileInfo → HICON → GetIconInfo/GetDIBits (32bpp, BI_RGB,
-/// top-down = negative biHeight) → premultiplied BGRA → PalImage. Runs on the shared STA/background
+/// <summary>Real per-file/per-type icons: SHGetFileInfo → HICON → <see cref="WindowsIconBits"/>
+/// (32bpp top-down BGRA, straight alpha) → premultiplied → PalImage. Runs on the shared STA/background
 /// thread. Any failure (and every off-Windows call) returns a non-null 1×1 blank so the pooled-icon
 /// pipeline and any bound Image stay non-null — GetIconAsync NEVER throws (bevel-ncfp.8 / U8).</summary>
 public sealed class WindowsIconProvider : IIconProvider
@@ -412,73 +412,15 @@ public sealed class WindowsIconProvider : IIconProvider
         catch { return Blank; }
     }
 
+    /// <summary>HICON → PalImage. The GDI conversion itself lives in <see cref="WindowsIconBits"/>,
+    /// shared with the taskbar's per-window icons so the two can't drift apart; only the
+    /// premultiply (what PalImage carries into the shared icon pool) is ours.</summary>
     [SupportedOSPlatform("windows")]
     private static PalImage? IconToBgra(IntPtr hIcon)
     {
-        if (!GetIconInfo(hIcon, out ICONINFO ii)) return null;
-        IntPtr hbmColor = ii.hbmColor, hbmMask = ii.hbmMask;
-        try
-        {
-            if (hbmColor == IntPtr.Zero) return null;   // monochrome icon: not supported, fall back to blank
-
-            var bm = new BITMAP();
-            if (GetObject(hbmColor, Marshal.SizeOf<BITMAP>(), ref bm) == 0) return null;
-            int w = bm.bmWidth, h = bm.bmHeight;
-            if (w <= 0 || h <= 0) return null;
-
-            var bmi = new BITMAPINFOHEADER
-            {
-                biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
-                biWidth = w,
-                biHeight = -h,           // negative => top-down rows, matching PalImage's BGRA layout
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = BI_RGB,
-            };
-
-            var bytes = new byte[checked(w * h * 4)];
-            IntPtr hdc = GetDC(IntPtr.Zero);
-            try
-            {
-                int scan = GetDIBits(hdc, hbmColor, 0, (uint)h, bytes, ref bmi, DIB_RGB_COLORS);
-                if (scan == 0) return null;
-            }
-            finally { ReleaseDC(IntPtr.Zero, hdc); }
-
-            NormalizeAlphaAndPremultiply(bytes);
-            return new PalImage(w, h, bytes);
-        }
-        finally
-        {
-            if (hbmColor != IntPtr.Zero) DeleteObject(hbmColor);
-            if (hbmMask != IntPtr.Zero) DeleteObject(hbmMask);
-        }
-    }
-
-    // GetDIBits yields straight (non-premultiplied) BGRA. Two fix-ups:
-    //  (1) legacy icons with no alpha channel come back fully transparent (all-zero alpha) — treat
-    //      them as opaque so they aren't invisible;
-    //  (2) otherwise premultiply BGR by A (PalImage carries premultiplied BGRA into the shared pool).
-    private static void NormalizeAlphaAndPremultiply(byte[] bgra)
-    {
-        bool anyAlpha = false;
-        for (int i = 3; i < bgra.Length; i += 4)
-            if (bgra[i] != 0) { anyAlpha = true; break; }
-
-        if (!anyAlpha)
-        {
-            for (int i = 3; i < bgra.Length; i += 4) bgra[i] = 255;   // opaque
-            return;
-        }
-
-        for (int i = 0; i < bgra.Length; i += 4)
-        {
-            byte a = bgra[i + 3];
-            if (a == 255) continue;
-            bgra[i] = (byte)(bgra[i] * a / 255);
-            bgra[i + 1] = (byte)(bgra[i + 1] * a / 255);
-            bgra[i + 2] = (byte)(bgra[i + 2] * a / 255);
-        }
+        if (!WindowsIconBits.TryRead(hIcon, out int w, out int h, out var bgra)) return null;
+        WindowsIconBits.Premultiply(bgra);
+        return new PalImage(w, h, bgra);
     }
 
     private const uint SHGFI_ICON = 0x000000100;
@@ -486,8 +428,6 @@ public sealed class WindowsIconProvider : IIconProvider
     private const uint SHGFI_SMALLICON = 0x000000001;
     private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
     private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
-    private const uint BI_RGB = 0;
-    private const uint DIB_RGB_COLORS = 0;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEINFO
@@ -499,67 +439,11 @@ public sealed class WindowsIconProvider : IIconProvider
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ICONINFO
-    {
-        public bool fIcon;
-        public int xHotspot;
-        public int yHotspot;
-        public IntPtr hbmMask;
-        public IntPtr hbmColor;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct BITMAP
-    {
-        public int bmType;
-        public int bmWidth;
-        public int bmHeight;
-        public int bmWidthBytes;
-        public ushort bmPlanes;
-        public ushort bmBitsPixel;
-        public IntPtr bmBits;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct BITMAPINFOHEADER
-    {
-        public uint biSize;
-        public int biWidth;
-        public int biHeight;
-        public ushort biPlanes;
-        public ushort biBitCount;
-        public uint biCompression;
-        public uint biSizeImage;
-        public int biXPelsPerMeter;
-        public int biYPelsPerMeter;
-        public uint biClrUsed;
-        public uint biClrImportant;
-    }
-
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbSizeFileInfo, uint uFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
-
-    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
-
-    [DllImport("gdi32.dll")]
-    private static extern int GetObject(IntPtr hgdiobj, int cbBuffer, ref BITMAP lpvObject);
-
-    [DllImport("gdi32.dll")]
-    private static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint uStartScan, uint cScanLines, byte[] lpvBits, ref BITMAPINFOHEADER lpbi, uint uUsage);
-
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetDC(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 }
 
 /// <summary>.NET reports a Windows DriveInfo.VolumeLabel natively, so this stays a null-returning

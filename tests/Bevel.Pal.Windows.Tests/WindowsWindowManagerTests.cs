@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Text;
 using Bevel.Pal.Abstractions;
 using Bevel.Pal.Windows;
 using Xunit;
@@ -166,6 +168,88 @@ public class WindowsWindowManagerTests
             try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best-effort */ }
             proc.Dispose();
         }
+    }
+
+    [Fact]
+    public void EncodePng_forces_opaque_by_default_but_preserves_real_alpha_on_request()
+    {
+        // Window CAPTURE wants opacity forced (PrintWindow's alpha is unreliable); a window ICON must
+        // keep its alpha or every taskbar glyph renders as a solid square.
+        var bgra = new byte[] { 0x10, 0x20, 0x30, 0x00, 0x40, 0x50, 0x60, 0x80 }; // 2×1: a=0, a=128
+
+        var opaque = Decode(WindowsWindowManager.EncodePng(bgra, 2, 1, 0, 0));
+        Assert.Equal(255, opaque.Rgba[3]);
+        Assert.Equal(255, opaque.Rgba[7]);
+
+        var kept = Decode(WindowsWindowManager.EncodePng(bgra, 2, 1, 0, 0, preserveAlpha: true));
+        Assert.Equal(0, kept.Rgba[3]);
+        Assert.Equal(0x80, kept.Rgba[7]);
+        // BGRA in, RGBA out — the swizzle must survive the alpha change.
+        Assert.Equal(0x30, kept.Rgba[0]);
+        Assert.Equal(0x10, kept.Rgba[2]);
+    }
+
+    /// <summary>The regression this pins: BuildForeignWindow used to hardcode <c>IconPng: null</c>, so
+    /// every Windows task button rendered label-only even though bevel-ncfp.3 scoped the icon.</summary>
+    [Fact]
+    public async Task Windows_enumerated_window_carries_a_usable_icon_png()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        if (!TryLaunchNotepad(out var proc, out var hwnd)) return;
+
+        using var wm = new WindowsWindowManager();
+        try
+        {
+            var w = (await wm.EnumerateAsync()).FirstOrDefault(x => x.Id.Value == hwnd.ToInt64().ToString());
+            if (w is null) return;   // window vanished / session has no desktop — nothing to assert
+
+            Assert.NotNull(w.IconPng);
+            var icon = Decode(w.IconPng!);
+            Assert.True(icon.W >= 16 && icon.H >= 16, $"icon decoded {icon.W}x{icon.H}, expected ≥16px");
+            // A fully-transparent icon is the legacy-mask bug (and an invisible button glyph).
+            Assert.True(Enumerable.Range(0, icon.W * icon.H).Any(i => icon.Rgba[i * 4 + 3] != 0),
+                "icon decoded fully transparent");
+
+            // Icons are cached by source handle/exe, so a second enumeration hands back the very same
+            // array rather than re-converting and re-encoding on every 2s poll (bevel-tnii).
+            var again = (await wm.EnumerateAsync()).FirstOrDefault(x => x.Id.Value == w.Id.Value);
+            if (again?.IconPng is not null)
+                Assert.Same(w.IconPng, again.IconPng);
+        }
+        finally
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            proc.Dispose();
+        }
+    }
+
+    /// <summary>Minimal PNG reader for what <c>EncodePng</c> writes: 8-bit RGBA, filter None rows.</summary>
+    private static (int W, int H, byte[] Rgba) Decode(byte[] png)
+    {
+        var (w, h) = PngSize(png);
+        using var idat = new MemoryStream();
+        for (int o = 8; o + 8 <= png.Length;)
+        {
+            int len = (png[o] << 24) | (png[o + 1] << 16) | (png[o + 2] << 8) | png[o + 3];
+            var type = Encoding.ASCII.GetString(png, o + 4, 4);
+            if (type == "IDAT") idat.Write(png, o + 8, len);
+            o += 12 + len;   // length + type + data + CRC
+        }
+
+        idat.Position = 0;
+        using var z = new ZLibStream(idat, CompressionMode.Decompress);
+        using var raw = new MemoryStream();
+        z.CopyTo(raw);
+        var bytes = raw.ToArray();
+
+        var rgba = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+        {
+            int row = y * (w * 4 + 1);
+            Assert.Equal(0, bytes[row]);   // filter: None
+            Array.Copy(bytes, row + 1, rgba, y * w * 4, w * 4);
+        }
+        return (w, h, rgba);
     }
 
     private static bool TryLaunchNotepad(out Process proc, out IntPtr hwnd)
