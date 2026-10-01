@@ -1181,11 +1181,14 @@ public partial class TaskbarView : UserControl
 
     /// <summary>Opens the Start menu if closed, closes it if open. Shared by the Start button click, the
     /// in-window Ctrl+Esc handler, and the native global hotkey (bevel-vk4n).</summary>
-    private void ToggleStartMenu()
+    /// <param name="fromKeyboard">True for Ctrl+Esc / the global hotkey. Threads through to
+    /// <see cref="StartMenu.OpenAsync"/>, which only paints the opening selection for a keyboard
+    /// summons — a mouse open highlights nothing until the pointer picks a row.</param>
+    private void ToggleStartMenu(bool fromKeyboard = false)
     {
         if (_startMenu is null) return;
         if (_startMenu.IsOpen) _startMenu.Close();
-        else _ = _startMenu.OpenAsync(StartButton);
+        else _ = _startMenu.OpenAsync(StartButton, fromKeyboard);
     }
 
     private void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
@@ -1197,7 +1200,7 @@ public partial class TaskbarView : UserControl
         {
             if (_startMenu is not null && !_startMenu.IsOpen)
             {
-                _ = _startMenu.OpenAsync(StartButton);
+                _ = _startMenu.OpenAsync(StartButton, fromKeyboard: true);
                 e.Handled = true;
             }
         }
@@ -1248,6 +1251,6 @@ public partial class TaskbarView : UserControl
         const ulong optionFlag = 1UL << 19;
         if (keyCode != escKeyCode) return;
         if ((modifierFlags & (controlFlag | optionFlag)) == 0) return;
-        Dispatcher.UIThread.Post(ToggleStartMenu);
+        Dispatcher.UIThread.Post(() => ToggleStartMenu(fromKeyboard: true));
     }
 }

@@ -112,7 +112,7 @@
                 Theme="{DynamicResource Bevel.Theme.StartButton}"
                 Focusable="True"
                 AutomationProperties.Name="Bevel"
-                Padding="8,0"
+                Padding="{DynamicResource Bevel.Metric.StartButtonPadding}"
                 ClipToBounds="True"
                 HorizontalAlignment="Left"
                 HorizontalContentAlignment="Left"

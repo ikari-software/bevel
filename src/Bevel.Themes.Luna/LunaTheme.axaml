@@ -81,6 +81,11 @@
             <!-- Floor for the auto-sizing Start button (bevel-6x9z). Luna's pill is chunkier than
                  Win2000's, so it floors wider. -->
             <x:Double x:Key="Bevel.Metric.StartButtonMinWidth">80</x:Double>
+            <!-- Asymmetric on purpose (bevel-6x9z): the pill's right edge is rounded (CornerRadius
+                 0,11,11,0) and the caption is BOLD ITALIC, so the final glyph leans into exactly the
+                 corner the radius cuts away. 8px right clipped the "l" of "Bevel"; the extra clears
+                 both the lean and the arc. The left stays tight because that edge is square. -->
+            <Thickness x:Key="Bevel.Metric.StartButtonPadding">8,0,18,0</Thickness>
             <!-- Edge (px) of the square Start badge. 20 leaves the italic "start" label clear of the pill's
                  rounded end; 24 would need the 74px pill widened. -->
             <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>

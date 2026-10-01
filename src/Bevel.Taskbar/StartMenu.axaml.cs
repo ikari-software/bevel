@@ -93,7 +93,14 @@ public partial class StartMenu : UserControl
     /// Opens the menu above the Start button. Programs is already live via its binding, so there
     /// is nothing to await — the Task return is kept for existing callers/tests that await it.
     /// </summary>
-    public Task OpenAsync(Control placementTarget)
+    /// <param name="fromKeyboard">
+    /// How the menu was summoned. A keyboard open (Ctrl+Esc) must land a VISIBLE selection — that is the
+    /// whole point of opening it from the keyboard. A mouse open must not: XP highlights nothing until
+    /// you move over a row, and painting a selection on an arbitrary row is both noise and a lie about
+    /// where a Return would go. Focus is still moved either way, so arrow keys work immediately
+    /// (bevel-vk4n); only the focus-visible ring differs.
+    /// </param>
+    public Task OpenAsync(Control placementTarget, bool fromKeyboard = false)
     {
         ApplyThemeLayout();
         ClearSearch();          // every open starts on the unfiltered menu (bevel-cezo)
@@ -105,25 +112,35 @@ public partial class StartMenu : UserControl
         // (Loaded priority) to run after the popup root is realized — the avalonia-popup-needs-visual-tree
         // gotcha. The taskbar host flips itself key while the menu is open (SetKeyFocusAllowed), so this
         // focus can actually receive keystrokes.
-        Dispatcher.UIThread.Post(FocusFirstItem, DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(
+            () => FocusFirstItem(fromKeyboard ? NavigationMethod.Tab : NavigationMethod.Pointer),
+            DispatcherPriority.Loaded);
         return Task.CompletedTask;
     }
 
     /// <summary>Focuses the first actionable row of the active layout so the menu is arrow-navigable the
-    /// instant it opens. Classic → the first top-level MenuItem; Luna → the first pinned/place row.</summary>
-    private void FocusFirstItem()
+    /// instant it opens. Classic → the first top-level MenuItem; Luna → the first PINNED row.</summary>
+    /// <param name="how">Tab paints the focus-visible selection; Pointer moves focus silently.</param>
+    private void FocusFirstItem(NavigationMethod how)
     {
         if (!MenuPopup.IsOpen) return;
         if (LunaLayout.IsVisible)
         {
-            var firstRow = LunaLayout.GetVisualDescendants()
+            // Visual-descendant order is NOT reading order here: All Programs is docked to the BOTTOM
+            // but declared before the pinned list, so a plain First() landed the opening selection on
+            // it — the user-visible "All Programs is highlighted by default". Skip it and take a real
+            // pinned/place row, falling back to it only when the menu has nothing else to offer.
+            var rows = LunaLayout.GetVisualDescendants()
                 .OfType<Button>()
-                .FirstOrDefault(b => b.Classes.Contains("lunarow") && b.IsEffectivelyVisible);
-            firstRow?.Focus(NavigationMethod.Tab);
+                .Where(b => b.Classes.Contains("lunarow") && b.IsEffectivelyVisible)
+                .ToList();
+            var firstRow = rows.FirstOrDefault(b => !ReferenceEquals(b, LunaAllProgramsButton))
+                           ?? rows.FirstOrDefault();
+            firstRow?.Focus(how);
         }
         else
         {
-            ItemsMenu.Items.OfType<MenuItem>().FirstOrDefault()?.Focus(NavigationMethod.Tab);
+            ItemsMenu.Items.OfType<MenuItem>().FirstOrDefault()?.Focus(how);
         }
     }
 
