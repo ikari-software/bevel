@@ -325,7 +325,14 @@ public static class LunaVariantService
         }
         else
         {
-            stops = targetGlossy ? Bead(BaseColor(s, C), gloss == LunaGloss.Gloss) : Matte(BaseColor(s, C));
+            stops = targetGlossy
+                ? Bead(BaseColor(s, C), gloss == LunaGloss.Gloss)
+                // Flattening to matte must KEEP the authored ramp's direction. A pressed/active face is
+                // authored dark-at-top (shadowed inner edge, lifting toward the bottom); the plain
+                // Matte() ramp is lit from above, so using it for a sunken surface draws the active task
+                // button RAISED — the Matte-only symptom in bevel-eu0c. Hybrid/Gloss never hit this
+                // branch for Control surfaces, which is why only Matte inverted.
+                : IsSunkenRamp(s) ? MatteSunken(BaseColor(s, C)) : Matte(BaseColor(s, C));
         }
 
         // Per-variant contrast boost for the big flat chrome bands (taskbar/caption): widen the light→dark
@@ -457,13 +464,35 @@ public static class LunaVariantService
         }
     }
 
-    /// <summary>Matte concave: soft light top edge, dim body, faint lighter bottom — no hard split.</summary>
+    /// <summary>Matte RAISED: soft light top edge, dim body, faint lighter bottom — no hard split.
+    /// Lit from above, so it reads as a face standing proud of the bar.</summary>
     private static List<GradientStop> Matte(Color b) => new()
     {
         new GradientStop(Lighten(b, 0.20), 0.0),
         new GradientStop(Darken(b, 0.03), 0.55),
         new GradientStop(Lighten(b, 0.05), 1.0),
     };
+
+    /// <summary>Matte SUNKEN: <see cref="Matte"/> inverted — shadowed top inner edge, body lifting
+    /// toward the bottom. This is what a pressed-in control looks like with the same light source, and
+    /// it is the matte counterpart of the authored checked ramp (dark top → lighter bottom).</summary>
+    private static List<GradientStop> MatteSunken(Color b) => new()
+    {
+        new GradientStop(Darken(b, 0.16), 0.0),
+        new GradientStop(Darken(b, 0.04), 0.55),
+        new GradientStop(Lighten(b, 0.10), 1.0),
+    };
+
+    /// <summary>
+    /// True when the surface's AUTHORED stops get lighter downward — the signature of a sunken/pressed
+    /// face. Read from the stored reference stops rather than a hand-set flag, so any surface authored
+    /// sunken keeps its direction through a matte flatten without anyone remembering to mark it.
+    /// </summary>
+    private static bool IsSunkenRamp(Surface s)
+    {
+        if (s.Stops.Length < 2) return false;
+        return ToHsl(Hex(s.Stops[0].Hex)).L < ToHsl(Hex(s.Stops[^1].Hex)).L;
+    }
 }
 
 internal static class GradientStopsExt
