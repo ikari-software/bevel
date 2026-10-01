@@ -37,6 +37,17 @@
                 <Setter Property="FontWeight" Value="Bold" />
                 <Setter Property="FontSize" Value="11" />
             </ControlTheme>
+            <!-- Tooltips are Bevel's to theme, not the vendored theme's (bevel-tooltip). Classic maps them
+                 onto SystemColors.Info*, which is correct for Win2000 but leaves the look outside the
+                 Bevel token set a skin (or Theme Studio) can change. Re-pointing Background/Foreground at
+                 Bevel.Brush.Info* keeps the same classic pale-yellow default while making it skinnable.
+                 IMPLICIT key on purpose: tooltips are attached with ToolTip.Tip all over the shell, never
+                 given a Theme=, so only the {x:Type ToolTip} key reaches them. -->
+            <ControlTheme x:Key="{x:Type ToolTip}" TargetType="ToolTip" BasedOn="{StaticResource {x:Type ToolTip}}">
+                <Setter Property="Background" Value="{DynamicResource Bevel.Brush.InfoWindow}" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.InfoText}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.WindowFrame}" />
+            </ControlTheme>
             <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}" />
             <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}" />
             <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}" />

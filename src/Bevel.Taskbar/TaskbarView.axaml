@@ -44,6 +44,12 @@
         <Style Selector="Border.flyoutrow:focus-visible TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
+        <!-- Same tooltip guard as StackFlyoutView: a tooltip is a logical descendant of the control it
+             belongs to and appears exactly while that control is hovered/focused, so the rules above
+             would repaint tooltip text white on the info surface. Declared LAST so it wins on order. -->
+        <Style Selector="ToolTip TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.InfoText}" />
+        </Style>
 
         <!-- Row-overflow scroll chevrons (multi-row bar): flat vector arrows, no raised Classic button
              chrome, so they read cleanly on the themed bar. The arrow colour is the theme's tray text
@@ -103,6 +109,12 @@
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. It auto-sizes to
              its caption (bevel-6x9z) — no fixed Width — flooring at the theme's min-width metric.
+             ClipToBounds is FALSE on purpose. It was true back when the button was a fixed 74px and
+             had to cut off whatever overflowed; now that it sizes to its caption there is nothing to
+             clip, and clipping actively hurt: a glyph's INK can extend past the layout box it is
+             measured into — Luna's caption is bold italic, so the final letter leans beyond its own
+             advance width and the clip sliced it off even once the padding was generous. Overflow
+             must stay visible so the text paints whole.
              AutomationProperties.Name is the design-time default only: ApplyStart keeps it in step
              with the configured caption, but a view that never applies settings must still carry a
              name, since a null one announces as an unlabelled button. -->
@@ -113,7 +125,7 @@
                 Focusable="True"
                 AutomationProperties.Name="Bevel"
                 Padding="{DynamicResource Bevel.Metric.StartButtonPadding}"
-                ClipToBounds="True"
+                ClipToBounds="False"
                 HorizontalAlignment="Left"
                 HorizontalContentAlignment="Left"
                 VerticalAlignment="Stretch">
