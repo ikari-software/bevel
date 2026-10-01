@@ -364,6 +364,8 @@ public static class CompositionRoot
                 ShellCore.FilerControlEndpoint.Dir,
                 ShellCore.FilerControlEndpoint.ResolveNonce()));
         services.AddSingleton<Bevel.Interop.IProgramSurface, AppEnvironmentProgramSurface>();
+        // `bevelctl quit` → the launcher's Quit verb, i.e. the same teardown as Start ▸ Turn Off.
+        services.AddSingleton<Bevel.Interop.IShellLifecycle, LauncherShellLifecycle>();
         services.AddSingleton<Bevel.Interop.IShellAutomation, Bevel.Interop.ShellAutomation>();
         // The bevelctl + bevel:// execution core (M4-D): both surfaces parse into a ParsedCommand and
         // run it through this router → the one IShellAutomation seam. The transports that feed it (the

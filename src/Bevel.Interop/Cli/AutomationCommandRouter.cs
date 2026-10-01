@@ -32,6 +32,7 @@ public sealed class AutomationCommandRouter
                 BevelVerb.Move => await MoveAsync(cmd, ct),
                 BevelVerb.Query => await QueryAsync(cmd, ct),
                 BevelVerb.Launch => await LaunchAsync(cmd, ct),
+                BevelVerb.Quit => await QuitAsync(cmd, ct),
                 _ => new CommandResult(ExitCodes.BadArgs, $"unhandled verb {cmd.Verb}"),
             };
         }
@@ -96,6 +97,22 @@ public sealed class AutomationCommandRouter
         return cmd.Json
             ? Ok($"{{\"moved\":{JsonArray(moved.Select(Display))}}}")
             : Ok(string.Join('\n', moved.Select(Display)));
+    }
+
+    /// <summary>
+    /// Tears the whole shell down (Start ▸ Turn Off, as a command). Reports success once the request
+    /// is ACCEPTED: the shell is about to close the very socket this answer travels over, so waiting
+    /// for teardown would mean waiting for our own transport to die.
+    ///
+    /// Unlike every other verb, this is reachable from <c>bevel://</c> too — see the security note on
+    /// <see cref="LaunchAsync"/> for why that surface is treated as hostile. Quitting is destructive
+    /// only to the shell's own session (no data loss, filers close their own windows), which is why it
+    /// is allowed at all; if that calculus ever changes, gate it to the CLI transport.
+    /// </summary>
+    private async Task<CommandResult> QuitAsync(ParsedCommand cmd, CancellationToken ct)
+    {
+        await _automation.QuitAsync(ct);
+        return cmd.Json ? Ok("{\"quit\":true}") : Ok("shutting down");
     }
 
     private async Task<CommandResult> LaunchAsync(ParsedCommand cmd, CancellationToken ct)
