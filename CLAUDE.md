@@ -153,6 +153,17 @@ memory-mapped BGRA pool (`MmfBgraPool`).
   disable antialiasing**, even for "authenticity".
 - **"Fidelity = colours + feel + function," not pixel-perfect.** The north star is "Win2000 as if
   designed in 2026"; tasteful cross-era extensions (XP/macOS niceties) are welcome, rendered in the skin.
+- **"No 1999 precedent" is never a reason to omit a feature.** It means only that there is nothing to
+  *copy* — the feature still ships, and we invent its interpretation in **every** theme. Absence of
+  precedent increases the design work; it never shrinks the scope. (Notification history, quick
+  settings, task view, search: all postdate 2000, all still get designed.)
+- **The bar is "the best a Windows 2000/Me designer would do"** — not a flat caricature of the era.
+  That era had real craft to draw on: layered windows with true alpha (`UpdateLayeredWindow` shipped
+  *in* Windows 2000), fade/slide transitions for menus and tooltips, gradient title bars, menu
+  shadows, hot-tracking, alpha-blended selection. Display Properties ▸ Effects is effectively the
+  toolkit list. Ask what that designer would have shipped at their best, unconstrained by 1999
+  hardware — balloon tips themselves were a Windows 2000 invention, so more is inside the era's own
+  vocabulary than first appears.
 - App pins `RequestedThemeVariant="Light"` — do not add `RequestedThemeVariant`/`ThemeVariantScope`
   overrides (popups follow `Application.ActualThemeVariant`; a Dark leak washes out menus).
 - Two runtime recolor engines (`LunaVariantService`, `ColorSchemeService`) **override** static theme
