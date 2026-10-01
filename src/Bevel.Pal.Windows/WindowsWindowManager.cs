@@ -116,7 +116,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         {
             if (!IsWindow(hwnd)) return;
             if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
-            SwitchToThisWindow(hwnd, true);
+            ForegroundCore(hwnd);   // same foreground-lock ladder as ActivateCore (bevel-upm6)
         }, ct);
     }
 
@@ -476,11 +476,55 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
     private static void ActivateCore(IntPtr hwnd)
     {
         if (!IsWindow(hwnd)) return;
-        // SwitchToThisWindow is Filer's own click-activate path: it restores from minimized and
-        // raises cleanly, and (called from the taskbar process, which holds input at click time)
-        // sidesteps the background-foreground restriction. No AttachThreadInput tricks.
         if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
-        SwitchToThisWindow(hwnd, true);
+        ForegroundCore(hwnd);
+    }
+
+    /// <summary>
+    /// Takes the foreground for <paramref name="hwnd"/> against the Win32 foreground lock (bevel-upm6).
+    ///
+    /// This used to be a bare <c>SwitchToThisWindow</c>, on the stated assumption that the taskbar
+    /// process "holds input at click time" and so sidesteps the background-foreground restriction.
+    /// It does not: the bar is <c>WS_EX_NOACTIVATE</c>, so clicking it never makes this process the
+    /// foreground, and <c>SPI_GETFOREGROUNDLOCKTIMEOUT</c> is effectively infinite on a stock desktop
+    /// (measured 2147483647 ms). A process without foreground rights calling SwitchToThisWindow gets
+    /// a SILENT no-op — no error, nothing to log — so the window never came forward and the taskbar
+    /// button's optimistic press snapped back on the next reconcile. Intermittent by nature: it
+    /// worked whenever this process happened to own the last input event.
+    ///
+    /// The remedy is the standard one for an alt-tab replacement or launcher: briefly attach our
+    /// input queue to the foreground window's thread, which puts us inside its input state for the
+    /// duration and makes SetForegroundWindow legal, then detach. The attach is always undone in a
+    /// finally — a leaked attachment couples two apps' input queues, so a hung target would wedge us.
+    /// SwitchToThisWindow stays as the fallback for the case where the ladder is refused anyway.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static void ForegroundCore(IntPtr hwnd)
+    {
+        if (GetForegroundWindow() == hwnd) return;   // already there; nothing to steal
+
+        uint ourThread = GetCurrentThreadId();
+        var foreground = GetForegroundWindow();
+        uint foreignThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out _);
+
+        bool attached = false;
+        try
+        {
+            if (foreignThread != 0 && foreignThread != ourThread)
+                attached = AttachThreadInput(ourThread, foreignThread, true);
+
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (attached) AttachThreadInput(ourThread, foreignThread, false);
+        }
+
+        // Belt and braces: if the ladder was still refused, the old path occasionally wins (it is
+        // alt-tab's own), and a raise with no focus beats nothing happening at all.
+        if (GetForegroundWindow() != hwnd)
+            SwitchToThisWindow(hwnd, true);
     }
 
     [SupportedOSPlatform("windows")]
@@ -1026,6 +1070,15 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     [DllImport("user32.dll")]
     private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);

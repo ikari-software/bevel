@@ -252,6 +252,52 @@ public class WindowsWindowManagerTests
         return (w, h, rgba);
     }
 
+    /// <summary>
+    /// Activation must beat the Win32 foreground lock (bevel-upm6). The lock is what made this
+    /// intermittent in the wild: a bare SwitchToThisWindow from a process without foreground rights
+    /// is a SILENT no-op, so a task-button click left focus where it was and the button's optimistic
+    /// press snapped back seconds later.
+    ///
+    /// The precondition is armed deliberately: this process takes the foreground itself immediately
+    /// before activating, which is exactly the state ("someone else just changed the foreground")
+    /// where the old code failed. Skips rather than fails when the desktop can't host the fixture —
+    /// a headless/locked session has no meaningful foreground to contest.
+    /// </summary>
+    [Fact]
+    public async Task Windows_activate_takes_the_foreground_against_the_lock()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        if (!TryLaunchNotepad(out var proc, out var hwnd)) return;
+
+        using var wm = new WindowsWindowManager();
+        try
+        {
+            // Arm the lock: hand the foreground to someone else (our own test-host window if we can
+            // find one, else notepad's owner) right before the call under test.
+            var other = GetForegroundWindow();
+            if (other == IntPtr.Zero || other == hwnd) return;   // nothing to contest; not a useful run
+            SwitchToThisWindow(other, true);
+            await Task.Delay(300);
+            if (GetForegroundWindow() != other) return;          // couldn't arm it; skip rather than lie
+
+            await wm.ActivateAsync(new ForeignWindowId(hwnd.ToInt64().ToString()));
+            await Task.Delay(500);
+
+            Assert.Equal(hwnd, GetForegroundWindow());
+        }
+        finally
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            proc.Dispose();
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
     private static bool TryLaunchNotepad(out Process proc, out IntPtr hwnd)
     {
         hwnd = IntPtr.Zero;
