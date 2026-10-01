@@ -668,7 +668,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarClockShowSeconds = GetBool("taskbarClockShowSeconds") ?? false,
             TaskbarClockShowDate = GetBool("taskbarClockShowDate") ?? false,
             TaskbarShowStart = GetBool("taskbarShowStart") ?? true,
-            TaskbarStartLabel = GetString("taskbarStartLabel") ?? "Start",
+            TaskbarStartLabel = GetString("taskbarStartLabel") ?? BevelSettings.DefaultStartLabel,
             // The legacy `taskbarGroupWindows` bool is folded into `taskbarGrouping` by migration 0→1
             // (bevel-4er2), so this only reads the current key.
             TaskbarGrouping = Enum.TryParse<TaskbarGroupingMode>(GetString("taskbarGrouping"), out var tg)
@@ -824,8 +824,18 @@ public sealed class BevelSettings
     /// <summary>Show the Start button. Off hides it (the window strip takes the full width).</summary>
     public bool TaskbarShowStart { get; set; } = true;
 
-    /// <summary>Start button caption. Empty string = logo only (no text), Win11-style.</summary>
-    public string TaskbarStartLabel { get; set; } = "Start";
+    /// <summary>
+    /// The shipped Start-button caption. Bevel's own word, not Microsoft's: the button is Bevel's
+    /// front door, and the branding pass that dropped vendor marks from the badge
+    /// (bevel-legal-branding) left the caption behind. One constant so the property default and the
+    /// load fallback cannot drift — a mismatch there would make the key look explicitly-set to
+    /// <c>SetOrPrune</c> and persist a value the user never chose.
+    /// </summary>
+    public const string DefaultStartLabel = "Bevel";
+
+    /// <summary>Start button caption. Empty string = logo only (no text), Win11-style. The button
+    /// auto-sizes to whatever is set here (bevel-6x9z), down to the theme's minimum width.</summary>
+    public string TaskbarStartLabel { get; set; } = DefaultStartLabel;
 
     // ── Window buttons (bevel-cust.buttons) ─────────────────────────────────────────────────────
 

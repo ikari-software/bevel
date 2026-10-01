@@ -78,6 +78,9 @@
             <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#EAF2FF" />
             <!-- XP Start is flush to the screen's left/top/bottom edges (square-left pill). -->
             <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
+            <!-- Floor for the auto-sizing Start button (bevel-6x9z). Luna's pill is chunkier than
+                 Win2000's, so it floors wider. -->
+            <x:Double x:Key="Bevel.Metric.StartButtonMinWidth">80</x:Double>
             <!-- Edge (px) of the square Start badge. 20 leaves the italic "start" label clear of the pill's
                  rounded end; 24 would need the 74px pill widened. -->
             <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>

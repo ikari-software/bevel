@@ -101,13 +101,18 @@
                 Background="{DynamicResource Bevel.Brush.TaskbarDividerLight}" />
 
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
-             to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
+             to ~3 button rows in code so a very tall bar keeps a sane Start button. It auto-sizes to
+             its caption (bevel-6x9z) — no fixed Width — flooring at the theme's min-width metric.
+             AutomationProperties.Name is the design-time default only: ApplyStart keeps it in step
+             with the configured caption, but a view that never applies settings must still carry a
+             name, since a null one announces as an unlabelled button. -->
         <Button x:Name="StartButton" Grid.Column="0"
-                Width="74" Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
+                MinWidth="{DynamicResource Bevel.Metric.StartButtonMinWidth}"
+                Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
                 Theme="{DynamicResource Bevel.Theme.StartButton}"
                 Focusable="True"
-                AutomationProperties.Name="Start"
-                Padding="6,0"
+                AutomationProperties.Name="Bevel"
+                Padding="8,0"
                 ClipToBounds="True"
                 HorizontalAlignment="Left"
                 HorizontalContentAlignment="Left"
@@ -121,12 +126,15 @@
                 <!-- Badge injected in code (StartLogo): the Bevel mark, or Tux on Linux. It sizes itself from
                      Bevel.Metric.StartBadgeSize, so no fixed Width/Height here. -->
                 <ContentControl x:Name="StartLogoHost" VerticalAlignment="Center" />
-                <TextBlock x:Name="StartLabelText" Text="Start" VerticalAlignment="Center" />
+                <TextBlock x:Name="StartLabelText" Text="Bevel" VerticalAlignment="Center" TextTrimming="None" />
             </StackPanel>
         </Button>
 
-        <!-- Divider after Start (full height) -->
-        <Border Grid.Column="0" Width="2" Margin="76,1,0,1"
+        <!-- Divider after Start (full height). Its left margin is NOT a constant: the Start button
+             auto-sizes to its caption (bevel-6x9z), so the margin is pushed from the button's live
+             Bounds in code (SyncStartDivider). It hides with the button, or it would float with
+             nothing to divide. -->
+        <Border x:Name="StartDivider" Grid.Column="0" Width="2" Margin="76,1,0,1"
                 VerticalAlignment="Stretch"
                 Background="{DynamicResource Bevel.Brush.TaskbarDividerLight}"
                 BorderBrush="{DynamicResource Bevel.Brush.TaskbarDividerDark}"

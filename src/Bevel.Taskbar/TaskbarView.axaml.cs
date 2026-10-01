@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.Diagnostics;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
@@ -219,6 +220,30 @@ public partial class TaskbarView : UserControl
         StartButton.IsVisible = show;
         StartLabelText.Text = label;
         StartLabelText.IsVisible = !string.IsNullOrEmpty(label);
+        // A logo-only button still needs a spoken name, so the caption can't be the only source
+        // (an empty AutomationProperties.Name reads as an unlabelled button).
+        AutomationProperties.SetName(StartButton, string.IsNullOrEmpty(label) ? "Start menu" : label);
+        SyncStartDivider();
+    }
+
+    /// <summary>
+    /// Keeps the divider glued to the Start button's right edge. The button auto-sizes to its caption
+    /// (bevel-6x9z), so the old hardcoded <c>Margin="76,1,0,1"</c> — which encoded the former fixed
+    /// 74px button plus its margin — detaches the moment the caption changes. Driven from the button's
+    /// live <c>Bounds</c> rather than from the label text, because the real width also depends on the
+    /// badge size, padding and the theme's minimum.
+    /// </summary>
+    private void SyncStartDivider()
+    {
+        if (StartDivider is null || StartButton is null) return;
+
+        // Nothing to divide when the button is hidden: the strip starts at the bar's left edge.
+        StartDivider.IsVisible = StartButton.IsVisible;
+        if (!StartButton.IsVisible) return;
+
+        var margin = StartButton.Margin;
+        StartDivider.Margin = new Thickness(
+            StartButton.Bounds.Width + margin.Left + margin.Right, 1, 0, 1);
     }
 
     /// <summary>Applies font size + background tint/opacity to the running bar (bevel-cust.appearance).
@@ -480,6 +505,12 @@ public partial class TaskbarView : UserControl
                     _startBadgeSize = v is double d and > 0 ? d : StartLogo.DefaultSize;
                     RebuildStartBadge();
                 }));
+            // The divider chases the Start button's REAL width (bevel-6x9z). ApplyStart alone is not
+            // enough: it runs before layout, so the Bounds it would read are the previous caption's.
+            // Badge-size and theme changes resize the button too, and this catches those for free.
+            StartButton.GetObservable(Visual.BoundsProperty).Subscribe(
+                new Avalonia.Reactive.AnonymousObserver<Rect>(_ => SyncStartDivider()));
+
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
 

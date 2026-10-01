@@ -11,6 +11,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -44,7 +45,20 @@ public class TaskbarAccessibilityTests
 
         var start = view.StartButtonControl;
         Assert.True(start.Focusable);
-        Assert.Equal("Start", AutomationProperties.GetName(start));
+
+        // The name must never be empty — it is all a screen reader has to announce. It tracks the
+        // configured caption (WCAG 2.5.3 Label in Name: the accessible name contains the visible
+        // label), and falls back to the button's FUNCTION when the caption is logo-only, which is
+        // exactly when there is no visible label to borrow.
+        Assert.Equal(BevelSettings.DefaultStartLabel, AutomationProperties.GetName(start));
+
+        view.ApplyLiveSettings(new BevelSettings { TaskbarStartLabel = "Go!" });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Go!", AutomationProperties.GetName(start));
+
+        view.ApplyLiveSettings(new BevelSettings { TaskbarStartLabel = "" });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Start menu", AutomationProperties.GetName(start));
     }
 
     [AvaloniaFact]

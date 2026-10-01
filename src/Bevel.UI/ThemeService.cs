@@ -34,7 +34,10 @@ public static class ThemeService
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
         ("win2000", "Bevel 1999 Industrial"),
-        ("luna", "Bevel 2001 Blue"),
+        // NOT "Bevel 2001 Blue": blue is only this theme's DEFAULT colourway, and the Luna colour axis
+        // (Blue/Silver/Black/Purple, LunaVariant.Colors) is user-switchable — so naming the theme after
+        // one of its own options contradicts the feature the moment anyone changes it.
+        ("luna", "Bevel 2001"),
         ("flat", "Bevel Flat (preview)"),
     };
 
