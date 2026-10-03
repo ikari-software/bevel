@@ -4421,6 +4421,12 @@ namespace Bevel.Taskbar.Components;
 /// </summary>
 public sealed class SurfaceHost
 {
+    // LOCKED, like its sibling SurfaceOwnership and for the identical reason: once FrameReady
+    // dispatch lands, TryAcceptFrame and MarkInert are reached from the bus poller thread and the
+    // quarantine/watchdog path while CreateView writes _slots from the bar thread. Leaving these
+    // plain reproduces the exact bug class ComponentHealth was fixed for, one layer up — and it
+    // would surface as a flaky frame or a component refusing its own pixels, far from the cause.
+    private readonly object _gate = new();
     private readonly SurfaceOwnership _ownership;
     private readonly Dictionary<(string Instance, string Key), uint> _slots = new();
     private readonly Dictionary<uint, ulong> _lastFrame = new();
@@ -4430,7 +4436,10 @@ public sealed class SurfaceHost
     public SurfaceHost(SurfaceOwnership ownership) => _ownership = ownership;
 
     /// <summary>Bumped on every theme push. Components repaint when it changes.</summary>
-    public int Revision => _revision;
+    /// <remarks>Volatile.Read, not a bare field access: _revision is written with
+    /// Interlocked.Increment (a full fence) but a reader on another thread needs its own barrier to
+    /// be guaranteed to observe it rather than a cached value.</remarks>
+    public int Revision => Volatile.Read(ref _revision);
 
     /// <summary>The slot assigned to one instance's surface primitive.</summary>
     public uint SlotOf(string instanceId, string primitiveKey) => _slots[(instanceId, primitiveKey)];
@@ -4441,8 +4450,12 @@ public sealed class SurfaceHost
     /// </summary>
     public Control CreateView(SurfacePrimitive primitive, string instanceId)
     {
-        var slot = _ownership.Assign(instanceId, primitive.Key);
-        _slots[(instanceId, primitive.Key)] = slot;
+        uint slot;
+        lock (_gate)
+        {
+            slot = _ownership.Assign(instanceId, primitive.Key);
+            _slots[(instanceId, primitive.Key)] = slot;
+        }
 
         var image = new Image
         {
@@ -4464,11 +4477,14 @@ public sealed class SurfaceHost
     /// </summary>
     public bool TryAcceptFrame(string instanceId, uint slot, ulong frame)
     {
-        if (_inert.Contains(instanceId)) return false;
-        if (!_ownership.TryAccept(instanceId, slot)) return false;
-        if (_lastFrame.TryGetValue(slot, out var last) && frame <= last) return false;
-        _lastFrame[slot] = frame;
-        return true;
+        lock (_gate)
+        {
+            if (_inert.Contains(instanceId)) return false;
+            if (!_ownership.TryAccept(instanceId, slot)) return false;
+            if (_lastFrame.TryGetValue(slot, out var last) && frame <= last) return false;
+            _lastFrame[slot] = frame;
+            return true;
+        }
     }
 
     /// <summary>
@@ -4477,8 +4493,11 @@ public sealed class SurfaceHost
     /// </summary>
     public void MarkInert(string instanceId)
     {
-        _inert.Add(instanceId);
-        _ownership.Release(instanceId);
+        lock (_gate)
+        {
+            _inert.Add(instanceId);
+            _ownership.Release(instanceId);
+        }
     }
 
     /// <summary>
