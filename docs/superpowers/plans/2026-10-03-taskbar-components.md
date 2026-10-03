@@ -2990,26 +2990,41 @@ namespace Bevel.Taskbar.Components;
 /// </summary>
 public sealed class SurfaceOwnership
 {
+    // Locked, not a bare Dictionary: Task 14 calls Release from the BUS POLLER THREAD (on quarantine)
+    // while the bar reads TryAccept from its own thread. An unsynchronised Dictionary torn between
+    // those two is a corruption bug that would show up as a wrong-pixel or a crash under load, long
+    // after the change that caused it.
+    private readonly object _gate = new();
     private readonly Dictionary<uint, string> _owner = new();
     private uint _next = 1;
 
     /// <summary>Assigns a fresh slot for one surface primitive of one instance.</summary>
     public uint Assign(string instanceId, string primitiveKey)
     {
-        var slot = _next++;
-        _owner[slot] = instanceId;
-        return slot;
+        lock (_gate)
+        {
+            var slot = _next++;
+            _owner[slot] = instanceId;
+            return slot;
+        }
     }
 
     /// <summary>True only when <paramref name="instanceId"/> owns <paramref name="slot"/>.</summary>
     public bool TryAccept(string instanceId, uint slot)
-        => _owner.TryGetValue(slot, out var owner) && string.Equals(owner, instanceId, StringComparison.Ordinal);
+    {
+        lock (_gate)
+            return _owner.TryGetValue(slot, out var owner)
+                && string.Equals(owner, instanceId, StringComparison.Ordinal);
+    }
 
     /// <summary>Revokes every slot held by an instance, on quarantine or teardown.</summary>
     public void Release(string instanceId)
     {
-        foreach (var slot in _owner.Where(kv => kv.Value == instanceId).Select(kv => kv.Key).ToArray())
-            _owner.Remove(slot);
+        lock (_gate)
+        {
+            foreach (var slot in _owner.Where(kv => kv.Value == instanceId).Select(kv => kv.Key).ToArray())
+                _owner.Remove(slot);
+        }
     }
 }
 ```
@@ -3195,6 +3210,11 @@ public sealed class RemoteComponentChannel : IComponentChannel
             var done = await Task.WhenAny(first.Task, delay).ConfigureAwait(false);
             if (done == first.Task) return await first.Task.ConfigureAwait(false);
 
+            // Distinguish "the caller gave up" from "the component never answered". Returning inert
+            // for both would make a deliberate teardown indistinguishable from an unresponsive
+            // component, and the health budget would quarantine a component that was fine.
+            ct.ThrowIfCancellationRequested();
+
             // Timed out: inert, so the slot shows a placeholder instead of freezing.
             return new ComponentState(instance.InstanceId, new Dictionary<string, string>(), Inert: true);
         }
@@ -3248,6 +3268,8 @@ public sealed class RemoteComponentChannel : IComponentChannel
 ```
 
 The channel is also where the health budget learns about liveness: a `Heartbeat` envelope from the bound peer should call `ComponentHealth.RecordHeartbeat(instanceId, DateTime.UtcNow)`, and quarantine should call `Revoke` plus `SurfaceOwnership.Release`. Task 14 wires those three together; this task only has to make `Revoke` reachable on dispose.
+
+**Thread-safety note for Task 14:** those three calls happen on the **bus poller thread**, while the bar reads `SurfaceOwnership.TryAccept` and `ComponentHealth` from its own thread. `SurfaceOwnership` is locked for exactly that reason; whatever Task 14 adds must be safe from the poller thread too, and must not invoke a UI-thread operation directly from it (marshal with `Dispatcher.UIThread.Post`).
 
 - [ ] **Step 8: Run the tests**
 

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Bevel.Components.V1;
 using Bevel.ShellCore.Ipc;
@@ -159,5 +160,81 @@ public class ComponentBusAuthTests
             Assert.Equal(Nonce, nonce);
         }
         finally { File.Delete(path); }
+    }
+
+    // Fix round 1, Finding 1 + 2: InstanceOf omitted InputEvent, so an authenticated peer could
+    // claim ANY instance id in an InputEvent with no rejection — the exact "speak for a different
+    // instance" case the binding check exists to prevent. This is the regression guard: it must
+    // fail (the InputEvent reaches the handler) before the InstanceOf fix and pass after it.
+    [Fact]
+    public void An_authenticated_peer_cannot_speak_for_a_different_instance()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+        using var client = Peer(port, "peer-1");
+
+        var received = new ConcurrentBag<ComponentEnvelope>();
+        server.MessageReceived += (_, env) => received.Add(env);
+
+        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, Cap, 1));
+        Assert.True(server.WaitForPeer("peer-1", TimeSpan.FromSeconds(5)));
+
+        // (a) A StatePublish claiming a different instance must never reach the handler.
+        client.SendFrame(new ComponentEnvelope
+        {
+            State = new StatePublish { InstanceId = "inst-2" },
+        }.ToByteArray());
+
+        // (b) An InputEvent claiming a different instance must never reach the handler.
+        client.SendFrame(new ComponentEnvelope
+        {
+            Input = new InputEvent { InstanceId = "inst-2", PrimitiveKey = "start-button", Kind = "click" },
+        }.ToByteArray());
+
+        // A matching-instance message DOES reach the handler — proving the guard discriminates
+        // rather than silently dropping everything.
+        client.SendFrame(new ComponentEnvelope
+        {
+            Heartbeat = new Heartbeat { InstanceId = "inst-1" },
+        }.ToByteArray());
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline
+               && !received.Any(e => e.PayloadCase == ComponentEnvelope.PayloadOneofCase.Heartbeat))
+        {
+            Thread.Sleep(20);
+        }
+
+        Assert.Contains(received, e => e.PayloadCase == ComponentEnvelope.PayloadOneofCase.Heartbeat);
+        Assert.DoesNotContain(received, e => e.PayloadCase == ComponentEnvelope.PayloadOneofCase.State);
+        Assert.DoesNotContain(received, e => e.PayloadCase == ComponentEnvelope.PayloadOneofCase.Input);
+    }
+
+    // Fix round 1, Finding 3: nothing previously subscribed a throwing handler, so the catch in
+    // OnReceiveReady that is supposed to keep the poller alive was unverified.
+    [Fact]
+    public void A_throwing_subscriber_does_not_take_the_poller_down()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+        using var client = Peer(port, "peer-1");
+
+        server.MessageReceived += (_, _) => throw new InvalidOperationException("boom");
+
+        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, Cap, 1));
+        Assert.True(server.WaitForPeer("peer-1", TimeSpan.FromSeconds(5)));
+
+        // Trigger the throwing handler.
+        client.SendFrame(new ComponentEnvelope
+        {
+            Heartbeat = new Heartbeat { InstanceId = "inst-1" },
+        }.ToByteArray());
+
+        // The poller must still be alive afterwards: an unrelated second peer can still
+        // authenticate. One bad component must not take the whole bus — and therefore the bar —
+        // down.
+        using var good = Peer(port, "peer-2");
+        good.SendFrame(ComponentBusServer.BuildHello("inst-2", Nonce, Cap, 1));
+        Assert.True(server.WaitForPeer("peer-2", TimeSpan.FromSeconds(5)));
     }
 }

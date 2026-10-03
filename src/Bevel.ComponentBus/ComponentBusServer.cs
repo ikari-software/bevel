@@ -78,7 +78,17 @@ public sealed class ComponentBusServer : IDisposable
     private void OnReceiveReady(object? sender, NetMQSocketEventArgs e)
     {
         if (!e.Socket.TryReceiveFrameBytes(out var identityBytes)) return;
-        if (!e.Socket.TryReceiveFrameBytes(out var payload)) return;
+        if (!e.Socket.TryReceiveFrameBytes(out var payload, out var hasMore)) return;
+
+        if (hasMore)
+        {
+            // The protocol is fixed at exactly two frames (identity, stripped by the Router, plus
+            // one payload frame). Any peer sending a third frame is malformed — this socket is
+            // reachable by any local process, so drain and drop the whole message rather than
+            // leaving trailing frames to desync the next read.
+            while (e.Socket.TryReceiveFrameBytes(out _, out hasMore) && hasMore) { }
+            return;
+        }
 
         var identity = Encoding.UTF8.GetString(identityBytes!);
         ComponentEnvelope env;
@@ -100,6 +110,10 @@ public sealed class ComponentBusServer : IDisposable
             return;
         }
 
+        // A repeat Hello cannot rebind the instance (the check below still applies to it), but
+        // subscribers should never see a Hello envelope for an already-authenticated peer.
+        if (env.PayloadCase == ComponentEnvelope.PayloadOneofCase.Hello) return;
+
         // An authenticated peer may only speak for the instance it claimed.
         if (!_authenticated.TryGetValue(identity, out var bound)) return;
         if (InstanceOf(env) is { } claimed && claimed != bound) return;
@@ -112,9 +126,16 @@ public sealed class ComponentBusServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// The instance id a non-Hello payload claims, or null for a payload with no instance_id field.
+    /// INVARIANT: every payload type that carries an instance_id MUST appear in this switch — an
+    /// omission does not fail loudly, it returns null, which silently disables the peer-to-instance
+    /// binding check in <see cref="OnReceiveReady"/> for that payload type.
+    /// </summary>
     private static string? InstanceOf(ComponentEnvelope env) => env.PayloadCase switch
     {
         ComponentEnvelope.PayloadOneofCase.State => env.State.InstanceId,
+        ComponentEnvelope.PayloadOneofCase.Input => env.Input.InstanceId,
         ComponentEnvelope.PayloadOneofCase.FrameReady => env.FrameReady.InstanceId,
         ComponentEnvelope.PayloadOneofCase.Heartbeat => env.Heartbeat.InstanceId,
         _ => null,
