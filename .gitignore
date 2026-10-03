@@ -62,3 +62,6 @@ native/ae-probe2/out/
 
 # BenchmarkDotNet output (perf harness, bevel-zhmr)
 BenchmarkDotNet.Artifacts/
+
+# Superpowers brainstorming session scratch (visual companion screens + state)
+.superpowers/
