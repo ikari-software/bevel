@@ -94,6 +94,37 @@ public class TaskbarComponentsMigrationTests
         Assert.Equal(new[] { "/a" }, s.TaskbarStacks);
     }
 
+    // Review finding (Important): BuildDefaultList must be a pure function of its input. The
+    // version-gated migration in SettingsService.ApplyRaw mutates only the in-memory settings object,
+    // never the raw blob, so the SAME unmigrated legacy blob can be migrated more than once before a
+    // save ever persists the result — once by core's LoadAsync, maybe again by a peer's
+    // ProjectBlob/TryProjectBlob decoding that same snapshot. If ids were random (NewId()), those two
+    // entry points would compute DIFFERENT instanceIds for what must be the same placement, and
+    // instanceId is the key per-instance settings, surface slot ownership, the health budget and the
+    // bus's peer→instance binding all hang off. Asserting determinism here locks that invariant in.
+    [Fact]
+    public void Migrating_the_same_settings_twice_yields_the_same_instance_ids()
+    {
+        var s = new BevelSettings { TaskbarStacks = new[] { "/a", "/b" } };
+        var first = TaskbarComponentsMigration.BuildDefaultList(s).Select(i => i.InstanceId).ToArray();
+        var second = TaskbarComponentsMigration.BuildDefaultList(s).Select(i => i.InstanceId).ToArray();
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Two_stacks_still_get_distinct_deterministic_ids()
+    {
+        var s = new BevelSettings { TaskbarStacks = new[] { "/a", "/b" } };
+        var stacks = TaskbarComponentsMigration.BuildDefaultList(s)
+            .Where(i => i.TypeId == TaskbarComponentTypes.Stack).Select(i => i.InstanceId).ToArray();
+
+        Assert.Equal(2, stacks.Length);
+        Assert.Equal(2, stacks.Distinct().Count());
+        // Keeps ComponentInstance.NewId()'s 12-lowercase-hex-character shape — these ids are
+        // persisted into user settings, so changing the length later would itself be a migration.
+        Assert.All(stacks, id => Assert.Matches("^[0-9a-f]{12}$", id));
+    }
+
     // NOTE: the brief's snippet for these three round-trip tests omitted the LoadAsync() calls that
     // every other SettingsService test in this suite makes before touching Current (see
     // SettingsServiceTests.cs / SettingsServiceSqliteTests.cs). `second` always needs one — without
@@ -171,5 +202,34 @@ public class TaskbarComponentsMigrationTests
             Assert.Equal("com.example.unknown", second.Current.TaskbarComponents.Single().TypeId);
         }
         finally { try { Directory.Delete(dir, recursive: true); } catch { /* best effort — Windows can briefly hold the sqlite file handle */ } }
+    }
+
+    // Review finding (Important): "taskbarComponents" and "taskbarComponentsVersion" are read from
+    // two INDEPENDENT raw keys. A corrupt taskbarComponents next to an intact
+    // taskbarComponentsVersion:1 must not be mistaken for a deliberately empty bar (spec §6) — that
+    // would permanently brick the taskbar, since the version gate would never fire again.
+    [Fact]
+    public async Task A_corrupt_component_list_with_an_intact_version_marker_is_not_treated_as_deliberately_empty()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"bevel-mig-{Guid.NewGuid():n}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // A torn/corrupt write: the version marker claims "already migrated", but the list itself
+            // deserializes to the wrong shape (a string, not a ComponentInstance[]). Written as the
+            // legacy settings.json so a fresh SettingsService imports it on its very first LoadAsync.
+            await File.WriteAllTextAsync(Path.Combine(dir, "settings.json"),
+                """{"taskbarComponentsVersion":1,"taskbarComponents":"not-an-array"}""");
+
+            using var service = new SettingsService(dir);
+            await service.LoadAsync();
+
+            // Corruption degrades to "not migrated" and BuildDefaultList re-runs — the bar recovers
+            // with the Win2000 arrangement rather than coming back permanently empty.
+            Assert.Equal(1, service.Current.TaskbarComponentsVersion);
+            Assert.NotEmpty(service.Current.TaskbarComponents);
+            Assert.Contains(TaskbarComponentTypes.Start, service.Current.TaskbarComponents.Select(i => i.TypeId));
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ } }
     }
 }

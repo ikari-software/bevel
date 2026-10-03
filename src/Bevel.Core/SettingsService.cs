@@ -644,6 +644,13 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private void ApplyRaw()
     {
+        // Read together, not as two independent object-initializer lines: a corrupt "taskbarComponents"
+        // must force the version marker back to 0 too, or it would be indistinguishable from a
+        // deliberately empty bar and the version gate below would never re-fire (see
+        // GetComponentInstances's doc comment).
+        var components = GetComponentInstances("taskbarComponents", out var componentsCorrupt);
+        var componentsVersion = componentsCorrupt ? 0 : GetInt("taskbarComponentsVersion") ?? 0;
+
         _settings = new BevelSettings
         {
             ThemeId = GetString("themeId") ?? "win2000",
@@ -669,8 +676,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
-            TaskbarComponents = GetComponentInstances("taskbarComponents") ?? Array.Empty<ComponentInstance>(),
-            TaskbarComponentsVersion = GetInt("taskbarComponentsVersion") ?? 0,
+            TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
+            TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
             TaskbarShowClock = GetBool("taskbarShowClock") ?? true,
             TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
@@ -742,8 +749,18 @@ public sealed class SettingsService : ISettingsService, IDisposable
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array
             ? el.Deserialize(SettingsJsonContext.Default.StringArray) : null;
 
-    private ComponentInstance[]? GetComponentInstances(string key)
+    /// <summary>
+    /// Reads the persisted component list. On a corrupt or foreign-shaped value, sets
+    /// <paramref name="corrupt"/> so the caller can force <c>TaskbarComponentsVersion</c> back to 0
+    /// alongside this returning null — the two are read from independent raw keys, so without this
+    /// a corrupt "taskbarComponents" sitting next to an intact "taskbarComponentsVersion":1 would be
+    /// indistinguishable from a deliberate zero-component bar (spec §6): the version gate would never
+    /// fire again and the user would be stuck with a permanently empty taskbar. A broken component
+    /// list must never cost the user their settings OR the rest of their bar.
+    /// </summary>
+    private ComponentInstance[]? GetComponentInstances(string key, out bool corrupt)
     {
+        corrupt = false;
         if (!_raw.TryGetValue(key, out var el)) return null;
         try
         {
@@ -752,7 +769,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         catch (JsonException)
         {
             // Corrupt or foreign-shaped value: fall back to "not migrated" rather than failing the
-            // whole settings load. A broken component list must never cost the user their settings.
+            // whole settings load. The caller forces TaskbarComponentsVersion to 0 via `corrupt`.
+            corrupt = true;
             return null;
         }
     }
