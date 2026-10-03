@@ -16,9 +16,9 @@ The taskbar is a fixed layout, and every feature so far has been paid for by edi
 | `TaskbarView.axaml.cs` | 1256 lines |
 | `TaskbarViewModel` | 128 lines exposing **five** named properties |
 | Layout | `Grid ColumnDefinitions="Auto,*,Auto"` |
-| Taskbar keys on `BevelSettings` | **27 of 46** properties (59% of the object) |
+| Taskbar keys on `BevelSettings` | **29 of 45** properties (64% of the object) |
 | Hand-written edits per new settings key | **3** (`SettingsService.cs:542`, `:664`, `:932`) |
-| …**plus** a hand-coded settings window | `OnboardingWindow.axaml.cs`, 755 lines, **25 of 27 keys** |
+| …**plus** a hand-coded settings window | `OnboardingWindow.axaml.cs`, 755 lines, **27 of 29 keys** |
 | Multi-instance features today | exactly **one** (`TaskbarStacks`) |
 
 The settings tax is therefore paid **twice**: once across three serialization sites, and again in a 755-line hand-written settings window (`OnboardingWindow.axaml.cs` — "M2 onboarding and settings window"). A schema-driven editor removes both at once, which is why sub-project 3 *replaces* most of that window rather than adding to it.
@@ -42,7 +42,7 @@ Three existing pieces are the model in embryo, and the design leans on all three
 
 ## 2. Scope
 
-**In scope (sub-project 1):** the component contract; a registry of component types; the ordered-list layout host; per-instance persistence and the migration of the 27 keys; bar geometry derived from components (§4.4); failure isolation; the conformance test suite. Bevel's own components go through the public contract from day one.
+**In scope (sub-project 1):** the component contract; a registry of component types; the ordered-list layout host; per-instance persistence and the migration of the 29 keys; bar geometry derived from components (§4.4); failure isolation; the conformance test suite. Bevel's own components go through the public contract from day one.
 
 ### 2.1 Precursor: the Downloads stack as the first component, via the third-party route
 
@@ -216,15 +216,15 @@ New shape, one key where there were roughly twenty:
 taskbarComponents: [ { instanceId, typeId, settings{}, visible } ]
 ```
 
-All 27 keys were classified by **tracing their consumers**, not by their names. That changed several answers, so the evidence is recorded alongside each group.
+All 29 keys were classified by **tracing their consumers**, not by their names. That changed several answers, so the evidence is recorded alongside each group.
 
 | Destination | n | Keys | Evidence |
 |---|---|---|---|
 | **Bar-level, but *computed from* components** (§4.4) | 3 | `TaskbarRows`, `TaskbarButtonSize`, `TaskbarTrayIconSize` | `TaskbarButtonSize` → `TaskbarTheme.Configure` → bar height **and the work-area claim**; `TaskbarRows` drives bar height *and* tray rows; `TaskbarTrayIconSize` is also read by `TaskbarWindow.cs` |
 | **Bar-level proper** — describe the bar, not anything in it | 5 | `TaskbarLocked`, `TaskbarAlwaysOnTop`, `TaskbarBackgroundColor`, `TaskbarOpacity`, `TaskbarFontSize` | view + settings window only |
 | **Data-layer, not view** | 1 | `TaskbarStartMenuFrequentCount` | feeds `shellModel.FrequentCap` at `App.axaml.cs:309/381/382`, re-applied on `settings.Changed` — outside the taskbar's view entirely |
-| **Window-strip instance settings** | 8 | `ButtonWidth`, `ButtonWidthMode`, `MinButtonWidth`, `Grouping`, `ButtonLabels`, `MiddleClickCloses`, `ReclickMinimize`, `WindowSort` | behaviour consumers confirm these belong to the strip: `Grouping` → `TaskbarGrouping.cs`, `TaskbarItemsProjector.cs`, `TaskGroupViewModel.cs`, `TaskButtonMenu.cs`; `ReclickMinimize` → `TaskButtonClickPolicy.cs`; `WindowSort` → `TaskbarItemsProjector.cs` |
-| **Clock instance** | 2 | `ClockShowSeconds`, `ClockShowDate` | |
+| **Window-strip instance settings** | 9 | `ButtonWidth`, `ButtonWidthMode`, `MinButtonWidth`, `Grouping`, `ButtonLabels`, `MiddleClickCloses`, `ReclickMinimize`, `WindowSort`, `WindowlessAppsLast` | behaviour consumers confirm these belong to the strip: `Grouping` → `TaskbarGrouping.cs`, `TaskbarItemsProjector.cs`, `TaskGroupViewModel.cs`, `TaskButtonMenu.cs`; `ReclickMinimize` → `TaskButtonClickPolicy.cs`; `WindowSort` → `TaskbarItemsProjector.cs` |
+| **Clock instance** | 3 | `ClockShowSeconds`, `ClockShowDate`, `Clock24Hour` | |
 | **Start instance** | 2 | `StartLabel`, `StartBadgeFullDetail` | |
 | **Tray instance** | 2 | `TrayOverflowCap`, `ConsolidateMenuBar` | `ConsolidateMenuBar` → `TaskbarViewModel.cs` |
 | **Visibility** (`visible: false`) | 3 | `ShowClock`, `ShowStart`, `ShowDesktopButton` | |
@@ -238,7 +238,7 @@ Three corrections that only surfaced from usage, and would have become implement
 
 `TaskbarStacks` remains the headline win: a `string[]` becomes N stack instances each with a real settings bag instead of a bare path — and it is the precursor of §2.1.
 
-**Both consumers migrate.** `OnboardingWindow.axaml.cs` hand-codes 25 of these keys; its taskbar sections are replaced by the schema-driven editor rather than updated key by key.
+**Both consumers migrate.** `OnboardingWindow.axaml.cs` hand-codes 27 of these keys; its taskbar sections are replaced by the schema-driven editor rather than updated key by key.
 
 **`Show*` bools map to `visible: false`, not to removal.** Removing the instance would discard the user's configuration when they merely hide a component.
 
