@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The component bus (bevel-aqr7). Deliberately NOT in Bevel.Core (the domain layer does not
+       use NetMQ, and every process would then carry it) and NOT in Bevel.ShellCore.Ipc, whose
+       charter is BCL-only with no NuGet. This project is the one place NetMQ and the component
+       protobufs live. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetMQ" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.ComponentBus.Tests" />
+  </ItemGroup>
+
+</Project>
