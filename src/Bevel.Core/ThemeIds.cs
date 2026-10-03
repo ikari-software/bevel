@@ -1,12 +1,21 @@
 namespace Bevel.Core;
 
 /// <summary>
-/// The persisted theme identifiers, and the mapping from the vendor-derived ids earlier builds wrote.
+/// The persisted theme identifiers.
 ///
-/// Lives in Core rather than next to ThemeService because the migration has to happen where the value
-/// leaves the DATABASE — Core must not reference Avalonia (ARCH-02), so the UI-side theme service
-/// cannot be reached from here. Canonicalising at the single read point means the rest of the shell
-/// only ever sees a current id.
+/// These replaced the vendor-derived ids an earlier build wrote ("luna" is Microsoft's codename for the
+/// XP visual style; "win2000" is a product name). There is deliberately NO back-compatibility mapping.
+/// v0.1.0 was the only build that ever wrote the old ids, it had six downloads across all three
+/// platforms, and an unrecognised id resolves to <see cref="Default"/> through the ordinary, already
+/// tested path — so the whole blast radius was one wrong theme on first launch, fixable with a click,
+/// with each orphaned "theme:&lt;old&gt;" override key left sitting intact in the blob rather than
+/// destroyed. That did not justify a permanent compatibility surface spelling out the very names this
+/// rename existed to remove.
+///
+/// A legacy id is therefore simply UNKNOWN here, and <see cref="OrDefault"/> only supplies the default
+/// for a missing value. Should a later rename have real installs behind it, map it — but map it where
+/// the value leaves the DATABASE, which is why this type lives in Core: ARCH-02 forbids Core from
+/// referencing Avalonia, so the UI-side theme service cannot be reached from the read path at all.
 /// </summary>
 public static class ThemeIds
 {
@@ -14,30 +23,12 @@ public static class ThemeIds
     public const string Blue2001 = "blue2001";
     public const string Flat = "flat";
 
-    /// <summary>The id an empty, missing or unknown value resolves to.</summary>
+    /// <summary>The id an empty or missing value resolves to.</summary>
     public const string Default = Industrial1999;
 
-    /// <summary>
-    /// Ids written by builds that used the old vendor-derived names.
-    ///
-    /// "luna" is Microsoft's codename for the XP visual style and "win2000" is a product name; neither
-    /// belongs in a public repo or a shipped assembly, so both were renamed. But the OLD value is
-    /// already sitting in every existing install's settings.db, and an id the loader does not recognise
-    /// resolves silently to the default — every user of the 2001 Blue skin would have opened the shell
-    /// to find it reset, with nothing to explain why. This map is what makes the rename invisible.
-    ///
-    /// Applied on every read, so an old value keeps working indefinitely and is rewritten the next time
-    /// settings are saved. Do not remove these entries: a settings.db can be arbitrarily old.
-    /// </summary>
-    private static readonly Dictionary<string, string> Legacy = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["win2000"] = Industrial1999,
-        ["luna"] = Blue2001,
-    };
-
-    /// <summary>Maps a persisted id to the one in use today; current ids pass through unchanged.</summary>
-    public static string Canonical(string? id)
-        => string.IsNullOrWhiteSpace(id) ? Default
-         : Legacy.TryGetValue(id!, out var current) ? current
-         : id!;
+    /// <summary>Supplies <see cref="Default"/> for a missing value. An id that is merely UNRECOGNISED is
+    /// handed back as-is, so the caller's own IsKnown check decides — a typo stays visible instead of
+    /// being laundered into a valid theme.</summary>
+    public static string OrDefault(string? id)
+        => string.IsNullOrWhiteSpace(id) ? Default : id!;
 }

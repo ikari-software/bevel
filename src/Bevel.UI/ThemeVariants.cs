@@ -55,11 +55,11 @@ public static class ThemeVariants
             new[]
             {
                 new ThemeOption("Colour", Blue2001VariantService.Colors,
-                    s => s.LunaColor, (s, v) => s.LunaColor = v),
+                    s => s.Blue2001Color, (s, v) => s.Blue2001Color = v),
                 new ThemeOption("Gloss", Blue2001VariantService.Glosses,
-                    s => s.LunaGloss, (s, v) => s.LunaGloss = v),
+                    s => s.Blue2001Gloss, (s, v) => s.Blue2001Gloss = v),
             },
-            s => Blue2001VariantService.Apply(s.LunaColor, s.LunaGloss)),
+            s => Blue2001VariantService.Apply(s.Blue2001Color, s.Blue2001Gloss)),
     };
 
     /// <summary>The active theme's option specs, or empty if the theme contributes none.</summary>

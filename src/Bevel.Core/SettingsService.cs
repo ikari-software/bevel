@@ -90,15 +90,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// created empty on first access. Persisted under a <c>theme:&lt;id&gt;</c> key.
     /// </summary>
     public ThemeOverrides ThemeOverridesFor(string themeId)
-    {
-        // Canonicalise the KEY too, not just themeId. These are stored per theme under "theme:<id>", so
-        // an install that predates the rename has its knobs under "theme:luna" / "theme:win2000". Looking
-        // them up by the new id alone would hand back a fresh empty ThemeOverrides and silently drop the
-        // user's per-theme settings (CrispBevels and friends) — a quieter version of the same reset the
-        // id migration exists to prevent.
-        themeId = ThemeIds.Canonical(themeId);
-        return _themeOverrides.TryGetValue(themeId, out var o) ? o : _themeOverrides[themeId] = new ThemeOverrides();
-    }
+        => _themeOverrides.TryGetValue(themeId, out var o) ? o : _themeOverrides[themeId] = new ThemeOverrides();
 
     /// <summary>Load settings from the DB, merging with defaults; seeds the DB on first run.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
@@ -504,8 +496,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
             _raw[SchemaVersionKey] = JsonSerializer.SerializeToElement(CurrentSchemaVersion, SettingsJsonContext.Default.Int32);
         SetOrPrune("themeId", _settings.ThemeId, d.ThemeId, SettingsJsonContext.Default.String);
         SetOrPrune("colorScheme", _settings.ColorScheme, d.ColorScheme, SettingsJsonContext.Default.String);
-        SetOrPrune("lunaColor", _settings.LunaColor, d.LunaColor, SettingsJsonContext.Default.String);
-        SetOrPrune("lunaGloss", _settings.LunaGloss, d.LunaGloss, SettingsJsonContext.Default.String);
+        SetOrPrune("blue2001Color", _settings.Blue2001Color, d.Blue2001Color, SettingsJsonContext.Default.String);
+        SetOrPrune("blue2001Gloss", _settings.Blue2001Gloss, d.Blue2001Gloss, SettingsJsonContext.Default.String);
         SetOrPrune("uiFontFamily", _settings.UiFontFamily, d.UiFontFamily, SettingsJsonContext.Default.String);
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
@@ -647,10 +639,10 @@ public sealed class SettingsService : ISettingsService, IDisposable
     {
         _settings = new BevelSettings
         {
-            ThemeId = ThemeIds.Canonical(GetString("themeId")),
+            ThemeId = ThemeIds.OrDefault(GetString("themeId")),
             ColorScheme = GetString("colorScheme") ?? "",
-            LunaColor = GetString("lunaColor") ?? "",
-            LunaGloss = GetString("lunaGloss") ?? "",
+            Blue2001Color = GetString("blue2001Color") ?? "",
+            Blue2001Gloss = GetString("blue2001Gloss") ?? "",
             UiFontFamily = GetString("uiFontFamily") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
@@ -708,9 +700,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         foreach (var (key, el) in _raw)
         {
             if (key.StartsWith("theme:", StringComparison.Ordinal) && el.ValueKind == JsonValueKind.Object)
-                // Canonical() on the way in, so "theme:luna" from an older install lands under the
-                // current id instead of sitting beside it as an orphan nobody reads.
-                _themeOverrides[ThemeIds.Canonical(key["theme:".Length..])] =
+                _themeOverrides[key["theme:".Length..]] =
                     el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
         }
     }
@@ -750,11 +740,11 @@ public sealed class BevelSettings
     public string ColorScheme { get; set; } = "";
 
     /// <summary>Luna colour variant (Blue/Silver/Black/Purple) — the Luna theme's colour axis. Empty =
-    /// Blue (the reference). Combined at runtime with <see cref="LunaGloss"/> by the variant engine.</summary>
-    public string LunaColor { get; set; } = "";
+    /// Blue (the reference). Combined at runtime with <see cref="Blue2001Gloss"/> by the variant engine.</summary>
+    public string Blue2001Color { get; set; } = "";
 
     /// <summary>Luna gloss variant (Hybrid/Gloss/Matte) — the Luna theme's gloss axis. Empty = Hybrid.</summary>
-    public string LunaGloss { get; set; } = "";
+    public string Blue2001Gloss { get; set; } = "";
 
     /// <summary>UI font family override (FNT-01 / bevel-9js). Empty = the theme's bundled face
     /// (Noto Sans). Any installed family name shadows <c>Bevel.Font.UI</c> shell-wide.</summary>

@@ -156,7 +156,7 @@ public class Blue2001ThemeTests
     }
 
     [AvaloniaFact]
-    public void Luna_theme_swaps_tokens_and_overrides_the_button_template()
+    public void Blue2001_theme_swaps_tokens_and_overrides_the_button_template()
     {
         try
         {

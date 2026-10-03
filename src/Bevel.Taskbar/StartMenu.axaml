@@ -147,7 +147,7 @@
                  the menu just sizes to content, so the capped frequent column + short places column make
                  it look squat. MinHeight keeps it tall — pinned items sit at the top, the columns fill
                  down (white / pale-blue), and All Programs stays anchored at the bottom. -->
-            <Border x:Name="LunaLayout" IsVisible="False"
+            <Border x:Name="Blue2001Layout" IsVisible="False"
                     Width="360" MinHeight="460" CornerRadius="8,8,5,5"
                     BorderBrush="{DynamicResource Blue2001.Brush.StartMenuBorder}" BorderThickness="1"
                     ClipToBounds="True" Background="{DynamicResource Blue2001.Brush.StartMenuPinnedColumn}">
@@ -240,7 +240,7 @@
                                     <Path Data="M8 34 Q20 18 32 34 Z" Fill="#FFFFFF" Opacity="0.92" />
                                 </Canvas>
                             </Border>
-                            <TextBlock x:Name="LunaUserName" Text="User"
+                            <TextBlock x:Name="Blue2001UserName" Text="User"
                                        Foreground="White" FontWeight="Bold" FontSize="17"
                                        VerticalAlignment="Center">
                                 <!-- Subtle dark shadow so white name stays legible over the light top of
@@ -258,7 +258,7 @@
                     <!-- Type-to-search strip (bevel-cezo): hidden until the user types with the menu open,
                          then it shows the live query + match count while the pinned column below turns into
                          the ranked result list. Rounded Luna field on the pale-blue band. -->
-                    <Border x:Name="LunaSearchStrip" DockPanel.Dock="Top" IsVisible="False"
+                    <Border x:Name="Blue2001SearchStrip" DockPanel.Dock="Top" IsVisible="False"
                             Padding="10,7"
                             Background="{DynamicResource Blue2001.Brush.StartMenuPlacesColumn}">
                         <Border CornerRadius="3" Padding="7,4"
@@ -272,10 +272,10 @@
                                     <Path Data="M9.5,9.5 L13,13" Stroke="#2F6FD0"
                                           StrokeThickness="1.8" StrokeLineCap="Round" />
                                 </Canvas>
-                                <TextBlock x:Name="LunaSearchText" FontSize="13"
+                                <TextBlock x:Name="Blue2001SearchText" FontSize="13"
                                            Foreground="{DynamicResource Blue2001.Brush.StartMenuPlaceText}"
                                            VerticalAlignment="Center" />
-                                <TextBlock x:Name="LunaSearchCount" FontSize="11" Opacity="0.65"
+                                <TextBlock x:Name="Blue2001SearchCount" FontSize="11" Opacity="0.65"
                                            Foreground="{DynamicResource Blue2001.Brush.StartMenuPlaceText}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
@@ -292,7 +292,7 @@
                                     Background="{DynamicResource Blue2001.Brush.StartMenuFooterRule}" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6"
                                         VerticalAlignment="Center" Margin="0,0,10,0">
-                            <Button Classes="footer" Click="OnLunaLogOffClick">
+                            <Button Classes="footer" Click="OnBlue2001LogOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Blue2001.Brush.StartMenuLogOffIcon}">
                                         <!-- Log Off = exit-through-door, on the shared 24-grid (centred at 12,12); fixed-Canvas render. -->
@@ -306,7 +306,7 @@
                                     <TextBlock Text="Log Off" Foreground="White" FontSize="13" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="footer" Click="OnLunaTurnOffClick">
+                            <Button Classes="footer" Click="OnBlue2001TurnOffClick">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource Blue2001.Brush.StartMenuTurnOffIcon}">
                                         <!-- Turn Off = power symbol on the shared 24-grid (ring r6 at 12,12). Same glyph as Quit. -->
@@ -330,7 +330,7 @@
                         <DockPanel Grid.Column="0" Background="{DynamicResource Blue2001.Brush.StartMenuPinnedColumn}">
                             <!-- All Programs, bottom-anchored — the Button is bottom-most so the divider (docked
                                  bottom AFTER it) renders directly above it, not floored against the footer. -->
-                            <Button x:Name="LunaAllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="10,7"
+                            <Button x:Name="Blue2001AllProgramsButton" DockPanel.Dock="Bottom" Classes="lunarow" Padding="10,7"
                                     HorizontalContentAlignment="Right">
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
                                     <TextBlock Text="All Programs" Classes="pintitle" VerticalAlignment="Center" />
@@ -343,11 +343,11 @@
                             </Button>
                             <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource Blue2001.Brush.StartMenuDivider}" Margin="12,0" />
                             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                <ItemsControl x:Name="LunaPinned">
+                                <ItemsControl x:Name="Blue2001Pinned">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="tb:ProgramItemViewModel">
                                             <Button Classes="lunarow" Command="{Binding LaunchCommand}"
-                                                    Click="OnLunaProgramClick">
+                                                    Click="OnBlue2001ProgramClick">
                                                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                                                     <!-- Icon slot: a neutral rounded tile shows while the real
                                                          icon loads off-thread (or if the provider yields none),
@@ -383,7 +383,7 @@
                              the top and the space below stays pale-blue instead of showing the white face. -->
                         <Border Grid.Column="1" Background="{DynamicResource Blue2001.Brush.StartMenuPlacesColumn}">
                         <StackPanel Spacing="1" VerticalAlignment="Top">
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="documents">
+                            <Button Classes="lunarow" Click="OnBlue2001PlaceClick" Tag="documents">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -395,7 +395,7 @@
                                     <TextBlock Text="My Documents" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="pictures">
+                            <Button Classes="lunarow" Click="OnBlue2001PlaceClick" Tag="pictures">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -407,7 +407,7 @@
                                     <TextBlock Text="My Pictures" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="music">
+                            <Button Classes="lunarow" Click="OnBlue2001PlaceClick" Tag="music">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconFolder}">
                                         <Panel>
@@ -419,7 +419,7 @@
                                     <TextBlock Text="My Music" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaPlaceClick" Tag="computer">
+                            <Button Classes="lunarow" Click="OnBlue2001PlaceClick" Tag="computer">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuComputerIcon}">
                                         <Panel>
@@ -432,7 +432,7 @@
                                 </StackPanel>
                             </Button>
                             <Border Height="1" Background="{DynamicResource Blue2001.Brush.StartMenuPlacesDivider}" Margin="10,4" />
-                            <Button Classes="lunarow" Click="OnLunaSettingsClick">
+                            <Button Classes="lunarow" Click="OnBlue2001SettingsClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Blue2001.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
@@ -444,7 +444,7 @@
                                     <TextBlock Text="Control Panel" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaBevelSettingsClick">
+                            <Button Classes="lunarow" Click="OnBlue2001BevelSettingsClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Blue2001.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
@@ -455,7 +455,7 @@
                                     <TextBlock Text="Bevel Settings" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaHelpClick">
+                            <Button Classes="lunarow" Click="OnBlue2001HelpClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuHelpIcon}">
                                         <TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15"
@@ -464,7 +464,7 @@
                                     <TextBlock Text="Help and Support" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaSearchClick">
+                            <Button Classes="lunarow" Click="OnBlue2001SearchClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Blue2001.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
@@ -475,7 +475,7 @@
                                     <TextBlock Text="Search" Classes="place" />
                                 </StackPanel>
                             </Button>
-                            <Button Classes="lunarow" Click="OnLunaRunClick">
+                            <Button Classes="lunarow" Click="OnBlue2001RunClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Blue2001.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <Panel>
@@ -492,8 +492,8 @@
                                  footer's Log Off / Turn Off wording. -->
                             <Border Height="1" Background="{DynamicResource Blue2001.Brush.StartMenuPlacesDivider}" Margin="10,4" />
                             <!-- Show/Hide Desktop (bevel-gdie): spawns/kills the desktop-role child on demand.
-                                 LunaDesktopText flips to "Hide Desktop" while the surface is up. -->
-                            <Button x:Name="LunaDesktopButton" Classes="lunarow" Click="OnToggleDesktopClick">
+                                 Blue2001DesktopText flips to "Hide Desktop" while the surface is up. -->
+                            <Button x:Name="Blue2001DesktopButton" Classes="lunarow" Click="OnToggleDesktopClick">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Border Width="24" Height="24" CornerRadius="4" Background="{DynamicResource Blue2001.Brush.StartMenuPlaceIconGeneric}" BorderBrush="{DynamicResource Blue2001.Brush.StartMenuPlaceIconBorder}" BorderThickness="1">
                                         <!-- Desktop = monitor screen + stand, on the shared 24-grid. -->
@@ -503,7 +503,7 @@
                                             <Path Fill="#5A6472" Data="M10.5,15.5 L13.5,15.5 L14.5,18 L9.5,18 Z" />
                                         </Panel>
                                     </Border>
-                                    <TextBlock x:Name="LunaDesktopText" Text="Show Desktop" Classes="place" />
+                                    <TextBlock x:Name="Blue2001DesktopText" Text="Show Desktop" Classes="place" />
                                 </StackPanel>
                             </Button>
                             <Button Classes="lunarow" Click="OnRestartClick">

@@ -238,7 +238,7 @@ public class RenderBlue2001VariantsTest
                 var sdir = Path.Combine(Path.GetTempPath(), $"bevel-onb-{theme}-{Guid.NewGuid():N}");
                 Directory.CreateDirectory(sdir);
                 var settings = new SettingsService(sdir);
-                await settings.UpdateAsync(s => { s.ThemeId = theme; s.LunaColor = color; s.LunaGloss = gloss; });
+                await settings.UpdateAsync(s => { s.ThemeId = theme; s.Blue2001Color = color; s.Blue2001Gloss = gloss; });
                 Bevel.UI.ThemeVariants.Apply(settings.Current);
 
                 var win = new OnboardingWindow(settings) { Width = 470, Height = 500 };

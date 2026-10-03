@@ -82,7 +82,7 @@ public partial class InfoPane : UserControl
 
     private void ApplyStyle()
     {
-        Win2000View.IsVisible = _style == InfoPaneStyle.Win2000;
+        Industrial1999View.IsVisible = _style == InfoPaneStyle.Win2000;
         WinXPView.IsVisible = _style == InfoPaneStyle.WinXP;
         ModernView.IsVisible = _style == InfoPaneStyle.Modern;
         Win9xView.IsVisible = _style == InfoPaneStyle.Win9x;

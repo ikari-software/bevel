@@ -18,8 +18,8 @@ public class ThemeSwitchCaptionTest
         var s = new BevelSettings
         {
             ThemeId = themeId,
-            LunaColor = "Purple",
-            LunaGloss = "Hybrid",
+            Blue2001Color = "Purple",
+            Blue2001Gloss = "Hybrid",
             ColorScheme = "StandardWindows",
         };
         Bevel.UI.ThemeService.Apply(themeId);
@@ -30,7 +30,7 @@ public class ThemeSwitchCaptionTest
         => Application.Current!.TryGetResource(SystemParameters.WindowCaptionHeightKey, null, out var v) ? v : null;
 
     [AvaloniaFact]
-    public void Luna_caption_height_survives_a_win2000_round_trip()
+    public void Blue2001_caption_height_survives_a_win2000_round_trip()
     {
         try
         {

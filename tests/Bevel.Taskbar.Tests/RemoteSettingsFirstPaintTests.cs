@@ -46,7 +46,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     }
 
     /// <summary>A real core settings store at <see cref="_coreDir"/> with the persisted theme set to Luna.</summary>
-    private async Task<SettingsService> LunaCoreAsync()
+    private async Task<SettingsService> Blue2001CoreAsync()
     {
         var core = new SettingsService(_coreDir);
         await core.LoadAsync(Ct);
@@ -90,7 +90,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [Fact]
     public async Task First_live_snapshot_equal_to_the_cache_adopts_its_version_without_raising_Changed()
     {
-        using var core = await LunaCoreAsync();
+        using var core = await Blue2001CoreAsync();
         // Same content, an older version stamp — proves the match is by content, not by version.
         Assert.True(Cache.TryWrite(core.Version - 1, core.SnapshotJson()));
 
@@ -116,7 +116,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [Fact]
     public async Task First_live_snapshot_that_differs_from_the_cache_corrects_it_once_and_rewrites_the_cache()
     {
-        using var core = await LunaCoreAsync();
+        using var core = await Blue2001CoreAsync();
         var stale = SettingsService.SerializeBlob(new BevelSettings { ThemeId = ThemeIds.Industrial1999 }, new Dictionary<string, ThemeOverrides>());
         Assert.True(Cache.TryWrite(core.Version + 100, stale)); // a HIGHER cached version must not win over live content
 
@@ -146,7 +146,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [Fact]
     public async Task A_settings_write_is_written_through_to_the_cache()
     {
-        using var core = await LunaCoreAsync();
+        using var core = await Blue2001CoreAsync();
         await using var server = Server(core);
         await server.StartAsync(Ct);
         await using var client = new ShellCoreClient(_socket, _nonce);
@@ -207,7 +207,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [Fact]
     public async Task A_live_snapshot_with_a_lower_or_equal_version_is_dropped_after_the_first_one()
     {
-        using var core = await LunaCoreAsync();
+        using var core = await Blue2001CoreAsync();
         await using var server = Server(core);
         await server.StartAsync(Ct);
         await using var client = new ShellCoreClient(_socket, _nonce);
@@ -233,7 +233,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         Assert.Equal(ThemeIds.Industrial1999, remote.Current.ThemeId);
         Assert.Null(Cache.TryRead());                     // defaults are NOT cached — they were never real data
 
-        using var core = await LunaCoreAsync();
+        using var core = await Blue2001CoreAsync();
         await using var server = Server(core);
         await server.StartAsync(Ct);
         await WaitFor(() => remote.Current.ThemeId == ThemeIds.Blue2001, "the reconnect supervisor should deliver the real snapshot");

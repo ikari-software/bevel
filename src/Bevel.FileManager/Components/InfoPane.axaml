@@ -67,7 +67,7 @@
              The overlapping pastel squares and unframed context icon are the era's recurring signature;
              title, blue rule, description and related links follow immediately below at the stock 200px
              column proportions. -->
-        <ScrollViewer x:Name="Win2000View" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+        <ScrollViewer x:Name="Industrial1999View" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                       Background="{DynamicResource Bevel.Brush.Window}">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" MinHeight="368">
                 <Border Grid.Row="0" Height="52" ClipToBounds="True" Background="White">

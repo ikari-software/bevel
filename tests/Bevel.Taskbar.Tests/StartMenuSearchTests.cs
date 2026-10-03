@@ -96,7 +96,7 @@ public class StartMenuSearchTests
 
         // The search strip shows the live query + match count for the classic layout only.
         Assert.True(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
-        Assert.False(h.Menu.FindControl<Control>("LunaSearchStrip")!.IsVisible);
+        Assert.False(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
         Assert.Equal("cal", h.Menu.FindControl<TextBlock>("ClassicSearchText")!.Text);
         Assert.Equal("2 matches", h.Menu.FindControl<TextBlock>("ClassicSearchCount")!.Text);
     }
@@ -250,21 +250,21 @@ public class StartMenuSearchTests
             Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             using var h = await Harness.OpenAsync();
 
-            var pinned = h.Menu.FindControl<ItemsControl>("LunaPinned")!;
+            var pinned = h.Menu.FindControl<ItemsControl>("Blue2001Pinned")!;
             Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);   // curated list before any typing
 
             Type(h.Menu, "cal");
 
             Assert.Same(h.Menu.SearchResults, pinned.ItemsSource);       // …the ranked results while typing
             Assert.Equal(["Calculator", "Calendar"], h.Menu.SearchResults.Select(p => p.DisplayName));
-            Assert.True(h.Menu.FindControl<Control>("LunaSearchStrip")!.IsVisible);
+            Assert.True(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
             Assert.False(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
-            Assert.Equal("cal", h.Menu.FindControl<TextBlock>("LunaSearchText")!.Text);
-            Assert.Equal("2 matches", h.Menu.FindControl<TextBlock>("LunaSearchCount")!.Text);
+            Assert.Equal("cal", h.Menu.FindControl<TextBlock>("Blue2001SearchText")!.Text);
+            Assert.Equal("2 matches", h.Menu.FindControl<TextBlock>("Blue2001SearchCount")!.Text);
 
             Press(h.Menu, Key.Escape);
             Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);   // …and back to curated on clear
-            Assert.False(h.Menu.FindControl<Control>("LunaSearchStrip")!.IsVisible);
+            Assert.False(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
         }
         finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }

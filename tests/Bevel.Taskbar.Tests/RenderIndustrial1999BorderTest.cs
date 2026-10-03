@@ -24,7 +24,7 @@ namespace Bevel.Taskbar.Tests;
 public class RenderIndustrial1999BorderTest
 {
     [AvaloniaFact]
-    public void Win2000_window_border_geometry_is_authentic()
+    public void Industrial1999_window_border_geometry_is_authentic()
     {
         try
         {

@@ -72,7 +72,7 @@ public class RenderStartMenuSearchTest
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            var strip = menu.FindControl<Control>(theme == ThemeIds.Blue2001 ? "LunaSearchStrip" : "ClassicSearchStrip")!;
+            var strip = menu.FindControl<Control>(theme == ThemeIds.Blue2001 ? "Blue2001SearchStrip" : "ClassicSearchStrip")!;
             Assert.True(strip.IsVisible);
             Assert.True(strip.Bounds.Height > 0, $"search strip has no height: {strip.Bounds}");
 

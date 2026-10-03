@@ -8,11 +8,11 @@ namespace Bevel.UI.Blue2001;
 
 /// <summary>The Luna colour axis. Blue is the reference (identity transform); the others re-hue the
 /// chrome family via HSL so the tuned light→dark relationships are preserved.</summary>
-public enum LunaColorVariant { Blue, Silver, Black, Purple }
+public enum Blue2001ColorVariant { Blue, Silver, Black, Purple }
 
 /// <summary>The Luna gloss axis. Hybrid = the ratified look (glossy dialog/task/caption controls, matte
 /// bar + Start). Gloss = wet everywhere; Matte = flat/authentic everywhere.</summary>
-public enum LunaGloss { Matte, Gloss, Hybrid }
+public enum Blue2001Gloss { Matte, Gloss, Hybrid }
 
 /// <summary>How the colour axis re-hues the chrome family. Applied per gradient stop, so a variant is
 /// the reference (Blue) chrome with its hue rotated / desaturated / darkened.</summary>
@@ -66,15 +66,15 @@ public static class Blue2001VariantService
     public const string DefaultColor = "Blue";
     public const string DefaultGloss = "Hybrid";
 
-    private static ColorXform Xform(LunaColorVariant v) => v switch
+    private static ColorXform Xform(Blue2001ColorVariant v) => v switch
     {
         // Silver: drain the blue to a warm slate-grey, lift slightly. Black: near-grey + darken.
         // Purple: rotate blue(~220°) toward violet(~275°). Tuned against the reference chrome.
-        LunaColorVariant.Silver => new ColorXform(HueShift: -6, SatMul: 0.22, LightMul: 1.4, LightShift: 0.05),
-        LunaColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
+        Blue2001ColorVariant.Silver => new ColorXform(HueShift: -6, SatMul: 0.22, LightMul: 1.4, LightShift: 0.05),
+        Blue2001ColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
         // BandContrast re-expands the taskbar/caption gradient the LightMul:0.6 compression flattens —
         // violet lightness steps read weakly, so the bands need a punchier light→dark spread than blue.
-        LunaColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) { BandContrast = 2.2 },
+        Blue2001ColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) { BandContrast = 2.2 },
         _ => ColorXform.Identity,
     };
 
@@ -200,8 +200,8 @@ public static class Blue2001VariantService
         Bevel.UI.Glyphs.InvalidateThemeCache();   // variant colours changed — drop cached icon brushes (bevel-lha4)
         if (Application.Current?.Resources is not { } res) return;
 
-        var variant = Enum.Parse<LunaColorVariant>(color);
-        var g = Enum.Parse<LunaGloss>(gloss);
+        var variant = Enum.Parse<Blue2001ColorVariant>(color);
+        var g = Enum.Parse<Blue2001Gloss>(gloss);
         var xform = Xform(variant);
 
         // Drop the previous injection so looks don't stack.
@@ -244,13 +244,13 @@ public static class Blue2001VariantService
         // Matte nearly none.
         var (sheenTop, sheenMid) = g switch
         {
-            LunaGloss.Matte => ((byte)0x12, (byte)0x04),
-            LunaGloss.Gloss => ((byte)0xB0, (byte)0x34),
+            Blue2001Gloss.Matte => ((byte)0x12, (byte)0x04),
+            Blue2001Gloss.Gloss => ((byte)0xB0, (byte)0x34),
             _ => ((byte)0x60, (byte)0x14), // Hybrid (current)
         };
         res["Blue2001.Brush.Gloss"] = VSheen((sheenTop, 0.0), (sheenMid, 0.5), ((byte)0x00, 1.0));
         _injected.Add("Blue2001.Brush.Gloss");
-        var capTop = g switch { LunaGloss.Matte => (byte)0x28, LunaGloss.Gloss => (byte)0xCE, _ => (byte)0xA0 };
+        var capTop = g switch { Blue2001Gloss.Matte => (byte)0x28, Blue2001Gloss.Gloss => (byte)0xCE, _ => (byte)0xA0 };
         res["Blue2001.Brush.CaptionButtonGloss"] = VSheen((capTop, 0.0), ((byte)0x10, 1.0));
         _injected.Add("Blue2001.Brush.CaptionButtonGloss");
 
@@ -286,7 +286,7 @@ public static class Blue2001VariantService
         Changed?.Invoke();
     }
 
-    private static IBrush BuildBrush(Surface s, ColorXform xform, LunaGloss gloss, LunaColorVariant variant)
+    private static IBrush BuildBrush(Surface s, ColorXform xform, Blue2001Gloss gloss, Blue2001ColorVariant variant)
     {
         // Re-hue first (chrome only), then let the gloss profile reshape the arrangement.
         Color C(string hex)
@@ -310,8 +310,8 @@ public static class Blue2001VariantService
         // Does the requested look want THIS surface glossy? Hybrid = glossy controls, matte chrome.
         bool targetGlossy = gloss switch
         {
-            LunaGloss.Gloss => true,
-            LunaGloss.Matte => false,
+            Blue2001Gloss.Gloss => true,
+            Blue2001Gloss.Matte => false,
             _ => s.Role == GlossRole.Control, // Hybrid
         };
 
@@ -325,7 +325,7 @@ public static class Blue2001VariantService
         }
         else
         {
-            stops = targetGlossy ? Bead(BaseColor(s, C), gloss == LunaGloss.Gloss) : Matte(BaseColor(s, C));
+            stops = targetGlossy ? Bead(BaseColor(s, C), gloss == Blue2001Gloss.Gloss) : Matte(BaseColor(s, C));
         }
 
         // Per-variant contrast boost for the big flat chrome bands (taskbar/caption): widen the light→dark
@@ -348,9 +348,9 @@ public static class Blue2001VariantService
     /// transform was not sufficient: Silver/Black need restrained surfaces but recognizable blue actions,
     /// while Purple needs a quieter watermark than its caption. These are transformations, not alternate
     /// palettes, so Blue remains the only set of stored role colours.</summary>
-    private static Color TransformInfoPane(Color reference, LunaColorVariant variant, string resourceKey)
+    private static Color TransformInfoPane(Color reference, Blue2001ColorVariant variant, string resourceKey)
     {
-        if (variant == LunaColorVariant.Blue) return reference;
+        if (variant == Blue2001ColorVariant.Blue) return reference;
 
         var tone = resourceKey switch
         {
@@ -367,39 +367,39 @@ public static class Blue2001VariantService
         // the same base rotation later without replacing any semantic-role source colours.
         var baseHueShift = variant switch
         {
-            LunaColorVariant.Silver => -6.0,
-            LunaColorVariant.Black => -4.0,
-            LunaColorVariant.Purple => 46.0,
+            Blue2001ColorVariant.Silver => -6.0,
+            Blue2001ColorVariant.Black => -4.0,
+            Blue2001ColorVariant.Purple => 46.0,
             _ => 0.0,
         };
         var (roleHueOffset, saturationScale, lightnessShift) = (variant, tone) switch
         {
-            (LunaColorVariant.Silver, InfoPaneTone.Watermark) => (0.0, 0.30, 0.10),
-            (LunaColorVariant.Silver, InfoPaneTone.Header) => (0.0, 0.25, 0.02),
-            (LunaColorVariant.Silver, InfoPaneTone.Border) => (0.0, 0.25, -0.06),
-            (LunaColorVariant.Silver, InfoPaneTone.Heading) => (2.0, 0.50, -0.03),
-            (LunaColorVariant.Silver, InfoPaneTone.Body) => (1.0, 0.55, 0.01),
-            (LunaColorVariant.Silver, InfoPaneTone.Link) => (1.0, 0.80, 0.02),
-            (LunaColorVariant.Silver, InfoPaneTone.Arrow) => (1.0, 0.72, 0.03),
-            (LunaColorVariant.Silver, InfoPaneTone.Muted) => (2.0, 0.55, -0.01),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Watermark) => (0.0, 0.30, 0.10),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Header) => (0.0, 0.25, 0.02),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Border) => (0.0, 0.25, -0.06),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Heading) => (2.0, 0.50, -0.03),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Body) => (1.0, 0.55, 0.01),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Link) => (1.0, 0.80, 0.02),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Arrow) => (1.0, 0.72, 0.03),
+            (Blue2001ColorVariant.Silver, InfoPaneTone.Muted) => (2.0, 0.55, -0.01),
 
-            (LunaColorVariant.Black, InfoPaneTone.Watermark) => (0.0, 0.25, -0.10),
-            (LunaColorVariant.Black, InfoPaneTone.Header) => (0.0, 0.30, -0.04),
-            (LunaColorVariant.Black, InfoPaneTone.Border) => (0.0, 0.30, -0.08),
-            (LunaColorVariant.Black, InfoPaneTone.Heading) => (2.0, 0.62, -0.05),
-            (LunaColorVariant.Black, InfoPaneTone.Body) => (2.0, 0.55, 0.00),
-            (LunaColorVariant.Black, InfoPaneTone.Link) => (0.0, 0.78, 0.07),
-            (LunaColorVariant.Black, InfoPaneTone.Arrow) => (0.0, 0.70, 0.03),
-            (LunaColorVariant.Black, InfoPaneTone.Muted) => (2.0, 0.65, -0.03),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Watermark) => (0.0, 0.25, -0.10),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Header) => (0.0, 0.30, -0.04),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Border) => (0.0, 0.30, -0.08),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Heading) => (2.0, 0.62, -0.05),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Body) => (2.0, 0.55, 0.00),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Link) => (0.0, 0.78, 0.07),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Arrow) => (0.0, 0.70, 0.03),
+            (Blue2001ColorVariant.Black, InfoPaneTone.Muted) => (2.0, 0.65, -0.03),
 
-            (LunaColorVariant.Purple, InfoPaneTone.Watermark) => (0.0, 0.72, 0.00),
-            (LunaColorVariant.Purple, InfoPaneTone.Header) => (0.0, 0.62, -0.01),
-            (LunaColorVariant.Purple, InfoPaneTone.Border) => (0.0, 0.60, -0.05),
-            (LunaColorVariant.Purple, InfoPaneTone.Heading) => (8.0, 0.65, -0.01),
-            (LunaColorVariant.Purple, InfoPaneTone.Body) => (2.0, 0.65, 0.01),
-            (LunaColorVariant.Purple, InfoPaneTone.Link) => (-2.0, 0.64, 0.06),
-            (LunaColorVariant.Purple, InfoPaneTone.Arrow) => (0.0, 0.72, 0.04),
-            (LunaColorVariant.Purple, InfoPaneTone.Muted) => (4.0, 0.65, -0.03),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Watermark) => (0.0, 0.72, 0.00),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Header) => (0.0, 0.62, -0.01),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Border) => (0.0, 0.60, -0.05),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Heading) => (8.0, 0.65, -0.01),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Body) => (2.0, 0.65, 0.01),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Link) => (-2.0, 0.64, 0.06),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Arrow) => (0.0, 0.72, 0.04),
+            (Blue2001ColorVariant.Purple, InfoPaneTone.Muted) => (4.0, 0.65, -0.03),
             _ => (0.0, 1.0, 0.0),
         };
         return Transform(reference, baseHueShift + roleHueOffset, saturationScale, 1.0, lightnessShift);

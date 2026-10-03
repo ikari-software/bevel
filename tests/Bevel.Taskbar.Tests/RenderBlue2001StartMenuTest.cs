@@ -131,7 +131,7 @@ public class RenderBlue2001StartMenuTest
             await menu.OpenAsync(button);   // runs ApplyThemeLayout → wires + populates the flyout
             Dispatcher.UIThread.RunJobs();
 
-            var allProg = menu.FindControl<Button>("LunaAllProgramsButton");
+            var allProg = menu.FindControl<Button>("Blue2001AllProgramsButton");
             Assert.NotNull(allProg);
             var flyout = allProg!.Flyout as Flyout;
             Assert.NotNull(flyout);

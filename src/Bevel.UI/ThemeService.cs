@@ -41,11 +41,6 @@ public static class ThemeService
     /// <summary>The default theme id. Empty/unknown resolves here.</summary>
     public const string DefaultTheme = Bevel.Core.ThemeIds.Default;
 
-    /// <summary>Maps a persisted theme id to the one in use today. Delegates to <see
-    /// cref="Bevel.Core.ThemeIds"/>, which owns the mapping because the migration has to happen where
-    /// the value leaves the database.</summary>
-    public static string Canonical(string? id) => Bevel.Core.ThemeIds.Canonical(id);
-
     /// <summary>The currently-applied theme id. Surfaces that swap whole layouts by theme (the Start
     /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.</summary>
     public static string Current => _appliedId;
@@ -89,10 +84,6 @@ public static class ThemeService
     /// the colour variant / font for that theme, or the two engines end up disagreeing (ce-review).</summary>
     public static bool Apply(string? id)
     {
-        // Canonicalise FIRST. A legacy id ("luna"/"win2000") is not IsKnown, so without this it would
-        // fall through to DefaultTheme — silently resetting the theme of every install that predates
-        // the rename, which is the whole thing the migration exists to prevent.
-        id = Canonical(id);
         var theme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultTheme : id!;
         if (theme == _appliedId) return true;   // already in place — safe to apply the variant/font
         if (Application.Current is not { } app || app.Resources is not { } res) return false;

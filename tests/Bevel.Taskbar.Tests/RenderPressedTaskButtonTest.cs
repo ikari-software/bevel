@@ -28,7 +28,7 @@ public class RenderPressedTaskButtonTest
     private const int FaceSampleWidth = 40; // the label-free right end of a 150px button
 
     [AvaloniaFact]
-    public void Win2000_focused_button_is_sunken_and_distinct_from_its_neighbour()
+    public void Industrial1999_focused_button_is_sunken_and_distinct_from_its_neighbour()
     {
         var (window, view, _, _) = BuildBar(
             Win("w0", "Window 1", focused: true),
@@ -65,7 +65,7 @@ public class RenderPressedTaskButtonTest
     /// where a static-only colour would vanish.
     /// </summary>
     [AvaloniaFact]
-    public void Luna_focused_button_is_distinct_under_the_default_and_darkest_variants()
+    public void Blue2001_focused_button_is_distinct_under_the_default_and_darkest_variants()
     {
         try
         {

@@ -17,12 +17,12 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
         try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
     }
 
-    private const string LunaBlob = """
+    private const string Blue2001Blob = """
         {
           "schemaVersion": 1,
-          "themeId": "luna",
+          "themeId": "blue2001",
           "taskbarRows": 2,
-          "theme:luna": { "CrispBevels": true }
+          "theme:blue2001": { "CrispBevels": true }
         }
         """;
 
@@ -34,16 +34,13 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     public void Write_then_read_round_trips_the_version_and_the_settings()
     {
         var cache = new SettingsSnapshotCache(_dir);
-        Assert.True(cache.TryWrite(42, LunaBlob));
+        Assert.True(cache.TryWrite(42, Blue2001Blob));
 
         var read = cache.TryRead();
         Assert.NotNull(read);
         Assert.Equal(42, read.Value.Version);
         // Re-serialised, so compare by content — the same rule the peer uses against a live snapshot.
-        Assert.True(SettingsService.BlobsEquivalent(LunaBlob, read.Value.Json));
-        // The cache deliberately holds the LEGACY id, because that is what an existing install's file
-        // contains. Projecting it must yield the current id — this is the migration proven end to end
-        // through the real projection, not just through ThemeIds.Canonical in isolation.
+        Assert.True(SettingsService.BlobsEquivalent(Blue2001Blob, read.Value.Json));
         Assert.Equal(ThemeIds.Blue2001, SettingsService.ProjectBlob(read.Value.Json).Settings.ThemeId);
         Assert.Equal(2, SettingsService.ProjectBlob(read.Value.Json).Settings.TaskbarRows);
     }
@@ -52,8 +49,8 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     public void Write_is_atomic_and_leaves_no_temp_file_behind()
     {
         var cache = new SettingsSnapshotCache(_dir);
-        cache.TryWrite(1, LunaBlob);
-        cache.TryWrite(2, LunaBlob);
+        cache.TryWrite(1, Blue2001Blob);
+        cache.TryWrite(2, Blue2001Blob);
         Assert.Equal(new[] { SettingsSnapshotCache.FileName },
             Directory.GetFiles(_dir).Select(Path.GetFileName).ToArray());
     }
@@ -111,10 +108,8 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     [Fact]
     public void TryProjectBlob_projects_a_real_blob_with_its_overrides()
     {
-        Assert.True(SettingsService.TryProjectBlob(LunaBlob, out var s, out var overrides));
+        Assert.True(SettingsService.TryProjectBlob(Blue2001Blob, out var s, out var overrides));
         Assert.Equal(ThemeIds.Blue2001, s.ThemeId);
-        // Keyed by the CURRENT id even though the blob says "theme:luna": projecting migrates the
-        // override keys too, so an existing install's per-theme knobs are not orphaned by the rename.
         Assert.True(overrides[ThemeIds.Blue2001].CrispBevels);
     }
 
@@ -123,14 +118,12 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     [Fact]
     public void BlobsEquivalent_ignores_whitespace_and_key_order_but_not_values()
     {
-        // Deliberately the LEGACY literals: BlobsEquivalent compares raw JSON, before any projection or
-        // id migration, so the fixture and its twin must match byte-for-byte in meaning — canonical ids
-        // here would be comparing a migrated blob against an unmigrated one.
-        Assert.True(SettingsService.BlobsEquivalent(LunaBlob,
-            "{\"theme:luna\":{\"CrispBevels\":true},\"taskbarRows\":2,\"themeId\":\"luna\",\"schemaVersion\":1}"));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, LunaBlob.Replace("\"luna\"", "\"win2000\"")));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, "{}"));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, null));
+        Assert.True(SettingsService.BlobsEquivalent(Blue2001Blob,
+            "{\"theme:blue2001\":{\"CrispBevels\":true},\"taskbarRows\":2,\"themeId\":\"blue2001\",\"schemaVersion\":1}"));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob,
+            Blue2001Blob.Replace("\"blue2001\"", "\"industrial1999\"")));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob, "{}"));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob, null));
         Assert.False(SettingsService.BlobsEquivalent("not json", "not json"));
     }
 }
