@@ -334,42 +334,11 @@
                     Orientation="Horizontal"
                     VerticalAlignment="Stretch"
                     Margin="0,1,2,1">
-            <!-- Folder stacks (bevel-12g): tray-adjacent buttons LEFT of the notification well (not
-                 inside it) — a folder whose flyout shows recent contents as a preview grid (bevel-9elh).
-                 A blue dot cues new items. Click refreshes + opens the flyout; each cell opens its file. -->
-            <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center" Margin="0,0,4,0">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="2" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="tb:StackViewModel">
-                                <Button Padding="1" Background="Transparent" BorderThickness="0"
-                                        Focusable="True" ToolTip.Tip="{Binding Name}"
-                                        AutomationProperties.Name="{Binding Name}"
-                                        Click="OnStackButtonClick">
-                                    <Grid Width="16" Height="16">
-                                        <Image Source="{Binding FolderIcon}" Width="16" Height="16" />
-                                        <!-- New-item cue: a coloured dot for sighted users, with a text alternative
-                                             (AutomationProperties.Name + tooltip) so AT announces "New items" too. -->
-                                        <Ellipse Width="6" Height="6" Fill="#2E86D8" Stroke="White" StrokeThickness="1"
-                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                 ToolTip.Tip="New items"
-                                                 AutomationProperties.Name="New items"
-                                                 IsVisible="{Binding HasNew}" />
-                                    </Grid>
-                                    <Button.Flyout>
-                                        <!-- The flyout's whole content lives in StackFlyoutView (bevel-9elh):
-                                             a macOS-style grid of content previews + the "Open folder" row. -->
-                                        <Flyout Placement="Top">
-                                            <tb:StackFlyoutView />
-                                        </Flyout>
-                                    </Button.Flyout>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+            <!-- Component-list-composed stacks region (bevel-aqr7 Task 14): the folder stacks used to be
+                 a hardcoded ItemsControl bound to Stacks.Stacks; they are now produced by ComponentBarHost
+                 from BevelSettings.TaskbarComponents via the registry/normalizer/health path (spec §9).
+                 TaskbarView.axaml.cs's InitComponentRegion/ApplyComponentRegion own this control's Content. -->
+            <ContentControl x:Name="ComponentRegionHost" VerticalAlignment="Center" Margin="0,0,4,0" />
 
             <classic:ClassicBorderDecorator BorderStyle="Sunken"
                                             BorderThickness="{DynamicResource Bevel.Metric.TrayWellBorder}"

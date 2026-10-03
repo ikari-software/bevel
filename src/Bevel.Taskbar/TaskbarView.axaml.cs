@@ -10,7 +10,9 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
+using Bevel.Core.Components;
 using Bevel.Pal.Abstractions;
+using Bevel.Taskbar.Components;
 
 namespace Bevel.Taskbar;
 
@@ -54,6 +56,19 @@ public partial class TaskbarView : UserControl
     private int _opacity = 100;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
+    /// <summary>Composes the stacks region from <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7
+    /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
+    private ComponentBarHost? _componentHost;
+    /// <summary>
+    /// The settings snapshot <see cref="Initialize"/> was called with, held only long enough to seed
+    /// <see cref="InitComponentRegion"/> from <see cref="OnLoaded"/>. It cannot run at Initialize-time
+    /// itself: <c>Initialize</c> is called BEFORE this view is parented into its owning
+    /// <c>TaskbarWindow</c> (see <c>App.axaml.cs</c>'s <c>CreateTaskbarSurfaceCore</c>), so
+    /// <see cref="_window"/> — and the real <c>BarGeometry</c> the host needs — isn't set until
+    /// <c>OnLoaded</c> runs, exactly like the other attach-dependent seeding (<c>ApplyAppearance</c>)
+    /// just below it.
+    /// </summary>
+    private Bevel.Core.BevelSettings? _initialSettings;
     private bool _resizing;
     private DispatcherTimer? _tooltipTimer;
     private Control? _tooltipAnchor;
@@ -175,6 +190,11 @@ public partial class TaskbarView : UserControl
         _bgColor = settings.TaskbarBackgroundColor;
         _opacity = settings.TaskbarOpacity;
 
+        // Composes the stacks region from the component list (bevel-aqr7 Task 14). Stored rather than
+        // applied here: InitComponentRegion needs _window (not yet set — see _initialSettings's doc),
+        // so it runs from OnLoaded, mirroring every other field this method seeds for later use there.
+        _initialSettings = settings;
+
         // Peer-settings arrival race (bevel-kclq regression, 2026-09-29): a split-process taskbar's
         // ISettingsService (RemoteSettingsService) can paint its FIRST snapshot — the one every field
         // above was just read from — before the persisted values actually land (a stale/cold on-disk
@@ -198,6 +218,45 @@ public partial class TaskbarView : UserControl
 
     private Bevel.Core.ISettingsService? _settingsService;
     private bool _settingsServiceWired;
+
+    /// <summary>
+    /// Builds the registry + <see cref="ComponentBarHost"/> that compose the stacks region from
+    /// <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7 Task 14). Only the Stack type is
+    /// registered so far — Start/window-strip/tray/clock keep their current hand-built layout and
+    /// migrate in a follow-on task (spec §1 blesses incremental migration). The host's own panel
+    /// becomes <see cref="ComponentRegionHost"/>'s content once, here; later settings changes only
+    /// call <see cref="ApplyComponentRegion"/>, never rebuild the host.
+    /// </summary>
+    private void InitComponentRegion(Bevel.Core.BevelSettings settings)
+    {
+        var caps = new HashSet<string>(StringComparer.Ordinal);   // PAL capability names; empty until wired
+        var registry = new ComponentRegistry(caps);
+        registry.Register(StackComponentManifest.Create(), inst => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId,
+                new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
+                false)));
+
+        _componentHost = new ComponentBarHost(registry, new ComponentHealth(), _window!.Geometry);
+        ComponentRegionHost.Content = _componentHost.View;
+        ApplyComponentRegion(settings);
+    }
+
+    /// <summary>
+    /// Re-applies the persisted component list to the running bar. Safe to call on every settings
+    /// change: <see cref="ComponentBarHost.ApplyAsync"/> replaces slots rather than accumulating them.
+    /// Runs off the UI thread — <see cref="IComponentChannel.ConnectAsync"/> may touch IPC — and
+    /// <c>ApplyAsync</c> marshals only its own panel mutation back via <see cref="Dispatcher"/>, so
+    /// this never blocks the caller (settings-changed handlers run on the UI thread).
+    /// </summary>
+    private void ApplyComponentRegion(Bevel.Core.BevelSettings settings)
+    {
+        var host = _componentHost;
+        if (host is null) return;
+        var list = settings.TaskbarComponents;
+        // Off the UI thread: ConnectAsync may touch IPC. Only the panel mutation marshals back,
+        // which ApplyAsync already does for itself.
+        _ = Task.Run(() => host.ApplyAsync(list, CancellationToken.None));
+    }
 
     /// <summary>Fired off the shell-core transport thread (or synchronously for an in-process fake) —
     /// marshal to the UI thread before touching any control, exactly like App's own settings.Changed
@@ -282,6 +341,10 @@ public partial class TaskbarView : UserControl
     /// change is visible immediately without a restart.</summary>
     public void ApplyLiveSettings(Bevel.Core.BevelSettings s)
     {
+        // Keep the OnLoaded seed current too: a settings snapshot can legitimately arrive before
+        // OnLoaded ever runs (the same peer-settings race _settingsServiceWired's comment describes),
+        // and InitComponentRegion must not build the host from a stale snapshot once it does.
+        _initialSettings = s;
         Clock.Configure(s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
         ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
         if (_startBadgeFullDetail != s.StartBadgeFullDetail)
@@ -303,6 +366,7 @@ public partial class TaskbarView : UserControl
         ApplyAppearance(_fontSize, _bgColor, _opacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
+        ApplyComponentRegion(s);   // bevel-aqr7 Task 14: re-apply the component list, off the UI thread
 
         _locked = s.TaskbarLocked;
         ResizeGrip.IsVisible = !_locked;
@@ -469,6 +533,12 @@ public partial class TaskbarView : UserControl
         ShowDesktopButton.IsVisible = _showDesktop;
         ApplyTaskIconMetric();   // re-seed in case the tier was Configure()d after construction
         ApplyAppearance(_fontSize, _bgColor, _opacity);   // now attached — theme resources resolve
+
+        // Compose the stacks region from the component list (bevel-aqr7 Task 14), now that _window —
+        // and the real BarGeometry it owns — exists. Guarded like the Start menu just below: OnLoaded
+        // re-runs on every re-attach, and the host must be built exactly once.
+        if (_componentHost is null && _initialSettings is not null)
+            InitComponentRegion(_initialSettings);
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
