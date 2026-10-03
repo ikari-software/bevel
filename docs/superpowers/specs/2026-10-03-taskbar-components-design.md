@@ -268,7 +268,7 @@ Because filesystem permissions no longer protect the channel, the HMAC becomes t
 | Ephemeral random port | Port + nonce written to a per-session file with a user-only ACL — the replacement for socket-directory permissions. |
 | Connection-flood limiting | Any local process can now attempt connects. |
 | ZMQ CURVE on the component bus | Under consideration for the untrusted bus specifically. |
-| **Verify NetMQ against `PublishAot` early** | `BevelPublishAot=true` targets a single Mach-O with no JIT, and NetMQ becomes load-bearing. De-risk in this sub-project; do not discover late. |
+| ~~Verify NetMQ against `PublishAot` early~~ — **done, and it fails** | Verified 2026-10-03 by publishing *and running* the binary (`bevel-la9j`). NetMQ is not AOT-viable on Windows; AOT is deferred by decision. Note the method, because the obvious version of this check is useless: the publish was clean, so only executing reachable code revealed it. |
 
 #### 5.3.2 Helper-channel sequencing
 
@@ -309,7 +309,7 @@ Conventions follow the repo: xUnit + Avalonia.Headless with `UseSkia()` and `Use
 
 | Risk | Handling |
 |---|---|
-| **NetMQ may not be `PublishAot`-safe** | Verify first, before it is load-bearing (§5.3.1). If it fails, that is a transport decision to revisit — not something to discover during migration. |
+| ~~NetMQ may not be `PublishAot`-safe~~ — **settled 2026-10-03: it is not** (`bevel-la9j`) | The gate ran and failed: the AOT publish emits **zero warnings**, then the binary throws at the first socket bind, because `AsyncIO` resolves Winsock extension functions by GUID at runtime and wraps them with `GetDelegateForFunctionPointer` — which NativeAOT cannot marshal. **Ruling: keep NetMQ, defer AOT.** `BevelPublishAot` ships in no CI workflow, no packaging script and no release pipeline; it is opt-in (`bevel-gww.7`) and already blocked by `bevel-gww.9`, so this adds a second blocker to an unreachable target rather than breaking a working one. `BusSelfTest` is retained as the detector for when AOT work resumes. The transferable lesson: **a clean AOT publish is not evidence** — a gate must run the binary. |
 | Loopback TCP on Windows widens the local attack surface | Mitigations in §5.3.1; HMAC is load-bearing and must be treated as such in review. |
 | Migrating 27 keys touches live user settings | One-time fold, legacy keys readable for one release, round-trip tests. |
 | Primitive vocabulary may prove too narrow | `surface` is the escape hatch, scoped to a region. If a component needs more than a surface, that is contract feedback worth a bead. |

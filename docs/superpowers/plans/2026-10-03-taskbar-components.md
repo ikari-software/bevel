@@ -18,7 +18,7 @@
 - **`Bevel.Core` must not reference Avalonia** (ARCH-02). All manifest/instance/validation types live in `Bevel.Core/Components/`; no `using Avalonia` in that folder.
 - **Never block the Avalonia UI thread** — no `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` on the UI thread, no inline I/O in handlers or startup. Marshal with `Dispatcher.UIThread.Post/InvokeAsync`.
 - **Vector-only assets.** SVG or code-drawn geometry bound to theme tokens, never bitmaps. **Never disable antialiasing.**
-- **AOT:** every new type crossing `System.Text.Json` must be registered in `SettingsJsonContext` (`src/Bevel.Core/SettingsJsonContext.cs`) — it is a source-generated `JsonSerializerContext`. `BevelPublishAot=true` must keep working.
+- **AOT:** every new type crossing `System.Text.Json` must be registered in a source-generated `JsonSerializerContext` (`SettingsJsonContext` in `Bevel.Core`, `BusJsonContext` in `Bevel.ComponentBus`). Reflection-based `JsonSerializer` throws when AOT is enabled, and the source-gen path is better practice regardless — so this rule holds even though **`BevelPublishAot=true` is knowingly broken on this branch**: NetMQ's `AsyncIO` dependency is not AOT-compatible (`bevel-la9j`), and the user's ruling is to keep NetMQ and defer AOT. Do not spend effort making the AOT publish work, and do not treat its failure as your bug.
 - **Theme/resource-mutating test classes** share `[Collection("TaskbarTheme")]`.
 - **Headless render tests** use `[AvaloniaFact]` from `Avalonia.Headless.XUnit`.
 - Conventional-commit messages. Commit after every task.
@@ -80,11 +80,13 @@ Five conditions the spec implies that no task's happy path exercises. Each has a
 
 ---
 
-### Task 1: Create the bus project and prove NetMQ survives NativeAOT
+### Task 1: Create the bus project, and record the NetMQ/AOT answer
 
-The spec makes NetMQ load-bearing. `BevelPublishAot=true` targets a single binary with no JIT, so if NetMQ is not AOT-safe this is a transport decision to re-make *now*.
+This task creates the `Bevel.ComponentBus` project and ships `BusSelfTest` — a reachable NetMQ round-trip exposed as `--selftest-bus`.
 
-**A bare `PackageReference` proves nothing.** NetMQ's AOT risk is reflection reached at *connect* time, and an unreferenced-from-the-app package is trimmed away entirely — so a publish that only sees NetMQ from a test project comes back clean whether or not it works. This task therefore puts a *reachable* round-trip in the shipped app and runs the published binary.
+**The AOT question this originally gated has already been answered, and the answer is no.** Measured 2026-10-03: the AOT publish succeeds with **zero warnings**, then the binary throws at the first socket bind because `AsyncIO` resolves Winsock extension functions by GUID at runtime and wraps them with `GetDelegateForFunctionPointer`, which NativeAOT cannot marshal. The user's ruling is **keep NetMQ, defer AOT** (`bevel-la9j`). You are not expected to fix it, and its failure is not your bug.
+
+**Why `BusSelfTest` still ships.** It stops being a gate and becomes a *detector*: one command on a published binary tells whoever resumes AOT work whether this is still broken. It is also the reason the problem was found at all — a bare `PackageReference` proves nothing, because an unreferenced package is trimmed away and the publish comes back clean either way. Only running reachable code caught this.
 
 **Files:**
 - Create: `src/Bevel.ComponentBus/Bevel.ComponentBus.csproj`
@@ -270,13 +272,23 @@ dotnet publish src/Bevel.App/Bevel.App.csproj -r win-x64 -p:BevelPublishAot=true
 
 Expected: publish succeeds, and the binary prints `bus-selftest: ok` and exits 0. Capture any trim/AOT warning naming NetMQ, AsyncIO or NaCl verbatim — those are the finding.
 
-- [ ] **Step 9: Record the answer, and STOP if it failed**
+- [ ] **Step 9: Record the answer**
+
+> **THE GATE HAS ALREADY RUN, AND IT FAILED. The answer is recorded here so you do not re-litigate it.**
+>
+> Measured 2026-10-03, Win11 Pro 26300, NetMQ 4.0.4.3, net10.0, win-x64: the AOT publish succeeds with **zero warnings**, then the binary throws at the first socket bind —
+> `NotSupportedException: 'AsyncIO.Windows.AcceptExDelegate' is missing delegate marshalling data`, via `AsyncIO.Windows.Socket.LoadDynamicMethod<T>(Guid)` → `GetDelegateForFunctionPointer`. AsyncIO resolves Winsock extension functions by GUID at runtime, and NativeAOT cannot generate marshalling stubs for a type it never saw statically. Confirmed AOT-specific: the same code as a framework-dependent Release build prints `bus-selftest: ok`.
+>
+> **The user's ruling: keep NetMQ, defer AOT.** `BevelPublishAot` ships in no CI workflow, no packaging script and no release pipeline — it is opt-in (`bevel-gww.7`) and already blocked by `bevel-gww.9`, so this adds a second blocker to a target that is unreachable today rather than breaking a working one. Tracked in `bevel-la9j`.
+>
+> **`BusSelfTest` therefore stays in the product**, not as a gate but as a *detector*: when AOT work resumes, `--selftest-bus` on a published binary is the one-command check for whether this is still broken.
 
 ```bash
-bd update bevel-aqr7 --append-notes="Task 1: NetMQ 4.0.4.3 AOT gate — publish <ok|FAILED>, published binary --selftest-bus printed <output>. Trim warnings: <verbatim or 'none'>."
+bd update bevel-aqr7 --append-notes="Task 1: NetMQ 4.0.4.3 is NOT NativeAOT-viable on win-x64 (AsyncIO delegate marshalling; publish is silent). User ruling: keep NetMQ, defer AOT. See bevel-la9j. BusSelfTest retained as the detector for when AOT work resumes."
+bd dep add bevel-gww.7 bevel-la9j
 ```
 
-If the publish fails, emits NetMQ trim warnings, or the binary does not print `ok`: **stop and report to your human partner before Task 10.** The spec records this transport as an accepted risk taken on the assumption it is AOT-viable; a failed gate changes that input, and re-deciding it is theirs, not yours.
+If `bevel-gww.7` does not exist under that exact id, run `bd list --status=open | grep -i aot` and attach the dependency to the AOT bead that does.
 
 - [ ] **Step 10: Commit**
 
