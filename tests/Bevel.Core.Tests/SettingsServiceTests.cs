@@ -28,14 +28,14 @@ public sealed class SettingsServiceTests : IDisposable
     {
         var service = new SettingsService(_dir);
         await service.LoadAsync();
-        await service.UpdateThemeOverridesAsync("win2000", o => o.CrispBevels = true);
+        await service.UpdateThemeOverridesAsync(ThemeIds.Industrial1999, o => o.CrispBevels = true);
 
         var reloaded = new SettingsService(_dir);
         await reloaded.LoadAsync();
 
-        Assert.True(reloaded.ThemeOverridesFor("win2000").CrispBevels);
-        Assert.Null(reloaded.ThemeOverridesFor("luna").CrispBevels); // other themes untouched
-        Assert.Contains("\"theme:win2000\"", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+        Assert.True(reloaded.ThemeOverridesFor(ThemeIds.Industrial1999).CrispBevels);
+        Assert.Null(reloaded.ThemeOverridesFor(ThemeIds.Blue2001).CrispBevels); // other themes untouched
+        Assert.Contains($"\"theme:{ThemeIds.Industrial1999}\"", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
     }
 
     [Fact]
@@ -43,13 +43,13 @@ public sealed class SettingsServiceTests : IDisposable
     {
         var service = new SettingsService(_dir);
         await service.LoadAsync();
-        await service.UpdateThemeOverridesAsync("win2000", o => o.CrispBevels = true);
-        await service.UpdateThemeOverridesAsync("win2000", o => o.CrispBevels = null);
+        await service.UpdateThemeOverridesAsync(ThemeIds.Industrial1999, o => o.CrispBevels = true);
+        await service.UpdateThemeOverridesAsync(ThemeIds.Industrial1999, o => o.CrispBevels = null);
 
         var reloaded = new SettingsService(_dir);
         await reloaded.LoadAsync();
 
-        Assert.Null(reloaded.ThemeOverridesFor("win2000").CrispBevels);
+        Assert.Null(reloaded.ThemeOverridesFor(ThemeIds.Industrial1999).CrispBevels);
     }
 
     [Fact]

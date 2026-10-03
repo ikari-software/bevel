@@ -22,7 +22,10 @@ namespace Bevel.FileManager.Tests;
 public class InfoPaneStyleTest
 {
     [AvaloniaTheory]
-    [InlineData(InfoPaneStyle.Win2000, "win2000")]
+    // Tag is the SHOT FILENAME, so it follows the renamed theme, not the enum. The InfoPaneStyle
+    // enum member keeps its name for now: it is a separately-persisted settings value and needs its
+    // own migration (see the follow-up bead) — renaming it here would reset users' Folder Options.
+    [InlineData(InfoPaneStyle.Win2000, "industrial1999")]
     [InlineData(InfoPaneStyle.WinXP, "winxp")]
     [InlineData(InfoPaneStyle.Modern, "modern")]
     [InlineData(InfoPaneStyle.Win9x, "win9x")]
@@ -154,13 +157,13 @@ public class InfoPaneStyleTest
     [InlineData("Purple")]
     public void WinXP_recolours_to_luna_variant(string color)
     {
-        Bevel.UI.Luna.LunaVariantService.Apply(color, "Hybrid");
+        Bevel.UI.Blue2001.Blue2001VariantService.Apply(color, "Hybrid");
         try
         {
-            AssertContrast("Luna.Brush.InfoPaneHeadingText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneBodyText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneLinkText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneMutedText", 3.0);
+            AssertContrast("Blue2001.Brush.InfoPaneHeadingText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneBodyText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneLinkText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneMutedText", 3.0);
 
             var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
             pane.Title = "ikari";
@@ -184,7 +187,7 @@ public class InfoPaneStyleTest
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
         }
     }
 
@@ -217,7 +220,7 @@ public class InfoPaneStyleTest
     [AvaloniaFact]
     public void Open_WinXP_pane_tracks_live_variant_changes_and_restores_its_fallback()
     {
-        Bevel.UI.Luna.LunaVariantService.Clear();
+        Bevel.UI.Blue2001.Blue2001VariantService.Clear();
         var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
         var win = new Window { SystemDecorations = SystemDecorations.None, Width = 200, Height = 380, Content = pane };
         win.Show();
@@ -225,16 +228,16 @@ public class InfoPaneStyleTest
         try
         {
             var fallback = pane.Resources["InfoPane.Xp.Watermark"];
-            Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
             var purple = pane.Resources["InfoPane.Xp.Watermark"];
             Assert.NotSame(fallback, purple);
 
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             Assert.Same(fallback, pane.Resources["InfoPane.Xp.Watermark"]);
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             win.Close();
         }
     }

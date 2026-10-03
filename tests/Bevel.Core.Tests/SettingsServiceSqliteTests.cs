@@ -38,23 +38,23 @@ public sealed class SettingsServiceSqliteTests : IDisposable
             await writer.LoadAsync();
             await writer.UpdateAsync(s =>
             {
-                s.ThemeId = "luna";
+                s.ThemeId = ThemeIds.Blue2001;
                 s.ShowHiddenFiles = true;
                 s.TaskbarRows = 3;
                 s.WorkAreaStrategy = WorkAreaStrategy.DockShim;
             });
-            await writer.UpdateThemeOverridesAsync("luna", o => o.CrispBevels = true);
+            await writer.UpdateThemeOverridesAsync(ThemeIds.Blue2001, o => o.CrispBevels = true);
         }
 
         // A brand-new instance (a stand-in for a different process) reads it all back identically.
         using var reader = new SettingsService(_dir);
         await reader.LoadAsync();
 
-        Assert.Equal("luna", reader.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, reader.Current.ThemeId);
         Assert.True(reader.Current.ShowHiddenFiles);
         Assert.Equal(3, reader.Current.TaskbarRows);
         Assert.Equal(WorkAreaStrategy.DockShim, reader.Current.WorkAreaStrategy);
-        Assert.True(reader.ThemeOverridesFor("luna").CrispBevels);
+        Assert.True(reader.ThemeOverridesFor(ThemeIds.Blue2001).CrispBevels);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class SettingsServiceSqliteTests : IDisposable
         await r.LoadAsync();
         Assert.Equal("Menu", r.Current.TaskbarStartLabel);
         Assert.Equal(16, r.Current.TaskbarTrayIconSize);
-        Assert.Equal("win2000", r.Current.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, r.Current.ThemeId);
     }
 
     [Fact]
@@ -258,13 +258,13 @@ public sealed class SettingsServiceSqliteTests : IDisposable
         using var writer = new SettingsService(_dir);
         await writer.LoadAsync();
 
-        await writer.UpdateAsync(s => s.ThemeId = "luna");
-        await writer.UpdateThemeOverridesAsync("luna", o => o.CrispBevels = true); // must not drop themeId
+        await writer.UpdateAsync(s => s.ThemeId = ThemeIds.Blue2001);
+        await writer.UpdateThemeOverridesAsync(ThemeIds.Blue2001, o => o.CrispBevels = true); // must not drop themeId
 
         using var reader = new SettingsService(_dir);
         await reader.LoadAsync();
-        Assert.Equal("luna", reader.Current.ThemeId);              // the plain setting survived
-        Assert.True(reader.ThemeOverridesFor("luna").CrispBevels); // the override survived
+        Assert.Equal(ThemeIds.Blue2001, reader.Current.ThemeId);              // the plain setting survived
+        Assert.True(reader.ThemeOverridesFor(ThemeIds.Blue2001).CrispBevels); // the override survived
     }
 
     [Fact]

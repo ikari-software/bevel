@@ -12,7 +12,7 @@ namespace Bevel.FileManager.Tests;
 /// <see cref="ThemeTokens"/> resolves in the running app's resources with the right type, the
 /// Win2000 palette matches the spec table (docs/spec/05-theming.md §8.1) exactly, the metrics
 /// match §3's Win2000 column, and each Bevel.Brush.* is wired to its Bevel.Color.* value.
-/// TestAppBuilder boots the real Bevel.App, so this exercises the actual Win2000Theme merge.
+/// TestAppBuilder boots the real Bevel.App, so this exercises the actual Industrial1999Theme merge.
 /// </summary>
 public sealed class ThemeTokenTests
 {

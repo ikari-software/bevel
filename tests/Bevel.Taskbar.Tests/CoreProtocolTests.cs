@@ -1,3 +1,4 @@
+using Bevel.Core;
 using System.Linq;
 using Bevel.App.ShellCore;
 using Bevel.Pal.Abstractions;
@@ -102,7 +103,7 @@ public sealed class CoreProtocolTests
     [Fact]
     public void Settings_envelopes_round_trip_json_blob_and_version(/* bevel-6nve */)
     {
-        const string blob = """{ "themeId": "luna", "taskbarOpacity": 70 }""";
+        const string blob = """{ "themeId": ThemeIds.Blue2001, "taskbarOpacity": 70 }""";
 
         // core→UI snapshot / change event
         var evt = RoundTrip(new CoreEvent(CoreEventKind.SettingsSnapshot, SettingsJson: blob, SettingsVersion: 42));

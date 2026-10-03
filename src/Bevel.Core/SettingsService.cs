@@ -90,7 +90,15 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// created empty on first access. Persisted under a <c>theme:&lt;id&gt;</c> key.
     /// </summary>
     public ThemeOverrides ThemeOverridesFor(string themeId)
-        => _themeOverrides.TryGetValue(themeId, out var o) ? o : _themeOverrides[themeId] = new ThemeOverrides();
+    {
+        // Canonicalise the KEY too, not just themeId. These are stored per theme under "theme:<id>", so
+        // an install that predates the rename has its knobs under "theme:luna" / "theme:win2000". Looking
+        // them up by the new id alone would hand back a fresh empty ThemeOverrides and silently drop the
+        // user's per-theme settings (CrispBevels and friends) — a quieter version of the same reset the
+        // id migration exists to prevent.
+        themeId = ThemeIds.Canonical(themeId);
+        return _themeOverrides.TryGetValue(themeId, out var o) ? o : _themeOverrides[themeId] = new ThemeOverrides();
+    }
 
     /// <summary>Load settings from the DB, merging with defaults; seeds the DB on first run.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
@@ -639,7 +647,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
     {
         _settings = new BevelSettings
         {
-            ThemeId = GetString("themeId") ?? "win2000",
+            ThemeId = ThemeIds.Canonical(GetString("themeId")),
             ColorScheme = GetString("colorScheme") ?? "",
             LunaColor = GetString("lunaColor") ?? "",
             LunaGloss = GetString("lunaGloss") ?? "",
@@ -700,7 +708,10 @@ public sealed class SettingsService : ISettingsService, IDisposable
         foreach (var (key, el) in _raw)
         {
             if (key.StartsWith("theme:", StringComparison.Ordinal) && el.ValueKind == JsonValueKind.Object)
-                _themeOverrides[key["theme:".Length..]] = el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
+                // Canonical() on the way in, so "theme:luna" from an older install lands under the
+                // current id instead of sitting beside it as an orphan nobody reads.
+                _themeOverrides[ThemeIds.Canonical(key["theme:".Length..])] =
+                    el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
         }
     }
 
@@ -731,7 +742,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
 /// <summary>Typed settings model.</summary>
 public sealed class BevelSettings
 {
-    public string ThemeId { get; set; } = "win2000";
+    public string ThemeId { get; set; } = ThemeIds.Default;
 
     /// <summary>Win2000 colour scheme id (Classic <c>Colors/&lt;id&gt;.axaml</c>, W2K-01 / bevel-9js).
     /// Empty = "Windows Standard" (the default palette). This is the Win2000 theme's variant option;

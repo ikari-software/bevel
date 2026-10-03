@@ -58,7 +58,7 @@ public static class ColorSchemeService
         if (_aliasesMerged) return;
         appResources.MergedDictionaries.Add(new ResourceInclude(BaseUri)
         {
-            Source = new Uri("avares://Bevel.Themes.Win2000/SchemeAliases.axaml"),
+            Source = new Uri("avares://Bevel.Themes.Industrial1999/SchemeAliases.axaml"),
         });
         _aliasesMerged = true;
     }
@@ -98,7 +98,7 @@ public static class ColorSchemeService
     }
 
     /// <summary>Removes the merged Win2000 colour-scheme dictionary. Call when switching AWAY from the
-    /// Win2000 theme (symmetric to <see cref="LunaVariantService.Clear"/>) — otherwise the scheme's
+    /// Win2000 theme (symmetric to <see cref="Blue2001VariantService.Clear"/>) — otherwise the scheme's
     /// Application-level values (e.g. WindowCaptionHeightKey=18) LINGER and outrank the incoming theme's,
     /// which is what shrank Luna's title bar after a Win2000 round-trip (bevel-p3va). The alias layer is
     /// left in place (it's inert unless a scheme overrides the SystemColors it aliases). Idempotent.</summary>

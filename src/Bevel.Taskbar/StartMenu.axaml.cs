@@ -135,7 +135,7 @@ public partial class StartMenu : UserControl
     /// cascade uses, so it stays off-thread and current.</summary>
     private void ApplyThemeLayout()
     {
-        var luna = Bevel.UI.ThemeService.Current == "luna";
+        var luna = Bevel.UI.ThemeService.Current == Bevel.Core.ThemeIds.Blue2001;
         LunaLayout.IsVisible = luna;
         ClassicLayout.IsVisible = !luna;
         if (luna && !_lunaWired)
@@ -182,9 +182,9 @@ public partial class StartMenu : UserControl
             MinWidth = 200,
             Child = scroll,
         };
-        // Chrome from the Luna theme tokens (resolved live), not literals — see LunaTheme.axaml.
-        frame[!Border.BackgroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPinnedColumn");
-        frame[!Border.BorderBrushProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceIconBorder");
+        // Chrome from the Luna theme tokens (resolved live), not literals — see Blue2001Theme.axaml.
+        frame[!Border.BackgroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPinnedColumn");
+        frame[!Border.BorderBrushProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceIconBorder");
         _allProgramsFlyout = new Flyout { Content = frame, Placement = PlacementMode.RightEdgeAlignedBottom };
         LunaAllProgramsButton.Flyout = _allProgramsFlyout;
 
@@ -212,7 +212,7 @@ public partial class StartMenu : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 13,
         };
-        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText");
+        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceText");
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         content.Children.Add(icon);
         content.Children.Add(label);
@@ -227,7 +227,7 @@ public partial class StartMenu : UserControl
         // Full-row Luna selection on hover; colours come from the theme tokens (resolved live), matching
         // the XAML Button.lunarow hover. Re-apply the themed foreground binding on exit.
         row.PointerEntered += (_, _) => { row.Background = ThemedBrush("Bevel.Brush.Highlight", Brushes.RoyalBlue); label.Foreground = Brushes.White; };
-        row.PointerExited += (_, _) => { row.Background = Brushes.Transparent; label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText"); };
+        row.PointerExited += (_, _) => { row.Background = Brushes.Transparent; label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceText"); };
         row.PointerPressed += (_, _) =>
         {
             if (p.LaunchCommand?.CanExecute(null) == true) p.LaunchCommand.Execute(null);

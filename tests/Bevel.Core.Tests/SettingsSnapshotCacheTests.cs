@@ -41,7 +41,10 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
         Assert.Equal(42, read.Value.Version);
         // Re-serialised, so compare by content — the same rule the peer uses against a live snapshot.
         Assert.True(SettingsService.BlobsEquivalent(LunaBlob, read.Value.Json));
-        Assert.Equal("luna", SettingsService.ProjectBlob(read.Value.Json).Settings.ThemeId);
+        // The cache deliberately holds the LEGACY id, because that is what an existing install's file
+        // contains. Projecting it must yield the current id — this is the migration proven end to end
+        // through the real projection, not just through ThemeIds.Canonical in isolation.
+        Assert.Equal(ThemeIds.Blue2001, SettingsService.ProjectBlob(read.Value.Json).Settings.ThemeId);
         Assert.Equal(2, SettingsService.ProjectBlob(read.Value.Json).Settings.TaskbarRows);
     }
 
@@ -94,14 +97,14 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
         Assert.False(SettingsService.TryProjectBlob(blob, out _, out _));
         // The permissive path still yields defaults — that contract (missing file → defaults) is the
         // store's, not the peer's; the point is that a peer can now tell the two apart.
-        Assert.Equal("win2000", SettingsService.ProjectBlob(blob).Settings.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, SettingsService.ProjectBlob(blob).Settings.ThemeId);
     }
 
     [Fact]
     public void TryProjectBlob_accepts_an_empty_object_as_a_real_all_defaults_blob()
     {
         Assert.True(SettingsService.TryProjectBlob("{}", out var s, out var overrides));
-        Assert.Equal("win2000", s.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, s.ThemeId);
         Assert.Empty(overrides);
     }
 
@@ -109,8 +112,10 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     public void TryProjectBlob_projects_a_real_blob_with_its_overrides()
     {
         Assert.True(SettingsService.TryProjectBlob(LunaBlob, out var s, out var overrides));
-        Assert.Equal("luna", s.ThemeId);
-        Assert.True(overrides["luna"].CrispBevels);
+        Assert.Equal(ThemeIds.Blue2001, s.ThemeId);
+        // Keyed by the CURRENT id even though the blob says "theme:luna": projecting migrates the
+        // override keys too, so an existing install's per-theme knobs are not orphaned by the rename.
+        Assert.True(overrides[ThemeIds.Blue2001].CrispBevels);
     }
 
     // ── SettingsService.BlobsEquivalent ──────────────────────────────────────────────────────────────
@@ -118,6 +123,9 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     [Fact]
     public void BlobsEquivalent_ignores_whitespace_and_key_order_but_not_values()
     {
+        // Deliberately the LEGACY literals: BlobsEquivalent compares raw JSON, before any projection or
+        // id migration, so the fixture and its twin must match byte-for-byte in meaning — canonical ids
+        // here would be comparing a migrated blob against an unmigrated one.
         Assert.True(SettingsService.BlobsEquivalent(LunaBlob,
             "{\"theme:luna\":{\"CrispBevels\":true},\"taskbarRows\":2,\"themeId\":\"luna\",\"schemaVersion\":1}"));
         Assert.False(SettingsService.BlobsEquivalent(LunaBlob, LunaBlob.Replace("\"luna\"", "\"win2000\"")));

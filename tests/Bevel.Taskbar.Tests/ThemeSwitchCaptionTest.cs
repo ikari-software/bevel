@@ -34,11 +34,11 @@ public class ThemeSwitchCaptionTest
     {
         try
         {
-            Switch("luna");
+            Switch(ThemeIds.Blue2001);
             var fresh = CaptionHeight();
 
-            Switch("win2000");
-            Switch("luna");
+            Switch(ThemeIds.Industrial1999);
+            Switch(ThemeIds.Blue2001);
             var afterRoundTrip = CaptionHeight();
 
             Assert.Equal(fresh, afterRoundTrip);   // both Luna's 25
@@ -46,7 +46,7 @@ public class ThemeSwitchCaptionTest
         }
         finally
         {
-            Switch("win2000");
+            Switch(ThemeIds.Industrial1999);
         }
     }
 }

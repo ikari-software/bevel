@@ -13,7 +13,7 @@ namespace Bevel.UI;
 /// Win2000 base <c>Tokens.axaml</c> that ships in the theme styles.
 ///
 /// <para>This is the packaging/switch <b>engine</b>: <see cref="Themes"/> is the registry and
-/// <see cref="Apply"/> is the runtime swap. The default theme ("win2000", the frozen id) merges
+/// <see cref="Apply"/> is the runtime swap. The default theme (<see cref="Bevel.Core.ThemeIds.Default"/>) merges
 /// nothing — the base tokens are the theme. Additional themes each contribute one override dict.</para>
 ///
 /// <para><b>v1 scope.</b> A theme currently composes the token axes that already cascade live —
@@ -30,16 +30,21 @@ namespace Bevel.UI;
 /// </summary>
 public static class ThemeService
 {
-    /// <summary>Selectable themes as (persisted id, display name). "win2000" is the frozen default id.</summary>
+    /// <summary>Selectable themes as (persisted id, display name).</summary>
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
-        ("win2000", "Bevel 1999 Industrial"),
-        ("luna", "Bevel 2001 Blue"),
+        (Bevel.Core.ThemeIds.Industrial1999, "Bevel 1999 Industrial"),
+        (Bevel.Core.ThemeIds.Blue2001, "Bevel 2001 Blue"),
         ("flat", "Bevel Flat (preview)"),
     };
 
-    /// <summary>The default theme id (the base Win2000 tokens). Empty/unknown resolves here.</summary>
-    public const string DefaultTheme = "win2000";
+    /// <summary>The default theme id. Empty/unknown resolves here.</summary>
+    public const string DefaultTheme = Bevel.Core.ThemeIds.Default;
+
+    /// <summary>Maps a persisted theme id to the one in use today. Delegates to <see
+    /// cref="Bevel.Core.ThemeIds"/>, which owns the mapping because the migration has to happen where
+    /// the value leaves the database.</summary>
+    public static string Canonical(string? id) => Bevel.Core.ThemeIds.Canonical(id);
 
     /// <summary>The currently-applied theme id. Surfaces that swap whole layouts by theme (the Start
     /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.</summary>
@@ -54,7 +59,7 @@ public static class ThemeService
     /// a Styles-set theme that carries its tokens inside its own <see cref="StylesFor"/> bundle).</summary>
     private static string? SourceFor(string id) => id switch
     {
-        "flat" => "avares://Bevel.Themes.Win2000/ThemeFlat.axaml",
+        "flat" => "avares://Bevel.Themes.Industrial1999/ThemeFlat.axaml",
         _ => null,
     };
 
@@ -65,7 +70,7 @@ public static class ThemeService
     /// colours.</summary>
     private static string? StylesFor(string id) => id switch
     {
-        "luna" => "avares://Bevel.Themes.Luna/LunaTheme.axaml",
+        "blue2001" => "avares://Bevel.Themes.Blue2001/Blue2001Theme.axaml",
         _ => null,
     };
 
@@ -84,6 +89,10 @@ public static class ThemeService
     /// the colour variant / font for that theme, or the two engines end up disagreeing (ce-review).</summary>
     public static bool Apply(string? id)
     {
+        // Canonicalise FIRST. A legacy id ("luna"/"win2000") is not IsKnown, so without this it would
+        // fall through to DefaultTheme — silently resetting the theme of every install that predates
+        // the rename, which is the whole thing the migration exists to prevent.
+        id = Canonical(id);
         var theme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultTheme : id!;
         if (theme == _appliedId) return true;   // already in place — safe to apply the variant/font
         if (Application.Current is not { } app || app.Resources is not { } res) return false;

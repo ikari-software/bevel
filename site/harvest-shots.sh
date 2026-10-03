@@ -2,7 +2,7 @@
 # Regenerates site/shots/ from the shell's own Render* tests.
 #
 # The landing page only ships real renders, so the shots are build OUTPUT that happens to be
-# committed — and committed output rots. Two of them did: theme-win2000.png had no test behind it at
+# committed — and committed output rots. Two of them did: theme-industrial1999.png had no test behind it at
 # all (a one-off hand-run) and infopane-win9x.png was harvested while text still rendered aliased,
 # then sat stale for months while its siblings were refreshed.
 #
@@ -44,24 +44,25 @@ BEVEL_INFO_DIR="$BEVEL_INFO_DIR" run "$FM" "FullyQualifiedName~InfoPaneStyleTest
 for t in win2000 winxp modern win9x; do cp "$TMP/info/infopane-$t.png" "$OUT/"; produced "infopane-$t.png"; done
 
 echo "==> settings dialog, Appearance tab"
-BEVEL_ONB_APPEARANCE_OUT="$OUT/theme-win2000.png" \
+BEVEL_ONB_APPEARANCE_OUT="$OUT/theme-industrial1999.png" \
   run "$TB" "FullyQualifiedName~RenderOnboardingTest.Render_appearance_tab_to_png"
-produced "theme-win2000.png"
+produced "theme-industrial1999.png"
 
 echo "==> Start menu"
-BEVEL_RENDER_OUT="$OUT/startmenu-win2000.png" \
+BEVEL_RENDER_OUT="$OUT/startmenu-industrial1999.png" \
   run "$TB" "FullyQualifiedName~RenderStartMenuTest.Render_start_menu_to_png"
-produced "startmenu-win2000.png"
+produced "startmenu-industrial1999.png"
 
 echo "==> Start menu, type-to-search"
+# Pin win2000: the theory also covers luna, and both wrote the same path (last writer won).
 BEVEL_RENDER_OUT="$OUT/startmenu-search.png" \
-  run "$TB" "FullyQualifiedName~RenderStartMenuSearchTest"
+  run "$TB" "FullyQualifiedName~Render_searching_start_menu_to_png&DisplayName~win2000"
 produced "startmenu-search.png"
 
 echo "==> Luna colourways, four up"
-BEVEL_LUNA_4UP_OUT="$OUT/luna-4up.png" \
+BEVEL_LUNA_4UP_OUT="$OUT/blue2001-4up.png" \
   run "$TB" "FullyQualifiedName~Render_site_four_up"
-produced "luna-4up.png"
+produced "blue2001-4up.png"
 
 echo "==> Downloads stack grid"
 BEVEL_STACKGRID_REAL_OUT="$OUT/stack-grid.png" \
@@ -69,7 +70,7 @@ BEVEL_STACKGRID_REAL_OUT="$OUT/stack-grid.png" \
 produced "stack-grid.png"
 
 # Nothing is hand-composited any more. The list stays so the audit can still tell "deliberately
-# manual" from "silently dropped out of the pipeline" — the distinction that let theme-win2000.png rot.
+# manual" from "silently dropped out of the pipeline" — the distinction that let theme-industrial1999.png rot.
 MANUAL=""
 
 # Two passes: each component test dumps its own piece (inheriting its settling and assertions), then
@@ -80,9 +81,9 @@ BEVEL_HERO_PARTS="$HERO_PARTS" run "$TB" \
   "FullyQualifiedName~Render_luna_start_menu_to_png|FullyQualifiedName~Render_luna_framed_window_to_png|FullyQualifiedName~Render_luna_taskbar_to_png"
 
 echo "==> hero"
-BEVEL_HERO_PARTS="$HERO_PARTS" BEVEL_HERO_OUT="$OUT/hero-luna.png" \
+BEVEL_HERO_PARTS="$HERO_PARTS" BEVEL_HERO_OUT="$OUT/hero-blue2001.png" \
   run "$TB" "FullyQualifiedName~Render_site_hero"
-produced "hero-luna.png"
+produced "hero-blue2001.png"
 
 echo "==> audit: every shot the page references is accounted for"
 missing=0

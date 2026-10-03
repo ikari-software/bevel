@@ -19,7 +19,7 @@ namespace Bevel.Taskbar.Tests;
 /// off the screen bottom, plus the Win2000 skin's 1px button margin — where the bar's top is 1383. One
 /// RowHeight of wallpaper showed between the menu and the taskbar.
 ///
-/// Nothing caught it because nothing asserts popup placement at all: RenderLunaStartMenuTest detaches
+/// Nothing caught it because nothing asserts popup placement at all: RenderBlue2001StartMenuTest detaches
 /// the popup's content into its own window before capturing, so the menu is only ever rendered in
 /// isolation. Until placement itself is testable headlessly, the button's cap is the closest proxy —
 /// it is the value the anchor is derived from.

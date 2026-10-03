@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Ipc", "src\Bevel.Ipc\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.UI", "src\Bevel.UI\Bevel.UI.csproj", "{B8DA1027-7E5D-444F-9345-141547D7CF3C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Themes.Win2000", "src\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj", "{BD256337-03B8-4FFD-88B7-0C766AD3BDEA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Themes.Industrial1999", "src\Bevel.Themes.Industrial1999\Bevel.Themes.Industrial1999.csproj", "{BD256337-03B8-4FFD-88B7-0C766AD3BDEA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Desktop", "src\Bevel.Desktop\Bevel.Desktop.csproj", "{0F653BA2-BE56-418B-A21B-D81805F606D0}"
 EndProject
@@ -63,7 +63,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Interop", "src\Bevel.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "bevelctl", "src\bevelctl\bevelctl.csproj", "{70017572-DFE6-478E-939B-66C26F921A93}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Themes.Luna", "src\Bevel.Themes.Luna\Bevel.Themes.Luna.csproj", "{92EFE80C-91C9-4780-A9BE-AFD76CEB705F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Themes.Blue2001", "src\Bevel.Themes.Blue2001\Bevel.Themes.Blue2001.csproj", "{92EFE80C-91C9-4780-A9BE-AFD76CEB705F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bevel.Pal.Windows", "src\Bevel.Pal.Windows\Bevel.Pal.Windows.csproj", "{4749AAEE-F9AB-4F7A-868D-E50900731BB0}"
 EndProject

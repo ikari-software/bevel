@@ -106,7 +106,7 @@ public class RenderOnboardingTest
         var dir = Path.Combine(Path.GetTempPath(), "bevel-onb-luna-" + Guid.NewGuid().ToString("N"));
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             var settings = new SettingsService(dir);
             var win = new OnboardingWindow(settings) { Width = 470, Height = 460 };
             win.Show();
@@ -120,7 +120,7 @@ public class RenderOnboardingTest
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
             try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ }
         }
     }

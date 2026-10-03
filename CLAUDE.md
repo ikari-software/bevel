@@ -108,8 +108,8 @@ must set `ctx.Cancel` or children orphan.
 - `Bevel.App` — composition root: DI wiring, `--role`/`--pal` arg parsing, entry point, window factories.
 - `Bevel.UI` — shared Avalonia chrome: `BevelWindow` (inherits Classic.Avalonia `ClassicWindow` for
   client-drawn Win2000 chrome), `Glyphs` (self-drawn vector file icons), and the theming services
-  `ThemeService` / `LunaVariantService` / `ColorSchemeService`.
-- `Bevel.Themes.Win2000` (default; aliases Classic.Avalonia via `BasedOn`) and `Bevel.Themes.Luna`
+  `ThemeService` / `Blue2001VariantService` / `ColorSchemeService`.
+- `Bevel.Themes.Industrial1999` (default; aliases Classic.Avalonia via `BasedOn`) and `Bevel.Themes.Blue2001`
   (glossy vector ControlThemes). Flat/Whistler is spec-only so far (`docs/design/flat/`).
 - `Bevel.FileManager` — Filer window + `Components/` (ItemView, InfoPane, address bar, …) + VFS UI.
 - `Bevel.Taskbar` — taskbar, Start menu, tray, and the background `ShellModel` (owns window/app/tray
@@ -155,7 +155,7 @@ memory-mapped BGRA pool (`MmfBgraPool`).
   designed in 2026"; tasteful cross-era extensions (XP/macOS niceties) are welcome, rendered in the skin.
 - App pins `RequestedThemeVariant="Light"` — do not add `RequestedThemeVariant`/`ThemeVariantScope`
   overrides (popups follow `Application.ActualThemeVariant`; a Dark leak washes out menus).
-- Two runtime recolor engines (`LunaVariantService`, `ColorSchemeService`) **override** static theme
+- Two runtime recolor engines (`Blue2001VariantService`, `ColorSchemeService`) **override** static theme
   tokens and must be `Clear()`'d symmetrically when switching away.
 - **Task tracking is `bd` (beads), not TodoWrite/markdown.** Run `bd prime`. Persistent knowledge via
   `bd remember`.

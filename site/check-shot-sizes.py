@@ -6,7 +6,7 @@ out at, so the browser spends the extra pixels on a Retina display. The attribut
 the LOGICAL size and the file carries SCALE times that.
 
 The browser lays out to the attributes, so a re-harvest that changes a render's dimensions silently
-squashes the image until they follow. startmenu-win2000.png grew a "Show Desktop" row (210x206 ->
+squashes the image until they follow. startmenu-industrial1999.png grew a "Show Desktop" row (210x206 ->
 211x225) and the page kept declaring the old size.
 
 Usage: check-shot-sizes.py <dir-of-shots>   (run from the repo root)
@@ -22,7 +22,7 @@ SCALE = 2
 # Hand-composited shots that no test produces yet, so they are still 1x. Named rather than inferred:
 # a shot that quietly fails the scale rule should be a visible exception, not an invisible pass.
 MANUAL_1X = {
-    "theme-win2000.png",   # Avalonia mis-scales its TabControl content above 1x
+    "theme-industrial1999.png",   # Avalonia mis-scales its TabControl content above 1x
 }
 
 shots = pathlib.Path(sys.argv[1])

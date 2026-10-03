@@ -10,7 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
-using Bevel.UI.Luna;
+using Bevel.UI.Blue2001;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -69,7 +69,7 @@ public class RenderPressedTaskButtonTest
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             var (window, view, _, _) = BuildBar(
                 Win("w0", "Window 1", focused: true),
                 Win("w1", "Window 2"));
@@ -80,7 +80,7 @@ public class RenderPressedTaskButtonTest
                 ("Purple", "BEVEL_PRESSED_LUNA_PURPLE_OUT", "bevel-pressed-luna-purple.png"),
             })
             {
-                LunaVariantService.Apply(color, "Hybrid");
+                Blue2001VariantService.Apply(color, "Hybrid");
                 var frame = CaptureStable(window);
                 Save(frame, env, file);
                 var (focused, other) = ButtonRects(view, window);
@@ -94,8 +94,8 @@ public class RenderPressedTaskButtonTest
         }
         finally
         {
-            LunaVariantService.Clear();
-            Bevel.UI.ThemeService.Apply("win2000");
+            Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 

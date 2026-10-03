@@ -523,7 +523,7 @@ public sealed class ShellCoreIntegrationTests
         var dir = NewConfigDir();
         var core = new SettingsService(dir);
         await core.LoadAsync(Ct);
-        await core.UpdateAsync(s => s.ThemeId = "luna", Ct); // seed an explicit key the merge must preserve
+        await core.UpdateAsync(s => s.ThemeId = ThemeIds.Blue2001, Ct); // seed an explicit key the merge must preserve
 
         var pal = new ControllablePal();
         var path = NewSocketPath();
@@ -537,7 +537,7 @@ public sealed class ShellCoreIntegrationTests
             await using var remote = new RemoteSettingsService(client);
             await remote.LoadAsync(Ct);
 
-            Assert.Equal("luna", remote.Current.ThemeId);
+            Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);
             var loadedVersion = remote.Version;
             Assert.True(loadedVersion >= 1);
             Assert.False(await remote.ReloadIfChangedAsync(Ct)); // peer reload never claims a change
@@ -551,7 +551,7 @@ public sealed class ShellCoreIntegrationTests
             await changed.Task.WaitAsync(Timeout);
 
             Assert.Equal(55, remote.Current.TaskbarOpacity);  // the broadcast landed
-            Assert.Equal("luna", remote.Current.ThemeId);     // the untouched key merged through, not clobbered
+            Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);     // the untouched key merged through, not clobbered
             Assert.True(remote.Version > loadedVersion);
             Assert.Equal(55, core.Current.TaskbarOpacity);    // the core is the real writer
         }

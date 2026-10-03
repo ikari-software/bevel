@@ -1,3 +1,4 @@
+using Bevel.Core;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
@@ -81,7 +82,7 @@ public class DisconnectedIndicatorTests
     {
         try
         {
-            foreach (var theme in new[] { "win2000", "luna" })
+            foreach (var theme in new[] { ThemeIds.Industrial1999, ThemeIds.Blue2001 })
             {
                 Bevel.UI.ThemeService.Apply(theme);
                 var (view, _, _) = Build(connected: false);
@@ -102,7 +103,7 @@ public class DisconnectedIndicatorTests
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 

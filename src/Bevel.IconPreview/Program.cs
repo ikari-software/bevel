@@ -105,7 +105,7 @@ internal static class Program
         var sizes = new[] { 16, 32, 48, 64, 128 };
         // AppContext.BaseDirectory = .../src/Bevel.IconPreview/bin/Debug/net10.0/
         // Need 5 levels up to reach the solution root.
-        var outDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/Bevel.Themes.Win2000/Assets/Icons"));
+        var outDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/Bevel.Themes.Industrial1999/Assets/Icons"));
         Directory.CreateDirectory(outDir);
         Console.WriteLine($"  Exporting to: {outDir}");
 
@@ -169,7 +169,7 @@ internal sealed class App : Application
         // Load Win2000 color/brush tokens so Glyphs.ResolveColor() picks up
         // the theme values instead of hardcoded fallback hex.
         var tokens = AvaloniaXamlLoader.Load(
-            new Uri("avares://Bevel.Themes.Win2000/Tokens.axaml"));
+            new Uri("avares://Bevel.Themes.Industrial1999/Tokens.axaml"));
         if (tokens is ResourceDictionary rd)
             Resources.MergedDictionaries.Add(rd);
     }
@@ -179,7 +179,7 @@ internal sealed class PreviewWindow : Window
 {
     public PreviewWindow()
     {
-        Title = "Bevel Win2000 Icon Preview";
+        Title = "Bevel Icon Preview";
         Width = 1000;
         Height = 800;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;

@@ -10,7 +10,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 using Bevel.Core;
-using Bevel.UI.Luna;
+using Bevel.UI.Blue2001;
 
 namespace Bevel.FileManager.Components;
 
@@ -48,8 +48,8 @@ public partial class InfoPane : UserControl
         _xpDefaultLinkText = (IBrush)Resources["InfoPane.Xp.LinkText"]!;
         _xpDefaultArrow = (IBrush)Resources["InfoPane.Xp.Arrow"]!;
         _xpDefaultMutedText = (IBrush)Resources["InfoPane.Xp.MutedText"]!;
-        AttachedToVisualTree += (_, _) => LunaVariantService.Changed += OnLunaVariantChanged;
-        DetachedFromVisualTree += (_, _) => LunaVariantService.Changed -= OnLunaVariantChanged;
+        AttachedToVisualTree += (_, _) => Blue2001VariantService.Changed += OnBlue2001VariantChanged;
+        DetachedFromVisualTree += (_, _) => Blue2001VariantService.Changed -= OnBlue2001VariantChanged;
     }
 
     /// <summary>Selected visual style. Off leaves the (empty) pane; the host collapses the column.</summary>
@@ -93,17 +93,17 @@ public partial class InfoPane : UserControl
 
     private void ApplyXpPalette()
     {
-        CopyApplicationBrush("Luna.Brush.InfoPaneWatermark", "InfoPane.Xp.Watermark", _xpDefaultWatermark);
-        CopyApplicationBrush("Luna.Brush.InfoPaneHeader", "InfoPane.Xp.Header", _xpDefaultHeader);
-        CopyApplicationBrush("Luna.Brush.InfoPaneBorder", "InfoPane.Xp.Border", _xpDefaultBorder);
-        CopyApplicationBrush("Luna.Brush.InfoPaneHeadingText", "InfoPane.Xp.HeadingText", _xpDefaultHeadingText);
-        CopyApplicationBrush("Luna.Brush.InfoPaneBodyText", "InfoPane.Xp.BodyText", _xpDefaultBodyText);
-        CopyApplicationBrush("Luna.Brush.InfoPaneLinkText", "InfoPane.Xp.LinkText", _xpDefaultLinkText);
-        CopyApplicationBrush("Luna.Brush.InfoPaneArrow", "InfoPane.Xp.Arrow", _xpDefaultArrow);
-        CopyApplicationBrush("Luna.Brush.InfoPaneMutedText", "InfoPane.Xp.MutedText", _xpDefaultMutedText);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneWatermark", "InfoPane.Xp.Watermark", _xpDefaultWatermark);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneHeader", "InfoPane.Xp.Header", _xpDefaultHeader);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneBorder", "InfoPane.Xp.Border", _xpDefaultBorder);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneHeadingText", "InfoPane.Xp.HeadingText", _xpDefaultHeadingText);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneBodyText", "InfoPane.Xp.BodyText", _xpDefaultBodyText);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneLinkText", "InfoPane.Xp.LinkText", _xpDefaultLinkText);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneArrow", "InfoPane.Xp.Arrow", _xpDefaultArrow);
+        CopyApplicationBrush("Blue2001.Brush.InfoPaneMutedText", "InfoPane.Xp.MutedText", _xpDefaultMutedText);
     }
 
-    private void OnLunaVariantChanged()
+    private void OnBlue2001VariantChanged()
     {
         if (_style != InfoPaneStyle.WinXP) return;
         ApplyXpPalette();

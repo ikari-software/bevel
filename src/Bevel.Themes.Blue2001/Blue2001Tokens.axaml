@@ -1,0 +1,101 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:classic="using:Classic.Avalonia.Theme"
+                    xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia">
+    <!--
+      XP Luna Blue token OVERRIDES (theme.json is the source of truth; §9 LUN-02 / §3).
+      Only the chrome keys that differ from the Win2000 base are redefined here; every other
+      Bevel.* token (the whole Icon.* set, etc.) falls through to the base Tokens.axaml still
+      in Application.Styles, since ThemeService adds the Luna Styles set AFTER it so these win.
+    -->
+
+    <!-- ── Palette ────────────────────────────────────────────────────────── -->
+    <Color x:Key="Bevel.Color.ButtonFace">#ECE9D8</Color>
+    <Color x:Key="Bevel.Color.ButtonHighlight">#FFFFFF</Color>
+    <Color x:Key="Bevel.Color.ButtonLight">#F1EFE2</Color>
+    <Color x:Key="Bevel.Color.ButtonShadow">#ACA899</Color>
+    <Color x:Key="Bevel.Color.ButtonDkShadow">#716F64</Color>
+    <Color x:Key="Bevel.Color.WindowFrame">#0831D9</Color>
+    <Color x:Key="Bevel.Color.Menu">#ECE9D8</Color>
+    <Color x:Key="Bevel.Color.Scrollbar">#D6D2C2</Color>
+    <Color x:Key="Bevel.Color.ActiveTitle">#0A51DF</Color>
+    <Color x:Key="Bevel.Color.GradientActiveTitle">#3F88EC</Color>
+    <Color x:Key="Bevel.Color.InactiveTitle">#7BA0C8</Color>
+    <Color x:Key="Bevel.Color.GradientInactiveTitle">#C6D6EF</Color>
+    <Color x:Key="Bevel.Color.InactiveTitleText">#E8EEF7</Color>
+    <Color x:Key="Bevel.Color.Highlight">#316AC5</Color>
+    <!-- Selection foreground. White on every Luna variant, so Blue2001VariantService deliberately does
+         NOT re-hue it (a re-hued one would wash out on the blue). Completes the pair Win2000/SchemeAliases
+         already define, so anything token-driven on the selection colour — the taskbar unread pill
+         (bevel-ijln) — resolves under Luna too instead of rendering invisible text. -->
+    <Color x:Key="Bevel.Color.HighlightText">#FFFFFF</Color>
+    <Color x:Key="Bevel.Color.HotTracking">#0A51DF</Color>
+    <Color x:Key="Bevel.Color.Desktop">#5A7EDC</Color>
+
+    <!-- Window caption: the Classic AutoAttachTitleBar (internal, can't re-template from here) builds
+         its title-bar brush from these SystemColors; override them to the Luna blues so framed windows
+         (Onboarding/file manager/dialogs) get a Luna caption. NOTE: ColorSchemeService merges the active
+         scheme into Application.Resources, which can outrank a Styles-set token — if the caption still
+         shows the scheme colour, ThemeService must push these into Application.Resources after the scheme. -->
+    <Color x:Key="{x:Static common:SystemColors.ActiveCaptionColorKey}">#0A51DF</Color>
+    <Color x:Key="{x:Static common:SystemColors.GradientActiveCaptionColorKey}">#3F88EC</Color>
+    <Color x:Key="{x:Static common:SystemColors.ActiveCaptionTextColorKey}">#FFFFFF</Color>
+    <Color x:Key="{x:Static common:SystemColors.InactiveCaptionColorKey}">#7BA0C8</Color>
+    <Color x:Key="{x:Static common:SystemColors.GradientInactiveCaptionColorKey}">#C6D6EF</Color>
+    <Color x:Key="{x:Static common:SystemColors.InactiveCaptionTextColorKey}">#E8EEF7</Color>
+    <!-- Taller Luna caption (25px vs the Classic 18px). This key IS a DynamicResource on the internal
+         AutoAttachTitleBar, so overriding it here retitles the caption height without a re-template. -->
+    <x:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">25</x:Double>
+    <!-- Smooth (antialiased) text — XP renders type with ClearType, not the Win2000 crisp aliased look.
+         FontUtils.FontAliasing reads this: false → SubpixelAntialias, true → Alias. -->
+    <x:Boolean x:Key="{x:Static common:SystemParameters.FontAliasingKey}">False</x:Boolean>
+
+    <!-- Brushes over the overridden colours (same key names as the base). -->
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="{StaticResource Bevel.Color.ButtonFace}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonHighlight" Color="{StaticResource Bevel.Color.ButtonHighlight}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonLight" Color="{StaticResource Bevel.Color.ButtonLight}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonShadow" Color="{StaticResource Bevel.Color.ButtonShadow}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ButtonDkShadow" Color="{StaticResource Bevel.Color.ButtonDkShadow}" />
+    <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="{StaticResource Bevel.Color.WindowFrame}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Menu" Color="{StaticResource Bevel.Color.Menu}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Scrollbar" Color="{StaticResource Bevel.Color.Scrollbar}" />
+    <SolidColorBrush x:Key="Bevel.Brush.ActiveTitle" Color="{StaticResource Bevel.Color.ActiveTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.GradientActiveTitle" Color="{StaticResource Bevel.Color.GradientActiveTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InactiveTitle" Color="{StaticResource Bevel.Color.InactiveTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.GradientInactiveTitle" Color="{StaticResource Bevel.Color.GradientInactiveTitle}" />
+    <SolidColorBrush x:Key="Bevel.Brush.InactiveTitleText" Color="{StaticResource Bevel.Color.InactiveTitleText}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Highlight" Color="{StaticResource Bevel.Color.Highlight}" />
+    <SolidColorBrush x:Key="Bevel.Brush.HighlightText" Color="{StaticResource Bevel.Color.HighlightText}" />
+    <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="{StaticResource Bevel.Color.HotTracking}" />
+    <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="{StaticResource Bevel.Color.Desktop}" />
+
+    <!-- The vendored ClassicWindow paints its backdrop and the frame/caption GAPS with ControlBrushKey
+         (Classic grey #D4D0C8). Left un-remapped under Luna it showed as an off-palette grey wedge in
+         the rounded-caption top corners and a 1px grey seam around the caption. Remap to the beige face
+         so those gaps blend into the window body instead. -->
+    <SolidColorBrush x:Key="{x:Static common:SystemColors.ControlBrushKey}" Color="{StaticResource Bevel.Color.ButtonFace}" />
+
+    <!-- ── Metrics (XP Luna column, §3) ───────────────────────────────────── -->
+    <x:Double x:Key="Bevel.Metric.CaptionHeight">25</x:Double>
+    <x:Double x:Key="Bevel.Metric.CaptionButtonWidth">21</x:Double>
+    <x:Double x:Key="Bevel.Metric.CaptionButtonHeight">21</x:Double>
+    <x:Double x:Key="Bevel.Metric.EdgeThickness">1</x:Double>
+    <x:Double x:Key="Bevel.Metric.ScrollBarSize">17</x:Double>
+    <x:Double x:Key="Bevel.Metric.MenuBarHeight">20</x:Double>
+    <x:Double x:Key="Bevel.Metric.MenuItemHeight">18</x:Double>
+    <x:Double x:Key="Bevel.Metric.TaskbarHeight">30</x:Double>
+    <CornerRadius x:Key="Bevel.Metric.CornerRadius">8,8,0,0</CornerRadius>
+    <!-- The caption is the rounded TOP of the frame; the frame proper is a 3px blue border on the sides and
+         bottom, wrapping the content below the caption (0 top — the caption meets it). Luna's outer Bd bevel
+         is set to 0 in Blue2001Theme.axaml so this border is the whole frame; content sits flush inside it. -->
+    <Thickness x:Key="Bevel.Metric.WindowContentBorder">3,0,3,3</Thickness>
+    <Thickness x:Key="Bevel.Metric.WindowContentInset">0</Thickness>
+    <!-- Luna caption stays full-bleed — its rounded top corners ARE the window's corners (a967ec8). This 0
+         overrides the Win2000 base's 4,4,4,0 sizing-frame margin, so the Win2000 border fix doesn't leak in. -->
+    <Thickness x:Key="Bevel.Metric.CaptionMargin">0</Thickness>
+    <!-- Roomier caption padding than the Classic 2px — the icon/title sit in from the rounded left corner
+         and the buttons in from the right. Left inset derived from the Luna plate at its true 1.32x scale:
+         the plate's frame->icon gap is 14 plate-px = ~10.6 logical px (NOT the ~6 an un-scaled eyeball gives). -->
+    <Thickness x:Key="Bevel.Metric.CaptionPadding">11,0,3,0</Thickness>
+    <Thickness x:Key="Bevel.Metric.ButtonPadding">8,2</Thickness>
+</ResourceDictionary>

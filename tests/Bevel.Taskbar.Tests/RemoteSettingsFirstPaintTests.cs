@@ -50,7 +50,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     {
         var core = new SettingsService(_coreDir);
         await core.LoadAsync(Ct);
-        await core.UpdateAsync(s => { s.ThemeId = "luna"; s.TaskbarRows = 2; }, Ct);
+        await core.UpdateAsync(s => { s.ThemeId = ThemeIds.Blue2001; s.TaskbarRows = 2; }, Ct);
         return core;
     }
 
@@ -63,7 +63,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [Fact]
     public async Task Cold_boot_with_no_core_paints_the_cached_theme_without_waiting_on_the_socket()
     {
-        var blob = SettingsService.SerializeBlob(new BevelSettings { ThemeId = "luna", TaskbarRows = 2 },
+        var blob = SettingsService.SerializeBlob(new BevelSettings { ThemeId = ThemeIds.Blue2001, TaskbarRows = 2 },
             new Dictionary<string, ThemeOverrides>());
         Assert.True(Cache.TryWrite(7, blob));
 
@@ -76,7 +76,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         await remote.LoadAsync(Ct);
         sw.Stop();
 
-        Assert.Equal("luna", remote.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);
         Assert.Equal(2, remote.Current.TaskbarRows);
         Assert.Equal(7, remote.Version);
         Assert.False(remote.HasLiveSnapshot);
@@ -102,11 +102,11 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         remote.Changed += () => Interlocked.Increment(ref changedCount);
 
         await remote.LoadAsync(Ct);
-        Assert.Equal("luna", remote.Current.ThemeId);   // first paint from the cache
+        Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);   // first paint from the cache
 
         await WaitFor(() => remote.HasLiveSnapshot, "the live snapshot should land after the background pull connects");
         Assert.Equal(core.Version, remote.Version);      // the live version was adopted
-        Assert.Equal("luna", remote.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);
         await Task.Delay(200);                            // give a spurious Changed every chance to show up
         Assert.Equal(0, changedCount);
     }
@@ -117,7 +117,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     public async Task First_live_snapshot_that_differs_from_the_cache_corrects_it_once_and_rewrites_the_cache()
     {
         using var core = await LunaCoreAsync();
-        var stale = SettingsService.SerializeBlob(new BevelSettings { ThemeId = "win2000" }, new Dictionary<string, ThemeOverrides>());
+        var stale = SettingsService.SerializeBlob(new BevelSettings { ThemeId = ThemeIds.Industrial1999 }, new Dictionary<string, ThemeOverrides>());
         Assert.True(Cache.TryWrite(core.Version + 100, stale)); // a HIGHER cached version must not win over live content
 
         await using var server = Server(core);
@@ -128,9 +128,9 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         remote.Changed += () => Interlocked.Increment(ref changedCount);
 
         await remote.LoadAsync(Ct);
-        Assert.Equal("win2000", remote.Current.ThemeId);   // painted from the (stale) cache first
+        Assert.Equal(ThemeIds.Industrial1999, remote.Current.ThemeId);   // painted from the (stale) cache first
 
-        await WaitFor(() => remote.Current.ThemeId == "luna", "the live snapshot should correct the stale cache");
+        await WaitFor(() => remote.Current.ThemeId == ThemeIds.Blue2001, "the live snapshot should correct the stale cache");
         await Task.Delay(200);
         Assert.Equal(1, changedCount);
         Assert.Equal(core.Version, remote.Version);
@@ -159,14 +159,14 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         await WaitFor(() => remote.Current.TaskbarOpacity == 55, "the SettingsChanged broadcast should land");
         await WaitFor(() => Cache.TryRead() is { } c && SettingsService.ProjectBlob(c.Json).Settings.TaskbarOpacity == 55,
             "the applied SettingsChanged should be written through to the cache");
-        Assert.Equal("luna", SettingsService.ProjectBlob(Cache.TryRead()!.Value.Json).Settings.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, SettingsService.ProjectBlob(Cache.TryRead()!.Value.Json).Settings.ThemeId);
 
         // And a fresh peer boots straight onto it, core or no core.
         await using var client2 = new ShellCoreClient(Path.Combine(Path.GetTempPath(), $"bvlnone-{Guid.NewGuid():N}"[..14] + ".sock"), _nonce);
         await using var remote2 = new RemoteSettingsService(client2, Cache);
         await remote2.LoadAsync(Ct);
         Assert.Equal(55, remote2.Current.TaskbarOpacity);
-        Assert.Equal("luna", remote2.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, remote2.Current.ThemeId);
     }
 
     // 5. bevel-lej1: a snapshot that fails to parse is REFUSED — never projected as all-defaults. Before,
@@ -178,7 +178,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
     [InlineData("[1, 2, 3]")]
     public async Task A_snapshot_that_is_not_a_settings_object_never_flips_the_theme_to_defaults(string badBlob)
     {
-        var luna = SettingsService.SerializeBlob(new BevelSettings { ThemeId = "luna", TaskbarRows = 2 }, new Dictionary<string, ThemeOverrides>());
+        var luna = SettingsService.SerializeBlob(new BevelSettings { ThemeId = ThemeIds.Blue2001, TaskbarRows = 2 }, new Dictionary<string, ThemeOverrides>());
         Assert.True(Cache.TryWrite(3, luna));
 
         // A core whose settings snapshot is broken, at a version far above the cached one.
@@ -194,7 +194,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         // Both the on-connect push and the GetSettings reply have had time to arrive and be refused.
         await Task.Delay(300);
 
-        Assert.Equal("luna", remote.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);
         Assert.Equal(2, remote.Current.TaskbarRows);
         Assert.Equal(3, remote.Version);
         Assert.False(remote.HasLiveSnapshot);
@@ -219,7 +219,7 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         await WaitFor(() => remote.HasLiveSnapshot, "live snapshot");
         await Task.Delay(200);
         Assert.Equal(1, changedCount);                    // one apply, not one per copy
-        Assert.Equal("luna", remote.Current.ThemeId);
+        Assert.Equal(ThemeIds.Blue2001, remote.Current.ThemeId);
     }
 
     // 7. The pre-cache contract still holds for a first run (no cache, core down): defaults for the first
@@ -230,13 +230,13 @@ public sealed class RemoteSettingsFirstPaintTests : IAsyncLifetime
         await using var client = new ShellCoreClient(_socket, _nonce);
         await using var remote = new RemoteSettingsService(client, Cache);
         await remote.LoadAsync(Ct);
-        Assert.Equal("win2000", remote.Current.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, remote.Current.ThemeId);
         Assert.Null(Cache.TryRead());                     // defaults are NOT cached — they were never real data
 
         using var core = await LunaCoreAsync();
         await using var server = Server(core);
         await server.StartAsync(Ct);
-        await WaitFor(() => remote.Current.ThemeId == "luna", "the reconnect supervisor should deliver the real snapshot");
+        await WaitFor(() => remote.Current.ThemeId == ThemeIds.Blue2001, "the reconnect supervisor should deliver the real snapshot");
         await WaitFor(() => Cache.TryRead() is not null, "and cache it for the next boot");
     }
 

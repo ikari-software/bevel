@@ -1,3 +1,4 @@
+using Bevel.Core;
 using System;
 using System.IO;
 using Avalonia;
@@ -24,8 +25,8 @@ public class RenderFileMenuBarTest
     {
         // Render under Luna + the Purple variant — the exact condition where the bar showed submenu arrows
         // and (after the top-level fix) literal access-key underscores.
-        Bevel.UI.ThemeService.Apply("luna");
-        Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+        Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+        Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
 
         var menuBar = new Bevel.FileManager.Components.MenuBar();
         var window = new Window
@@ -49,8 +50,8 @@ public class RenderFileMenuBarTest
         frame!.Save(outPath);
 
         // Don't leak the Luna/Purple state into other tests.
-        Bevel.UI.Luna.LunaVariantService.Clear();
-        Bevel.UI.ThemeService.Apply("win2000");
+        Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+        Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
     }
 
     [AvaloniaFact]
@@ -58,8 +59,8 @@ public class RenderFileMenuBarTest
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
-            Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
 
             var menuBar = new Bevel.FileManager.Components.MenuBar();
             var window = new Window
@@ -98,8 +99,8 @@ public class RenderFileMenuBarTest
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 
@@ -108,8 +109,8 @@ public class RenderFileMenuBarTest
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
-            Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
 
             var appEnv = new StubAppEnvironment(
                 new InstalledApp("com.files", "Bevel Files", null, "File manager"),
@@ -160,8 +161,8 @@ public class RenderFileMenuBarTest
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 }

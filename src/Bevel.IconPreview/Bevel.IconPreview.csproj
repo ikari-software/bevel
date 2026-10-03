@@ -10,7 +10,7 @@
     <ProjectReference Include="../Bevel.FileManager/Bevel.FileManager.csproj" />
     <ProjectReference Include="../Bevel.UI/Bevel.UI.csproj" />
     <ProjectReference Include="../Bevel.Core/Bevel.Core.csproj" />
-    <ProjectReference Include="../Bevel.Themes.Win2000/Bevel.Themes.Win2000.csproj" />
+    <ProjectReference Include="../Bevel.Themes.Industrial1999/Bevel.Themes.Industrial1999.csproj" />
     <ProjectReference Include="../Bevel.App/Bevel.App.csproj" />
   </ItemGroup>
 

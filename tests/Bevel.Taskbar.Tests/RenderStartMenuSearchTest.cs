@@ -1,3 +1,4 @@
+using Bevel.Core;
 using System;
 using System.IO;
 using System.Linq;
@@ -21,8 +22,8 @@ namespace Bevel.Taskbar.Tests;
 public class RenderStartMenuSearchTest
 {
     [AvaloniaTheory]
-    [InlineData("win2000")]
-    [InlineData("luna")]
+    [InlineData(ThemeIds.Industrial1999)]
+    [InlineData(ThemeIds.Blue2001)]
     public async Task Render_searching_start_menu_to_png(string theme)
     {
         try
@@ -71,13 +72,13 @@ public class RenderStartMenuSearchTest
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            var strip = menu.FindControl<Control>(theme == "luna" ? "LunaSearchStrip" : "ClassicSearchStrip")!;
+            var strip = menu.FindControl<Control>(theme == ThemeIds.Blue2001 ? "LunaSearchStrip" : "ClassicSearchStrip")!;
             Assert.True(strip.IsVisible);
             Assert.True(strip.Bounds.Height > 0, $"search strip has no height: {strip.Bounds}");
 
             // Settle before capturing. A single capture returns null under a full-solution run (test
             // assemblies run in parallel, so the first frame can still be pending) even though the strip
-            // above already has real bounds — the same flake class as RenderLunaStartMenuTest, fixed the
+            // above already has real bounds — the same flake class as RenderBlue2001StartMenuTest, fixed the
             // same way: poll the FRAME itself on a time-based deadline, not the window's bounds.
             Avalonia.Media.Imaging.WriteableBitmap? frame = null;
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
@@ -94,6 +95,6 @@ public class RenderStartMenuSearchTest
                           ?? Path.Combine(Path.GetTempPath(), $"bevel-startmenu-search-{theme}.png");
             Bevel.TestSupport.SiteShot.Save(window, outPath);
         }
-        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+        finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }
 }

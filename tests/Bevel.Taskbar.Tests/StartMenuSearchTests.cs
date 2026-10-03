@@ -1,3 +1,4 @@
+using Bevel.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -246,7 +247,7 @@ public class StartMenuSearchTests
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             using var h = await Harness.OpenAsync();
 
             var pinned = h.Menu.FindControl<ItemsControl>("LunaPinned")!;
@@ -265,7 +266,7 @@ public class StartMenuSearchTests
             Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);   // …and back to curated on clear
             Assert.False(h.Menu.FindControl<Control>("LunaSearchStrip")!.IsVisible);
         }
-        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+        finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }
 
     [AvaloniaFact]
@@ -273,7 +274,7 @@ public class StartMenuSearchTests
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             using var h = await Harness.OpenAsync();
             var launched = new List<string>();
             foreach (var p in h.Model.Programs)
@@ -286,7 +287,7 @@ public class StartMenuSearchTests
             Assert.Equal(["Notepad"], launched);
             Assert.False(h.Menu.IsOpen);
         }
-        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+        finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }
 
     // ── Plumbing ───────────────────────────────────────────────────────

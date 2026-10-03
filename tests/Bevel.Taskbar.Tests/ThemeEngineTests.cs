@@ -1,3 +1,4 @@
+using Bevel.Core;
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -36,13 +37,13 @@ public class ThemeEngineTests
             Assert.Equal(22d, Resolve("Bevel.Metric.CaptionHeight"));
 
             // Switching back removes the merged dict — the base tokens show through again (no stacking).
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
             Assert.Equal(EdgeRendering.Smooth, Resolve("Bevel.Edge.Rendering"));
             Assert.Equal(18d, Resolve("Bevel.Metric.CaptionHeight"));
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 
@@ -56,7 +57,7 @@ public class ThemeEngineTests
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 
@@ -69,11 +70,11 @@ public class ThemeEngineTests
         {
             Assert.True(Bevel.UI.ThemeService.Apply("flat"));    // real swap
             Assert.True(Bevel.UI.ThemeService.Apply("flat"));    // no-op re-apply is still "in place" = true
-            Assert.True(Bevel.UI.ThemeService.Apply("win2000")); // swap back
+            Assert.True(Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999)); // swap back
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 
@@ -84,19 +85,19 @@ public class ThemeEngineTests
         // aliased default (FontAliasingKey = True → TextRenderingMode.Alias); it must now resolve False.
         try
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
             Assert.True(Application.Current!.TryGetResource(
                 Classic.CommonControls.SystemParameters.FontAliasingKey, null, out var win2000));
             Assert.False((bool)win2000!);
 
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             Assert.True(Application.Current!.TryGetResource(
                 Classic.CommonControls.SystemParameters.FontAliasingKey, null, out var luna));
             Assert.False((bool)luna!);
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 
