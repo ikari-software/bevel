@@ -25,9 +25,24 @@ public sealed class TaskbarWindow : BevelWindow
     private readonly IDockController? _dockController;
     private readonly IDesktopEnvironment? _desktop;
     private int _rows;
+    private Bevel.Taskbar.Components.BarGeometry _geometry = new(1);
 
     /// <summary>Current number of button rows (Win2000 drag-to-resize, bevel-0ml).</summary>
     public int Rows => _rows;
+
+    /// <summary>This bar's own geometry. Rebuilt when rows or a component's contribution change.</summary>
+    internal Bevel.Taskbar.Components.BarGeometry Geometry => _geometry;
+
+    /// <summary>
+    /// Records one component instance's height contribution and re-derives this bar's geometry.
+    /// Keyed by instance so a tier change can SHRINK the bar — a monotonic max could not, which is
+    /// the stale-value failure bevel-kclq records.
+    /// </summary>
+    internal void ContributeHeight(string instanceId, int heightDip)
+    {
+        _geometry.SetContribution(instanceId, heightDip);
+        ReapplyMetrics();
+    }
 
     /// <summary>Raised after the row count changes (drag-resize) so the view can re-flow
     /// buttons and the composition root can persist the new count.</summary>
@@ -126,6 +141,9 @@ public sealed class TaskbarWindow : BevelWindow
         rows = clamped;
         if (rows == _rows) return;
         _rows = rows;
+        var rebuilt = new Bevel.Taskbar.Components.BarGeometry(_rows);
+        foreach (var (id, hgt) in _geometry.Contributions) rebuilt.SetContribution(id, hgt);
+        _geometry = rebuilt;
         var h = TaskbarTheme.HeightForRows(_rows);
         MinHeight = h;
         MaxHeight = h;
@@ -489,49 +507,48 @@ public sealed class TaskbarWindow : BevelWindow
     }
 }
 
-/// <summary>Taskbar-specific theme metrics. The button height — and the row/bar heights derived from
-/// it — vary by the user's Small/Normal/Large tier (bevel-m2.10.1); <see cref="Configure"/> is called
-/// once at startup. Normal reproduces the Win2000 classic 24/28/30 exactly.</summary>
+/// <summary>
+/// DEPRECATED process-wide taskbar metrics, retained as a facade over a default <see
+/// cref="Bevel.Taskbar.Components.BarGeometry"/> so the 98 existing references keep working while
+/// components migrate incrementally (bevel-aqr7). New code takes the geometry from its own bar —
+/// <c>TaskbarWindow.Geometry</c> — because two displays may carry different components and a
+/// static can only hold one value. Do not add members here.
+/// </summary>
 public static class TaskbarTheme
 {
-    /// <summary>Window-button height in logical px for the active tier (default Normal = 24).</summary>
-    public static int ButtonHeight { get; private set; } = 24;
+    private static Bevel.Taskbar.Components.BarGeometry _default = new(1);
 
-    /// <summary>
-    /// Task-button icon edge in logical px for the active tier (bevel-c54t). The taller tiers are not
-    /// just taller chrome: Large and Big grow the glyph too, so <c>Big</c> + <c>IconOnly</c> reads as the
-    /// Win10/11 icon-only bar. The bar's icon PNGs arrive from the helper at 64×64 px, so every value
-    /// here is a DOWNSCALE at 1× and 2× — nothing is upscaled from a 16px bitmap.
-    /// The tray is deliberately NOT driven from here — it keeps its own <c>TaskbarTrayIconSize</c> slider.
-    /// </summary>
-    public static int TaskIconSize { get; private set; } = 16;
+    /// <summary>Window-button height in logical px for the active tier (default Normal = 24).</summary>
+    public static int ButtonHeight => _default.ButtonHeight;
+
+    /// <summary>Task-button icon edge in logical px for the active tier (bevel-c54t).</summary>
+    public static int TaskIconSize => _default.TaskIconSize;
 
     /// <summary>Height per button row: the button plus its 4px (2+2) vertical margin.</summary>
-    public static int RowHeight => ButtonHeight + 4;
+    public static int RowHeight => _default.RowHeight;
 
     /// <summary>Single-row taskbar height in logical px: one row plus the 2px chrome inset.</summary>
-    public static int TaskbarHeight => RowHeight + 2;
+    public static int TaskbarHeight => _default.TaskbarHeight;
 
     /// <summary>Total taskbar height (logical px) for <paramref name="rows"/> button rows.</summary>
-    public static int HeightForRows(int rows) => TaskbarHeight + (Math.Max(1, rows) - 1) * RowHeight;
+    public static int HeightForRows(int rows)
+    {
+        var g = new Bevel.Taskbar.Components.BarGeometry(rows);
+        g.Contribute(_default.ButtonHeight);
+        return g.Height;
+    }
 
-    /// <summary>Selects the button-height tier. Call once at startup, before the taskbar window is
-    /// built. Normal (default) keeps the classic 24/28/30 metrics.</summary>
+    /// <summary>
+    /// Selects the button-height tier. Still the live-apply entry point
+    /// (<c>TaskbarView.axaml.cs</c> calls this on a settings change, then
+    /// <c>ReapplyMetrics</c>), so it must keep working — it now rebuilds the default geometry
+    /// rather than mutating statics in place.
+    /// </summary>
     public static void Configure(TaskbarButtonSize size)
     {
-        ButtonHeight = size switch
-        {
-            TaskbarButtonSize.Small => 18,   // → row 22, bar 24
-            TaskbarButtonSize.Large => 30,   // → row 34, bar 36
-            TaskbarButtonSize.Big => 40,     // → row 44, bar 46 (Win10/11 big-icons bar)
-            _ => 24,                          // Normal → row 28, bar 30 (Win2000 classic)
-        };
-        TaskIconSize = size switch
-        {
-            TaskbarButtonSize.Large => 24,   // 30px button, 3px above/below the glyph
-            TaskbarButtonSize.Big => 32,     // 40px button, 4px above/below — the Win10/11 look
-            _ => 16,                          // Small/Normal keep the classic 16px glyph
-        };
+        var g = new Bevel.Taskbar.Components.BarGeometry(1);
+        g.Contribute(Bevel.Taskbar.Components.BarGeometry.ButtonHeightFor(size));
+        _default = g;
     }
 }
 
