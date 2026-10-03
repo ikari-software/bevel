@@ -68,20 +68,19 @@ public class TaskbarViewModelSubscriptionOrderTests
 
         _ = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
 
-        // There used to be a FIRST settings read ahead of this pair, seeding StacksViewModel's
-        // one-shot folder list. That read is gone: TaskbarViewModel no longer constructs
-        // StacksViewModel with the real folder list at all (bevel-aqr7 Task 14 fix round 1, Finding
-        // 4), because nothing renders Stacks.Stacks any more now that the stacks region is composed
-        // by ComponentBarHost instead — and constructing it from the real folder list was arming a
-        // FileSystemWatcher and queuing icon loads for a collection nobody read. Full removal of
-        // StacksViewModel/StackViewModel/StackFlyoutView is tracked separately as bevel-3yf7; this
-        // change partially resolves bevel-2ip7, the original staleness finding against that read.
+        // The FIRST read is StacksViewModel's one-shot folder seed (settings?.Current.TaskbarStacks) —
+        // whole-branch review Fix 1 restored the stacks region to its pre-component-list hand-built
+        // ItemsControl (TaskbarView.axaml bound to Stacks.Stacks), since no component type has a
+        // renderer yet and ComponentBarHost's generic Button regressed the shipped feature. That read
+        // is a one-shot startup seed, not a live subscription, so there is nothing to race: Stacks
+        // never changes again from this value.
         //
-        // The guarded property is unchanged: "subscribe" must still land before the (now only)
-        // read — the one that feeds ApplyConsolidation. If a "read" came first instead, a settings
-        // snapshot landing in that gap (e.g. the core's on-connect broadcast racing DI construction)
-        // would be lost until some later, unrelated settings edit happens to fire Changed again.
-        Assert.Equal(new[] { "subscribe", "read" }, settings.CallOrder);
+        // The guarded property is about the PAIR that follows: "subscribe" must land before the
+        // SECOND read — the one that feeds ApplyConsolidation. If that read came first instead, a
+        // settings snapshot landing in the gap (e.g. the core's on-connect broadcast racing DI
+        // construction) would be lost until some later, unrelated settings edit happens to fire
+        // Changed again.
+        Assert.Equal(new[] { "read", "subscribe", "read" }, settings.CallOrder);
     }
 
     [Fact]

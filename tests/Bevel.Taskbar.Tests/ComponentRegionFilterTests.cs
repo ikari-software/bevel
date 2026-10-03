@@ -8,22 +8,28 @@ using Xunit;
 namespace Bevel.Taskbar.Tests;
 
 /// <summary>
-/// bevel-aqr7 Task 14 fix round 2, Finding 1: proves <see cref="TaskbarView.ApplyComponentRegion"/>
-/// ITSELF — the real production call site, not a test's own stand-in filter — keeps ghost inert
-/// placeholders out of the stacks region when handed the FULL migrated component list (Start,
-/// WindowStrip, Stack, Tray, Clock, ShowDesktop). The round-1 regression test for this
-/// (<c>ComponentBarHostTests.A_full_migrated_list_filtered_to_served_types_produces_only_those_slots</c>)
-/// filtered the list itself before calling <see cref="ComponentBarHost.ApplyAsync"/> directly, so it
-/// would still pass even if <c>ApplyComponentRegion</c>'s own <c>.Where(...)</c> clause were deleted —
-/// exactly the gap that let the original Critical through. This test drives the real method via the
-/// <c>InternalsVisibleTo</c> seam <c>Bevel.Taskbar.csproj</c> already grants this assembly (the same
-/// one <c>WorkAreaMitigator</c> and <c>RemoteComponentChannel.OnBusMessage</c> rely on).
+/// bevel-aqr7 Task 14 fix round 2, Finding 1 (as revised by the whole-branch review's Fix 1): proves
+/// <see cref="TaskbarView.ApplyComponentRegion"/> ITSELF — the real production call site, not a
+/// test's own stand-in filter — keeps the stacks region from regressing when handed the FULL
+/// migrated component list (Start, WindowStrip, Stack, Tray, Clock, ShowDesktop).
+///
+/// Before the review, this asserted that the filter let Stack slots through while blocking every
+/// other type. The review found that the "chosen remedy" for the ghost-placeholder/generic-button
+/// regression is NOT a renderer: the stacks region was restored to its pre-component-list
+/// hand-built <c>ItemsControl</c> (bound to <c>Stacks.Stacks</c>, in <c>TaskbarView.axaml</c>), and
+/// <c>ApplyComponentRegion</c>'s filter now composes NOTHING — no component type has a renderer yet,
+/// so handing over even a single resolved type would render a generic captioned button in a region
+/// a shipped feature already owns. This test now asserts that empty result, still driven through
+/// the real method via the <c>InternalsVisibleTo</c> seam <c>Bevel.Taskbar.csproj</c> already grants
+/// this assembly (the same one <c>WorkAreaMitigator</c> and <c>RemoteComponentChannel.OnBusMessage</c>
+/// rely on) — not a direct <see cref="ComponentBarHost.ApplyAsync"/> call, which would pass even if
+/// the production filter were deleted entirely.
 /// </summary>
 [Collection("TaskbarTheme")]
 public class ComponentRegionFilterTests
 {
     [AvaloniaFact]
-    public async Task ApplyComponentRegion_filters_a_full_migrated_list_to_only_stack_slots()
+    public async Task ApplyComponentRegion_composes_no_slots_from_a_full_migrated_list()
     {
         var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
@@ -40,9 +46,7 @@ public class ComponentRegionFilterTests
         Assert.NotNull(host);
 
         // The REALISTIC full list a real settings.db produces: Start, WindowStrip, Stack, Tray,
-        // Clock and ShowDesktop. This region's registry (wired inside InitComponentRegion) resolves
-        // only Stack — if ApplyComponentRegion handed this over unfiltered, every other type would
-        // come back from the normalizer as "unknown" and render as a ghost inert placeholder.
+        // Clock and ShowDesktop.
         var full = TaskbarComponentsMigration.BuildDefaultList(new BevelSettings());
         Assert.True(full.Select(i => i.TypeId).Distinct().Count() > 1,
             "the default migrated list should contain more than one component type");
@@ -50,25 +54,23 @@ public class ComponentRegionFilterTests
         view.ApplyComponentRegion(new BevelSettings { TaskbarComponents = full });
 
         // ApplyComponentRegion fires ApplyAsync via Task.Run and returns immediately; pump the
-        // dispatcher (bounded) until the background run's final UI-thread hop has landed.
-        await Pump(() => host!.Slots.Count > 0, TimeSpan.FromSeconds(5));
+        // dispatcher for a bounded grace period so the background run's UI-thread hop (if any) has
+        // every chance to land before the final assertion.
+        await PumpFor(TimeSpan.FromMilliseconds(500));
 
-        Assert.NotEmpty(host!.Slots);   // the default Downloads stack resolves to a live slot
-        Assert.All(host.Slots, s => Assert.Equal(TaskbarComponentTypes.Stack, s.TypeId));
-        Assert.All(host.Slots, s => Assert.False(s.IsInert));   // no ghost placeholders
+        Assert.Empty(host!.Slots);
     }
 
-    /// <summary>Pumps the UI dispatcher until <paramref name="ready"/> holds or <paramref name="timeout"/>
-    /// elapses, so a hung background apply fails the test loudly instead of hanging it.</summary>
-    private static async Task Pump(Func<bool> ready, TimeSpan timeout)
+    /// <summary>Pumps the UI dispatcher for a fixed grace period, so a background apply that WOULD
+    /// mutate <c>Slots</c> has every opportunity to do so before the assertion runs.</summary>
+    private static async Task PumpFor(TimeSpan duration)
     {
-        var deadline = DateTime.UtcNow + timeout;
-        while (!ready() && DateTime.UtcNow < deadline)
+        var deadline = DateTime.UtcNow + duration;
+        while (DateTime.UtcNow < deadline)
         {
             Dispatcher.UIThread.RunJobs();
             await Task.Delay(10);
         }
         Dispatcher.UIThread.RunJobs();
-        Assert.True(ready(), $"condition did not become true within {timeout}");
     }
 }

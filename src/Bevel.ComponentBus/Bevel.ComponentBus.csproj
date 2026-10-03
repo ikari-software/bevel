@@ -16,6 +16,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Bevel.ComponentBus.Tests" />
+    <!-- Bevel.Taskbar.Tests calls ComponentBusServer.WaitForPeer directly (ComponentConformanceTests,
+         RemoteComponentChannelTests) — needed once WaitForPeer went internal (whole-branch review
+         Fix 8: it is documented "tests only"). -->
+    <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
   </ItemGroup>
 
   <ItemGroup>

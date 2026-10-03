@@ -57,6 +57,40 @@ public class ComponentInstanceTests
     public void NewId_produces_distinct_ids()
         => Assert.NotEqual(ComponentInstance.NewId(), ComponentInstance.NewId());
 
+    /// <summary>
+    /// Whole-branch review Fix 7: <c>{"instanceId":"a","typeId":"x","visible":true}</c> is valid
+    /// JSON with no <c>"settings"</c> key, so System.Text.Json constructs this record with
+    /// <c>Settings = null</c> and throws no <see cref="System.Text.Json.JsonException"/> — the
+    /// corrupt-path guard in <c>SettingsService</c> never fires for it. <see cref="ComponentInstance.Settings"/>
+    /// now coalesces null to empty AT INIT TIME, so deserializing this shape must produce an empty
+    /// (not null) dictionary, and <see cref="ComponentInstance.DeepClone"/> — whose
+    /// <c>new Dictionary&lt;string,string&gt;(Settings)</c> previously threw
+    /// <see cref="ArgumentNullException"/> on exactly this input — must not throw.
+    /// </summary>
+    [Fact]
+    public void Deserializing_JSON_missing_the_settings_key_normalizes_to_an_empty_dictionary()
+    {
+        const string json = """{"instanceId":"a","typeId":"x","visible":true}""";
+        var inst = System.Text.Json.JsonSerializer.Deserialize<ComponentInstance>(json)!;
+
+        Assert.NotNull(inst.Settings);
+        Assert.Empty(inst.Settings);
+
+        var clone = inst.DeepClone();   // must not throw ArgumentNullException
+        Assert.NotNull(clone.Settings);
+        Assert.Empty(clone.Settings);
+    }
+
+    [Fact]
+    public void A_null_settings_argument_passed_directly_also_normalizes_to_empty()
+    {
+        var inst = new ComponentInstance("a", "x", null!, Visible: true);
+
+        Assert.NotNull(inst.Settings);
+        Assert.Empty(inst.Settings);
+        Assert.NotNull(inst.DeepClone().Settings);   // must not throw
+    }
+
     // ── ComponentSettingsField.TryRead: the branches ReadSetting above does not reach ──────────
     // Task 2 shipped TryRead with no direct tests. The cases above cover Bool-success, absent,
     // Int-unparseable and Int-out-of-range; the Enum branch was entirely uncovered — including

@@ -28,8 +28,11 @@ public class ComponentBarHostTests
         ComponentInstance.NewId(), TaskbarComponentTypes.Stack,
         new Dictionary<string, string> { ["folder"] = folder }, Visible: true);
 
-    private static ComponentBarHost Host() =>
-        new(Registry(), new ComponentHealth(), new BarGeometry(1));
+    private static ComponentBarHost Host()
+    {
+        var geometry = new BarGeometry(1);
+        return new(Registry(), new ComponentHealth(), () => geometry);
+    }
 
     [AvaloniaFact]
     public async Task Each_visible_instance_gets_a_slot_in_list_order()
@@ -106,7 +109,8 @@ public class ComponentBarHostTests
     {
         var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
         r.Register(StackComponentManifest.Create(), _ => new ThrowingChannel());
-        var host = new ComponentBarHost(r, new ComponentHealth(), new BarGeometry(1));
+        var geometry = new BarGeometry(1);
+        var host = new ComponentBarHost(r, new ComponentHealth(), () => geometry);
 
         await host.ApplyAsync(new[] { Stack("/boom") }, CancellationToken.None);
 
@@ -149,6 +153,120 @@ public class ComponentBarHostTests
     }
 
     /// <summary>
+    /// Whole-branch review Fix 3: <see cref="ComponentListNormalizer"/> computes the one-greedy-per-
+    /// bar demotion into <c>NormalizedList.EffectiveSizing</c>, but <see cref="ComponentBarHost"/>
+    /// used to bind <c>type.Sizing</c> — the manifest's DECLARED sizing — instead of reading it, so
+    /// two greedy components both laid out greedy: exactly the fixed-zone failure spec §4.2 rejected
+    /// to avoid. This drives the full <see cref="ComponentBarHost.ApplyAsync"/> path with two
+    /// greedy-typed components registered — not the normalizer alone, which is the mistake that let
+    /// the original bug through undetected — and asserts only one resulting slot ends up greedy.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Two_greedy_components_produce_only_one_greedy_slot_through_ApplyAsync()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(GreedyManifest("test.greedy.one"), _ => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId, new Dictionary<string, string>(), false)));
+        r.Register(GreedyManifest("test.greedy.two"), _ => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId, new Dictionary<string, string>(), false)));
+        var geometry = new BarGeometry(1);
+        var host = new ComponentBarHost(r, new ComponentHealth(), () => geometry);
+
+        var a = new ComponentInstance(ComponentInstance.NewId(), "test.greedy.one", new Dictionary<string, string>(), true);
+        var b = new ComponentInstance(ComponentInstance.NewId(), "test.greedy.two", new Dictionary<string, string>(), true);
+        await host.ApplyAsync(new[] { a, b }, CancellationToken.None);
+
+        Assert.Equal(2, host.Slots.Count);
+        var greedyCount = host.Slots.Count(s => TaskbarComponentsPanel.GetSizing(s.Content) == ComponentSizing.Greedy);
+        Assert.Equal(1, greedyCount);
+    }
+
+    private static ComponentManifest GreedyManifest(string id) => new(
+        Id: id,
+        ContractVersion: ManifestValidator.CurrentContractVersion,
+        DisplayName: id,
+        Description: "test fixture",
+        MultiInstance: true,
+        Sizing: ComponentSizing.Greedy,
+        RequiresCapability: null,
+        SettingsSchema: Array.Empty<ComponentSettingsField>(),
+        View: Array.Empty<ComponentPrimitive>());
+
+    /// <summary>
+    /// Whole-branch review Fix 5, spec §6: "Hangs count as failures." A <c>ComponentState</c> with
+    /// <c>Inert: true</c> is exactly how a timed-out (hung) component reports — not by throwing —
+    /// and <see cref="ComponentBarHost.ApplyCoreAsync"/> used to record nothing on that path, so a
+    /// hung component was retried on every settings push forever and never reached the health
+    /// budget's quarantine. This applies three times against a channel that always reports hung and
+    /// asserts the budget quarantines after <see cref="ComponentHealth"/>'s configured crash budget
+    /// (default 3).
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_hung_component_records_a_crash_and_quarantines_after_the_health_budget()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(StackComponentManifest.Create(), _ => new HungChannel());
+        var geometry = new BarGeometry(1);
+        var health = new ComponentHealth(crashBudget: 3);
+        var host = new ComponentBarHost(r, health, () => geometry);
+        var inst = Stack("/hung");
+
+        await host.ApplyAsync(new[] { inst }, CancellationToken.None);
+        Assert.True(host.Slots.Single().IsInert);
+
+        await host.ApplyAsync(new[] { inst }, CancellationToken.None);
+        await host.ApplyAsync(new[] { inst }, CancellationToken.None);
+
+        // Third apply is the component's third recorded crash — the budget quarantines it, and the
+        // RecordCrash call on THIS instanceId (not the probe above) must return Quarantine too.
+        Assert.Equal(ComponentVerdict.Quarantine, health.RecordCrash(inst.InstanceId));
+        Assert.True(host.Slots.Single().IsInert);
+    }
+
+    /// <summary>A channel that always reports hung (Inert: true) rather than throwing — the shape a
+    /// real timed-out component reports back in (whole-branch review Fix 5).</summary>
+    private sealed class HungChannel : IComponentChannel
+    {
+        public event Action<ComponentState>? StateChanged;
+        public Task<ComponentState> ConnectAsync(ComponentInstance i, CancellationToken ct)
+            => Task.FromResult(new ComponentState(i.InstanceId, new Dictionary<string, string>(), Inert: true));
+        public Task SendAsync(ComponentInput input, CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Whole-branch review Fix 6, spec §6: "Validation rejects the component, never the bar."
+    /// <c>ComponentBarHost.ApplyCoreAsync</c> used to call <c>_registry.CreateChannel(inst)</c> —
+    /// which invokes a third-party factory — OUTSIDE the per-component try, so one throwing factory
+    /// aborted the WHOLE apply and the region silently stayed empty. This registers one type whose
+    /// factory always throws alongside the normal Stack type and asserts the other component still
+    /// renders.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_throwing_factory_costs_only_its_own_slot_and_the_rest_still_render()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(StackComponentManifest.Create(), inst => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId,
+                new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
+                false)));
+        r.Register(GreedyManifest("test.throwing.factory"), _ =>
+            throw new InvalidOperationException("factory blew up"));
+        var geometry = new BarGeometry(1);
+        var host = new ComponentBarHost(r, new ComponentHealth(), () => geometry);
+
+        var good = Stack("/fine");
+        var bad = new ComponentInstance(ComponentInstance.NewId(), "test.throwing.factory", new Dictionary<string, string>(), true);
+        await host.ApplyAsync(new[] { good, bad }, CancellationToken.None);
+
+        Assert.Equal(2, host.Slots.Count);
+        var goodSlot = host.Slots.Single(s => s.InstanceId == good.InstanceId);
+        var badSlot = host.Slots.Single(s => s.InstanceId == bad.InstanceId);
+        Assert.False(goodSlot.IsInert);
+        Assert.True(badSlot.IsInert);
+    }
+
+    /// <summary>
     /// Fix round 1, Finding 2 (Important): <c>ApplyAsync</c> is fired from startup AND from every
     /// settings push, each on its own background <c>Task.Run</c>, with no serialization between
     /// them. Two overlapping runs would concurrently mutate the plain <c>List&lt;IComponentChannel&gt;</c>/
@@ -164,7 +282,8 @@ public class ComponentBarHostTests
     {
         var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
         r.Register(StackComponentManifest.Create(), _ => new DelayedChannel(TimeSpan.FromMilliseconds(30)));
-        var host = new ComponentBarHost(r, new ComponentHealth(), new BarGeometry(1));
+        var geometry = new BarGeometry(1);
+        var host = new ComponentBarHost(r, new ComponentHealth(), () => geometry);
 
         var first = host.ApplyAsync(new[] { Stack("/one") }, CancellationToken.None);
         var second = host.ApplyAsync(

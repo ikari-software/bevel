@@ -82,7 +82,18 @@ public sealed class RemoteComponentChannel : IComponentChannel
                 InstanceId = input.InstanceId, PrimitiveKey = input.PrimitiveKey, Kind = input.Kind,
             },
         };
-        _bus.SendTo(_peerIdentity, env.ToByteArray());
+        try
+        {
+            _bus.SendTo(_peerIdentity, env.ToByteArray());
+        }
+        catch (ObjectDisposedException)
+        {
+            // Whole-branch review Fix 8: SendTo enqueues onto the bus's NetMQQueue, which
+            // ComponentBusServer.Dispose() disposes. This channel's own teardown order is not
+            // guaranteed to run before every caller's — a settings re-apply or a bar shutdown can
+            // race this against the bus's own Dispose — and a send into a torn-down bus must cost
+            // this one input event, not throw out of a component's input path.
+        }
         return Task.CompletedTask;
     }
 

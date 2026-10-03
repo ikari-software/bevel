@@ -110,9 +110,23 @@ public sealed class ComponentBusServer : IDisposable
             return;
         }
 
-        // A repeat Hello cannot rebind the instance (the check below still applies to it), but
-        // subscribers should never see a Hello envelope for an already-authenticated peer.
+        // A repeat Hello is dropped HERE, before the instance-binding check below ever runs for it
+        // — that check does NOT "still apply" to it (whole-branch review Fix 8: the prior comment
+        // was wrong about this). InstanceOf's switch has no Hello case, so if this early return were
+        // removed a repeat Hello would fall through to line 119 with InstanceOf(env) returning null,
+        // trivially passing the binding check — letting an already-authenticated identity attempt to
+        // REBIND to a different instanceId merely by resending Hello. This return is the actual
+        // guard against repeating that past Critical, not a redundant belt-and-suspenders on top of
+        // a check that would have caught it anyway.
         if (env.PayloadCase == ComponentEnvelope.PayloadOneofCase.Hello) return;
+
+        // ThemePush is bar→component ONLY — the server pushes it DOWN to components via SendTo
+        // (whole-branch review Fix 8). It carries no instance_id (see ThemePush in the .proto), so
+        // InstanceOf below returns null for it and the generic binding check can never validate it:
+        // a peer sending ThemePush upstream would reach MessageReceived completely unbound to any
+        // instance. Drop it outright here rather than relying on a binding check that structurally
+        // cannot cover it.
+        if (env.PayloadCase == ComponentEnvelope.PayloadOneofCase.Theme) return;
 
         // An authenticated peer may only speak for the instance it claimed.
         if (!_authenticated.TryGetValue(identity, out var bound)) return;
@@ -128,9 +142,14 @@ public sealed class ComponentBusServer : IDisposable
 
     /// <summary>
     /// The instance id a non-Hello payload claims, or null for a payload with no instance_id field.
-    /// INVARIANT: every payload type that carries an instance_id MUST appear in this switch — an
-    /// omission does not fail loudly, it returns null, which silently disables the peer-to-instance
-    /// binding check in <see cref="OnReceiveReady"/> for that payload type.
+    /// INVARIANT: every NON-HELLO payload type that carries an instance_id MUST appear in this
+    /// switch — an omission does not fail loudly, it returns null, which silently disables the
+    /// peer-to-instance binding check in <see cref="OnReceiveReady"/> for that payload type. Hello
+    /// itself is handled separately (it is dropped outright once authenticated, never reaching this
+    /// switch) and never belongs here. <c>ThemePush</c> is the one payload that structurally CANNOT
+    /// appear in this switch — it carries no instance_id field at all (.proto) because it is
+    /// bar→component only — so <see cref="OnReceiveReady"/> drops it by PayloadCase before this
+    /// method is ever consulted, rather than this switch silently returning null for it.
     /// </summary>
     private static string? InstanceOf(ComponentEnvelope env) => env.PayloadCase switch
     {
@@ -141,8 +160,10 @@ public sealed class ComponentBusServer : IDisposable
         _ => null,
     };
 
-    /// <summary>Blocks until <paramref name="identity"/> authenticates, or the timeout elapses. Tests only.</summary>
-    public bool WaitForPeer(string identity, TimeSpan timeout)
+    /// <summary>Blocks until <paramref name="identity"/> authenticates, or the timeout elapses. Tests only
+    /// (whole-branch review Fix 8: <c>internal</c>, not <c>public</c> — this assembly already grants
+    /// <c>InternalsVisibleTo Bevel.ComponentBus.Tests</c>).</summary>
+    internal bool WaitForPeer(string identity, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)

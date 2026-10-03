@@ -37,16 +37,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         _projector = new TaskbarItemsProjector(model.Windows);
         Tray = new TrayViewModel(tray);
         Tray.Start();
-        // bevel-aqr7 Task 14 fix round 1 (Finding 4): the stacks region is now rendered by
-        // ComponentBarHost from BevelSettings.TaskbarComponents (TaskbarView.InitComponentRegion),
-        // so nothing binds Stacks.Stacks any more. Constructing StacksViewModel with the REAL folder
-        // list would still arm a FileSystemWatcher and queue icon loads per folder for a collection
-        // nobody reads — including the TCC-prompt risk StackViewModel's own ctor comment warns about.
-        // Pass no folders so the type still exists (anything compiling against it keeps compiling)
-        // but nothing underneath it runs. Full removal of StacksViewModel/StackViewModel/
-        // StackFlyoutView is tracked separately (bevel-3yf7, cross-linked with bevel-2ip7) — out of
-        // scope here.
-        Stacks = new StacksViewModel(Enumerable.Empty<string>(), appEnv, icons, thumbnails);
+        Stacks = new StacksViewModel(
+            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons, thumbnails);
         if (connection is not null)
         {
             // Subscribe BEFORE reading IsConnected (same discipline as App.axaml.cs's settings.Changed

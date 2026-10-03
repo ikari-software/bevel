@@ -24,6 +24,12 @@ public sealed class BarGeometry
     /// </summary>
     private const string AnonymousKey = "__anonymous";
 
+    // LOCKED, like its siblings SurfaceOwnership/ComponentHealth/SurfaceHost, and for the identical
+    // reason (whole-branch review Fix 2): ComponentBarHost.ApplyCoreAsync calls RemoveContribution
+    // from a thread-pool thread on every settings push, while TaskbarWindow.SetRows enumerates
+    // Contributions on the UI thread during a user drag-resize. A plain Dictionary throws
+    // "Collection was modified" the moment those overlap, on a shell process's UI thread.
+    private readonly object _gate = new();
     private readonly int _rows;
     private readonly Dictionary<string, int> _byInstance = new(StringComparer.Ordinal);
     // Null means "nothing has contributed yet" — kept DISTINCT from the default value, or a
@@ -34,10 +40,10 @@ public sealed class BarGeometry
     public BarGeometry(int rows) => _rows = Math.Max(1, rows);
 
     /// <summary>Window-button height in logical px: the tallest contribution on this bar.</summary>
-    public int ButtonHeight => _buttonHeight ?? DefaultButtonHeight;
+    public int ButtonHeight { get { lock (_gate) return _buttonHeight ?? DefaultButtonHeight; } }
 
     /// <summary>Task-button glyph edge in logical px, derived from the winning button height.</summary>
-    public int TaskIconSize => _iconSize;
+    public int TaskIconSize { get { lock (_gate) return _iconSize; } }
 
     /// <summary>Height per button row: the button plus its 4px (2+2) vertical margin.</summary>
     public int RowHeight => ButtonHeight + 4;
@@ -60,9 +66,12 @@ public sealed class BarGeometry
     public void Contribute(int heightDip)
     {
         if (heightDip <= 0) return;
-        if (_byInstance.TryGetValue(AnonymousKey, out var current) && heightDip <= current) return;
-        _byInstance[AnonymousKey] = heightDip;
-        Recompute();
+        lock (_gate)
+        {
+            if (_byInstance.TryGetValue(AnonymousKey, out var current) && heightDip <= current) return;
+            _byInstance[AnonymousKey] = heightDip;
+            Recompute();
+        }
     }
 
     /// <summary>
@@ -74,26 +83,40 @@ public sealed class BarGeometry
     /// </summary>
     public void SetContribution(string instanceId, int heightDip)
     {
-        if (heightDip > 0) _byInstance[instanceId] = heightDip;
-        else _byInstance.Remove(instanceId);
-        Recompute();
+        lock (_gate)
+        {
+            if (heightDip > 0) _byInstance[instanceId] = heightDip;
+            else _byInstance.Remove(instanceId);
+            Recompute();
+        }
     }
 
     /// <summary>Drops an instance's contribution (component removed or quarantined) and re-derives.</summary>
     public void RemoveContribution(string instanceId)
     {
-        if (_byInstance.Remove(instanceId)) Recompute();
+        lock (_gate)
+        {
+            if (_byInstance.Remove(instanceId)) Recompute();
+        }
     }
 
     /// <summary>
     /// Live contributions, keyed and anonymous alike (the latter under the reserved
     /// <see cref="AnonymousKey"/>), so a row-count change can rebuild without losing any of them.
+    /// Returns a COPIED snapshot — the live dictionary must never escape the lock, or a writer on
+    /// another thread (e.g. <see cref="RemoveContribution"/> from a settings push) mutating it while
+    /// a caller enumerates (e.g. <c>TaskbarWindow.SetRows</c> during a drag-resize, on the UI thread)
+    /// throws "Collection was modified" — the exact bug this lock exists to close.
     /// </summary>
-    public IReadOnlyDictionary<string, int> Contributions => _byInstance;
+    public IReadOnlyDictionary<string, int> Contributions
+    {
+        get { lock (_gate) return new Dictionary<string, int>(_byInstance, StringComparer.Ordinal); }
+    }
 
     /// <summary>Re-derives <see cref="ButtonHeight"/>/<see cref="TaskIconSize"/> as the max over ALL
     /// current contributions — the one place both <see cref="Contribute"/> and the keyed API read
-    /// from, so the two can never disagree about what has been recorded.</summary>
+    /// from, so the two can never disagree about what has been recorded. Callers must hold
+    /// <see cref="_gate"/>; this does not lock itself.</summary>
     private void Recompute()
     {
         _buttonHeight = null;

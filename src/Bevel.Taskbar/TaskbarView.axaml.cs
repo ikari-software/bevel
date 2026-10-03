@@ -243,7 +243,11 @@ public partial class TaskbarView : UserControl
                 new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
                 false)));
 
-        _componentHost = new ComponentBarHost(registry, new ComponentHealth(), _window!.Geometry);
+        // Func<BarGeometry>, not a captured BarGeometry (whole-branch review Fix 4): _window.Geometry
+        // reads the LIVE field, which TaskbarWindow.SetRows replaces wholesale on every row-count
+        // change — a value captured once here would go stale the moment that happens.
+        var window = _window!;
+        _componentHost = new ComponentBarHost(registry, new ComponentHealth(), () => window.Geometry);
         ComponentRegionHost.Content = _componentHost.View;
         ApplyComponentRegion(settings);
     }
@@ -267,16 +271,17 @@ public partial class TaskbarView : UserControl
         var host = _componentHost;
         if (host is null) return;
 
-        // FILTER to the types this region's registry actually serves. The migration populates
-        // TaskbarComponents with Start, WindowStrip, Stack, Tray, Clock AND ShowDesktop, but this
-        // task registers only Stack — so handing over the whole list makes the normalizer keep every
-        // other type as an "unknown" inert placeholder and renders ghost 12x12 blanks inside the
-        // stacks region, right next to the real hand-rendered Start button, strip, tray and clock.
-        // That reproduces on essentially every real settings.db. Widen this filter as each region
-        // migrates; delete it when all of them have.
-        var list = settings.TaskbarComponents
-            .Where(i => i.TypeId == TaskbarComponentTypes.Stack)
-            .ToArray();
+        // FILTER to the types this region's registry actually serves. Whole-branch review Fix 1:
+        // no component type has a renderer yet — ComponentSlot.Live only stringifies raw settings
+        // into a labelled Button, which regressed the shipped stacks feature (folder icon, new-item
+        // dot, per-folder tooltip/name, preview flyout) into a button captioned with a literal
+        // filesystem path. The stacks region is restored to its pre-component-list hand-built
+        // ItemsControl (TaskbarView.axaml) until a real renderer lands, so this filter composes
+        // NOTHING for now — the substrate (registry/normalizer/health/ComponentBarHost) still runs
+        // end-to-end against TaskbarComponents, it just never hands the host anything to render.
+        // Widen this filter to a given TypeId only once that type has an actual renderer; delete it
+        // when every migrated type does.
+        var list = Array.Empty<Bevel.Core.Components.ComponentInstance>();
         // Off the UI thread: ConnectAsync may touch IPC. Only the panel mutation marshals back,
         // which ApplyAsync already does for itself.
         _ = Task.Run(() => host.ApplyAsync(list, CancellationToken.None));
@@ -539,6 +544,16 @@ public partial class TaskbarView : UserControl
 
     // Stack-flyout cell gestures (click-to-open, keyboard activation, drag-out) moved to
     // StackFlyoutView with the grid markup they belong to (bevel-9elh).
+
+    private void OnStackButtonClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control c && c.DataContext is StackViewModel stack)
+            stack.Refresh();
+        // Bind this stack's recent-contents flyout to the key-focus scope (idempotent), so its rows are
+        // keyboard-navigable while open (bevel-vk4n).
+        if (sender is Button b)
+            WireFlyoutScope(b.Flyout);
+    }
 
     protected override void OnLoaded(RoutedEventArgs e)
     {

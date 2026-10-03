@@ -195,6 +195,25 @@ public class TaskbarAccessibilityTests
         Assert.Equal("Clock face", AutomationProperties.GetName(surface));
     }
 
+    /// <summary>
+    /// Whole-branch review Fix 8: when the type resolves (a failed-to-start, hung or quarantined
+    /// component — as opposed to a genuinely uninstalled one), the Inert slot's automation name must
+    /// announce the manifest's <c>DisplayName</c>, not the raw <c>TypeId</c>. A reverse-DNS string
+    /// like <c>com.example.widget</c> is not something a screen reader should read aloud.
+    /// </summary>
+    [AvaloniaFact]
+    public void An_inert_slot_announces_the_manifest_display_name_when_the_type_resolves()
+    {
+        var type = StackComponentManifest.Create();
+        var inert = ComponentSlot.Inert(
+            new ComponentInstance("x", type.Id, new Dictionary<string, string>(), true),
+            "stopped responding", type);
+
+        var name = AutomationProperties.GetName(inert.Content);
+        Assert.Contains(type.DisplayName, name);
+        Assert.DoesNotContain(type.Id, name);
+    }
+
     // ── Test doubles ─────────────────────────────────────────────────────
 
     /// <summary>Tray host exposing a single item, so the view realizes exactly one tray Image.</summary>

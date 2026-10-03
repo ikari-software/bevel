@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Bevel.Core.Components;
+using Bevel.Taskbar;
 
 namespace Bevel.Taskbar.Components;
 
@@ -13,7 +14,7 @@ public sealed class ComponentBarHost
 {
     private readonly ComponentRegistry _registry;
     private readonly ComponentHealth _health;
-    private readonly BarGeometry _geometry;
+    private readonly Func<BarGeometry> _geometry;
     private readonly TaskbarComponentsPanel _panel = new();
     private readonly List<IComponentChannel> _channels = new();
     private readonly List<ComponentSlot> _slots = new();
@@ -32,7 +33,13 @@ public sealed class ComponentBarHost
     // "Collection was modified" or silently corrupting slot order. Serialise them.
     private readonly SemaphoreSlim _applyGate = new(1, 1);
 
-    public ComponentBarHost(ComponentRegistry registry, ComponentHealth health, BarGeometry geometry)
+    /// <param name="geometry">Accessor for the bar's LIVE geometry, not a snapshot (whole-branch
+    /// review Fix 4). <see cref="TaskbarWindow.SetRows"/> replaces its <c>_geometry</c> field with a
+    /// rebuilt instance on every row-count change; a plain <see cref="BarGeometry"/> captured once
+    /// at construction would go stale the moment that happens, and this host would keep calling
+    /// <see cref="BarGeometry.RemoveContribution"/> on an instance <c>TaskbarWindow</c> no longer
+    /// reads from.</param>
+    public ComponentBarHost(ComponentRegistry registry, ComponentHealth health, Func<BarGeometry> geometry)
     {
         _registry = registry;
         _health = health;
@@ -79,6 +86,13 @@ public sealed class ComponentBarHost
         var normalized = ComponentListNormalizer.Normalize(
             instances, id => _registry.TryResolve(id, out var m) ? m : null);
 
+        // Whole-branch review Fix 3: these used to be computed and discarded. A hand-edited or
+        // version-skewed settings.db can repair silently every apply (dropped duplicates,
+        // reassigned instanceIds, demoted greedy components) with nobody able to see why the bar
+        // looks different from what settings.db says — log every repair so that is diagnosable.
+        foreach (var repair in normalized.Repairs)
+            TaskbarLog.Info($"component list repair: {repair}");
+
         // What each surviving instance should render as, WITHOUT constructing any Avalonia control
         // yet. ApplyAsync is invoked via Task.Run from TaskbarView (so ConnectAsync's IPC never
         // blocks the UI thread) — which means this whole method runs on a thread-pool thread, with
@@ -93,7 +107,7 @@ public sealed class ComponentBarHost
             if (!inst.Visible)
             {
                 // Hidden, not removed: the instance and its settings stay on disk.
-                _geometry.RemoveContribution(inst.InstanceId);
+                _geometry().RemoveContribution(inst.InstanceId);
                 continue;
             }
 
@@ -103,29 +117,52 @@ public sealed class ComponentBarHost
                 continue;
             }
 
-            var channel = _registry.CreateChannel(inst);
-            if (channel is null)
-            {
-                plans.Add(() => ComponentSlot.Inert(inst, "This component could not start."));
-                continue;
-            }
-
-            _channels.Add(channel);
             try
             {
+                // CreateChannel invokes a third-party factory (whole-branch review Fix 6, spec §6:
+                // "Validation rejects the component, never the bar"). It used to sit OUTSIDE this
+                // try, so one throwing factory aborted the whole apply and left the region silently
+                // empty instead of costing just its own slot.
+                var channel = _registry.CreateChannel(inst);
+                if (channel is null)
+                {
+                    plans.Add(() => ComponentSlot.Inert(inst, "This component could not start.", type));
+                    continue;
+                }
+
+                _channels.Add(channel);
                 var state = await channel.ConnectAsync(inst, ct).ConfigureAwait(false);
-                plans.Add(state.Inert
-                    ? () => ComponentSlot.Inert(inst, "This component stopped responding.")
-                    : () => ComponentSlot.Live(inst, type, state));
+                if (state.Inert)
+                {
+                    // Whole-branch review Fix 5, spec §6: "Hangs count as failures." A timed-out
+                    // component reports back via Inert: true rather than throwing, and this path
+                    // used to record nothing — so a hung component was retried on every settings
+                    // push forever and never reached the health budget's quarantine.
+                    var hungVerdict = _health.RecordCrash(inst.InstanceId);
+                    plans.Add(() => ComponentSlot.Inert(inst, hungVerdict == ComponentVerdict.Quarantine
+                        ? "This component failed repeatedly and has been disabled."
+                        : "This component stopped responding.", type));
+                }
+                else
+                {
+                    // EffectiveSizing, not type.Sizing (whole-branch review Fix 3): the normalizer
+                    // demotes a second greedy component to content sizing (spec §4.2's one-greedy
+                    // rule), and reading the manifest's declared sizing here discarded that
+                    // demotion, letting two greedy components both lay out greedy.
+                    var sizing = normalized.EffectiveSizing.TryGetValue(inst.InstanceId, out var s)
+                        ? s : type.Sizing;
+                    plans.Add(() => ComponentSlot.Live(inst, type, state, sizing));
+                }
             }
             catch (Exception)
             {
-                // A component that throws on start costs its own slot. Quarantine decides whether
-                // it is retried; it must never reach the shell's CrashLoop budget.
+                // A component that throws on start (factory or ConnectAsync) costs its own slot.
+                // Quarantine decides whether it is retried; it must never reach the shell's
+                // CrashLoop budget.
                 var verdict = _health.RecordCrash(inst.InstanceId);
                 plans.Add(() => ComponentSlot.Inert(inst, verdict == ComponentVerdict.Quarantine
                     ? "This component failed repeatedly and has been disabled."
-                    : "This component failed to start."));
+                    : "This component failed to start.", type));
             }
         }
 
@@ -134,8 +171,18 @@ public sealed class ComponentBarHost
         // IComponentChannel) with no UI-thread requirement of its own.
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            // Whole-branch review Fix 6: build into a LOCAL list first, with each plan guarded by
+            // its own try/catch, so one throwing plan cannot leave _slots half-built against a
+            // _panel.Children that was already cleared — neither field is touched until every plan
+            // has been attempted, and a single bad plan costs only its own slot.
+            var built = new List<ComponentSlot>(plans.Count);
+            foreach (var plan in plans)
+            {
+                try { built.Add(plan()); }
+                catch (Exception) { /* one failing control must not blank the whole region */ }
+            }
             _slots.Clear();
-            foreach (var plan in plans) _slots.Add(plan());
+            _slots.AddRange(built);
             _panel.Children.Clear();
             foreach (var slot in _slots) _panel.Children.Add(slot.Content);
         });

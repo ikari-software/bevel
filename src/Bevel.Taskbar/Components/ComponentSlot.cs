@@ -26,8 +26,17 @@ public sealed class ComponentSlot
         Content = content;
     }
 
-    /// <summary>A live slot rendering the component's label primitive value.</summary>
-    public static ComponentSlot Live(ComponentInstance inst, ComponentManifest type, ComponentState state)
+    /// <summary>
+    /// A live slot rendering the component's label primitive value.
+    /// </summary>
+    /// <param name="effectiveSizing">The sizing to lay this slot out with — from <see
+    /// cref="Bevel.Core.Components.NormalizedList.EffectiveSizing"/>, NOT <paramref name="type"/>'s
+    /// declared <c>Sizing</c> (whole-branch review Fix 3). The normalizer demotes a SECOND greedy
+    /// component to content sizing (spec §4.2's one-greedy rule); reading <c>type.Sizing</c> here
+    /// instead silently discarded that demotion and let two greedy components both lay out greedy.
+    /// </param>
+    public static ComponentSlot Live(
+        ComponentInstance inst, ComponentManifest type, ComponentState state, ComponentSizing effectiveSizing)
     {
         var text = state.Values.Count > 0 ? state.Values.First().Value : type.DisplayName;
         var c = new Button
@@ -39,7 +48,7 @@ public sealed class ComponentSlot
             VerticalAlignment = VerticalAlignment.Center,
         };
         AutomationProperties.SetName(c, type.DisplayName);
-        TaskbarComponentsPanel.SetSizing(c, type.Sizing);
+        TaskbarComponentsPanel.SetSizing(c, effectiveSizing);
         return new ComponentSlot(inst.InstanceId, inst.TypeId, inert: false, c);
     }
 
@@ -49,7 +58,13 @@ public sealed class ComponentSlot
     /// cannot see and a keyboard user cannot reach is worse than a visible gap, because nobody
     /// discovers it. Hence the explicit border, the themed fill, and Focusable.
     /// </summary>
-    public static ComponentSlot Inert(ComponentInstance inst, string reason)
+    /// <param name="type">The resolved manifest, when the type resolves (whole-branch review
+    /// Fix 8). When given, the accessible name announces its <c>DisplayName</c> instead of
+    /// <paramref name="inst"/>'s raw <c>TypeId</c> — a reverse-DNS string like
+    /// <c>com.example.widget</c> is not something a screen reader should read aloud. Null only when
+    /// the type itself could not be resolved (truly not installed), where no manifest exists to
+    /// read a display name from.</param>
+    public static ComponentSlot Inert(ComponentInstance inst, string reason, ComponentManifest? type = null)
     {
         var c = new Border
         {
@@ -66,7 +81,7 @@ public sealed class ComponentSlot
             // Tab-reachable, so a keyboard user can discover the failure and read its tooltip.
             Focusable = true,
         };
-        AutomationProperties.SetName(c, $"Component unavailable: {inst.TypeId}");
+        AutomationProperties.SetName(c, $"Component unavailable: {type?.DisplayName ?? inst.TypeId}");
         TaskbarComponentsPanel.SetSizing(c, ComponentSizing.Content);
         return new ComponentSlot(inst.InstanceId, inst.TypeId, inert: true, c);
     }

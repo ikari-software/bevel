@@ -762,6 +762,17 @@ public sealed class SettingsService : ISettingsService, IDisposable
     {
         corrupt = false;
         if (!_raw.TryGetValue(key, out var el)) return null;
+        // Whole-branch review Fix 7: a value like {"taskbarComponents": {"instanceId":"a",...}} (an
+        // object, not an array) deserializes without throwing JsonException via STJ's lenient
+        // element-to-array handling in some shapes, which let a foreign-shaped value slip past this
+        // guard silently instead of tripping `corrupt`. Reject any non-Array JsonValueKind up front,
+        // before Deserialize ever runs, so every corrupt shape — not just the ones STJ happens to
+        // throw on — forces TaskbarComponentsVersion back to 0 via `corrupt`.
+        if (el.ValueKind != JsonValueKind.Array)
+        {
+            corrupt = true;
+            return null;
+        }
         try
         {
             return el.Deserialize(SettingsJsonContext.Default.ComponentInstanceArray);

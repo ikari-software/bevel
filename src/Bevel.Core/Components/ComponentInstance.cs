@@ -10,9 +10,21 @@ namespace Bevel.Core.Components;
 public sealed record ComponentInstance(
     [property: JsonPropertyName("instanceId")] string InstanceId,
     [property: JsonPropertyName("typeId")] string TypeId,
-    [property: JsonPropertyName("settings")] Dictionary<string, string> Settings,
+    Dictionary<string, string> Settings,
     [property: JsonPropertyName("visible")] bool Visible)
 {
+    /// <summary>
+    /// Normalizes a null <see cref="Settings"/> to empty AT INIT TIME (whole-branch review Fix 7).
+    /// <c>{"instanceId":"a","typeId":"x","visible":true}</c> is valid JSON with no <c>"settings"</c>
+    /// key, so System.Text.Json constructs this record with <c>Settings = null</c> and throws no
+    /// <c>JsonException</c> — the corrupt-path guard in <c>SettingsService</c> never fires for it.
+    /// Without this coalesce, <see cref="DeepClone"/>'s <c>new Dictionary&lt;string,string&gt;(Settings)</c>
+    /// throws <see cref="ArgumentNullException"/> out of <c>BevelSettings.CopyFrom</c>, and
+    /// <see cref="ReadSetting"/>'s <c>Settings.TryGetValue</c> NREs.
+    /// </summary>
+    [JsonPropertyName("settings")]
+    public Dictionary<string, string> Settings { get; init; } = Settings ?? new();
+
     /// <summary>A fresh instance id. Stable for the life of the placement, so reordering never loses settings.</summary>
     public static string NewId() => Guid.NewGuid().ToString("n")[..12];
 
