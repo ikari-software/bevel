@@ -2819,9 +2819,16 @@ public sealed class ComponentBusServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// The instance id a message claims, or null if the message carries none. EVERY payload type
+    /// with an <c>instance_id</c> field must appear here — an omission silently disables the
+    /// binding check for that type, letting an authenticated peer speak for an instance it does
+    /// not own. `Input` was missed in an earlier draft of this plan for exactly that reason.
+    /// </summary>
     private static string? InstanceOf(ComponentEnvelope env) => env.PayloadCase switch
     {
         ComponentEnvelope.PayloadOneofCase.State => env.State.InstanceId,
+        ComponentEnvelope.PayloadOneofCase.Input => env.Input.InstanceId,
         ComponentEnvelope.PayloadOneofCase.FrameReady => env.FrameReady.InstanceId,
         ComponentEnvelope.PayloadOneofCase.Heartbeat => env.Heartbeat.InstanceId,
         _ => null,
