@@ -3997,6 +3997,7 @@ Create `src/Bevel.Taskbar/Components/ComponentSlot.cs`:
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Markup.Xaml.MarkupExtensions;
 using Bevel.Core.Components;
 
 namespace Bevel.Taskbar.Components;
@@ -4039,9 +4040,10 @@ public sealed class ComponentSlot
     }
 
     /// <summary>
-    /// A placeholder for an unresolvable, failed or quarantined component. It is focusable and
-    /// named so the failure is reachable by keyboard and screen reader rather than being an
-    /// invisible hole in the bar.
+    /// A placeholder for an unresolvable, failed or quarantined component. It must be VISIBLE and
+    /// keyboard-reachable, not merely present in the automation tree: a failure a sighted user
+    /// cannot see and a keyboard user cannot reach is worse than a visible gap, because nobody
+    /// discovers it. Hence the explicit border, the themed fill, and Focusable.
     /// </summary>
     public static ComponentSlot Inert(ComponentInstance inst, string reason)
     {
@@ -4052,6 +4054,13 @@ public sealed class ComponentSlot
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Avalonia.Thickness(2, 0),
             [ToolTip.TipProperty] = reason,
+            // Visible, and themed — never a hardcoded colour. Bevel.Brush.ButtonShadow is the
+            // existing sunken-edge token, so the placeholder reads as a recess in the bar.
+            BorderThickness = new Avalonia.Thickness(1),
+            [!Border.BorderBrushProperty] = new DynamicResourceExtension("Bevel.Brush.ButtonShadow"),
+            [!Border.BackgroundProperty] = new DynamicResourceExtension("Bevel.Brush.TrayWell"),
+            // Tab-reachable, so a keyboard user can discover the failure and read its tooltip.
+            Focusable = true,
         };
         AutomationProperties.SetName(c, $"Component unavailable: {inst.TypeId}");
         TaskbarComponentsPanel.SetSizing(c, ComponentSizing.Content);
@@ -4085,6 +4094,12 @@ public sealed class ComponentBarHost
     private readonly List<IComponentChannel> _channels = new();
     private readonly List<ComponentSlot> _slots = new();
 
+    // ApplyAsync is fired from startup AND from every settings push, each on a background thread.
+    // Two overlapping runs would concurrently mutate _channels, _slots, and the plain
+    // Dictionary/HashSet state inside ComponentHealth and BarGeometry — throwing
+    // "Collection was modified" or silently corrupting slot order. Serialise them.
+    private readonly SemaphoreSlim _applyGate = new(1, 1);
+
     public ComponentBarHost(ComponentRegistry registry, ComponentHealth health, BarGeometry geometry)
     {
         _registry = registry;
@@ -4099,10 +4114,18 @@ public sealed class ComponentBarHost
 
     /// <summary>
     /// Rebuilds the region from <paramref name="instances"/>. Safe to call on a settings change —
-    /// re-applying replaces slots rather than accumulating them, and geometry is re-derived so a
-    /// smaller tier can SHRINK the bar (the stale-value failure bevel-kclq records).
+    /// re-applying replaces slots rather than accumulating them, and a hidden instance releases its
+    /// geometry contribution. NOTE: no Stack slot CONTRIBUTES height yet, so the shrink path is not
+    /// exercised end-to-end by this task; whoever migrates Tray or Clock must not assume it is proven.
     /// </summary>
     public async Task ApplyAsync(IReadOnlyList<ComponentInstance> instances, CancellationToken ct)
+    {
+        await _applyGate.WaitAsync(ct).ConfigureAwait(false);
+        try { await ApplyCoreAsync(instances, ct).ConfigureAwait(false); }
+        finally { _applyGate.Release(); }
+    }
+
+    private async Task ApplyCoreAsync(IReadOnlyList<ComponentInstance> instances, CancellationToken ct)
     {
         foreach (var ch in _channels)
         {
@@ -4201,7 +4224,17 @@ In `src/Bevel.Taskbar/TaskbarView.axaml.cs`, build the host once and apply the l
     {
         var host = _componentHost;
         if (host is null) return;
-        var list = settings.TaskbarComponents;
+
+        // FILTER to the types this region's registry actually serves. The migration populates
+        // TaskbarComponents with Start, WindowStrip, Stack, Tray, Clock AND ShowDesktop, but this
+        // task registers only Stack — so handing over the whole list makes the normalizer keep every
+        // other type as an "unknown" inert placeholder and renders ghost 12x12 blanks inside the
+        // stacks region, right next to the real hand-rendered Start button, strip, tray and clock.
+        // That reproduces on essentially every real settings.db. Widen this filter as each region
+        // migrates; delete it when all of them have.
+        var list = settings.TaskbarComponents
+            .Where(i => i.TypeId == TaskbarComponentTypes.Stack)
+            .ToArray();
         // Off the UI thread: ConnectAsync may touch IPC. Only the panel mutation marshals back,
         // which ApplyAsync already does for itself.
         _ = Task.Run(() => host.ApplyAsync(list, CancellationToken.None));
