@@ -623,7 +623,7 @@ git commit -m "feat(components): manifest, primitive tree, and validation that r
 
 **Interfaces:**
 - Consumes: `ComponentManifest`, `ComponentSettingsField`, `ComponentFieldKind` (Task 2).
-- Produces: `ComponentInstance` record with `InstanceId`, `TypeId`, `Settings` (`Dictionary<string,string>`), `Visible`; `ComponentInstance.NewId()`; `ComponentInstance.ReadSetting(ComponentManifest, string key) → string`.
+- Produces: `ComponentInstance` record with `InstanceId`, `TypeId`, `Settings` (`Dictionary<string,string>`), `Visible`; `ComponentInstance.NewId()`; `ComponentInstance.ReadSetting(ComponentManifest, string key) → string`. Also PINS `ComponentSettingsField.TryRead` behaviour, which Task 2 shipped untested — every branch, including the Enum path with a null `AllowedValues`.
 
 Settings values are **strings**, parsed through the schema. That keeps the persisted shape AOT-friendly (no `JsonElement` in the source-generated context) and puts type knowledge in exactly one place.
 
@@ -690,6 +690,84 @@ public class ComponentInstanceTests
     [Fact]
     public void NewId_produces_distinct_ids()
         => Assert.NotEqual(ComponentInstance.NewId(), ComponentInstance.NewId());
+
+    // ── ComponentSettingsField.TryRead: the branches ReadSetting above does not reach ──────────
+    // Task 2 shipped TryRead with no direct tests. The cases above cover Bool-success, absent,
+    // Int-unparseable and Int-out-of-range; the Enum branch was entirely uncovered — including
+    // `AllowedValues is null`, which is the one that would throw if the `Contains` were ever
+    // refactored. TryRead is the public parsing contract third-party components depend on, so
+    // every branch gets a case here.
+
+    private static ComponentSettingsField Field(
+        ComponentFieldKind kind, string @default,
+        IReadOnlyList<string>? allowed = null, (int Min, int Max)? range = null)
+        => new("f", kind, "F", @default, allowed, range);
+
+    [Fact]
+    public void TryRead_accepts_a_declared_enum_value()
+    {
+        var f = Field(ComponentFieldKind.Enum, "small", new[] { "small", "large" });
+        Assert.True(f.TryRead("large", out var v));
+        Assert.Equal("large", v);
+    }
+
+    [Fact]
+    public void TryRead_rejects_an_enum_value_outside_AllowedValues()
+    {
+        var f = Field(ComponentFieldKind.Enum, "small", new[] { "small", "large" });
+        Assert.False(f.TryRead("huge", out var v));
+        Assert.Equal("small", v);
+    }
+
+    [Fact]
+    public void TryRead_does_not_throw_when_an_enum_field_declares_no_AllowedValues()
+    {
+        var f = Field(ComponentFieldKind.Enum, "small", allowed: null);
+        Assert.False(f.TryRead("anything", out var v));   // must not NullReference
+        Assert.Equal("small", v);
+    }
+
+    [Fact]
+    public void TryRead_rejects_an_unparseable_bool_and_keeps_the_default()
+    {
+        var f = Field(ComponentFieldKind.Bool, "true");
+        Assert.False(f.TryRead("yes", out var v));
+        Assert.Equal("true", v);
+    }
+
+    // A comma-decimal locale must not change how an int field reads, and "1.5" must fail rather
+    // than silently truncate.
+    [Fact]
+    public void TryRead_parses_ints_culture_independently()
+    {
+        var f = Field(ComponentFieldKind.Int, "0");
+        Assert.True(f.TryRead("1234", out var v));
+        Assert.Equal("1234", v);
+        Assert.False(f.TryRead("1.5", out var frac));
+        Assert.Equal("0", frac);
+    }
+
+    [Theory]
+    [InlineData(ComponentFieldKind.String)]
+    [InlineData(ComponentFieldKind.Path)]
+    public void TryRead_passes_string_and_path_values_through(ComponentFieldKind kind)
+    {
+        var f = Field(kind, "");
+        Assert.True(f.TryRead("/some/value", out var v));
+        Assert.Equal("/some/value", v);
+    }
+
+    [Theory]
+    [InlineData(ComponentFieldKind.Bool)]
+    [InlineData(ComponentFieldKind.Int)]
+    [InlineData(ComponentFieldKind.Enum)]
+    [InlineData(ComponentFieldKind.String)]
+    [InlineData(ComponentFieldKind.Path)]
+    public void TryRead_leaves_the_default_in_the_out_parameter_on_every_false_return(ComponentFieldKind kind)
+    {
+        var f = Field(kind, "DEFAULT", allowed: Array.Empty<string>());
+        if (!f.TryRead(null, out var v)) Assert.Equal("DEFAULT", v);
+    }
 }
 ```
 
@@ -745,7 +823,7 @@ public sealed record ComponentInstance(
 - [ ] **Step 4: Run the tests**
 
 Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter ComponentInstanceTests`
-Expected: PASS (6 tests).
+Expected: PASS (19 cases — 11 facts plus 2 theories covering every TryRead branch).
 
 - [ ] **Step 5: Commit**
 
