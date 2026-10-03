@@ -60,6 +60,13 @@ public partial class TaskbarView : UserControl
     /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
     private ComponentBarHost? _componentHost;
     /// <summary>
+    /// Test-only seam (bevel-aqr7 Task 14 fix round 2, Finding 1): lets <c>Bevel.Taskbar.Tests</c>
+    /// (via the existing <c>InternalsVisibleTo</c>) drive <see cref="ApplyComponentRegion"/> directly
+    /// and inspect the REAL resulting slots, rather than a test re-implementing the type filter
+    /// inline and never exercising the production call site at all.
+    /// </summary>
+    internal ComponentBarHost? ComponentHost => _componentHost;
+    /// <summary>
     /// The settings snapshot <see cref="Initialize"/> was called with, held only long enough to seed
     /// <see cref="InitComponentRegion"/> from <see cref="OnLoaded"/>. It cannot run at Initialize-time
     /// itself: <c>Initialize</c> is called BEFORE this view is parented into its owning
@@ -247,8 +254,15 @@ public partial class TaskbarView : UserControl
     /// Runs off the UI thread — <see cref="IComponentChannel.ConnectAsync"/> may touch IPC — and
     /// <c>ApplyAsync</c> marshals only its own panel mutation back via <see cref="Dispatcher"/>, so
     /// this never blocks the caller (settings-changed handlers run on the UI thread).
+    ///
+    /// <c>internal</c> rather than <c>private</c> (bevel-aqr7 Task 14 fix round 2, Finding 1) so
+    /// <c>ComponentRegionFilterTests</c> can call the REAL method with a full migrated list and
+    /// prove the type filter below actually guards the stacks region — a test that filtered the
+    /// list itself before calling <see cref="ComponentBarHost.ApplyAsync"/> would still pass even if
+    /// this method's filter were deleted, which is exactly how the ghost-placeholder Critical got
+    /// through undetected in the first place.
     /// </summary>
-    private void ApplyComponentRegion(Bevel.Core.BevelSettings settings)
+    internal void ApplyComponentRegion(Bevel.Core.BevelSettings settings)
     {
         var host = _componentHost;
         if (host is null) return;

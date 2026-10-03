@@ -176,6 +176,31 @@ public class ComponentBarHostTests
         Assert.Equal(host.Slots.Count, host.Slots.Select(s => s.InstanceId).Distinct().Count());
     }
 
+    /// <summary>
+    /// Fix round 2, Finding 2 (Important): every test above calls <c>ApplyAsync</c> directly from
+    /// the <c>[AvaloniaFact]</c> UI thread, which already has dispatcher affinity — so none of them
+    /// would have caught the off-thread "Call from invalid thread" crash fix round 1 found and
+    /// fixed. Production calls it as <c>_ = Task.Run(() => host.ApplyAsync(...))</c>
+    /// (<c>TaskbarView.ApplyComponentRegion</c>), which runs the WHOLE method — including, before
+    /// that fix, the <c>ComponentSlot.Live</c>/<c>Inert</c> construction — on a thread-pool thread
+    /// with no dispatcher affinity at all. This test reproduces that exact call shape so a
+    /// regression that reinstated direct construction inside the loop fails HERE, not only on the
+    /// first real shell start. Bounded with a timeout so a hang fails loudly instead of wedging CI.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task ApplyAsync_driven_through_TaskRun_like_production_builds_controls_without_crashing()
+    {
+        var host = Host();
+        var work = Task.Run(() => host.ApplyAsync(new[] { Stack("/one"), Stack("/two") }, CancellationToken.None));
+        var winner = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        Assert.Same(work, winner);   // fails loudly on a hang instead of timing out the whole run
+        await work;                 // observe (and surface) any exception the background run threw
+
+        Assert.Equal(2, host.Slots.Count);
+        Assert.All(host.Slots, s => Assert.False(s.IsInert));
+    }
+
     private sealed class ThrowingChannel : IComponentChannel
     {
         public event Action<ComponentState>? StateChanged;
