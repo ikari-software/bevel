@@ -539,10 +539,13 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarShowDesktopButton", _settings.TaskbarShowDesktopButton, d.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarComponentsVersion", _settings.TaskbarComponentsVersion, d.TaskbarComponentsVersion, SettingsJsonContext.Default.Int32);
         // Arrays + per-theme overrides: prune when identical to the default / empty.
         if (_settings.TaskbarStacks.SequenceEqual(d.TaskbarStacks)) _raw.Remove("taskbarStacks");
         else _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
-        if (_settings.TaskbarComponents.Length == 0) _raw.Remove("taskbarComponents");
+        // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
+        // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
+        if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
         else _raw["taskbarComponents"] = JsonSerializer.SerializeToElement(
             _settings.TaskbarComponents, SettingsJsonContext.Default.ComponentInstanceArray);
         foreach (var (id, overrides) in _themeOverrides)
@@ -667,6 +670,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             TaskbarComponents = GetComponentInstances("taskbarComponents") ?? Array.Empty<ComponentInstance>(),
+            TaskbarComponentsVersion = GetInt("taskbarComponentsVersion") ?? 0,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
             TaskbarShowClock = GetBool("taskbarShowClock") ?? true,
             TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
@@ -700,6 +704,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarAlwaysOnTop = GetBool("taskbarAlwaysOnTop") ?? true,
             TaskbarShowDesktopButton = GetBool("taskbarShowDesktopButton") ?? false,
         };
+
+        // One-time fold of the legacy flat taskbar keys (bevel-aqr7). Gated on the VERSION marker,
+        // not on emptiness: an empty list is a legitimate user choice, and re-migrating it every
+        // start would silently resurrect components they removed. Placed here — inside ApplyRaw,
+        // the single "project the raw blob into the typed model" chokepoint shared by LoadAsync,
+        // ReloadIfChangedAsync, ApplyPatchJsonAsync and the static ProjectBlob/TryProjectBlob — so
+        // the migration runs through the exact same pipeline every caller uses, with the settings
+        // object still local to this method and not yet published to any caller.
+        if (_settings.TaskbarComponentsVersion == 0)
+        {
+            _settings.TaskbarComponents = TaskbarComponentsMigration.BuildDefaultList(_settings);
+            _settings.TaskbarComponentsVersion = 1;
+        }
 
         _themeOverrides.Clear();
         foreach (var (key, el) in _raw)
@@ -935,6 +952,10 @@ public sealed class BevelSettings
     /// <summary>bevel-aqr7: the bar as an ordered list of component instances. Empty means "not yet
     /// migrated" — <c>TaskbarComponentsMigration</c> folds the legacy flat keys on first read.</summary>
     public ComponentInstance[] TaskbarComponents { get; set; } = Array.Empty<ComponentInstance>();
+
+    /// <summary>bevel-aqr7: schema generation of <see cref="TaskbarComponents"/>. 0 = never migrated
+    /// from the legacy flat keys. Distinguishes "not migrated yet" from "deliberately empty".</summary>
+    public int TaskbarComponentsVersion { get; set; }
 
     /// <summary>A detached snapshot copy — used by the Properties dialog to revert on Cancel.</summary>
     public BevelSettings Clone()
