@@ -30,6 +30,14 @@
         <Style Selector="Border.stackcell:focus-visible TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
+        <!-- A TOOLTIP is shown precisely while its owner is hovered/focused, and it is a logical
+             descendant of that owner — so the two selectors above were repainting the tooltip's own text
+             white, on the pale-yellow info surface: invisible (reported on the Downloads stack). Tooltip
+             text is the theme's to decide, never the hover state's. LAST in document order so it wins:
+             Avalonia resolves equal-specificity setters by declaration order. -->
+        <Style Selector="ToolTip TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.InfoText}" />
+        </Style>
 
         <!-- Only a REAL content preview gets the sunken photo frame; a type-icon fallback sits bare, so
              the frame reads as "this is the file's contents" rather than decoration. -->

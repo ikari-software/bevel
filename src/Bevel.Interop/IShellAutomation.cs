@@ -26,6 +26,19 @@ public interface IShellAutomation
     Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct);
     Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct);
     Task LaunchAsync(string appId, CancellationToken ct);
+
+    /// <summary>
+    /// Shuts the WHOLE shell down the way Start ▸ Turn Off does — launcher, core, taskbar and any
+    /// filers — rather than just the process that received the request.
+    ///
+    /// <para>This exists because a clean quit was previously reachable only by clicking the UI. The
+    /// shutdown path is not a nicety: on Windows it is what restores the user's taskbar and its
+    /// auto-hide state (bevel-h0sr), and on macOS what restores the Dock — so scripts, CI smoke
+    /// tests and agents all need a way to ask for it rather than killing a process and leaving the
+    /// desktop altered. Returns once the request is ACCEPTED, not once teardown finishes; the caller
+    /// is about to lose the socket it asked over.</para>
+    /// </summary>
+    Task QuitAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -35,6 +48,19 @@ public interface IShellAutomation
 /// real implementation adapts the shell's <c>IAppEnvironment</c>. Null in DI ⇒ launching reports
 /// "not available" rather than crashing (e.g. in filesystem-only automation contexts).
 /// </summary>
+/// <summary>
+/// Shutting the whole shell down, as a seam. Kept narrow and OPTIONAL exactly like
+/// <see cref="IProgramSurface"/>: the command model lives in Bevel.Interop and must not reach into
+/// the launcher's supervision plumbing, and a filesystem-only automation context has no shell to
+/// quit. Null in DI ⇒ <c>quit</c> reports "not available" rather than pretending.
+/// </summary>
+public interface IShellLifecycle
+{
+    /// <summary>Requests the Start ▸ Turn Off teardown of launcher, core, taskbar and filers.
+    /// Returns once ACCEPTED — the caller's transport is about to go away with the shell.</summary>
+    Task QuitAsync(CancellationToken ct);
+}
+
 public interface IProgramSurface
 {
     Task<IReadOnlyList<ProgramInfo>> ListProgramsAsync(CancellationToken ct);

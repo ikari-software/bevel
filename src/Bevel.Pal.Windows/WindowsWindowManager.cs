@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -115,7 +116,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         {
             if (!IsWindow(hwnd)) return;
             if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
-            SwitchToThisWindow(hwnd, true);
+            ForegroundCore(hwnd);   // same foreground-lock ladder as ActivateCore (bevel-upm6)
         }, ct);
     }
 
@@ -201,7 +202,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         var bounds = GetPhysicalBounds(hwnd);
         var minimized = IsIconic(hwnd);
         var focused = GetForegroundWindow() == hwnd;
-        var (bundleId, appId) = ResolveIdentity(hwnd);
+        var (bundleId, appId, exePath) = ResolveIdentity(hwnd);
 
         return new ForeignWindow(
             Id: new ForeignWindowId(hwnd.ToInt64().ToString()),
@@ -210,7 +211,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
             IsMinimized: minimized,
             IsFocused: focused,
             Bounds: bounds,
-            IconPng: null,
+            IconPng: WindowIconPng(hwnd, exePath),
             IsAppPresence: false,
             BundleId: bundleId);
     }
@@ -234,15 +235,19 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return copied > 0 ? sb.ToString() : string.Empty;
     }
 
-    /// <summary>Resolves (BundleId, AppId) for a window. Classic Win32 → (full exe path, exe basename).
-    /// UWP windows belong to ApplicationFrameHost.exe: descend to the inner
-    /// <c>Windows.UI.Core.CoreWindow</c> child, take ITS process, and read the AUMID — attributing the
-    /// window to the hosted app, not to AFH (F11/O4).</summary>
+    /// <summary>Resolves (BundleId, AppId, ExePath) for a window. Classic Win32 → (full exe path, exe
+    /// basename, that same exe path). UWP windows belong to ApplicationFrameHost.exe: descend to the
+    /// inner <c>Windows.UI.Core.CoreWindow</c> child, take ITS process, and read the AUMID —
+    /// attributing the window to the hosted app, not to AFH (F11/O4).
+    ///
+    /// ExePath is reported SEPARATELY from BundleId because for a packaged app the bundle id is an
+    /// AUMID, not a path, and the icon fallback needs a real file to extract from — the hosted app's
+    /// own exe, never AFH's.</summary>
     [SupportedOSPlatform("windows")]
-    private static (string? BundleId, string? AppId) ResolveIdentity(IntPtr hwnd)
+    private static (string? BundleId, string? AppId, string? ExePath) ResolveIdentity(IntPtr hwnd)
     {
         GetWindowThreadProcessId(hwnd, out uint pid);
-        if (pid == 0) return (null, null);
+        if (pid == 0) return (null, null, null);
 
         var exePath = GetProcessImagePath(pid);
         var exeName = exePath is null ? null : Path.GetFileName(exePath);
@@ -255,19 +260,21 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
                 GetWindowThreadProcessId(core, out uint corePid);
                 if (corePid != 0 && corePid != pid)
                 {
+                    // The hosted app's own exe: the identity key may be an AUMID, but the icon
+                    // fallback still wants this path rather than ApplicationFrameHost's.
+                    var coreExe = GetProcessImagePath(corePid);
                     var aumid = GetAumid(corePid);
                     if (!string.IsNullOrEmpty(aumid))
-                        return (aumid, aumid);
+                        return (aumid, aumid, coreExe);
                     // Fall back to the CoreWindow's own exe if AUMID is unavailable.
-                    var coreExe = GetProcessImagePath(corePid);
                     if (coreExe is not null)
-                        return (coreExe, Path.GetFileNameWithoutExtension(coreExe));
+                        return (coreExe, Path.GetFileNameWithoutExtension(coreExe), coreExe);
                 }
             }
         }
 
-        if (exePath is null) return (null, null);
-        return (exePath, Path.GetFileNameWithoutExtension(exePath));
+        if (exePath is null) return (null, null, null);
+        return (exePath, Path.GetFileNameWithoutExtension(exePath), exePath);
     }
 
     /// <summary>PID to terminate for a top-level HWND. UWP windows are hosted by
@@ -320,17 +327,204 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         finally { CloseHandle(h); }
     }
 
+    // ── Window icons: WM_GETICON → class icon → exe extraction → PNG (Windows-only) ─────
+    //
+    // The taskbar button's icon. ForeignWindow.IconPng is an encoded PNG — on macOS the Swift helper
+    // ships a 64px app icon there — and this is Windows producing the same thing; it used to be
+    // hardcoded null, which is why every Windows task button rendered label-only (bevel-ncfp.3 listed
+    // WM_GETICON/GCLP_HICON in scope but it was never wired).
+    //
+    // Resolution order: the window's OWN WM_GETICON icon, then the owning exe's icon resource, and
+    // the class icon LAST. The exe sits above the class icon for RESOLUTION: PrivateExtractIcons
+    // takes the size we ask for, so the exe yields the 64px source this shell wants, while a class
+    // icon is whatever edge the app registered — measured on a live desktop, WezTerm publishes no
+    // WM_GETICON icon and its class icon is 32px, where its exe gives the same artwork at 64px.
+    // The window icon still outranks both, because it is the only per-WINDOW identity: a generic
+    // host exe (javaw.exe, an Electron launcher) would otherwise flatten every app it hosts into one
+    // icon. Not-this: don't read "fully opaque" as a broken icon — plenty of real app icons have no
+    // transparency at all, so it is never a signal to go looking for a better source.
+
+    /// <summary>Encoded PNGs by icon SOURCE — keyed by HICON for a window/class icon, by exe path for
+    /// an extracted one. N windows of one app therefore cost one conversion+encode, and the redundant
+    /// 2s full re-poll (bevel-tnii) costs a dictionary hit instead of re-encoding every icon. A null
+    /// result is cached too, so an iconless window doesn't re-probe forever. Bounded: a long-lived
+    /// shell must not accumulate an entry per dead handle.</summary>
+    private static readonly ConcurrentDictionary<string, byte[]?> IconPngCache = new();
+    private const int IconCacheCap = 256;
+
+    /// <summary>Source edge we'd like, matching the macOS helper's 64px app icon: the Big taskbar
+    /// tier (bevel-c54t) draws a 32px glyph, so a 16px source would visibly upscale.</summary>
+    private const int PreferredIconEdge = 64;
+
+    /// <summary>Below this, a window icon is treated as "small only" and the exe's crisper icon wins.</summary>
+    private const int MinAcceptableIconEdge = 32;
+
+    private const uint IconQueryTimeoutMs = 50;
+
+    private static readonly int[] IconQueryOrder = { ICON_BIG, ICON_SMALL2, ICON_SMALL };
+    private static readonly int[] ClassIconOrder = { GCLP_HICON, GCLP_HICONSM };
+
+    [SupportedOSPlatform("windows")]
+    private static byte[]? WindowIconPng(IntPtr hwnd, string? exePath)
+    {
+        try
+        {
+            var hWindowIcon = WindowMessageHicon(hwnd);
+            var hClassIcon = ClassHicon(hwnd);
+            // Keyed on the FIRST source that answers, in the order they'd be used — the same inputs
+            // always render the same PNG, so the key stays honest even when a later step wins.
+            string? key = hWindowIcon != IntPtr.Zero ? "w:" + hWindowIcon.ToInt64().ToString()
+                : !string.IsNullOrEmpty(exePath) ? "e:" + exePath
+                : hClassIcon != IntPtr.Zero ? "c:" + hClassIcon.ToInt64().ToString()
+                : null;
+            if (key is null) return null;
+            if (IconPngCache.TryGetValue(key, out var cached)) return cached;
+
+            var png = RenderIconPng(hWindowIcon, hClassIcon, exePath);
+            if (IconPngCache.Count < IconCacheCap) IconPngCache[key] = png;
+            return png;
+        }
+        catch { return null; }   // an icon is decoration: never fail an enumeration over one
+    }
+
+    /// <summary>The icon the window publishes for ITSELF. BORROWED, not owned — a WM_GETICON result
+    /// belongs to the other process; destroying it corrupts that app's own UI. ICON_SMALL2 is the
+    /// shell's private "give me a small icon, synthesising one if the app has only a big one" query.
+    /// SendMessageTimeout, never SendMessage: delta events run this on the WinEvent pump thread, and
+    /// one hung app must not stall the whole window stream.</summary>
+    [SupportedOSPlatform("windows")]
+    private static IntPtr WindowMessageHicon(IntPtr hwnd)
+    {
+        foreach (int which in IconQueryOrder)
+        {
+            if (SendMessageTimeout(hwnd, WM_GETICON, new IntPtr(which), IntPtr.Zero,
+                    SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT, IconQueryTimeoutMs, out IntPtr result) != IntPtr.Zero
+                && result != IntPtr.Zero)
+                return result;
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>The window CLASS's registered icon — also borrowed, never destroyed. Free to read (no
+    /// cross-process message), but ranked last: see the note above this region.</summary>
+    [SupportedOSPlatform("windows")]
+    private static IntPtr ClassHicon(IntPtr hwnd)
+    {
+        foreach (int index in ClassIconOrder)
+        {
+            var h = GetClassLongPtrSafe(hwnd, index);
+            if (h != IntPtr.Zero) return h;
+        }
+        return IntPtr.Zero;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static byte[]? RenderIconPng(IntPtr hWindowIcon, IntPtr hClassIcon, string? exePath)
+    {
+        byte[]? bgra = null;
+        int w = 0, h = 0;
+
+        // 1. The window's own icon — per-window identity, so it wins whenever it's big enough.
+        if (hWindowIcon != IntPtr.Zero
+            && WindowsIconBits.TryRead(hWindowIcon, out int ww, out int wh, out var wbits))
+            (bgra, w, h) = (wbits, ww, wh);
+
+        // 2. The exe's icon resource at the preferred edge — also the upscale escape hatch when the
+        //    window only published a 16px icon.
+        if (bgra is null || w < MinAcceptableIconEdge)
+        {
+            if (ExeIconBits(exePath, PreferredIconEdge) is { } e && e.Width > w)
+                (bgra, w, h) = (e.Bgra, e.Width, e.Height);
+        }
+
+        // 3. Class icon: last resort, for a window that publishes none and whose exe has no
+        //    extractable resource.
+        if (bgra is null && hClassIcon != IntPtr.Zero
+            && WindowsIconBits.TryRead(hClassIcon, out int cw, out int ch, out var cbits))
+            (bgra, w, h) = (cbits, cw, ch);
+
+        // preserveAlpha: an icon's transparency IS the icon — forcing it opaque (what the window
+        // capture path wants) would draw every button's glyph as a solid square.
+        return bgra is null ? null : EncodePng(bgra, w, h, 0, 0, preserveAlpha: true);
+    }
+
+    /// <summary>The exe's own icon at <paramref name="edge"/> px. PrivateExtractIcons takes an exact
+    /// size, so a 256px .ico resource is downscaled by the shell's own scaler instead of being
+    /// nearest-neighboured here — and unlike the borrowed window icons, this handle is OURS to
+    /// destroy.</summary>
+    [SupportedOSPlatform("windows")]
+    private static (byte[] Bgra, int Width, int Height)? ExeIconBits(string? exePath, int edge)
+    {
+        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath)) return null;
+
+        var icons = new IntPtr[1];
+        // Count of icons extracted — or 0xFFFFFFFF when the file can't be read at all.
+        uint got = PrivateExtractIcons(exePath, 0, edge, edge, icons, null, 1, 0);
+        if (got == 0 || got == uint.MaxValue || icons[0] == IntPtr.Zero) return null;
+        try
+        {
+            return WindowsIconBits.TryRead(icons[0], out int w, out int h, out var bgra)
+                ? (bgra, w, h)
+                : null;
+        }
+        finally { DestroyIcon(icons[0]); }
+    }
+
     // ── Actions (Windows-only) ──────────────────────────────────────────
 
     [SupportedOSPlatform("windows")]
     private static void ActivateCore(IntPtr hwnd)
     {
         if (!IsWindow(hwnd)) return;
-        // SwitchToThisWindow is Filer's own click-activate path: it restores from minimized and
-        // raises cleanly, and (called from the taskbar process, which holds input at click time)
-        // sidesteps the background-foreground restriction. No AttachThreadInput tricks.
         if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
-        SwitchToThisWindow(hwnd, true);
+        ForegroundCore(hwnd);
+    }
+
+    /// <summary>
+    /// Takes the foreground for <paramref name="hwnd"/> against the Win32 foreground lock (bevel-upm6).
+    ///
+    /// This used to be a bare <c>SwitchToThisWindow</c>, on the stated assumption that the taskbar
+    /// process "holds input at click time" and so sidesteps the background-foreground restriction.
+    /// It does not: the bar is <c>WS_EX_NOACTIVATE</c>, so clicking it never makes this process the
+    /// foreground, and <c>SPI_GETFOREGROUNDLOCKTIMEOUT</c> is effectively infinite on a stock desktop
+    /// (measured 2147483647 ms). A process without foreground rights calling SwitchToThisWindow gets
+    /// a SILENT no-op — no error, nothing to log — so the window never came forward and the taskbar
+    /// button's optimistic press snapped back on the next reconcile. Intermittent by nature: it
+    /// worked whenever this process happened to own the last input event.
+    ///
+    /// The remedy is the standard one for an alt-tab replacement or launcher: briefly attach our
+    /// input queue to the foreground window's thread, which puts us inside its input state for the
+    /// duration and makes SetForegroundWindow legal, then detach. The attach is always undone in a
+    /// finally — a leaked attachment couples two apps' input queues, so a hung target would wedge us.
+    /// SwitchToThisWindow stays as the fallback for the case where the ladder is refused anyway.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static void ForegroundCore(IntPtr hwnd)
+    {
+        if (GetForegroundWindow() == hwnd) return;   // already there; nothing to steal
+
+        uint ourThread = GetCurrentThreadId();
+        var foreground = GetForegroundWindow();
+        uint foreignThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out _);
+
+        bool attached = false;
+        try
+        {
+            if (foreignThread != 0 && foreignThread != ourThread)
+                attached = AttachThreadInput(ourThread, foreignThread, true);
+
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (attached) AttachThreadInput(ourThread, foreignThread, false);
+        }
+
+        // Belt and braces: if the ladder was still refused, the old path occasionally wins (it is
+        // alt-tab's own), and a raise with no focus beats nothing happening at all.
+        if (GetForegroundWindow() != hwnd)
+            SwitchToThisWindow(hwnd, true);
     }
 
     [SupportedOSPlatform("windows")]
@@ -343,7 +537,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         {
             if (IsRealAppWindow(hwnd))
             {
-                var (id, _) = ResolveIdentity(hwnd);
+                var (id, _, _) = ResolveIdentity(hwnd);
                 if (id is not null && id.Equals(bundleId, StringComparison.OrdinalIgnoreCase))
                 {
                     matches.Add(hwnd);
@@ -470,8 +664,11 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     /// <summary>Encodes a top-down BGRA buffer to a valid RGBA PNG, optionally nearest-neighbour
     /// downscaled to fit within <paramref name="maxWidth"/>×<paramref name="maxHeight"/> (0 = no cap).
-    /// PrintWindow's alpha is unreliable, so pixels are forced opaque.</summary>
-    internal static byte[] EncodePng(byte[] bgra, int srcW, int srcH, int maxWidth, int maxHeight)
+    /// PrintWindow's alpha is unreliable, so by default pixels are forced opaque;
+    /// <paramref name="preserveAlpha"/> keeps the source alpha for buffers that really carry one —
+    /// icons, whose transparency is the whole point (a forced-opaque icon is a solid square).</summary>
+    internal static byte[] EncodePng(byte[] bgra, int srcW, int srcH, int maxWidth, int maxHeight,
+        bool preserveAlpha = false)
     {
         int dstW = srcW, dstH = srcH;
         if (maxWidth > 0 && maxHeight > 0 && (srcW > maxWidth || srcH > maxHeight))
@@ -495,7 +692,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
                 raw[o++] = bgra[si + 2]; // R
                 raw[o++] = bgra[si + 1]; // G
                 raw[o++] = bgra[si + 0]; // B
-                raw[o++] = 255;          // A (forced opaque)
+                raw[o++] = preserveAlpha ? bgra[si + 3] : (byte)255; // A
             }
         }
 
@@ -715,6 +912,17 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     private const uint WM_CLOSE = 0x0010;
     private const uint WM_QUIT = 0x0012;
+    private const uint WM_GETICON = 0x007F;
+
+    private const int ICON_SMALL = 0;
+    private const int ICON_BIG = 1;
+    private const int ICON_SMALL2 = 2;
+
+    private const int GCLP_HICON = -14;
+    private const int GCLP_HICONSM = -34;
+
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
+    private const uint SMTO_ERRORONEXIT = 0x0020;
 
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
@@ -829,6 +1037,28 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
     private static long GetWindowLongPtrSafe(IntPtr hWnd, int nIndex)
         => IntPtr.Size == 8 ? GetWindowLongPtr64(hWnd, nIndex).ToInt64() : GetWindowLong32(hWnd, nIndex);
 
+    [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetClassLongPtr64(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "GetClassLongW", SetLastError = true)]
+    private static extern uint GetClassLong32(IntPtr hWnd, int nIndex);
+
+    /// <summary>GetClassLongPtr exists only in the 64-bit user32; on 32-bit the DWORD-wide
+    /// GetClassLong is the whole API (same as the GetWindowLongPtr split above).</summary>
+    private static IntPtr GetClassLongPtrSafe(IntPtr hWnd, int nIndex)
+        => IntPtr.Size == 8 ? GetClassLongPtr64(hWnd, nIndex) : new IntPtr(GetClassLong32(hWnd, nIndex));
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam,
+        uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
+    [DllImport("user32.dll", EntryPoint = "PrivateExtractIconsW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint PrivateExtractIcons(string szFileName, int nIconIndex, int cxIcon, int cyIcon,
+        IntPtr[] phicon, uint[]? piconid, uint nIcons, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string? lpszClass, string? lpszWindow);
 
@@ -840,6 +1070,15 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     [DllImport("user32.dll")]
     private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);

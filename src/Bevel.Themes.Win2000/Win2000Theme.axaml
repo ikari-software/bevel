@@ -37,6 +37,17 @@
                 <Setter Property="FontWeight" Value="Bold" />
                 <Setter Property="FontSize" Value="11" />
             </ControlTheme>
+            <!-- Tooltips are Bevel's to theme, not the vendored theme's (bevel-tooltip). Classic maps them
+                 onto SystemColors.Info*, which is correct for Win2000 but leaves the look outside the
+                 Bevel token set a skin (or Theme Studio) can change. Re-pointing Background/Foreground at
+                 Bevel.Brush.Info* keeps the same classic pale-yellow default while making it skinnable.
+                 IMPLICIT key on purpose: tooltips are attached with ToolTip.Tip all over the shell, never
+                 given a Theme=, so only the {x:Type ToolTip} key reaches them. -->
+            <ControlTheme x:Key="{x:Type ToolTip}" TargetType="ToolTip" BasedOn="{StaticResource {x:Type ToolTip}}">
+                <Setter Property="Background" Value="{DynamicResource Bevel.Brush.InfoWindow}" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.InfoText}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.WindowFrame}" />
+            </ControlTheme>
             <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}" />
             <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}" />
             <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}" />
@@ -60,6 +71,11 @@
             <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerDark" Color="#808080" />
             <Thickness x:Key="Bevel.Metric.TrayWellBorder">2</Thickness>
             <Thickness x:Key="Bevel.Metric.StartButtonMargin">1,1,0,1</Thickness>
+            <!-- Floor for the auto-sizing Start button (bevel-6x9z): it grows with its caption but
+                 never shrinks below this, so a short or empty caption keeps a clickable target. -->
+            <x:Double x:Key="Bevel.Metric.StartButtonMinWidth">74</x:Double>
+            <!-- Start caption breathing room. Square button, upright font: symmetric is enough. -->
+            <Thickness x:Key="Bevel.Metric.StartButtonPadding">8,0</Thickness>
             <!-- Edge (px) of the square Start badge; StartLogo picks the mark's detail level from it. 20 fits the
                  ~26px Classic button with room for the bevel. -->
             <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>

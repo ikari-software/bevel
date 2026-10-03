@@ -76,8 +76,25 @@
             <Thickness x:Key="Bevel.Metric.TrayWellBorder">0</Thickness>
             <!-- Clock/tray text sits on the dark-blue Luna well, so it must be light, not black. -->
             <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#EAF2FF" />
+
+            <!-- Tooltip surface (bevel-tooltip). Luna has no Info* tokens of its own, so without these it
+                 fell through to the vendored Win2000 mapping. XP keeps the classic pale-yellow info
+                 surface with black text — the tooltip is one of the few places XP did NOT go blue — so the
+                 values match Win2000's; they exist as Luna tokens so the skin OWNS them and a recolour can
+                 change them. NOT chromatic: these must not be re-hued by the colour axis, or a dark
+                 colourway turns the tooltip into dark-on-dark. -->
+            <SolidColorBrush x:Key="Bevel.Brush.InfoWindow" Color="#FFFFE1" />
+            <SolidColorBrush x:Key="Bevel.Brush.InfoText" Color="#000000" />
             <!-- XP Start is flush to the screen's left/top/bottom edges (square-left pill). -->
             <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
+            <!-- Floor for the auto-sizing Start button (bevel-6x9z). Luna's pill is chunkier than
+                 Win2000's, so it floors wider. -->
+            <x:Double x:Key="Bevel.Metric.StartButtonMinWidth">80</x:Double>
+            <!-- Asymmetric on purpose (bevel-6x9z): the pill's right edge is rounded (CornerRadius
+                 0,11,11,0) and the caption is BOLD ITALIC, so the final glyph leans into exactly the
+                 corner the radius cuts away. 8px right clipped the "l" of "Bevel"; the extra clears
+                 both the lean and the arc. The left stays tight because that edge is square. -->
+            <Thickness x:Key="Bevel.Metric.StartButtonPadding">8,0,18,0</Thickness>
             <!-- Edge (px) of the square Start badge. 20 leaves the italic "start" label clear of the pill's
                  rounded end; 24 would need the 74px pill widened. -->
             <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>
@@ -802,6 +819,14 @@
 
             <!-- Green Start pill (bevel-dob): set locally on the taskbar Start button. Rounded right edge,
                  glossy green, white bold label. Win2000 provides the flat-grey alias under the same key. -->
+            <!-- See the Win2000 copy for why this is the IMPLICIT key: tooltips are attached with
+                 ToolTip.Tip everywhere and never carry a Theme=, so only {x:Type ToolTip} reaches them. -->
+            <ControlTheme x:Key="{x:Type ToolTip}" TargetType="ToolTip" BasedOn="{StaticResource {x:Type ToolTip}}">
+                <Setter Property="Background" Value="{DynamicResource Bevel.Brush.InfoWindow}" />
+                <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.InfoText}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Luna.Brush.MenuBorder}" />
+            </ControlTheme>
+
             <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button">
                 <Setter Property="Foreground" Value="White" />
                 <Setter Property="FontWeight" Value="Bold" />
