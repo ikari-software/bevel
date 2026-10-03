@@ -3516,6 +3516,12 @@ namespace Bevel.Taskbar.Tests;
 /// than theoretical — if a built-in can do something a third-party component cannot, the contract has
 /// grown a privileged shortcut and this suite fails.
 /// </summary>
+// [Collection("NetMQ")] is REQUIRED, not decorative: this suite stands up a real
+// ComponentBusServer, and NetMqAssemblyFixture's Cleanup must not run until every NetMQ-using
+// test in the assembly has finished. Without joining that collection xUnit may finish the "NetMQ"
+// collection first and tear down the shared context while these remote cases still need it.
+// DisableTestParallelization prevents concurrent corruption but NOT this ordering dependency.
+[Collection("NetMQ")]
 public class ComponentConformanceTests
 {
     public static IEnumerable<object[]> Channels() => new[]
@@ -3529,7 +3535,7 @@ public class ComponentConformanceTests
     /// ComponentBusServer and a Dealer peer, because a conformance suite that compares a built-in
     /// against a test double proves nothing about the IPC path.
     /// </summary>
-    private static (IComponentChannel Channel, IDisposable Scope) Make(string kind, ComponentInstance inst)
+    private static (IComponentChannel Channel, IDisposable Scope) Make(string kind, ComponentInstance inst)   // Scope is IDisposable; the input leg pattern-matches it to RemoteScope
     {
         if (kind == "local")
             return (new LocalComponentChannel(
@@ -3582,6 +3588,21 @@ public class ComponentConformanceTests
             _peer.SendFrame(env.ToByteArray());
         }
 
+        /// <summary>
+        /// Reads one InputEvent the bar forwarded to this peer, or null if none arrives in time.
+        /// Exists so the input leg of the conformance suite can assert DELIVERY rather than merely
+        /// that SendAsync did not throw.
+        /// </summary>
+        public ComponentInput? TryReceiveInput(TimeSpan timeout)
+        {
+            if (!_peer.TryReceiveFrameBytes(timeout, out var payload)) return null;
+            ComponentEnvelope env;
+            try { env = ComponentEnvelope.Parser.ParseFrom(payload); }
+            catch (InvalidProtocolBufferException) { return null; }
+            if (env.PayloadCase != ComponentEnvelope.PayloadOneofCase.Input) return null;
+            return new ComponentInput(env.Input.InstanceId, env.Input.PrimitiveKey, env.Input.Kind);
+        }
+
         public void Dispose()
         {
             _peer.Dispose();
@@ -3602,9 +3623,20 @@ public class ComponentConformanceTests
         using (scope)
         await using (ch)
         {
+            // Subscribe BEFORE connecting, and assert the event fired with the same state the
+            // connect returned. Without this, deleting `StateChanged?.Invoke(state)` from
+            // LocalComponentChannel would leave every conformance case passing — the event is part
+            // of the contract a third-party component relies on, so it has to be observed.
+            ComponentState? captured = null;
+            ch.StateChanged += s => captured = s;
+
             var state = await ch.ConnectAsync(inst, CancellationToken.None);
             Assert.Equal(inst.InstanceId, state.InstanceId);
             Assert.False(state.Inert);
+
+            Assert.NotNull(captured);
+            Assert.Equal(state.InstanceId, captured!.InstanceId);
+            Assert.Equal(state.Inert, captured.Inert);
         }
     }
 
@@ -3642,9 +3674,14 @@ public class ComponentConformanceTests
         }
     }
 
+    // Named for what it actually proves. "Does not throw" is nearly vacuous: LocalComponentChannel's
+    // SendAsync is `=> Task.CompletedTask` by construction, so nothing could make the local leg fail,
+    // and an implementation that silently dropped every input would pass. The remote leg therefore
+    // asserts the envelope REACHES the peer; the local leg cannot be strengthened further until a
+    // real built-in stack implementation exists to observe, which is out of this task's scope.
     [Theory]
     [MemberData(nameof(Channels))]
-    public async Task Input_is_accepted_without_throwing(string kind)
+    public async Task Input_reaches_a_remote_peer_and_is_accepted_locally(string kind)
     {
         var inst = StackInstance("/Downloads");
         var (ch, scope) = Make(kind, inst);
@@ -3653,6 +3690,15 @@ public class ComponentConformanceTests
         {
             await ch.ConnectAsync(inst, CancellationToken.None);
             await ch.SendAsync(new ComponentInput(inst.InstanceId, "grid", "tapped"), CancellationToken.None);
+
+            if (scope is RemoteScope remote)
+            {
+                var delivered = remote.TryReceiveInput(TimeSpan.FromSeconds(5));
+                Assert.NotNull(delivered);
+                Assert.Equal(inst.InstanceId, delivered!.InstanceId);
+                Assert.Equal("grid", delivered.PrimitiveKey);
+                Assert.Equal("tapped", delivered.Kind);
+            }
         }
     }
 
@@ -3767,6 +3813,8 @@ public static class StackComponentManifest
 
 Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter ComponentConformanceTests`
 Expected: PASS (11 cases — 5 theories x 2 channels, plus the manifest test).
+
+Note the strengthened assertions: `Connect_...` now also observes `StateChanged` (without that, deleting the event invoke from `LocalComponentChannel` would leave every case passing), and the input leg asserts the envelope REACHES a remote peer rather than merely that `SendAsync` did not throw.
 
 - [ ] **Step 6: Run everything**
 
