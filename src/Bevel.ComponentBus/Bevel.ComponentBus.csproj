@@ -18,4 +18,10 @@
     <InternalsVisibleTo Include="Bevel.ComponentBus.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
+    <Protobuf Include="..\..\proto\components\*.proto" GrpcServices="None"
+              Link="Proto\%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

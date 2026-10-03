@@ -11,7 +11,7 @@ namespace Bevel.ShellCore.Ipc;
 /// where <c>hmacHex = HMAC-SHA256(key: nonce, message: capability)</c>, lowercase hex.
 /// The nonce plumbing (env var, launch arg, …) is the caller's job, not this library's.
 /// </summary>
-internal static class Handshake
+public static class Handshake
 {
     /// <summary>
     /// Computes <c>HMAC-SHA256(key: nonce, message: capability)</c> as lowercase hex.
