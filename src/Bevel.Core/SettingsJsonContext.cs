@@ -23,4 +23,7 @@ namespace Bevel.Core;
 [JsonSerializable(typeof(bool))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(Components.ComponentInstance[]))]
+[JsonSerializable(typeof(Components.ComponentInstance))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
 internal partial class SettingsJsonContext : JsonSerializerContext;

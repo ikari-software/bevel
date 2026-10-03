@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Bevel.Core.Components;
 using Microsoft.Data.Sqlite;
 
 namespace Bevel.Core;
@@ -541,6 +542,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         // Arrays + per-theme overrides: prune when identical to the default / empty.
         if (_settings.TaskbarStacks.SequenceEqual(d.TaskbarStacks)) _raw.Remove("taskbarStacks");
         else _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
+        if (_settings.TaskbarComponents.Length == 0) _raw.Remove("taskbarComponents");
+        else _raw["taskbarComponents"] = JsonSerializer.SerializeToElement(
+            _settings.TaskbarComponents, SettingsJsonContext.Default.ComponentInstanceArray);
         foreach (var (id, overrides) in _themeOverrides)
         {
             if (overrides.CrispBevels is null) _raw.Remove($"theme:{id}");
@@ -662,6 +666,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
+            TaskbarComponents = GetComponentInstances("taskbarComponents") ?? Array.Empty<ComponentInstance>(),
             TaskbarRows = GetInt("taskbarRows") ?? 1,
             TaskbarShowClock = GetBool("taskbarShowClock") ?? true,
             TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
@@ -719,6 +724,21 @@ public sealed class SettingsService : ISettingsService, IDisposable
     private string[]? GetStringArray(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array
             ? el.Deserialize(SettingsJsonContext.Default.StringArray) : null;
+
+    private ComponentInstance[]? GetComponentInstances(string key)
+    {
+        if (!_raw.TryGetValue(key, out var el)) return null;
+        try
+        {
+            return el.Deserialize(SettingsJsonContext.Default.ComponentInstanceArray);
+        }
+        catch (JsonException)
+        {
+            // Corrupt or foreign-shaped value: fall back to "not migrated" rather than failing the
+            // whole settings load. A broken component list must never cost the user their settings.
+            return null;
+        }
+    }
 
     /// <summary>Close the shared connection (additive; existing callers that never dispose are unaffected).</summary>
     public void Dispose()
@@ -912,6 +932,10 @@ public sealed class BevelSettings
     /// <summary>Show a Win7-style "Show desktop" sliver at the far right that minimizes every window.</summary>
     public bool TaskbarShowDesktopButton { get; set; }
 
+    /// <summary>bevel-aqr7: the bar as an ordered list of component instances. Empty means "not yet
+    /// migrated" — <c>TaskbarComponentsMigration</c> folds the legacy flat keys on first read.</summary>
+    public ComponentInstance[] TaskbarComponents { get; set; } = Array.Empty<ComponentInstance>();
+
     /// <summary>A detached snapshot copy — used by the Properties dialog to revert on Cancel.</summary>
     public BevelSettings Clone()
     {
@@ -927,9 +951,11 @@ public sealed class BevelSettings
     {
         foreach (var p in typeof(BevelSettings).GetProperties(
                      System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-            if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0 && p.PropertyType != typeof(string[]))
+            if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0
+                && p.PropertyType != typeof(string[]) && p.PropertyType != typeof(ComponentInstance[]))
                 p.SetValue(this, p.GetValue(other));
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
+        TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }
 
