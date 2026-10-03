@@ -16,6 +16,12 @@ namespace Bevel.Taskbar.Tests;
 /// than theoretical — if a built-in can do something a third-party component cannot, the contract has
 /// grown a privileged shortcut and this suite fails.
 /// </summary>
+// [Collection("NetMQ")] is REQUIRED, not decorative: this suite stands up a real
+// ComponentBusServer, and NetMqAssemblyFixture's Cleanup must not run until every NetMQ-using
+// test in the assembly has finished. Without joining that collection xUnit may finish the "NetMQ"
+// collection first and tear down the shared context while these remote cases still need it.
+// DisableTestParallelization prevents concurrent corruption but NOT this ordering dependency.
+[Collection("NetMQ")]
 public class ComponentConformanceTests
 {
     public static IEnumerable<object[]> Channels() => new[]
@@ -29,19 +35,39 @@ public class ComponentConformanceTests
     /// ComponentBusServer and a Dealer peer, because a conformance suite that compares a built-in
     /// against a test double proves nothing about the IPC path.
     /// </summary>
-    private static (IComponentChannel Channel, IDisposable Scope) Make(string kind, ComponentInstance inst)
+    /// <param name="beforeStart">
+    /// Runs after the channel exists but before the remote peer's one-shot handshake+publish (local's
+    /// callback runs before <c>ConnectAsync</c> is ever invoked, which is the only point its own event
+    /// can fire, so the hook's placement is a no-op there). Exists ONLY for
+    /// <see cref="Connect_returns_state_for_the_instance_that_asked"/>, which must subscribe to
+    /// <c>StateChanged</c> before the remote peer's single publish — not after — because that publish
+    /// happens synchronously inside <c>Start</c>, on its own schedule, same as a real component process.
+    /// Subscribing afterward races the bus's own processing thread: under load (see bevel-aqr7 fix
+    /// round 1, Finding 2) the publish is frequently already cached by the time a late subscriber
+    /// attaches, so the external listener never observes the live firing even though
+    /// <c>ConnectAsync</c>'s return value is still correct via <c>RemoteComponentChannel</c>'s cache.
+    /// The other four theories don't call this overload and are unaffected: they only read
+    /// <c>ConnectAsync</c>'s return value, which the cache already makes order-independent by design
+    /// (ambiguity #3 in the original brief — the one-shot publish deliberately races ahead of connect).
+    /// </param>
+    private static (IComponentChannel Channel, IDisposable Scope) Make(
+        string kind, ComponentInstance inst, Action<IComponentChannel>? beforeStart = null)
     {
         if (kind == "local")
-            return (new LocalComponentChannel(
+        {
+            var local = new LocalComponentChannel(
                 i => new ComponentState(i.InstanceId,
                     new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
-                    false)),
-                new NullScope());
+                    false));
+            beforeStart?.Invoke(local);
+            return (local, new NullScope());
+        }
 
         // Start() is separate from the constructor on purpose: an assertion thrown inside a ctor
         // leaves the half-built scope unreachable by `using`, so the bus is never disposed and the
         // test host hangs on NetMQ's threads.
         var scope = new RemoteScope(inst);
+        beforeStart?.Invoke(scope.Channel);
         try { scope.Start(inst); }
         catch { scope.Dispose(); throw; }
         return (scope.Channel, scope);
@@ -82,6 +108,21 @@ public class ComponentConformanceTests
             _peer.SendFrame(env.ToByteArray());
         }
 
+        /// <summary>
+        /// Reads one InputEvent the bar forwarded to this peer, or null if none arrives in time.
+        /// Exists so the input leg of the conformance suite can assert DELIVERY rather than merely
+        /// that SendAsync did not throw.
+        /// </summary>
+        public ComponentInput? TryReceiveInput(TimeSpan timeout)
+        {
+            if (!_peer.TryReceiveFrameBytes(timeout, out var payload)) return null;
+            ComponentEnvelope env;
+            try { env = ComponentEnvelope.Parser.ParseFrom(payload); }
+            catch (InvalidProtocolBufferException) { return null; }
+            if (env.PayloadCase != ComponentEnvelope.PayloadOneofCase.Input) return null;
+            return new ComponentInput(env.Input.InstanceId, env.Input.PrimitiveKey, env.Input.Kind);
+        }
+
         public void Dispose()
         {
             _peer.Dispose();
@@ -98,13 +139,36 @@ public class ComponentConformanceTests
     public async Task Connect_returns_state_for_the_instance_that_asked(string kind)
     {
         var inst = StackInstance("/Downloads");
-        var (ch, scope) = Make(kind, inst);
+
+        // Subscribe BEFORE the remote peer's one-shot publish (not merely before ConnectAsync — see
+        // Make's beforeStart doc), and assert the event fired with the same state the connect
+        // returned. Without this, deleting `StateChanged?.Invoke(state)` from LocalComponentChannel
+        // would leave every conformance case passing — the event is part of the contract a
+        // third-party component relies on, so it has to be observed.
+        //
+        // Captured via a TaskCompletionSource rather than a plain field assigned from the handler:
+        // `StateChanged` fires on the NetMQ poller thread (see RemoteComponentChannel's own docs),
+        // so a bare `captured = s` field write observed later by a plain read on the test thread has
+        // no synchronizing operation tying the two together and was intermittently stale under load
+        // even with subscribe-before-publish correctly ordered. TrySetResult/await is the same
+        // completion-signalling primitive RemoteComponentChannel's own ConnectAsync already uses
+        // internally (its `first`/`Capture` pair) — reusing it here is the proven-correct fix, not a
+        // new pattern. The bounded wait below still cannot hang: it races the capture against a 5s
+        // timeout and fails explicitly rather than blocking forever.
+        var capturedTcs = new TaskCompletionSource<ComponentState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (ch, scope) = Make(kind, inst, c => c.StateChanged += s => capturedTcs.TrySetResult(s));
         using (scope)
         await using (ch)
         {
             var state = await ch.ConnectAsync(inst, CancellationToken.None);
             Assert.Equal(inst.InstanceId, state.InstanceId);
             Assert.False(state.Inert);
+
+            var winner = await Task.WhenAny(capturedTcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.Same(capturedTcs.Task, winner);
+            var captured = await capturedTcs.Task;
+            Assert.Equal(state.InstanceId, captured.InstanceId);
+            Assert.Equal(state.Inert, captured.Inert);
         }
     }
 
@@ -142,9 +206,14 @@ public class ComponentConformanceTests
         }
     }
 
+    // Named for what it actually proves. "Does not throw" is nearly vacuous: LocalComponentChannel's
+    // SendAsync is `=> Task.CompletedTask` by construction, so nothing could make the local leg fail,
+    // and an implementation that silently dropped every input would pass. The remote leg therefore
+    // asserts the envelope REACHES the peer; the local leg cannot be strengthened further until a
+    // real built-in stack implementation exists to observe, which is out of this task's scope.
     [Theory]
     [MemberData(nameof(Channels))]
-    public async Task Input_is_accepted_without_throwing(string kind)
+    public async Task Input_reaches_a_remote_peer_and_is_accepted_locally(string kind)
     {
         var inst = StackInstance("/Downloads");
         var (ch, scope) = Make(kind, inst);
@@ -153,6 +222,15 @@ public class ComponentConformanceTests
         {
             await ch.ConnectAsync(inst, CancellationToken.None);
             await ch.SendAsync(new ComponentInput(inst.InstanceId, "grid", "tapped"), CancellationToken.None);
+
+            if (scope is RemoteScope remote)
+            {
+                var delivered = remote.TryReceiveInput(TimeSpan.FromSeconds(5));
+                Assert.NotNull(delivered);
+                Assert.Equal(inst.InstanceId, delivered!.InstanceId);
+                Assert.Equal("grid", delivered.PrimitiveKey);
+                Assert.Equal("tapped", delivered.Kind);
+            }
         }
     }
 
