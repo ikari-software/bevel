@@ -1,6 +1,7 @@
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Markup.Xaml.MarkupExtensions;
 using Bevel.Core.Components;
 
 namespace Bevel.Taskbar.Components;
@@ -43,9 +44,10 @@ public sealed class ComponentSlot
     }
 
     /// <summary>
-    /// A placeholder for an unresolvable, failed or quarantined component. It is focusable and
-    /// named so the failure is reachable by keyboard and screen reader rather than being an
-    /// invisible hole in the bar.
+    /// A placeholder for an unresolvable, failed or quarantined component. It must be VISIBLE and
+    /// keyboard-reachable, not merely present in the automation tree: a failure a sighted user
+    /// cannot see and a keyboard user cannot reach is worse than a visible gap, because nobody
+    /// discovers it. Hence the explicit border, the themed fill, and Focusable.
     /// </summary>
     public static ComponentSlot Inert(ComponentInstance inst, string reason)
     {
@@ -56,6 +58,13 @@ public sealed class ComponentSlot
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Avalonia.Thickness(2, 0),
             [ToolTip.TipProperty] = reason,
+            // Visible, and themed — never a hardcoded colour. Bevel.Brush.ButtonShadow is the
+            // existing sunken-edge token, so the placeholder reads as a recess in the bar.
+            BorderThickness = new Avalonia.Thickness(1),
+            [!Border.BorderBrushProperty] = new DynamicResourceExtension("Bevel.Brush.ButtonShadow"),
+            [!Border.BackgroundProperty] = new DynamicResourceExtension("Bevel.Brush.TrayWell"),
+            // Tab-reachable, so a keyboard user can discover the failure and read its tooltip.
+            Focusable = true,
         };
         AutomationProperties.SetName(c, $"Component unavailable: {inst.TypeId}");
         TaskbarComponentsPanel.SetSizing(c, ComponentSizing.Content);

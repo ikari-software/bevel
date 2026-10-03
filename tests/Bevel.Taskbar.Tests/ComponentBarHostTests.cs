@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Bevel.Core;
 using Bevel.Core.Components;
 using Bevel.Taskbar.Components;
 using Xunit;
@@ -113,11 +114,90 @@ public class ComponentBarHostTests
         Assert.True(host.Slots.Single().IsInert);
     }
 
+    /// <summary>
+    /// Fix round 1, Finding 1 (CRITICAL): <see cref="TaskbarComponentsMigration.BuildDefaultList"/>
+    /// populates <c>TaskbarComponents</c> with Start, WindowStrip, Stack, Tray, Clock AND
+    /// ShowDesktop — but this region's registry (<see cref="Host"/>) knows only Stack. Handing the
+    /// WHOLE migrated list to a Stack-only registry made the normalizer correctly keep every other
+    /// type as an "unknown" slot (that part is right — it is exactly how a genuinely uninstalled
+    /// third-party component must behave) and <see cref="ComponentBarHost"/> correctly render each
+    /// of those as an inert placeholder — except here they are NOT uninstalled, they are rendered
+    /// elsewhere on the bar by hand, so the result was 5 ghost 12x12 ignore placeholders sitting
+    /// inside the stacks region. <c>TaskbarView.ApplyComponentRegion</c> fixes this by filtering the
+    /// list to the types this region's registry actually serves before calling
+    /// <see cref="ComponentBarHost.ApplyAsync"/>; this test proves that filtered composition is
+    /// correct against a REALISTIC full migrated list — the exact shape the real settings path
+    /// produces — rather than only the synthetic single/two-instance lists used above, whose
+    /// narrowness is what let the bug through undetected.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_full_migrated_list_filtered_to_served_types_produces_only_those_slots()
+    {
+        var host = Host();   // registers ONLY Stack, same as the real stacks-region registry
+        var full = TaskbarComponentsMigration.BuildDefaultList(new BevelSettings());
+        // Sanity: the real migration really does produce more than just Stack instances, or this
+        // test would not be exercising the bug at all.
+        Assert.True(full.Select(i => i.TypeId).Distinct().Count() > 1,
+            "the default migrated list should contain more than one component type");
+
+        var filtered = full.Where(i => i.TypeId == TaskbarComponentTypes.Stack).ToArray();
+        await host.ApplyAsync(filtered, CancellationToken.None);
+
+        Assert.NotEmpty(host.Slots);   // the default Downloads stack resolves to a live slot
+        Assert.All(host.Slots, s => Assert.Equal(TaskbarComponentTypes.Stack, s.TypeId));
+        Assert.All(host.Slots, s => Assert.False(s.IsInert));   // no ghost placeholders
+    }
+
+    /// <summary>
+    /// Fix round 1, Finding 2 (Important): <c>ApplyAsync</c> is fired from startup AND from every
+    /// settings push, each on its own background <c>Task.Run</c>, with no serialization between
+    /// them. Two overlapping runs would concurrently mutate the plain <c>List&lt;IComponentChannel&gt;</c>/
+    /// <c>List&lt;ComponentSlot&gt;</c> fields — "Collection was modified", or a silently corrupted
+    /// mix of both runs' slots. <see cref="ComponentBarHost"/> now serializes every call through a
+    /// <c>SemaphoreSlim(1,1)</c>; this drives two genuinely overlapping calls (via a channel whose
+    /// <c>ConnectAsync</c> actually awaits a delay, so the second call's <c>WaitAsync</c> is forced
+    /// to queue behind the first's in-flight critical section) and asserts the result is always
+    /// coherent — exactly one run's slot count, with no duplicate instance ids — never a mix.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Overlapping_ApplyAsync_calls_serialize_so_the_final_slot_set_is_coherent()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(StackComponentManifest.Create(), _ => new DelayedChannel(TimeSpan.FromMilliseconds(30)));
+        var host = new ComponentBarHost(r, new ComponentHealth(), new BarGeometry(1));
+
+        var first = host.ApplyAsync(new[] { Stack("/one") }, CancellationToken.None);
+        var second = host.ApplyAsync(
+            new[] { Stack("/two"), Stack("/three"), Stack("/four") }, CancellationToken.None);
+        await Task.WhenAll(first, second);
+
+        Assert.True(host.Slots.Count is 1 or 3,
+            $"slot count {host.Slots.Count} matches neither call's input size — the two applies interleaved");
+        Assert.Equal(host.Slots.Count, host.Slots.Select(s => s.InstanceId).Distinct().Count());
+    }
+
     private sealed class ThrowingChannel : IComponentChannel
     {
         public event Action<ComponentState>? StateChanged;
         public Task<ComponentState> ConnectAsync(ComponentInstance i, CancellationToken ct)
             => throw new InvalidOperationException("component blew up on start");
+        public Task SendAsync(ComponentInput input, CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>A channel whose <see cref="ConnectAsync"/> genuinely awaits, so two concurrent
+    /// <c>ApplyAsync</c> calls against the same host actually overlap in time rather than one
+    /// completing synchronously before the other starts.</summary>
+    private sealed class DelayedChannel : IComponentChannel
+    {
+        private readonly TimeSpan _delay;
+        public DelayedChannel(TimeSpan delay) => _delay = delay;
+        public event Action<ComponentState>? StateChanged;
+        public async Task<ComponentState> ConnectAsync(ComponentInstance i, CancellationToken ct)
+        {
+            await Task.Delay(_delay, ct);
+            return new ComponentState(i.InstanceId, new Dictionary<string, string>(), false);
+        }
         public Task SendAsync(ComponentInput input, CancellationToken ct) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

@@ -252,7 +252,17 @@ public partial class TaskbarView : UserControl
     {
         var host = _componentHost;
         if (host is null) return;
-        var list = settings.TaskbarComponents;
+
+        // FILTER to the types this region's registry actually serves. The migration populates
+        // TaskbarComponents with Start, WindowStrip, Stack, Tray, Clock AND ShowDesktop, but this
+        // task registers only Stack — so handing over the whole list makes the normalizer keep every
+        // other type as an "unknown" inert placeholder and renders ghost 12x12 blanks inside the
+        // stacks region, right next to the real hand-rendered Start button, strip, tray and clock.
+        // That reproduces on essentially every real settings.db. Widen this filter as each region
+        // migrates; delete it when all of them have.
+        var list = settings.TaskbarComponents
+            .Where(i => i.TypeId == TaskbarComponentTypes.Stack)
+            .ToArray();
         // Off the UI thread: ConnectAsync may touch IPC. Only the panel mutation marshals back,
         // which ApplyAsync already does for itself.
         _ = Task.Run(() => host.ApplyAsync(list, CancellationToken.None));
@@ -778,18 +788,6 @@ public partial class TaskbarView : UserControl
         if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
         e.Handled = true;
         await _vm.Tray.Forward(item.Id, TrayButton.Left, ToTrayModifiers(e.KeyModifiers));
-    }
-
-    /// <summary>Refreshes a folder stack's recent-contents list (and clears its new-item cue) as its
-    /// button is clicked, so the flyout that opens right after shows the current folder (bevel-12g).</summary>
-    private void OnStackButtonClick(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control c && c.DataContext is StackViewModel stack)
-            stack.Refresh();
-        // Bind this stack's recent-contents flyout to the key-focus scope (idempotent), so its rows are
-        // keyboard-navigable while open (bevel-vk4n).
-        if (sender is Button b)
-            WireFlyoutScope(b.Flyout);
     }
 
     private static TrayModifiers ToTrayModifiers(KeyModifiers mods)

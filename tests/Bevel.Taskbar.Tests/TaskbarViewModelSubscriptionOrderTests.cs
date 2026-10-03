@@ -68,14 +68,20 @@ public class TaskbarViewModelSubscriptionOrderTests
 
         _ = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
 
-        // The ctor's FIRST settings read seeds StacksViewModel's one-shot folder list (a separate,
-        // lower-priority staleness finding of its own — StacksViewModel never subscribes to Changed
-        // at all, so it is out of scope here). What this test guards is the read/subscribe PAIR for
-        // menu-bar consolidation: "subscribe" must land before the SECOND read (the one that feeds
-        // ApplyConsolidation). If a "read" came first there instead, a settings snapshot landing in
-        // that gap (e.g. the core's on-connect broadcast racing DI construction) would be lost until
-        // some later, unrelated settings edit happens to fire Changed again.
-        Assert.Equal(new[] { "read", "subscribe", "read" }, settings.CallOrder);
+        // There used to be a FIRST settings read ahead of this pair, seeding StacksViewModel's
+        // one-shot folder list. That read is gone: TaskbarViewModel no longer constructs
+        // StacksViewModel with the real folder list at all (bevel-aqr7 Task 14 fix round 1, Finding
+        // 4), because nothing renders Stacks.Stacks any more now that the stacks region is composed
+        // by ComponentBarHost instead — and constructing it from the real folder list was arming a
+        // FileSystemWatcher and queuing icon loads for a collection nobody read. Full removal of
+        // StacksViewModel/StackViewModel/StackFlyoutView is tracked separately as bevel-3yf7; this
+        // change partially resolves bevel-2ip7, the original staleness finding against that read.
+        //
+        // The guarded property is unchanged: "subscribe" must still land before the (now only)
+        // read — the one that feeds ApplyConsolidation. If a "read" came first instead, a settings
+        // snapshot landing in that gap (e.g. the core's on-connect broadcast racing DI construction)
+        // would be lost until some later, unrelated settings edit happens to fire Changed again.
+        Assert.Equal(new[] { "subscribe", "read" }, settings.CallOrder);
     }
 
     [Fact]
