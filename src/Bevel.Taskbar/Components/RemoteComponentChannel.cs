@@ -59,7 +59,15 @@ public sealed class RemoteComponentChannel : IComponentChannel
             var done = await Task.WhenAny(first.Task, delay).ConfigureAwait(false);
             if (done == first.Task) return await first.Task.ConfigureAwait(false);
 
-            // Timed out: inert, so the slot shows a placeholder instead of freezing.
+            // The delay ended either because the connect timeout elapsed or because the CALLER's own
+            // token was cancelled (bar teardown, window closing mid-connect). Those are different
+            // outcomes and must not be conflated: a deliberate cancel has to propagate as
+            // OperationCanceledException, not come back indistinguishable from "this component is
+            // unresponsive" — otherwise the health budget would quarantine a component that was
+            // perfectly fine, because the bar gave up on it rather than the reverse.
+            ct.ThrowIfCancellationRequested();
+
+            // Timed out (not cancelled): inert, so the slot shows a placeholder instead of freezing.
             return new ComponentState(instance.InstanceId, new Dictionary<string, string>(), Inert: true);
         }
         finally { StateChanged -= Capture; }
@@ -78,7 +86,12 @@ public sealed class RemoteComponentChannel : IComponentChannel
         return Task.CompletedTask;
     }
 
-    private void OnBusMessage(string identity, ComponentEnvelope env)
+    // internal (not private): Bevel.Taskbar.csproj already declares
+    // <InternalsVisibleTo Include="Bevel.Taskbar.Tests" /> for WorkAreaMitigator. The bus itself
+    // binds an authenticated identity to its claimed instance, so a wrong-instance envelope never
+    // reaches this handler over the wire — this seam lets a test drive the handler directly and
+    // isolate THIS guard from that bus-level one.
+    internal void OnBusMessage(string identity, ComponentEnvelope env)
     {
         if (identity != _peerIdentity) return;
         if (env.PayloadCase != ComponentEnvelope.PayloadOneofCase.State) return;
