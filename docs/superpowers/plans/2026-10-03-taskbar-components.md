@@ -10,6 +10,8 @@
 
 **Spec:** [`docs/superpowers/specs/2026-10-03-taskbar-components-design.md`](../specs/2026-10-03-taskbar-components-design.md)
 
+**What ships:** the contract and its substrate (Tasks 1-13) AND a real bar region composed from it (Tasks 14-15). Tasks 1-13 alone would be tested-but-unreferenced classes, which would not satisfy the spec's Acceptance criterion; Task 14 composes the stacks region end-to-end and Task 15 adds the surface, theme-push and accessibility paths. Migrating start / window-strip / tray / clock is follow-on work the spec explicitly allows to be incremental.
+
 ## Global Constraints
 
 - **Task tracking is `bd` (beads), never TodoWrite or markdown TODO lists.** Run `bd update <id> --claim` when starting, `bd close <id>` when done. Parent epic: `bevel-aqr7`.
@@ -22,7 +24,7 @@
 - Conventional-commit messages. Commit after every task.
 - Build: `dotnet build Bevel.sln -clp:ErrorsOnly`. Test: `dotnet test Bevel.sln`.
 - **NetMQ owns background I/O threads.** A test assembly that creates sockets must call `NetMQConfig.Cleanup(block: false)` once after the last test, or the runner can hang at exit. Add it to the test assembly's existing fixture rather than per-test, and never call it between tests in the same assembly — it tears down the shared context.
-- **Two pre-existing test failures are expected and not yours:** `SymlinkCopyTest.CopyDirectory_recreates_symlinks_without_following_them` (needs the create-symlink privilege) and `SettingsServiceSqliteTests.Concurrent_readers_and_writers_never_hit_database_is_locked` (`bevel-q3ck`, fails only under full-suite parallel load).
+- **Measured baseline on this branch: build clean, 1269 passed, 1 failed.** The one failure is `SymlinkCopyTest.CopyDirectory_recreates_symlinks_without_following_them` (needs the Windows create-symlink privilege) — pre-existing, not yours. `SettingsServiceSqliteTests.Concurrent_readers_and_writers_never_hit_database_is_locked` (`bevel-q3ck`) is load-dependent: it PASSED in the baseline run but fails under full-suite parallel load. If you see it fail, it is not your change.
 
 ## Review Focus
 
@@ -30,7 +32,7 @@ Five conditions the spec implies that no task's happy path exercises. Each has a
 
 1. **A persisted list containing two instances of a `multiInstance:false` type** (hand-edited `settings.db`, or a downgrade that wrote it). Add-time enforcement does not cover data already on disk; the bar must keep the first and drop the rest rather than render two Start buttons. — Task 4.
 2. **A settings value that no longer parses to its schema type** after a component changes its schema (`"abc"` where the field is now `int`). Must fall back to the schema default and keep the instance alive, not throw. — Task 3.
-3. **An authenticated bus peer publishing a frame-ready for a slot it does not own.** Authentication proves *a* component, not *which* component; without an ownership check one component can inject pixels into another's surface. — Task 8.
+3. **An authenticated bus peer publishing a frame-ready for a slot it does not own.** Authentication proves *a* component, not *which* component; without an ownership check one component can inject pixels into another's surface. — Tasks 11 and 15.
 4. **A persisted list with duplicate `instanceId`s.** Settings are keyed by instance; duplicates make per-instance settings ambiguous and silently cross-wire. — Task 4.
 5. **A list containing only spacers** (no content component). Greedy weight distribution over zero content must not divide by zero or produce an infinite width. — Task 5.
 
@@ -69,24 +71,33 @@ Five conditions the spec implies that no task's happy path exercises. Each has a
 |---|---|
 | `src/Bevel.Core/SettingsService.cs` | Add `TaskbarComponents`; `SetOrPrune` + load + **explicit `CopyFrom` deep clone** |
 | `src/Bevel.Core/SettingsJsonContext.cs` | Register the new serializable types |
-| `src/Bevel.Taskbar/TaskbarWindow.cs:495-538` | Delete `TaskbarTheme` statics, call `BarGeometry` |
-| `src/Bevel.Taskbar/TaskbarView.axaml` | Replace the fixed `Auto,*,Auto` grid with the panel |
-| `src/Bevel.App/App.axaml.cs:338` | Remove `TaskbarTheme.Configure` |
+| `src/Bevel.Taskbar/TaskbarWindow.cs` | `TaskbarTheme` body becomes a **facade** over `BarGeometry` — NOT deleted, it has 98 references; the window gains its own geometry |
+| `src/Bevel.Taskbar/TaskbarView.axaml[.cs]` | **Task 14 only** — hosts the composed stacks region. The rest of the bar keeps its current layout; migrating start/strip/tray/clock is follow-on work. |
+| `src/Bevel.App/App.axaml.cs` | **unchanged** — `TaskbarTheme.Configure` stays; it is the live-apply entry point (`TaskbarView.axaml.cs:330`) |
 | `Directory.Packages.props` | Pin `NetMQ` |
+
+**New — `src/Bevel.ComponentBus/`** (new project): the component bus. Keeps NetMQ out of `Bevel.Core` (the domain layer, which does not use it) and out of `Bevel.ShellCore.Ipc`, whose csproj header states *"deliberately NO ASP.NET Core, NO gRPC, NO NuGet."*
 
 ---
 
-### Task 1: Verify NetMQ against NativeAOT before it is load-bearing
+### Task 1: Create the bus project and prove NetMQ survives NativeAOT
 
-The spec makes NetMQ load-bearing for both buses. `BevelPublishAot=true` targets a single binary with no JIT. If NetMQ is not AOT-safe this is a transport decision to revisit now, not during migration. **This task's deliverable is a verified answer plus a pinned package.**
+The spec makes NetMQ load-bearing. `BevelPublishAot=true` targets a single binary with no JIT, so if NetMQ is not AOT-safe this is a transport decision to re-make *now*.
+
+**A bare `PackageReference` proves nothing.** NetMQ's AOT risk is reflection reached at *connect* time, and an unreferenced-from-the-app package is trimmed away entirely — so a publish that only sees NetMQ from a test project comes back clean whether or not it works. This task therefore puts a *reachable* round-trip in the shipped app and runs the published binary.
 
 **Files:**
-- Modify: `Directory.Packages.props`
-- Create: `tests/Bevel.Core.Tests/NetMqAotCompatTests.cs`
+- Create: `src/Bevel.ComponentBus/Bevel.ComponentBus.csproj`
+- Create: `src/Bevel.ComponentBus/BusSelfTest.cs`
+- Modify: `Directory.Packages.props`, `Bevel.sln`
+- Modify: `src/Bevel.App/Bevel.App.csproj`, and the verb parser in `src/Bevel.App/Program.cs`
+- Test: `tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj`, `tests/Bevel.ComponentBus.Tests/BusSelfTestTests.cs`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a pinned `NetMQ` `PackageVersion`; confirmation that `dotnet publish -p:BevelPublishAot=true` succeeds with NetMQ referenced.
+- Produces: the `Bevel.ComponentBus` project; `BusSelfTest.RoundTrip() → bool`; a `--selftest-bus` argument on `Bevel.App` that prints `bus-selftest: ok` / `bus-selftest: FAILED` and exits 0/1; a pinned `NetMQ` `PackageVersion`.
+
+**Why a new project, not `Bevel.Core` or `Bevel.ShellCore.Ipc`:** `Bevel.Core` is the domain layer and does not use NetMQ — referencing it there would make every process, Filer included, carry NetMQ + AsyncIO + NaCl.Net. And `Bevel.ShellCore.Ipc`'s csproj header reads *"BCL only … deliberately NO ASP.NET Core, NO gRPC, NO NuGet: the whole point is to move shell state between processes without dragging a web server into a memory-conscious daemon."* Adding NetMQ + Google.Protobuf there would silently reverse a documented charter.
 
 - [ ] **Step 1: Claim the bead**
 
@@ -94,90 +105,184 @@ The spec makes NetMQ load-bearing for both buses. `BevelPublishAot=true` targets
 bd update bevel-aqr7 --claim
 ```
 
-- [ ] **Step 2: Pin NetMQ**
+- [ ] **Step 2: Pin NetMQ and create the project**
 
 In `Directory.Packages.props`, beside the existing `Google.Protobuf` entry:
 
 ```xml
-<PackageVersion Include="NetMQ" Version="4.0.1.13" />
+<PackageVersion Include="NetMQ" Version="4.0.4.3" />
 ```
 
-Add the reference to `src/Bevel.Core/Bevel.Core.csproj`:
+Pin **4.0.4.3**, not the older 4.0.1.13: it ships a `net10.0` target, which is exactly where trim/AOT annotations would live.
+
+Create `src/Bevel.ComponentBus/Bevel.ComponentBus.csproj`:
 
 ```xml
-<PackageReference Include="NetMQ" />
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The component bus (bevel-aqr7). Deliberately NOT in Bevel.Core (the domain layer does not
+       use NetMQ, and every process would then carry it) and NOT in Bevel.ShellCore.Ipc, whose
+       charter is BCL-only with no NuGet. This project is the one place NetMQ and the component
+       protobufs live. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetMQ" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.ComponentBus.Tests" />
+  </ItemGroup>
+
+</Project>
 ```
 
-- [ ] **Step 3: Write a test that actually exercises a NetMQ round-trip**
+Add it to `Bevel.sln`:
 
-A reference alone proves nothing — the AOT risk is reflection inside NetMQ's socket setup, which only runs on use. Create `tests/Bevel.Core.Tests/NetMqAotCompatTests.cs`:
+```bash
+dotnet sln Bevel.sln add src/Bevel.ComponentBus/Bevel.ComponentBus.csproj
+```
+
+- [ ] **Step 3: Write the failing self-test test**
+
+Create `tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj` mirroring an existing test csproj (copy `tests/Bevel.ShellCore.Ipc.Tests/Bevel.ShellCore.Ipc.Tests.csproj` and change the `ProjectReference` to `Bevel.ComponentBus`), register it in the solution, then create `tests/Bevel.ComponentBus.Tests/BusSelfTestTests.cs`:
+
+```csharp
+using Bevel.ComponentBus;
+using Xunit;
+
+namespace Bevel.ComponentBus.Tests;
+
+/// <summary>
+/// bevel-aqr7 Task 1: a real socket round-trip, so an AOT publish surfaces reflection NetMQ needs
+/// at CONNECT time rather than at reference time. A bare PackageReference with no reachable call is
+/// trimmed away and would make the publish check a false positive.
+/// </summary>
+public class BusSelfTestTests
+{
+    [Fact]
+    public void Round_trip_carries_bytes_both_ways()
+        => Assert.True(BusSelfTest.RoundTrip());
+}
+```
+
+- [ ] **Step 4: Run to verify it fails**
+
+Run: `dotnet test tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj`
+Expected: FAIL — `BusSelfTest` not defined.
+
+- [ ] **Step 5: Implement the self-test**
+
+Create `src/Bevel.ComponentBus/BusSelfTest.cs`:
 
 ```csharp
 using System.Text;
 using NetMQ;
 using NetMQ.Sockets;
-using Xunit;
 
-namespace Bevel.Core.Tests;
+namespace Bevel.ComponentBus;
 
 /// <summary>
-/// bevel-aqr7 Task 1: NetMQ is load-bearing for both buses, and BevelPublishAot=true targets a
-/// single binary with no JIT. This exercises a real socket round-trip so that an AOT publish
-/// surfaces any reflection NetMQ needs at connect time, not just at reference time.
+/// A reachable NetMQ round-trip, shipped in the product so an AOT publish cannot trim it away.
+/// Exists to answer one question before the transport becomes load-bearing: does NetMQ work in a
+/// NativeAOT binary with no JIT?
 /// </summary>
-public class NetMqAotCompatTests
+public static class BusSelfTest
 {
-    [Fact]
-    public void Loopback_round_trip_carries_bytes_both_ways()
+    /// <summary>Binds a loopback router, round-trips one frame through a dealer, returns success.</summary>
+    public static bool RoundTrip()
     {
-        using var server = new RouterSocket();
-        var port = server.BindRandomPort("tcp://127.0.0.1");
-        using var client = new DealerSocket();
-        client.Connect($"tcp://127.0.0.1:{port}");
+        try
+        {
+            using var server = new RouterSocket();
+            var port = server.BindRandomPort("tcp://127.0.0.1");
+            using var client = new DealerSocket();
+            client.Options.Identity = Encoding.UTF8.GetBytes("selftest");
+            client.Connect($"tcp://127.0.0.1:{port}");
 
-        client.SendFrame(Encoding.UTF8.GetBytes("ping"));
+            client.SendFrame(Encoding.UTF8.GetBytes("ping"));
 
-        var identity = server.ReceiveFrameBytes();
-        var payload = server.ReceiveFrameBytes();
-        Assert.Equal("ping", Encoding.UTF8.GetString(payload));
+            var wait = TimeSpan.FromSeconds(5);
+            if (!server.TryReceiveFrameBytes(wait, out var identity)) return false;
+            if (!server.TryReceiveFrameBytes(wait, out var payload)) return false;
+            if (Encoding.UTF8.GetString(payload!) != "ping") return false;
 
-        server.SendMoreFrame(identity).SendFrame(Encoding.UTF8.GetBytes("pong"));
-        Assert.Equal("pong", Encoding.UTF8.GetString(client.ReceiveFrameBytes()));
+            server.SendMoreFrame(identity!).SendFrame(Encoding.UTF8.GetBytes("pong"));
+            if (!client.TryReceiveFrameBytes(wait, out var reply)) return false;
+            return Encoding.UTF8.GetString(reply!) == "pong";
+        }
+        catch (Exception)
+        {
+            // An AOT-stripped reflection path throws rather than returning false — that is the
+            // finding this method exists to surface, so report it as failure rather than crashing.
+            return false;
+        }
     }
 }
 ```
 
-- [ ] **Step 4: Run it**
+Every receive uses the **timeout** overload. The blocking `ReceiveFrameBytes()` would hang the test host forever on failure instead of failing.
 
-Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter NetMqAotCompatTests -v n`
-Expected: PASS. If it hangs, NetMQ did not bind — treat that as a finding, not a flake.
+- [ ] **Step 6: Expose it as an app verb**
 
-- [ ] **Step 5: Publish with AOT and record the result**
+Add the project reference to `src/Bevel.App/Bevel.App.csproj`:
 
-Run (macOS):
+```xml
+<ProjectReference Include="..\Bevel.ComponentBus\Bevel.ComponentBus.csproj" />
+```
+
+In `src/Bevel.App/Program.cs`, beside the existing argument handling and **before** any windowing setup, add:
+
+```csharp
+if (args.Contains("--selftest-bus"))
+{
+    var ok = Bevel.ComponentBus.BusSelfTest.RoundTrip();
+    Console.WriteLine(ok ? "bus-selftest: ok" : "bus-selftest: FAILED");
+    return ok ? 0 : 1;
+}
+```
+
+Note the C# top-level-statement rule: statements must precede any type declaration in the file (CS8803). Put this with the other argument checks, not after a local type.
+
+- [ ] **Step 7: Run the tests**
+
+Run: `dotnet test tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj`
+Expected: PASS (1 test).
+
+- [ ] **Step 8: Publish with AOT and RUN the published binary**
+
+This is the actual gate. Building is not enough — the binary must execute the round-trip.
+
+macOS:
 ```bash
 dotnet publish src/Bevel.App/Bevel.App.csproj -r osx-arm64 -p:BevelPublishAot=true -clp:ErrorsOnly
+./src/Bevel.App/bin/Release/net10.0/osx-arm64/publish/Bevel --selftest-bus
 ```
-Run (Windows):
+Windows:
 ```bash
 dotnet publish src/Bevel.App/Bevel.App.csproj -r win-x64 -p:BevelPublishAot=true -clp:ErrorsOnly
+./src/Bevel.App/bin/Release/net10.0/win-x64/publish/Bevel.exe --selftest-bus
 ```
 
-Expected: publish succeeds. **Trim/AOT warnings mentioning NetMQ are the finding this task exists to surface** — capture the exact text.
+Expected: publish succeeds, and the binary prints `bus-selftest: ok` and exits 0. Capture any trim/AOT warning naming NetMQ, AsyncIO or NaCl verbatim — those are the finding.
 
-- [ ] **Step 6: Record the answer on the bead and STOP if it failed**
+- [ ] **Step 9: Record the answer, and STOP if it failed**
 
 ```bash
-bd update bevel-aqr7 --append-notes="Task 1: NetMQ 4.0.1.13 AOT check — <PASS|FAIL>. Publish output: <exact warnings or 'clean'>."
+bd update bevel-aqr7 --append-notes="Task 1: NetMQ 4.0.4.3 AOT gate — publish <ok|FAILED>, published binary --selftest-bus printed <output>. Trim warnings: <verbatim or 'none'>."
 ```
 
-If the publish fails or emits NetMQ trim warnings, **stop and report to your human partner before Task 6.** The spec records the transport as an accepted risk; a failed AOT check changes that input and is their decision, not yours.
+If the publish fails, emits NetMQ trim warnings, or the binary does not print `ok`: **stop and report to your human partner before Task 10.** The spec records this transport as an accepted risk taken on the assumption it is AOT-viable; a failed gate changes that input, and re-deciding it is theirs, not yours.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add Directory.Packages.props src/Bevel.Core/Bevel.Core.csproj tests/Bevel.Core.Tests/NetMqAotCompatTests.cs
-git commit -m "test(components): verify NetMQ survives NativeAOT before making it load-bearing"
+git add Directory.Packages.props Bevel.sln src/Bevel.ComponentBus src/Bevel.App tests/Bevel.ComponentBus.Tests
+git commit -m "feat(bus): Bevel.ComponentBus project and a reachable NetMQ AOT gate"
 ```
 
 ---
@@ -586,6 +691,8 @@ Expected: FAIL — `ComponentInstance` not defined.
 Create `src/Bevel.Core/Components/ComponentInstance.cs`:
 
 ```csharp
+using System.Text.Json.Serialization;
+
 namespace Bevel.Core.Components;
 
 /// <summary>
@@ -594,10 +701,10 @@ namespace Bevel.Core.Components;
 /// keyed by id, which makes orphaned settings structurally impossible.
 /// </summary>
 public sealed record ComponentInstance(
-    string InstanceId,
-    string TypeId,
-    Dictionary<string, string> Settings,
-    bool Visible)
+    [property: JsonPropertyName("instanceId")] string InstanceId,
+    [property: JsonPropertyName("typeId")] string TypeId,
+    [property: JsonPropertyName("settings")] Dictionary<string, string> Settings,
+    [property: JsonPropertyName("visible")] bool Visible)
 {
     /// <summary>A fresh instance id. Stable for the life of the placement, so reordering never loses settings.</summary>
     public static string NewId() => Guid.NewGuid().ToString("n")[..12];
@@ -843,7 +950,7 @@ public static class ComponentListNormalizer
 - [ ] **Step 4: Run the tests**
 
 Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter ComponentListNormalizerTests`
-Expected: PASS (5 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1288,7 +1395,10 @@ public class TaskbarComponentsMigrationTests
     [Fact]
     public void Default_settings_produce_the_Win2000_arrangement_in_order()
     {
-        var list = TaskbarComponentsMigration.BuildDefaultList(new BevelSettings());
+        // Explicit stacks: relying on DefaultStacks happening to hold exactly one entry would break
+        // this test for an unrelated reason if that default ever changed.
+        var list = TaskbarComponentsMigration.BuildDefaultList(
+            new BevelSettings { TaskbarStacks = new[] { "/x" } });
         Assert.Equal(
             new[]
             {
@@ -1464,11 +1574,109 @@ public static class TaskbarComponentsMigration
 Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter TaskbarComponentsMigrationTests`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Actually invoke the migration at load — with a version marker, not an empty check**
+
+Without this step `BuildDefaultList` is dead code. And "empty list means not migrated" is the wrong test: a user who deliberately removes every component (spec §6 requires a bar with zero components to still render) would be silently re-migrated to the defaults on next start.
+
+Add the marker property to `BevelSettings` in `src/Bevel.Core/SettingsService.cs`, beside `TaskbarComponents`:
+
+```csharp
+    /// <summary>bevel-aqr7: schema generation of <see cref="TaskbarComponents"/>. 0 = never migrated
+    /// from the legacy flat keys. Distinguishes "not migrated yet" from "deliberately empty".</summary>
+    public int TaskbarComponentsVersion { get; set; }
+```
+
+Persist it with the other scalars (`SetOrPrune("taskbarComponentsVersion", …, SettingsJsonContext.Default.Int32)`) and read it in the load block (`TaskbarComponentsVersion = GetInt("taskbarComponentsVersion") ?? 0`).
+
+Then, in `SettingsService` immediately after the settings object is built from the raw blob:
+
+```csharp
+        // One-time fold of the legacy flat taskbar keys (bevel-aqr7). Gated on the VERSION marker,
+        // not on emptiness: an empty list is a legitimate user choice, and re-migrating it every
+        // start would silently resurrect components they removed.
+        if (loaded.TaskbarComponentsVersion == 0)
+        {
+            loaded.TaskbarComponents = TaskbarComponentsMigration.BuildDefaultList(loaded);
+            loaded.TaskbarComponentsVersion = 1;
+        }
+```
+
+Finally fix the save site from Task 6 so it no longer treats empty as absent:
+
+```csharp
+        if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
+        else _raw["taskbarComponents"] = JsonSerializer.SerializeToElement(
+            _settings.TaskbarComponents, SettingsJsonContext.Default.ComponentInstanceArray);
+```
+
+- [ ] **Step 6: Write the round-trip test through a real `SettingsService`**
+
+The internal `SettingsService(configDir)` seam is already visible to `Bevel.Core.Tests`. Append to `tests/Bevel.Core.Tests/TaskbarComponentsMigrationTests.cs`:
+
+```csharp
+    [Fact]
+    public async Task A_legacy_blob_migrates_once_and_survives_a_reload()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"bevel-mig-{Guid.NewGuid():n}");
+        try
+        {
+            using (var first = new SettingsService(dir))
+            {
+                await first.UpdateAsync(s => { s.TaskbarShowClock = false; s.TaskbarStacks = new[] { "/a", "/b" }; });
+            }
+
+            using var second = new SettingsService(dir);
+            var list = second.Current.TaskbarComponents;
+
+            Assert.Equal(1, second.Current.TaskbarComponentsVersion);
+            Assert.Equal(2, list.Count(i => i.TypeId == TaskbarComponentTypes.Stack));
+            Assert.False(list.Single(i => i.TypeId == TaskbarComponentTypes.Clock).Visible);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task A_deliberately_emptied_list_is_NOT_re_migrated()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"bevel-mig-{Guid.NewGuid():n}");
+        try
+        {
+            using (var first = new SettingsService(dir))
+                await first.UpdateAsync(s => s.TaskbarComponents = Array.Empty<ComponentInstance>());
+
+            using var second = new SettingsService(dir);
+            Assert.Empty(second.Current.TaskbarComponents);   // stays empty — spec §6
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task An_unknown_typeId_survives_a_round_trip()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"bevel-mig-{Guid.NewGuid():n}");
+        try
+        {
+            using (var first = new SettingsService(dir))
+                await first.UpdateAsync(s => s.TaskbarComponents = new[]
+                {
+                    new ComponentInstance("keep", "com.example.unknown", new Dictionary<string, string>(), true),
+                });
+
+            using var second = new SettingsService(dir);
+            Assert.Equal("com.example.unknown", second.Current.TaskbarComponents.Single().TypeId);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+```
+
+Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter TaskbarComponentsMigrationTests`
+Expected: PASS (10 tests).
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/Bevel.Core/Components/TaskbarComponentsMigration.cs tests/Bevel.Core.Tests/TaskbarComponentsMigrationTests.cs
-git commit -m "feat(components): fold the 29 legacy taskbar keys into an ordered instance list"
+git add src/Bevel.Core tests/Bevel.Core.Tests/TaskbarComponentsMigrationTests.cs
+git commit -m "feat(components): fold the 29 legacy taskbar keys into an ordered instance list, invoked at load"
 ```
 
 ---
@@ -1479,13 +1687,13 @@ Deletes `TaskbarTheme`'s mutable statics. The bar's height **and** the OS work-a
 
 **Files:**
 - Create: `src/Bevel.Taskbar/Components/BarGeometry.cs`
-- Modify: `src/Bevel.Taskbar/TaskbarWindow.cs:495-538` (delete `TaskbarTheme`), and its six `HeightForRows` call sites
-- Modify: `src/Bevel.App/App.axaml.cs:338` (remove `TaskbarTheme.Configure`)
+- Modify: `src/Bevel.Taskbar/TaskbarWindow.cs` — replace the **body** of `TaskbarTheme` with a facade (Step 5) and give the window its own geometry (Step 6). **Do not delete `TaskbarTheme`, and do not touch its call sites** — see Step 5 for why.
+- **Not modified:** `src/Bevel.App/App.axaml.cs`. An earlier draft removed `TaskbarTheme.Configure` from it; that call is the live-apply entry point and must stay.
 - Test: `tests/Bevel.Taskbar.Tests/BarGeometryTests.cs`
 
 **Interfaces:**
 - Consumes: `TaskbarButtonSize` (existing enum in `Bevel.Core`).
-- Produces: `BarGeometry` instance class with constructor `BarGeometry(int rows)`; `Contribute(int heightDip)`; `int ButtonHeight`, `int TaskIconSize`, `int RowHeight`, `int TaskbarHeight`, `int Height`; `static int ButtonHeightFor(TaskbarButtonSize)`, `static int TaskIconSizeFor(TaskbarButtonSize)`.
+- Produces: `BarGeometry` instance class with constructor `BarGeometry(int rows)`; `Contribute(int heightDip)`, `SetContribution(string instanceId, int heightDip)`, `RemoveContribution(string instanceId)`; `int ButtonHeight`, `int TaskIconSize`, `int RowHeight`, `int TaskbarHeight`, `int Height`; `static int ButtonHeightFor(TaskbarButtonSize)`, `static int TaskIconSizeFor(TaskbarButtonSize)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1595,13 +1803,15 @@ public sealed class BarGeometry
     private const int DefaultButtonHeight = 24;
 
     private readonly int _rows;
-    private int _buttonHeight = DefaultButtonHeight;
+    // Null means "nothing has contributed yet" — kept DISTINCT from the default value, or a
+    // contribution smaller than the default (Small tier = 18) would be silently ignored.
+    private int? _buttonHeight;
     private int _iconSize = 16;
 
     public BarGeometry(int rows) => _rows = Math.Max(1, rows);
 
     /// <summary>Window-button height in logical px: the tallest contribution on this bar.</summary>
-    public int ButtonHeight => _buttonHeight;
+    public int ButtonHeight => _buttonHeight ?? DefaultButtonHeight;
 
     /// <summary>Task-button glyph edge in logical px, derived from the winning button height.</summary>
     public int TaskIconSize => _iconSize;
@@ -1622,9 +1832,36 @@ public sealed class BarGeometry
     public void Contribute(int heightDip)
     {
         if (heightDip <= 0) return;
-        if (heightDip <= _buttonHeight) return;
+        if (_buttonHeight is { } current && heightDip <= current) return;
         _buttonHeight = heightDip;
         _iconSize = IconSizeForButtonHeight(heightDip);
+    }
+
+    /// <summary>
+    /// Replaces one instance's contribution and re-derives from ALL of them. Needed because
+    /// <see cref="Contribute"/> is a monotonic max: without this, a Big→Normal tier change could
+    /// never shrink the bar — exactly the stale-value failure class bevel-kclq records.
+    /// </summary>
+    public void SetContribution(string instanceId, int heightDip)
+    {
+        if (heightDip > 0) _byInstance[instanceId] = heightDip;
+        else _byInstance.Remove(instanceId);
+        Rederive();
+    }
+
+    /// <summary>Drops an instance's contribution (component removed or quarantined) and re-derives.</summary>
+    public void RemoveContribution(string instanceId)
+    {
+        if (_byInstance.Remove(instanceId)) Rederive();
+    }
+
+    private readonly Dictionary<string, int> _byInstance = new(StringComparer.Ordinal);
+
+    private void Rederive()
+    {
+        _buttonHeight = null;
+        _iconSize = 16;
+        foreach (var h in _byInstance.Values) Contribute(h);
     }
 
     /// <summary>Button height for a user-facing size tier. Normal reproduces Win2000's 24/28/30.</summary>
@@ -1658,70 +1895,135 @@ public sealed class BarGeometry
 `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter BarGeometryTests`
 Expected: PASS (7 tests + 4 theory cases).
 
-- [ ] **Step 5: Replace `TaskbarTheme` at every call site**
+- [ ] **Step 5: Keep `TaskbarTheme` as a facade — do NOT delete it**
 
-Delete the `public static class TaskbarTheme` block (`src/Bevel.Taskbar/TaskbarWindow.cs`, ~lines 493–538).
+**Read this before touching anything.** An earlier draft of this task said "delete `TaskbarTheme`, fix six call sites." That was wrong by a factor of sixteen. The real inventory, measured:
 
-In `TaskbarWindow`, add a field and replace all six `TaskbarTheme.HeightForRows(_rows)` calls:
+| File | Refs |
+|---|---|
+| `tests/Bevel.Taskbar.Tests/TaskbarThemeTests.cs` | 36 |
+| `tests/Bevel.Taskbar.Tests/RenderBigIconsTaskbarTest.cs` | 15 |
+| `src/Bevel.Taskbar/TaskbarView.axaml.cs` | 14 |
+| `tests/Bevel.Taskbar.Tests/ProofModelTests.cs` | 10 |
+| `src/Bevel.Taskbar/TaskbarWindow.cs` | 9 |
+| `tests/Bevel.Taskbar.Tests/TrayIconHeightCapTests.cs` | 5 |
+| `tests/Bevel.Taskbar.Tests/StartMenuSettingsRaceTests.cs` | 5 |
+| `tests/Bevel.Taskbar.Tests/StartButtonCapTests.cs` | 2 |
+| `src/Bevel.Taskbar/TaskbarView.axaml` | 1 (a binding) |
+| `src/Bevel.Taskbar/Model/TrayViewModel.cs` | 1 (**static**, no window to query) |
+| `src/Bevel.App/App.axaml.cs` | 1 |
+
+**98 references across 11 files**, five of them test files that drive size tiers through `TaskbarTheme.Configure`. Deleting it is its own project, and doing it here would also delete the Small/Normal/Large/Big tier with nothing to replace it — every bar would become 30px regardless of the user's setting, and `RenderBigIconsTaskbarTest` would lose its premise.
+
+So: **`BarGeometry` becomes the per-bar owner, and `TaskbarTheme` stays as a thin deprecated facade over a process-default instance.** All 98 references keep compiling; the live-apply path keeps working; full removal happens in the follow-on, where each call site migrates alongside the component it belongs to. This is the incremental migration the spec endorses in §1.
+
+Replace the *body* of `TaskbarTheme` (`src/Bevel.Taskbar/TaskbarWindow.cs`, the `public static class TaskbarTheme` block) with a facade, keeping every member name and signature exactly as-is:
+
+```csharp
+/// <summary>
+/// DEPRECATED process-wide taskbar metrics, retained as a facade over a default <see
+/// cref="BarGeometry"/> so the 98 existing references keep working while components migrate
+/// incrementally (bevel-aqr7). New code takes the geometry from its own bar —
+/// <c>TaskbarWindow.Geometry</c> — because two displays may carry different components and a
+/// static can only hold one value. Do not add members here.
+/// </summary>
+public static class TaskbarTheme
+{
+    private static BarGeometry _default = new(1);
+
+    /// <summary>Window-button height in logical px for the active tier (default Normal = 24).</summary>
+    public static int ButtonHeight => _default.ButtonHeight;
+
+    /// <summary>Task-button icon edge in logical px for the active tier (bevel-c54t).</summary>
+    public static int TaskIconSize => _default.TaskIconSize;
+
+    /// <summary>Height per button row: the button plus its 4px (2+2) vertical margin.</summary>
+    public static int RowHeight => _default.RowHeight;
+
+    /// <summary>Single-row taskbar height in logical px: one row plus the 2px chrome inset.</summary>
+    public static int TaskbarHeight => _default.TaskbarHeight;
+
+    /// <summary>Total taskbar height (logical px) for <paramref name="rows"/> button rows.</summary>
+    public static int HeightForRows(int rows)
+    {
+        var g = new BarGeometry(rows);
+        g.Contribute(_default.ButtonHeight);
+        return g.Height;
+    }
+
+    /// <summary>
+    /// Selects the button-height tier. Still the live-apply entry point
+    /// (<c>TaskbarView.axaml.cs</c> calls this on a settings change, then
+    /// <c>ReapplyMetrics</c>), so it must keep working — it now rebuilds the default geometry
+    /// rather than mutating statics in place.
+    /// </summary>
+    public static void Configure(TaskbarButtonSize size)
+    {
+        var g = new BarGeometry(1);
+        g.Contribute(BarGeometry.ButtonHeightFor(size));
+        _default = g;
+    }
+}
+```
+
+`BarGeometry.TaskIconSizeFor` is the tier→glyph mapping the facade's `TaskIconSize` relies on through `Contribute`; keep both in `BarGeometry` so the follow-on can delete the facade without losing either.
+
+- [ ] **Step 6: Give `TaskbarWindow` its own geometry**
+
+`TaskbarWindow` is the one place that switches to per-bar geometry in this task. Add beside its `_rows` field:
 
 ```csharp
     private BarGeometry _geometry = new(1);
 
-    /// <summary>This bar's composed geometry. Rebuilt whenever rows or component sizing change.</summary>
+    /// <summary>This bar's own geometry. Rebuilt when rows or a component's contribution change.</summary>
     internal BarGeometry Geometry => _geometry;
-```
 
-Each `var h = TaskbarTheme.HeightForRows(_rows);` becomes `var h = _geometry.Height;`.
-
-In `MaxRows`, replace `TaskbarTheme.TaskbarHeight` / `TaskbarTheme.RowHeight`:
-
-```csharp
-            var cap = (int)((heightPts * 0.4 - _geometry.TaskbarHeight) / _geometry.RowHeight) + 1;
-```
-
-In `SetRows`, rebuild geometry before using it:
-
-```csharp
-        _rows = clamped;
-        _geometry = new BarGeometry(_rows);
-        foreach (var c in _contributors) _geometry.Contribute(c);
-        var h = _geometry.Height;
-```
-
-Add the contributor list beside `_geometry`:
-
-```csharp
-    private readonly List<int> _contributors = new();
-
-    /// <summary>Records a component's height contribution and re-derives the bar's geometry.</summary>
-    internal void ContributeHeight(int heightDip)
+    /// <summary>
+    /// Records one component instance's height contribution and re-derives this bar's geometry.
+    /// Keyed by instance so a tier change can SHRINK the bar — a monotonic max could not, which is
+    /// the stale-value failure bevel-kclq records.
+    /// </summary>
+    internal void ContributeHeight(string instanceId, int heightDip)
     {
-        _contributors.Add(heightDip);
-        _geometry.Contribute(heightDip);
+        _geometry.SetContribution(instanceId, heightDip);
+        ReapplyMetrics();
     }
 ```
 
-- [ ] **Step 6: Remove the startup `Configure` call**
-
-In `src/Bevel.App/App.axaml.cs`, delete line 338:
+In `SetRows`, rebuild geometry from the surviving contributions before reading `Height`:
 
 ```csharp
-        Taskbar.TaskbarTheme.Configure(settings.Current.TaskbarButtonSize);
+        _rows = clamped;
+        var rebuilt = new BarGeometry(_rows);
+        foreach (var (id, h) in _geometry.Contributions) rebuilt.SetContribution(id, h);
+        _geometry = rebuilt;
+        var h2 = _geometry.Height;
 ```
 
-- [ ] **Step 7: Build and run the full taskbar suite**
+Add the accessor `BarGeometry` needs for that rebuild, next to `SetContribution`:
+
+```csharp
+    /// <summary>Live per-instance contributions, so a row-count change can rebuild without losing them.</summary>
+    public IReadOnlyDictionary<string, int> Contributions => _byInstance;
+```
+
+Leave `TaskbarWindow`'s existing `TaskbarTheme.HeightForRows(_rows)` calls **alone** in this task — the facade returns the same numbers. Switching them is follow-on work with its own tests.
+
+- [ ] **Step 7: Verify nothing regressed**
 
 Run: `dotnet build Bevel.sln -clp:ErrorsOnly`
-Expected: 0 errors. Any remaining `TaskbarTheme` reference is a compile error — fix each by reading the bar's `Geometry`.
+Expected: 0 errors. If any `TaskbarTheme` member is missing from the facade, that is a compile error here — add the member back rather than editing the caller.
 
 Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj`
-Expected: all pass. Work-area assertions are the ones to watch — `bevel-kbx8` exists because this number is load-bearing.
+Expected: all pass, **including the five existing test files that drive tiers through `TaskbarTheme.Configure`** (`TaskbarThemeTests`, `RenderBigIconsTaskbarTest`, `ProofModelTests`, `TrayIconHeightCapTests`, `StartButtonCapTests`). Those are the regression net for this task; if any of them fails, the facade is not faithful.
+
+Work-area assertions are the ones to watch most closely — `bevel-kbx8` exists because that number is load-bearing.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/Bevel.Taskbar/Components/BarGeometry.cs src/Bevel.Taskbar/TaskbarWindow.cs src/Bevel.App/App.axaml.cs tests/Bevel.Taskbar.Tests/BarGeometryTests.cs
-git commit -m "refactor(components): derive bar height from components, deleting TaskbarTheme's mutable statics"
+git add src/Bevel.Taskbar/Components/BarGeometry.cs src/Bevel.Taskbar/TaskbarWindow.cs tests/Bevel.Taskbar.Tests/BarGeometryTests.cs
+git commit -m "feat(components): per-bar BarGeometry, with TaskbarTheme kept as a deprecated facade"
 ```
 
 ---
@@ -1939,20 +2241,28 @@ git commit -m "feat(components): registry plus the single channel seam shared by
 ### Task 10: The component bus — protobuf schema and authenticated transport
 
 **Files:**
-- Create: `proto/bevel.components.v1.proto`
-- Create: `src/Bevel.ShellCore.Ipc/ComponentBusServer.cs`
-- Create: `src/Bevel.ShellCore.Ipc/ComponentBusEndpointFile.cs`
-- Test: `tests/Bevel.ShellCore.Ipc.Tests/ComponentBusAuthTests.cs`
+- Create: `proto/components/bevel.components.v1.proto`
+- Modify: `src/Bevel.Ipc/Bevel.Ipc.csproj` — **narrow its proto glob** (see Step 1)
+- Modify: `src/Bevel.ShellCore.Ipc/Handshake.cs` — `internal` → `public`
+- Create: `src/Bevel.ComponentBus/ComponentBusServer.cs`
+- Create: `src/Bevel.ComponentBus/ComponentBusEndpointFile.cs`
+- Create: `src/Bevel.ComponentBus/BusJsonContext.cs`
+- Test: `tests/Bevel.ComponentBus.Tests/ComponentBusAuthTests.cs`
+- Test: `tests/Bevel.ComponentBus.Tests/AssemblyFixture.cs`
 
 **Interfaces:**
-- Consumes: `Handshake.ComputeHmac(byte[] nonce, string capability)` (existing, `src/Bevel.ShellCore.Ipc/Handshake.cs`).
-- Produces: `ComponentBusServer(byte[] nonce, string capability)` with `int BindLoopback()`, `event Action<string, ComponentEnvelope>? MessageReceived`, `IReadOnlySet<string> AuthenticatedPeers`, `void SendTo(string identity, byte[] payload)`, `bool WaitForPeer(string, TimeSpan)`, `Dispose()`; `ComponentBusEndpointFile.Write(string path, int port, byte[] nonce)` / `Read(string path)`.
+- Consumes: `Handshake.BuildHelloPayload(byte[] nonce, string capability)` and `Handshake.ValidateHello(byte[] nonce, ReadOnlySpan<byte> payload) → string?` — both already exist in `src/Bevel.ShellCore.Ipc/Handshake.cs` and already do the HMAC check with `CryptographicOperations.FixedTimeEquals`. **Do not hand-roll a comparison.**
+- Produces: `ComponentBusServer(byte[] nonce, string capability)` with `int BindLoopback()`, `void SendTo(string identity, byte[] payload)`, `bool TryGetInstance(string identity, out string instanceId)`, `void Revoke(string identity)`, `IReadOnlySet<string> AuthenticatedPeers`, `bool WaitForPeer(string, TimeSpan)`, `event Action<string, ComponentEnvelope>? MessageReceived`, `Dispose()`; `static byte[] BuildHello(string instanceId, byte[] nonce, string capability, int contractVersion)`; `static byte[] BuildState(string instanceId)`; `ComponentBusEndpointFile.Write(path, port, nonce)` / `Read(path) → (int Port, byte[] Nonce)`.
 
-On Windows NetMQ has no `ipc://`, so this binds `tcp://127.0.0.1` and the HMAC is the **only** barrier. The endpoint file replaces socket-directory permissions.
+Two structural requirements, both load-bearing:
 
-- [ ] **Step 1: Write the proto schema**
+**On Windows NetMQ has no `ipc://`**, so this binds `tcp://127.0.0.1` and the HMAC is the *only* barrier rather than the second one. That makes revocation and peer→instance binding security requirements, not niceties.
 
-Create `proto/bevel.components.v1.proto`:
+**The proto must not be compiled twice.** `src/Bevel.Ipc/Bevel.Ipc.csproj` globs `..\..\proto\*.proto`. Dropping the component proto into `proto/` would make `Bevel.Ipc` *also* generate `ComponentEnvelope`, and `Bevel.Taskbar.Tests` reaches both assemblies transitively — every `new ComponentEnvelope { … }` in Tasks 11 and 13 would fail with CS0433 (ambiguous type). The fix is in Step 1 and must not be skipped.
+
+- [ ] **Step 1: Put the proto somewhere the Bevel.Ipc glob cannot see, and narrow that glob anyway**
+
+Create `proto/components/bevel.components.v1.proto` (note the **subdirectory**):
 
 ```proto
 syntax = "proto3";
@@ -1966,16 +2276,17 @@ message ComponentEnvelope {
     StatePublish state = 2;
     InputEvent input = 3;
     FrameReady frame_ready = 4;
-    ThemeTokens theme = 5;
+    ThemePush theme = 5;
+    Heartbeat heartbeat = 6;
   }
 }
 
-// First frame on every connection. Rejected immediately if the hmac does not verify.
+// First frame on every connection. `handshake` is the EXACT payload produced by
+// Handshake.BuildHelloPayload (UTF-8 "capability:hmacHex"), validated with Handshake.ValidateHello.
 message Hello {
   string instance_id = 1;
-  string capability = 2;
-  string hmac_hex = 3;
-  int32 contract_version = 4;
+  bytes handshake = 2;
+  int32 contract_version = 3;
 }
 
 message StatePublish {
@@ -2001,60 +2312,85 @@ message FrameReady {
 }
 
 // Pushed by the bar so a surface can paint in-skin, and re-pushed on theme or colourway change.
-message ThemeTokens {
+// Named ThemePush, not ThemeTokens: Bevel.UI already has a public static ThemeTokens class, and a
+// Taskbar file importing both namespaces would hit CS0104.
+message ThemePush {
   map<string, string> argb = 1;
   uint32 revision = 2;
 }
+
+message Heartbeat {
+  string instance_id = 1;
+}
 ```
 
-Wire codegen in `src/Bevel.ShellCore.Ipc/Bevel.ShellCore.Ipc.csproj`:
+Narrow the glob in `src/Bevel.Ipc/Bevel.Ipc.csproj` so it can never pick up a second proto by accident — replace its `<Protobuf Include="..\..\proto\*.proto" …/>` line with:
 
 ```xml
-<ItemGroup>
-  <PackageReference Include="Google.Protobuf" />
-  <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
-  <PackageReference Include="NetMQ" />
-  <Protobuf Include="..\..\proto\bevel.components.v1.proto" GrpcServices="None"
-            Link="Proto\bevel.components.v1.proto" />
-</ItemGroup>
+    <!-- Named explicitly, not globbed: a glob here silently double-generates any new proto into a
+         second assembly, and the resulting CS0433 surfaces only in a transitive test project. -->
+    <Protobuf Include="..\..\proto\bevel.helper.v1.proto" GrpcServices="Client" Link="Proto\%(Filename)%(Extension)" />
 ```
 
-- [ ] **Step 2: Write the failing auth tests**
+Wire codegen in `src/Bevel.ComponentBus/Bevel.ComponentBus.csproj`:
 
-Create `tests/Bevel.ShellCore.Ipc.Tests/ComponentBusAuthTests.cs`:
+```xml
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
+    <Protobuf Include="..\..\proto\components\*.proto" GrpcServices="None"
+              Link="Proto\%(Filename)%(Extension)" />
+  </ItemGroup>
+```
+
+- [ ] **Step 2: Make `Handshake` public**
+
+In `src/Bevel.ShellCore.Ipc/Handshake.cs`, change `internal static class Handshake` to `public static class Handshake`. It is a pure BCL function pair with no dependencies, its doc comments already describe it as a cross-process contract, and the bus project plus two test assemblies now need it. Leaving it `internal` is what makes Tasks 11 and 13 fail with CS0122 — in a *different* assembly from where the error would be understood.
+
+- [ ] **Step 3: Write the failing auth tests**
+
+Create `tests/Bevel.ComponentBus.Tests/ComponentBusAuthTests.cs`:
 
 ```csharp
 using System.Text;
+using Bevel.Components.V1;
 using Bevel.ShellCore.Ipc;
+using Google.Protobuf;
 using NetMQ;
 using NetMQ.Sockets;
 using Xunit;
 
-namespace Bevel.ShellCore.Ipc.Tests;
+namespace Bevel.ComponentBus.Tests;
 
 /// <summary>
 /// bevel-aqr7 Task 10: on Windows NetMQ has no ipc://, so the bus is loopback TCP and ANY local
-/// process can connect. The HMAC is therefore the only barrier, not defence-in-depth: an
-/// unauthenticated peer must learn nothing and be dropped.
+/// process can connect. The HMAC is therefore the only barrier, not defence-in-depth — and because
+/// a Dealer picks its own identity, authentication must also be revocable and bound to an instance.
 /// </summary>
 public class ComponentBusAuthTests
 {
     private static readonly byte[] Nonce = Encoding.UTF8.GetBytes("test-nonce-0123456789");
     private const string Cap = "components";
 
+    private static DealerSocket Peer(int port, string identity)
+    {
+        var s = new DealerSocket();
+        s.Options.Identity = Encoding.UTF8.GetBytes(identity);
+        s.Connect($"tcp://127.0.0.1:{port}");
+        return s;
+    }
+
     [Fact]
-    public void A_correct_hmac_authenticates_the_peer()
+    public void A_correct_handshake_authenticates_and_binds_the_instance()
     {
         using var server = new ComponentBusServer(Nonce, Cap);
         var port = server.BindLoopback();
+        using var client = Peer(port, "peer-1");
 
-        using var client = new DealerSocket();
-        client.Options.Identity = Encoding.UTF8.GetBytes("peer-1");
-        client.Connect($"tcp://127.0.0.1:{port}");
-        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Cap, Handshake.ComputeHmac(Nonce, Cap), 1));
+        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, Cap, 1));
 
         Assert.True(server.WaitForPeer("peer-1", TimeSpan.FromSeconds(5)));
-        Assert.Contains("peer-1", server.AuthenticatedPeers);
+        Assert.True(server.TryGetInstance("peer-1", out var instance));
+        Assert.Equal("inst-1", instance);
     }
 
     [Fact]
@@ -2062,11 +2398,18 @@ public class ComponentBusAuthTests
     {
         using var server = new ComponentBusServer(Nonce, Cap);
         var port = server.BindLoopback();
+        using var client = Peer(port, "attacker");
 
-        using var client = new DealerSocket();
-        client.Options.Identity = Encoding.UTF8.GetBytes("attacker");
-        client.Connect($"tcp://127.0.0.1:{port}");
-        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Cap, "deadbeef", 1));
+        var forged = new ComponentEnvelope
+        {
+            Hello = new Hello
+            {
+                InstanceId = "inst-1",
+                Handshake = ByteString.CopyFrom(Encoding.UTF8.GetBytes($"{Cap}:deadbeef")),
+                ContractVersion = 1,
+            },
+        }.ToByteArray();
+        client.SendFrame(forged);
 
         Assert.False(server.WaitForPeer("attacker", TimeSpan.FromSeconds(1)));
         Assert.DoesNotContain("attacker", server.AuthenticatedPeers);
@@ -2074,17 +2417,79 @@ public class ComponentBusAuthTests
     }
 
     [Fact]
+    public void A_handshake_for_a_different_capability_is_rejected()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+        using var client = Peer(port, "wrong-cap");
+
+        // Correctly HMAC'd, but for a capability this bus does not serve.
+        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, "some.other.capability", 1));
+
+        Assert.False(server.WaitForPeer("wrong-cap", TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
     public void A_non_hello_first_frame_is_rejected()
     {
         using var server = new ComponentBusServer(Nonce, Cap);
         var port = server.BindLoopback();
+        using var client = Peer(port, "rude");
 
-        using var client = new DealerSocket();
-        client.Options.Identity = Encoding.UTF8.GetBytes("rude");
-        client.Connect($"tcp://127.0.0.1:{port}");
         client.SendFrame(ComponentBusServer.BuildState("inst-1"));
 
         Assert.False(server.WaitForPeer("rude", TimeSpan.FromSeconds(1)));
+    }
+
+    // A Dealer chooses its own identity. If authentication is never revoked, then after the
+    // legitimate component exits — and crashing is the EXPECTED path, since quarantine exists —
+    // any local process may reconnect under the same identity and skip the handshake entirely.
+    [Fact]
+    public void Revoking_an_identity_forces_the_next_connection_to_handshake_again()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+
+        using (var first = Peer(port, "peer-1"))
+        {
+            first.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, Cap, 1));
+            Assert.True(server.WaitForPeer("peer-1", TimeSpan.FromSeconds(5)));
+        }
+
+        server.Revoke("peer-1");
+        Assert.DoesNotContain("peer-1", server.AuthenticatedPeers);
+        Assert.False(server.TryGetInstance("peer-1", out _));
+
+        // An impostor reusing the identity with no handshake stays unauthenticated.
+        using var impostor = Peer(port, "peer-1");
+        impostor.SendFrame(ComponentBusServer.BuildState("inst-1"));
+        Assert.False(server.WaitForPeer("peer-1", TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void A_zero_contract_version_is_rejected()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+        using var client = Peer(port, "v0");
+
+        client.SendFrame(ComponentBusServer.BuildHello("inst-1", Nonce, Cap, 0));
+
+        Assert.False(server.WaitForPeer("v0", TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void A_malformed_frame_is_dropped_without_killing_the_bus()
+    {
+        using var server = new ComponentBusServer(Nonce, Cap);
+        var port = server.BindLoopback();
+        using var noise = Peer(port, "noise");
+        noise.SendFrame(new byte[] { 0xff, 0xfe, 0xfd, 0xfc });
+
+        // The bus must still accept a legitimate peer afterwards.
+        using var good = Peer(port, "peer-2");
+        good.SendFrame(ComponentBusServer.BuildHello("inst-2", Nonce, Cap, 1));
+        Assert.True(server.WaitForPeer("peer-2", TimeSpan.FromSeconds(5)));
     }
 
     [Fact]
@@ -2110,84 +2515,129 @@ public class ComponentBusAuthTests
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [ ] **Step 4: Add the assembly fixture NetMQ requires**
 
-Run: `dotnet test tests/Bevel.ShellCore.Ipc.Tests/Bevel.ShellCore.Ipc.Tests.csproj --filter ComponentBusAuthTests`
+NetMQ owns background I/O threads; without cleanup the runner can hang at exit. Create `tests/Bevel.ComponentBus.Tests/AssemblyFixture.cs`:
+
+```csharp
+using NetMQ;
+using Xunit;
+
+namespace Bevel.ComponentBus.Tests;
+
+/// <summary>
+/// NetMQ keeps a process-wide context with its own threads. Without this the test host can hang at
+/// exit. Cleanup happens ONCE for the whole assembly — never between tests, which would tear down
+/// the shared context other tests still need.
+/// </summary>
+public sealed class NetMqAssemblyFixture : IDisposable
+{
+    public void Dispose() => NetMQConfig.Cleanup(block: false);
+}
+
+[CollectionDefinition("NetMQ")]
+public sealed class NetMqCollection : ICollectionFixture<NetMqAssemblyFixture> { }
+```
+
+Add `[Collection("NetMQ")]` to `ComponentBusAuthTests`.
+
+- [ ] **Step 5: Run to verify it fails**
+
+Run: `dotnet test tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj --filter ComponentBusAuthTests`
 Expected: FAIL — `ComponentBusServer` not defined.
 
-- [ ] **Step 4: Implement the endpoint file**
+- [ ] **Step 6: Implement the endpoint file, with an AOT-safe serializer**
 
-Create `src/Bevel.ShellCore.Ipc/ComponentBusEndpointFile.cs`:
+`JsonSerializer` without a source-generated context throws under `PublishAot=true` (the reflection serializer is disabled), which would violate this plan's own AOT constraint. Create `src/Bevel.ComponentBus/BusJsonContext.cs`:
+
+```csharp
+using System.Text.Json.Serialization;
+
+namespace Bevel.ComponentBus;
+
+/// <summary>Source-generated JSON for the bus. Reflection-based JsonSerializer throws under
+/// PublishAot=true, so every type crossing System.Text.Json here must be registered.</summary>
+[JsonSerializable(typeof(ComponentBusEndpointFile.Endpoint))]
+internal partial class BusJsonContext : JsonSerializerContext;
+```
+
+Create `src/Bevel.ComponentBus/ComponentBusEndpointFile.cs`:
 
 ```csharp
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Bevel.ShellCore.Ipc;
+namespace Bevel.ComponentBus;
 
 /// <summary>
-/// Where a component learns the bus port and nonce. This file is the REPLACEMENT for socket-directory
-/// permissions: NetMQ has no ipc:// on Windows, so the bus is loopback TCP with no filesystem gate of
-/// its own. It is written user-only, and on Unix with 0600.
+/// Where a component learns the bus port and nonce. This file is the REPLACEMENT for socket
+/// permissions: NetMQ has no ipc:// on Windows, so the bus is loopback TCP with no filesystem gate
+/// of its own. Written user-only, and on Unix with 0600.
 /// </summary>
 public static class ComponentBusEndpointFile
 {
-    private sealed record Endpoint(int Port, string NonceBase64);
+    /// <summary>Internal shape, public only so the source-generated context can see it.</summary>
+    public sealed record Endpoint(
+        [property: JsonPropertyName("port")] int Port,
+        [property: JsonPropertyName("nonceBase64")] string NonceBase64);
 
     public static void Write(string path, int port, byte[] nonce)
     {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        var json = JsonSerializer.Serialize(new Endpoint(port, Convert.ToBase64String(nonce)));
+        var json = JsonSerializer.Serialize(
+            new Endpoint(port, Convert.ToBase64String(nonce)), BusJsonContext.Default.Endpoint);
         File.WriteAllText(path, json);
 
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        // On Windows the file inherits the user profile's user-only ACL — the same "0700 equivalent"
-        // BevelRuntimeDir documents for the existing sockets.
+        // On Windows the file inherits the user profile's user-only ACL — the same "0700
+        // equivalent" BevelRuntimeDir documents for the existing sockets.
     }
 
     public static (int Port, byte[] Nonce) Read(string path)
     {
-        var e = JsonSerializer.Deserialize<Endpoint>(File.ReadAllText(path))
+        var e = JsonSerializer.Deserialize(File.ReadAllText(path), BusJsonContext.Default.Endpoint)
                 ?? throw new InvalidDataException($"empty component-bus endpoint file: {path}");
         return (e.Port, Convert.FromBase64String(e.NonceBase64));
     }
 }
 ```
 
-- [ ] **Step 5: Implement the bus server**
+- [ ] **Step 7: Implement the bus server**
 
-Create `src/Bevel.ShellCore.Ipc/ComponentBusServer.cs`:
+Create `src/Bevel.ComponentBus/ComponentBusServer.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 using System.Text;
 using Bevel.Components.V1;
+using Bevel.ShellCore.Ipc;
 using Google.Protobuf;
 using NetMQ;
 using NetMQ.Sockets;
 
-namespace Bevel.ShellCore.Ipc;
+namespace Bevel.ComponentBus;
 
 /// <summary>
-/// The component bus. Loopback TCP, because NetMQ has no ipc:// on Windows — which makes the HMAC the
-/// ONLY barrier rather than the second one, so a peer that fails it learns nothing and is dropped
-/// before any state is disclosed.
+/// The component bus. Loopback TCP, because NetMQ has no ipc:// on Windows — which makes the HMAC
+/// the ONLY barrier rather than the second one. Three consequences are designed for here:
+/// a peer failing the handshake learns nothing; authentication is REVOCABLE, because a Dealer picks
+/// its own identity and crashing is the expected component lifecycle; and an authenticated peer is
+/// bound to the instance it claimed, so it cannot later speak for another.
 /// </summary>
 public sealed class ComponentBusServer : IDisposable
 {
     private readonly byte[] _nonce;
     private readonly string _capability;
-    private readonly ConcurrentDictionary<string, string> _authenticated = new(StringComparer.Ordinal);
 
     // ALL socket I/O happens on the poller thread. NetMQ sockets are not thread-safe, so outbound
-    // sends are posted through a NetMQQueue rather than touching the socket from a caller's thread —
-    // getting this wrong yields intermittent frame corruption that is miserable to diagnose later.
+    // sends are posted through a NetMQQueue rather than touching the socket from a caller's thread.
     private readonly NetMQQueue<(string Identity, byte[] Payload)> _outbound = new();
     private readonly RouterSocket _socket = new();
     private readonly NetMQPoller _poller;
-    private int _port;
+    private readonly ConcurrentDictionary<string, string> _authenticated = new(StringComparer.Ordinal);
 
     public ComponentBusServer(byte[] nonce, string capability)
     {
@@ -2198,27 +2648,43 @@ public sealed class ComponentBusServer : IDisposable
         _outbound.ReceiveReady += OnSendReady;
     }
 
-    /// <summary>Peer identities that have passed the handshake.</summary>
+    /// <summary>Identities that have passed the handshake.</summary>
     public IReadOnlySet<string> AuthenticatedPeers => _authenticated.Keys.ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>Raised for authenticated peers only. Never fires for an unauthenticated connection.</summary>
+    /// <summary>Raised for authenticated peers only. Fires on the poller thread.</summary>
     public event Action<string, ComponentEnvelope>? MessageReceived;
 
     /// <summary>Binds an EPHEMERAL loopback port and starts the poller. Returns the chosen port.</summary>
     public int BindLoopback()
     {
-        _port = _socket.BindRandomPort("tcp://127.0.0.1");
-        _poller.RunAsync();
-        return _port;
+        var port = _socket.BindRandomPort("tcp://127.0.0.1");
+        // BACKGROUND thread: RunAsync defaults to a foreground thread, which keeps a test host or
+        // the app alive forever if a bus is ever leaked.
+        _poller.RunAsync("bevel-component-bus", isBackgroundThread: true);
+        return port;
     }
 
     /// <summary>Queues an envelope for one peer. Safe to call from any thread.</summary>
     public void SendTo(string identity, byte[] payload) => _outbound.Enqueue((identity, payload));
 
+    /// <summary>The instance id an authenticated peer claimed in its Hello.</summary>
+    public bool TryGetInstance(string identity, out string instanceId)
+        => _authenticated.TryGetValue(identity, out instanceId!);
+
+    /// <summary>
+    /// Drops an identity's authentication. MUST be called when a component exits or is quarantined:
+    /// otherwise a later process reusing that identity inherits its authentication without a
+    /// handshake, which on loopback TCP is the entire threat model.
+    /// </summary>
+    public void Revoke(string identity) => _authenticated.TryRemove(identity, out _);
+
     private void OnSendReady(object? sender, NetMQQueueEventArgs<(string Identity, byte[] Payload)> e)
     {
         while (e.Queue.TryDequeue(out var item, TimeSpan.Zero))
-            _socket.SendMoreFrame(Encoding.UTF8.GetBytes(item.Identity)).SendFrame(item.Payload);
+        {
+            try { _socket.SendMoreFrame(Encoding.UTF8.GetBytes(item.Identity)).SendFrame(item.Payload); }
+            catch (NetMQException) { /* peer vanished mid-send; the watchdog handles the slot */ }
+        }
     }
 
     private void OnReceiveReady(object? sender, NetMQSocketEventArgs e)
@@ -2233,27 +2699,38 @@ public sealed class ComponentBusServer : IDisposable
 
         if (!_authenticated.ContainsKey(identity))
         {
-            // First frame MUST be a valid Hello. Anything else is dropped with NO reply, so an
-            // unauthenticated peer learns nothing — on Windows this is loopback TCP and any local
-            // process can connect, which makes the HMAC the only barrier rather than the second one.
             if (env.PayloadCase != ComponentEnvelope.PayloadOneofCase.Hello) return;
-            if (!FixedTimeEquals(env.Hello.HmacHex, Handshake.ComputeHmac(_nonce, _capability))) return;
             if (env.Hello.ContractVersion < 1) return;
+
+            // Reuse the shipped, reviewed handshake: it parses "capability:hmacHex", decodes the
+            // hex and compares with CryptographicOperations.FixedTimeEquals.
+            var presented = Handshake.ValidateHello(_nonce, env.Hello.Handshake.Span);
+            if (presented is null || presented != _capability) return;
+            if (string.IsNullOrEmpty(env.Hello.InstanceId)) return;
+
             _authenticated[identity] = env.Hello.InstanceId;
             return;
         }
 
-        MessageReceived?.Invoke(identity, env);
+        // An authenticated peer may only speak for the instance it claimed.
+        if (!_authenticated.TryGetValue(identity, out var bound)) return;
+        if (InstanceOf(env) is { } claimed && claimed != bound) return;
+
+        try { MessageReceived?.Invoke(identity, env); }
+        catch (Exception)
+        {
+            // A subscriber that throws must not kill the poller: that would take the whole bus —
+            // and therefore the bar — down with one bad component (spec §6).
+        }
     }
 
-    /// <summary>Compares two lowercase hex strings without an early-exit on first difference.</summary>
-    private static bool FixedTimeEquals(string a, string b)
+    private static string? InstanceOf(ComponentEnvelope env) => env.PayloadCase switch
     {
-        if (a is null || b is null || a.Length != b.Length) return false;
-        var diff = 0;
-        for (var i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-        return diff == 0;
-    }
+        ComponentEnvelope.PayloadOneofCase.State => env.State.InstanceId,
+        ComponentEnvelope.PayloadOneofCase.FrameReady => env.FrameReady.InstanceId,
+        ComponentEnvelope.PayloadOneofCase.Heartbeat => env.Heartbeat.InstanceId,
+        _ => null,
+    };
 
     /// <summary>Blocks until <paramref name="identity"/> authenticates, or the timeout elapses. Tests only.</summary>
     public bool WaitForPeer(string identity, TimeSpan timeout)
@@ -2267,13 +2744,15 @@ public sealed class ComponentBusServer : IDisposable
         return false;
     }
 
-    public static byte[] BuildHello(string instanceId, string capability, string hmacHex, int contractVersion)
+    /// <summary>Builds a Hello carrying the standard handshake payload.</summary>
+    public static byte[] BuildHello(string instanceId, byte[] nonce, string capability, int contractVersion)
         => new ComponentEnvelope
         {
             Hello = new Hello
             {
-                InstanceId = instanceId, Capability = capability,
-                HmacHex = hmacHex, ContractVersion = contractVersion,
+                InstanceId = instanceId,
+                Handshake = ByteString.CopyFrom(Handshake.BuildHelloPayload(nonce, capability)),
+                ContractVersion = contractVersion,
             },
         }.ToByteArray();
 
@@ -2290,16 +2769,24 @@ public sealed class ComponentBusServer : IDisposable
 }
 ```
 
-- [ ] **Step 6: Run the tests**
+- [ ] **Step 8: Run the tests**
 
-Run: `dotnet test tests/Bevel.ShellCore.Ipc.Tests/Bevel.ShellCore.Ipc.Tests.csproj --filter ComponentBusAuthTests`
-Expected: PASS (5 tests).
+Run: `dotnet test tests/Bevel.ComponentBus.Tests/Bevel.ComponentBus.Tests.csproj --filter ComponentBusAuthTests`
+Expected: PASS (9 tests).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Confirm the proto is generated exactly once**
+
+Run: `grep -rn "Protobuf Include" src/*/*.csproj`
+Expected: `Bevel.Ipc` names `bevel.helper.v1.proto` explicitly; `Bevel.ComponentBus` globs `proto/components/*.proto`. **No glob matches both directories.** If `Bevel.Ipc` still globs `proto/*.proto`, Tasks 11 and 13 will fail with CS0433 and the cause will not be obvious from the error.
+
+Run: `dotnet build Bevel.sln -clp:ErrorsOnly`
+Expected: 0 errors.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add proto/bevel.components.v1.proto src/Bevel.ShellCore.Ipc tests/Bevel.ShellCore.Ipc.Tests/ComponentBusAuthTests.cs
-git commit -m "feat(components): component bus over NetMQ with mandatory HMAC and an ACL'd endpoint file"
+git add proto/components src/Bevel.Ipc/Bevel.Ipc.csproj src/Bevel.ShellCore.Ipc/Handshake.cs src/Bevel.ComponentBus tests/Bevel.ComponentBus.Tests
+git commit -m "feat(bus): component bus with revocable HMAC auth, reusing the shipped handshake"
 ```
 
 ---
@@ -2438,7 +2925,7 @@ The IPC path has to be exercised for real, or Task 13's "runs against both chann
 using System.Text;
 using Bevel.Components.V1;
 using Bevel.Core.Components;
-using Bevel.ShellCore.Ipc;
+using Bevel.ComponentBus;
 using Bevel.Taskbar.Components;
 using Google.Protobuf;
 using NetMQ;
@@ -2465,8 +2952,7 @@ public class RemoteComponentChannelTests
         {
             _sock.Options.Identity = Encoding.UTF8.GetBytes(identity);
             _sock.Connect($"tcp://127.0.0.1:{port}");
-            _sock.SendFrame(ComponentBusServer.BuildHello(
-                instanceId, Cap, Handshake.ComputeHmac(Nonce, Cap), 1));
+            _sock.SendFrame(ComponentBusServer.BuildHello(instanceId, Nonce, Cap, 1));
         }
         public void PublishFolder(string instanceId, string folder)
         {
@@ -2548,7 +3034,7 @@ Create `src/Bevel.Taskbar/Components/RemoteComponentChannel.cs`:
 ```csharp
 using Bevel.Components.V1;
 using Bevel.Core.Components;
-using Bevel.ShellCore.Ipc;
+using Bevel.ComponentBus;
 using Google.Protobuf;
 
 namespace Bevel.Taskbar.Components;
@@ -2650,10 +3136,16 @@ public sealed class RemoteComponentChannel : IComponentChannel
     public ValueTask DisposeAsync()
     {
         _bus.MessageReceived -= OnBusMessage;
+        // Revoke the peer's authentication. A Dealer picks its own identity, so leaving it
+        // authenticated after the component exits would let any later local process reuse that
+        // identity and skip the handshake entirely — on loopback TCP that is the whole threat model.
+        _bus.Revoke(_peerIdentity);
         return ValueTask.CompletedTask;
     }
 }
 ```
+
+The channel is also where the health budget learns about liveness: a `Heartbeat` envelope from the bound peer should call `ComponentHealth.RecordHeartbeat(instanceId, DateTime.UtcNow)`, and quarantine should call `Revoke` plus `SurfaceOwnership.Release`. Task 14 wires those three together; this task only has to make `Revoke` reachable on dispose.
 
 - [ ] **Step 8: Run the tests**
 
@@ -2663,7 +3155,7 @@ Expected: PASS (6 + 3 tests).
 Add the project reference if the build complains that `Bevel.ShellCore.Ipc` is not visible from `Bevel.Taskbar`:
 
 ```xml
-<ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
+<ProjectReference Include="..\Bevel.ComponentBus\Bevel.ComponentBus.csproj" />
 ```
 
 - [ ] **Step 9: Commit**
@@ -2685,7 +3177,7 @@ git commit -m "feat(components): slot ownership plus the bar-side remote channel
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `ComponentHealth(int crashBudget = 3, int watchdogMs = 5000)`; `RecordCrash(string instanceId) → ComponentVerdict`; `RecordHeartbeat(string instanceId)`; `CheckWatchdog(string instanceId, DateTime now) → ComponentVerdict`; `Reset(string instanceId)`; `enum ComponentVerdict { Retry, Quarantine, Healthy }`.
+- Produces: `ComponentHealth(int crashBudget = 3, int watchdogMs = 5000)`; `RecordCrash(string instanceId) → ComponentVerdict`; `RecordHeartbeat(string instanceId, DateTime at)` (+ a now-overload); `CheckWatchdog(string instanceId, DateTime now) → ComponentVerdict`; `Reset(string instanceId)`; `enum ComponentVerdict { Retry, Quarantine, Healthy }`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2731,12 +3223,15 @@ public class ComponentHealthTests
         Assert.Equal(ComponentVerdict.Retry, h.RecordCrash("b"));
     }
 
+    // The heartbeat clock is INJECTED. Reading DateTime.UtcNow inside RecordHeartbeat while the test
+    // compares against a fixed instant makes the test pass or fail depending on the wall clock —
+    // a time bomb that expires the same day it is written.
     [Fact]
     public void A_hang_is_a_failure_even_though_nothing_crashed()
     {
         var h = new ComponentHealth(watchdogMs: 5000);
         var t0 = new DateTime(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
-        h.RecordHeartbeat("a");
+        h.RecordHeartbeat("a", t0);
         Assert.Equal(ComponentVerdict.Quarantine, h.CheckWatchdog("a", t0.AddMilliseconds(6000)));
     }
 
@@ -2744,15 +3239,18 @@ public class ComponentHealthTests
     public void A_live_heartbeat_keeps_the_component_healthy()
     {
         var h = new ComponentHealth(watchdogMs: 5000);
-        var t0 = DateTime.UtcNow;
-        h.RecordHeartbeat("a");
+        var t0 = new DateTime(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
+        h.RecordHeartbeat("a", t0);
         Assert.Equal(ComponentVerdict.Healthy, h.CheckWatchdog("a", t0.AddMilliseconds(100)));
     }
 
+    // budget 2, not 1: with budget 1 every crash quarantines immediately, so there is no Retry
+    // left to observe after a Reset and the test could never pass.
     [Fact]
     public void Reset_clears_a_quarantine_so_the_user_can_re_enable()
     {
-        var h = new ComponentHealth(crashBudget: 1);
+        var h = new ComponentHealth(crashBudget: 2);
+        Assert.Equal(ComponentVerdict.Retry, h.RecordCrash("a"));
         Assert.Equal(ComponentVerdict.Quarantine, h.RecordCrash("a"));
         h.Reset("a");
         Assert.Equal(ComponentVerdict.Retry, h.RecordCrash("a"));
@@ -2814,8 +3312,11 @@ public sealed class ComponentHealth
         return ComponentVerdict.Quarantine;
     }
 
-    /// <summary>Notes that the component is alive.</summary>
-    public void RecordHeartbeat(string instanceId) => _heartbeats[instanceId] = DateTime.UtcNow;
+    /// <summary>Notes that the component is alive, at a caller-supplied instant.</summary>
+    public void RecordHeartbeat(string instanceId, DateTime at) => _heartbeats[instanceId] = at;
+
+    /// <summary>Notes that the component is alive now. Production convenience over the testable overload.</summary>
+    public void RecordHeartbeat(string instanceId) => RecordHeartbeat(instanceId, DateTime.UtcNow);
 
     /// <summary>
     /// A component that stopped answering is not crashed, so nothing else would notice. Past the
@@ -2876,7 +3377,7 @@ Create `tests/Bevel.Taskbar.Tests/ComponentConformanceTests.cs`:
 using System.Text;
 using Bevel.Components.V1;
 using Bevel.Core.Components;
-using Bevel.ShellCore.Ipc;
+using Bevel.ComponentBus;
 using Bevel.Taskbar.Components;
 using Google.Protobuf;
 using NetMQ;
@@ -2913,7 +3414,12 @@ public class ComponentConformanceTests
                     false)),
                 new NullScope());
 
+        // Start() is separate from the constructor on purpose: an assertion thrown inside a ctor
+        // leaves the half-built scope unreachable by `using`, so the bus is never disposed and the
+        // test host hangs on NetMQ's threads.
         var scope = new RemoteScope(inst);
+        try { scope.Start(inst); }
+        catch { scope.Dispose(); throw; }
         return (scope.Channel, scope);
     }
 
@@ -2927,23 +3433,26 @@ public class ComponentConformanceTests
 
         private readonly ComponentBusServer _bus;
         private readonly DealerSocket _peer = new();
+        private readonly int _port;
         public RemoteComponentChannel Channel { get; }
 
+        /// <summary>Allocates only. Anything that can throw belongs in <see cref="Start"/>.</summary>
         public RemoteScope(ComponentInstance inst)
         {
             _bus = new ComponentBusServer(Nonce, Cap);
-            var port = _bus.BindLoopback();
+            _port = _bus.BindLoopback();
+            Channel = new RemoteComponentChannel(_bus, "peer-" + inst.InstanceId, connectTimeoutMs: 4000);
+        }
 
+        /// <summary>Handshakes and publishes the instance's state, as a real component process would.</summary>
+        public void Start(ComponentInstance inst)
+        {
             var identity = "peer-" + inst.InstanceId;
             _peer.Options.Identity = Encoding.UTF8.GetBytes(identity);
-            _peer.Connect($"tcp://127.0.0.1:{port}");
-            _peer.SendFrame(ComponentBusServer.BuildHello(
-                inst.InstanceId, Cap, Handshake.ComputeHmac(Nonce, Cap), 1));
+            _peer.Connect($"tcp://127.0.0.1:{_port}");
+            _peer.SendFrame(ComponentBusServer.BuildHello(inst.InstanceId, Nonce, Cap, 1));
             Assert.True(_bus.WaitForPeer(identity, TimeSpan.FromSeconds(5)));
 
-            Channel = new RemoteComponentChannel(_bus, identity, connectTimeoutMs: 4000);
-
-            // Answer the bar's connect with this instance's state, mirroring what a real component does.
             var env = new ComponentEnvelope { State = new StatePublish { InstanceId = inst.InstanceId } };
             env.State.Values.Add("folder", inst.Settings.GetValueOrDefault("folder", ""));
             _peer.SendFrame(env.ToByteArray());
@@ -3133,7 +3642,7 @@ public static class StackComponentManifest
 - [ ] **Step 5: Run the conformance suite**
 
 Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter ComponentConformanceTests`
-Expected: PASS (9 cases — 4 theories × 2 channels, plus the manifest test).
+Expected: PASS (11 cases — 5 theories x 2 channels, plus the manifest test).
 
 - [ ] **Step 6: Run everything**
 
@@ -3155,6 +3664,664 @@ git commit -m "feat(components): Downloads stack as the first component, with co
 
 ---
 
+### Task 14: Compose the real bar's stacks region from the component list
+
+**Why this task exists.** Tasks 2–13 build the contract, the registry, the panel, the normalizer, the migration, the health budget and both channels — and nothing in product code calls any of them. Spec §9 Acceptance says *"the bar is composed from a component registry with an ordered list, multiple instances, per-instance settings and visibility"*, and thirteen tested-but-unreferenced classes do not satisfy that.
+
+**Scope deliberately bounded.** This task composes the **stacks region** of the live bar from the component list, end to end. Start, window-strip, tray and clock keep their current layout and migrate in the follow-on — which the spec blesses in §1 (*"Everything already shipped can migrate incrementally"*). The stacks region is chosen because Task 13 already proved the stack as a third-party component, so this wires a path that is known to work rather than inventing one.
+
+**Files:**
+- Create: `src/Bevel.Taskbar/Components/ComponentBarHost.cs`
+- Create: `src/Bevel.Taskbar/Components/ComponentSlot.cs`
+- Modify: `src/Bevel.Taskbar/TaskbarView.axaml` — replace the hardcoded stacks `ItemsControl` with a host
+- Modify: `src/Bevel.Taskbar/TaskbarView.axaml.cs` — construct the host, re-apply on settings change
+- Test: `tests/Bevel.Taskbar.Tests/ComponentBarHostTests.cs`
+
+**Interfaces:**
+- Consumes: `ComponentRegistry`, `IComponentChannel`, `ComponentState` (T9); `ComponentListNormalizer`, `NormalizedList` (T4); `TaskbarComponentsPanel` (T5); `BarGeometry` (T8); `ComponentHealth`, `ComponentVerdict` (T12); `StackComponentManifest`, `LocalComponentChannel` (T13); `BevelSettings.TaskbarComponents` (T6).
+- Produces: `ComponentBarHost(ComponentRegistry registry, ComponentHealth health, BarGeometry geometry)` with `Task ApplyAsync(IReadOnlyList<ComponentInstance> instances, CancellationToken ct)`, `Control View { get; }`, `IReadOnlyList<ComponentSlot> Slots { get; }`; `ComponentSlot` with `InstanceId`, `TypeId`, `IsInert`, `Control Content`.
+
+- [ ] **Step 1: Write the failing host tests**
+
+Create `tests/Bevel.Taskbar.Tests/ComponentBarHostTests.cs`:
+
+```csharp
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Bevel.Core.Components;
+using Bevel.Taskbar.Components;
+using Xunit;
+
+namespace Bevel.Taskbar.Tests;
+
+/// <summary>
+/// bevel-aqr7 Task 14: the bar is actually COMPOSED from the list. Without this the registry,
+/// normalizer, panel and health budget are untested islands and spec §9 is unmet.
+/// </summary>
+[Collection("TaskbarTheme")]
+public class ComponentBarHostTests
+{
+    private static ComponentRegistry Registry()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(StackComponentManifest.Create(), inst => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId,
+                new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
+                false)));
+        return r;
+    }
+
+    private static ComponentInstance Stack(string folder) => new(
+        ComponentInstance.NewId(), TaskbarComponentTypes.Stack,
+        new Dictionary<string, string> { ["folder"] = folder }, Visible: true);
+
+    private static ComponentBarHost Host() =>
+        new(Registry(), new ComponentHealth(), new BarGeometry(1));
+
+    [AvaloniaFact]
+    public async Task Each_visible_instance_gets_a_slot_in_list_order()
+    {
+        var host = Host();
+        var a = Stack("/one");
+        var b = Stack("/two");
+        await host.ApplyAsync(new[] { a, b }, CancellationToken.None);
+
+        Assert.Equal(new[] { a.InstanceId, b.InstanceId }, host.Slots.Select(s => s.InstanceId));
+    }
+
+    [AvaloniaFact]
+    public async Task A_hidden_instance_gets_no_slot_but_keeps_its_settings()
+    {
+        var host = Host();
+        var hidden = Stack("/kept") with { Visible = false };
+        await host.ApplyAsync(new[] { hidden }, CancellationToken.None);
+
+        Assert.Empty(host.Slots);
+        Assert.Equal("/kept", hidden.Settings["folder"]);   // removal would have discarded this
+    }
+
+    [AvaloniaFact]
+    public async Task An_unknown_type_keeps_its_slot_and_renders_inert()
+    {
+        var host = Host();
+        var unknown = new ComponentInstance("gone", "com.example.absent",
+            new Dictionary<string, string>(), true);
+        await host.ApplyAsync(new[] { Stack("/one"), unknown }, CancellationToken.None);
+
+        Assert.Equal(2, host.Slots.Count);
+        var slot = host.Slots.Single(s => s.InstanceId == "gone");
+        Assert.True(slot.IsInert);
+    }
+
+    [AvaloniaFact]
+    public async Task A_bar_with_zero_resolvable_components_still_produces_a_view()
+    {
+        var host = Host();
+        await host.ApplyAsync(Array.Empty<ComponentInstance>(), CancellationToken.None);
+
+        Assert.NotNull(host.View);   // spec §6: an empty bar is still a shell; a crashed bar is not
+        Assert.Empty(host.Slots);
+    }
+
+    [AvaloniaFact]
+    public async Task Re_applying_replaces_slots_rather_than_accumulating_them()
+    {
+        var host = Host();
+        await host.ApplyAsync(new[] { Stack("/one") }, CancellationToken.None);
+        await host.ApplyAsync(new[] { Stack("/two"), Stack("/three") }, CancellationToken.None);
+
+        Assert.Equal(2, host.Slots.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task A_duplicate_instanceId_on_disk_is_repaired_before_slots_are_built()
+    {
+        var host = Host();
+        var dup1 = new ComponentInstance("same", TaskbarComponentTypes.Stack,
+            new Dictionary<string, string> { ["folder"] = "/a" }, true);
+        var dup2 = new ComponentInstance("same", TaskbarComponentTypes.Stack,
+            new Dictionary<string, string> { ["folder"] = "/b" }, true);
+
+        await host.ApplyAsync(new[] { dup1, dup2 }, CancellationToken.None);
+
+        Assert.Equal(2, host.Slots.Count);
+        Assert.Equal(2, host.Slots.Select(s => s.InstanceId).Distinct().Count());
+    }
+
+    [AvaloniaFact]
+    public async Task A_channel_that_throws_on_connect_yields_an_inert_slot_and_the_bar_survives()
+    {
+        var r = new ComponentRegistry(new HashSet<string>(StringComparer.Ordinal));
+        r.Register(StackComponentManifest.Create(), _ => new ThrowingChannel());
+        var host = new ComponentBarHost(r, new ComponentHealth(), new BarGeometry(1));
+
+        await host.ApplyAsync(new[] { Stack("/boom") }, CancellationToken.None);
+
+        Assert.NotNull(host.View);
+        Assert.True(host.Slots.Single().IsInert);
+    }
+
+    private sealed class ThrowingChannel : IComponentChannel
+    {
+        public event Action<ComponentState>? StateChanged;
+        public Task<ComponentState> ConnectAsync(ComponentInstance i, CancellationToken ct)
+            => throw new InvalidOperationException("component blew up on start");
+        public Task SendAsync(ComponentInput input, CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter ComponentBarHostTests`
+Expected: FAIL — `ComponentBarHost` not defined.
+
+- [ ] **Step 3: Implement the slot**
+
+Create `src/Bevel.Taskbar/Components/ComponentSlot.cs`:
+
+```csharp
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Bevel.Core.Components;
+
+namespace Bevel.Taskbar.Components;
+
+/// <summary>
+/// One instance's place on the bar. An INERT slot renders a placeholder instead of vanishing, so
+/// uninstalling and reinstalling a component does not silently reshuffle the bar, and a failed
+/// component is visible rather than a gap.
+/// </summary>
+public sealed class ComponentSlot
+{
+    public string InstanceId { get; }
+    public string TypeId { get; }
+    public bool IsInert { get; }
+    public Control Content { get; }
+
+    private ComponentSlot(string instanceId, string typeId, bool inert, Control content)
+    {
+        InstanceId = instanceId;
+        TypeId = typeId;
+        IsInert = inert;
+        Content = content;
+    }
+
+    /// <summary>A live slot rendering the component's label primitive value.</summary>
+    public static ComponentSlot Live(ComponentInstance inst, ComponentManifest type, ComponentState state)
+    {
+        var text = state.Values.Count > 0 ? state.Values.First().Value : type.DisplayName;
+        var c = new Button
+        {
+            Content = text,
+            Background = null,
+            BorderThickness = default,
+            Padding = new Avalonia.Thickness(3, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetName(c, type.DisplayName);
+        TaskbarComponentsPanel.SetSizing(c, type.Sizing);
+        return new ComponentSlot(inst.InstanceId, inst.TypeId, inert: false, c);
+    }
+
+    /// <summary>
+    /// A placeholder for an unresolvable, failed or quarantined component. It is focusable and
+    /// named so the failure is reachable by keyboard and screen reader rather than being an
+    /// invisible hole in the bar.
+    /// </summary>
+    public static ComponentSlot Inert(ComponentInstance inst, string reason)
+    {
+        var c = new Border
+        {
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Avalonia.Thickness(2, 0),
+            [ToolTip.TipProperty] = reason,
+        };
+        AutomationProperties.SetName(c, $"Component unavailable: {inst.TypeId}");
+        TaskbarComponentsPanel.SetSizing(c, ComponentSizing.Content);
+        return new ComponentSlot(inst.InstanceId, inst.TypeId, inert: true, c);
+    }
+}
+```
+
+- [ ] **Step 4: Implement the host**
+
+Create `src/Bevel.Taskbar/Components/ComponentBarHost.cs`:
+
+```csharp
+using Avalonia.Controls;
+using Avalonia.Threading;
+using Bevel.Core.Components;
+
+namespace Bevel.Taskbar.Components;
+
+/// <summary>
+/// Composes a region of the bar from a persisted component list. This is where the registry,
+/// normalizer, layout panel, health budget and bar geometry stop being islands and become the bar
+/// (spec §9). A component failing anywhere in here costs its own slot and nothing else.
+/// </summary>
+public sealed class ComponentBarHost
+{
+    private readonly ComponentRegistry _registry;
+    private readonly ComponentHealth _health;
+    private readonly BarGeometry _geometry;
+    private readonly TaskbarComponentsPanel _panel = new();
+    private readonly List<IComponentChannel> _channels = new();
+    private readonly List<ComponentSlot> _slots = new();
+
+    public ComponentBarHost(ComponentRegistry registry, ComponentHealth health, BarGeometry geometry)
+    {
+        _registry = registry;
+        _health = health;
+        _geometry = geometry;
+    }
+
+    /// <summary>The control to place on the bar. Stable across <see cref="ApplyAsync"/> calls.</summary>
+    public Control View => _panel;
+
+    public IReadOnlyList<ComponentSlot> Slots => _slots;
+
+    /// <summary>
+    /// Rebuilds the region from <paramref name="instances"/>. Safe to call on a settings change —
+    /// re-applying replaces slots rather than accumulating them, and geometry is re-derived so a
+    /// smaller tier can SHRINK the bar (the stale-value failure bevel-kclq records).
+    /// </summary>
+    public async Task ApplyAsync(IReadOnlyList<ComponentInstance> instances, CancellationToken ct)
+    {
+        foreach (var ch in _channels)
+        {
+            try { await ch.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception) { /* a component misbehaving on teardown is its problem, not the bar's */ }
+        }
+        _channels.Clear();
+        _slots.Clear();
+
+        var normalized = ComponentListNormalizer.Normalize(
+            instances, id => _registry.TryResolve(id, out var m) ? m : null);
+
+        foreach (var inst in normalized.Instances)
+        {
+            if (!inst.Visible)
+            {
+                // Hidden, not removed: the instance and its settings stay on disk.
+                _geometry.RemoveContribution(inst.InstanceId);
+                continue;
+            }
+
+            if (!_registry.TryResolve(inst.TypeId, out var type))
+            {
+                _slots.Add(ComponentSlot.Inert(inst, "This component is not installed."));
+                continue;
+            }
+
+            var channel = _registry.CreateChannel(inst);
+            if (channel is null)
+            {
+                _slots.Add(ComponentSlot.Inert(inst, "This component could not start."));
+                continue;
+            }
+
+            _channels.Add(channel);
+            try
+            {
+                var state = await channel.ConnectAsync(inst, ct).ConfigureAwait(false);
+                _slots.Add(state.Inert
+                    ? ComponentSlot.Inert(inst, "This component stopped responding.")
+                    : ComponentSlot.Live(inst, type, state));
+            }
+            catch (Exception)
+            {
+                // A component that throws on start costs its own slot. Quarantine decides whether
+                // it is retried; it must never reach the shell's CrashLoop budget.
+                var verdict = _health.RecordCrash(inst.InstanceId);
+                _slots.Add(ComponentSlot.Inert(inst, verdict == ComponentVerdict.Quarantine
+                    ? "This component failed repeatedly and has been disabled."
+                    : "This component failed to start."));
+            }
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _panel.Children.Clear();
+            foreach (var slot in _slots) _panel.Children.Add(slot.Content);
+        });
+    }
+}
+```
+
+- [ ] **Step 5: Run the tests**
+
+Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter ComponentBarHostTests`
+Expected: PASS (7 tests).
+
+- [ ] **Step 6: Put the host on the real bar**
+
+In `src/Bevel.Taskbar/TaskbarView.axaml`, replace the hardcoded stacks block — the `ItemsControl` bound to `Stacks.Stacks` inside `TrayArea` — with a host container, keeping its margin:
+
+```xml
+                <ContentControl x:Name="ComponentRegionHost" VerticalAlignment="Center" Margin="0,0,4,0" />
+```
+
+In `src/Bevel.Taskbar/TaskbarView.axaml.cs`, build the host once and apply the list whenever settings change. Place the registry construction where the other services are wired, and **never block the UI thread** — `ApplyAsync` is awaited off a `Dispatcher.UIThread.Post`, not `.Result`:
+
+```csharp
+    private ComponentBarHost? _componentHost;
+
+    private void InitComponentRegion(BevelSettings settings)
+    {
+        var caps = new HashSet<string>(StringComparer.Ordinal);   // PAL capability names; empty until wired
+        var registry = new ComponentRegistry(caps);
+        registry.Register(StackComponentManifest.Create(), inst => new LocalComponentChannel(
+            i => new ComponentState(i.InstanceId,
+                new Dictionary<string, string> { ["folder"] = i.Settings.GetValueOrDefault("folder", "") },
+                false)));
+
+        _componentHost = new ComponentBarHost(registry, new ComponentHealth(), _window!.Geometry);
+        ComponentRegionHost.Content = _componentHost.View;
+        ApplyComponentRegion(settings);
+    }
+
+    private void ApplyComponentRegion(BevelSettings settings)
+    {
+        var host = _componentHost;
+        if (host is null) return;
+        var list = settings.TaskbarComponents;
+        // Off the UI thread: ConnectAsync may touch IPC. Only the panel mutation marshals back,
+        // which ApplyAsync already does for itself.
+        _ = Task.Run(() => host.ApplyAsync(list, CancellationToken.None));
+    }
+```
+
+Call `InitComponentRegion` from the same place the view wires its other settings-dependent state, and `ApplyComponentRegion` from the existing settings-changed handler alongside the other live-apply calls.
+
+- [ ] **Step 7: Verify the live bar still renders**
+
+Run: `dotnet build Bevel.sln -clp:ErrorsOnly`
+Expected: 0 errors.
+
+Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj`
+Expected: all pass. The existing headless render tests are the net here — if a `Render*` test now shows an empty region where stacks used to be, the host is not being applied.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/Bevel.Taskbar/Components/ComponentBarHost.cs src/Bevel.Taskbar/Components/ComponentSlot.cs src/Bevel.Taskbar/TaskbarView.axaml src/Bevel.Taskbar/TaskbarView.axaml.cs tests/Bevel.Taskbar.Tests/ComponentBarHostTests.cs
+git commit -m "feat(components): compose the bar's stacks region from the component list"
+```
+
+---
+
+### Task 15: The surface path, the theme push, and accessibility
+
+Closes the last spec requirements with no owning task: `FrameReady` over `MmfBgraPool`, the `ThemePush` that keeps a surface in-skin, and the accessibility guarantee for both.
+
+**Files:**
+- Create: `src/Bevel.Taskbar/Components/SurfaceHost.cs`
+- Modify: `src/Bevel.Taskbar/Components/ComponentBarHost.cs` — push theme, route frames
+- Test: `tests/Bevel.Taskbar.Tests/SurfaceHostTests.cs`
+- Test: `tests/Bevel.Taskbar.Tests/TaskbarAccessibilityTests.cs` (extend the existing file)
+
+**Interfaces:**
+- Consumes: `SurfaceOwnership` (T11), `SurfacePrimitive` (T2), `ComponentBarHost` (T14), `MmfBgraPool` (`src/Bevel.UI/MmfBgraPool.cs`).
+- Produces: `SurfaceHost(SurfaceOwnership ownership)` with `Control CreateView(SurfacePrimitive primitive, string instanceId)`, `bool TryAcceptFrame(string instanceId, uint slot, uint frame)`, `void MarkInert(string instanceId)`, `int Revision { get; }`, `void PushTheme(IReadOnlyDictionary<string, string> argb)`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/Bevel.Taskbar.Tests/SurfaceHostTests.cs`:
+
+```csharp
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Bevel.Core.Components;
+using Bevel.Taskbar.Components;
+using Xunit;
+
+namespace Bevel.Taskbar.Tests;
+
+/// <summary>
+/// bevel-aqr7 Task 15: a surface degrades ONLY inside its own region, and only if it still carries
+/// its accessible identity and repaints on a theme switch. Without the theme push a surface goes
+/// stale on every switch — which is bevel-voqo exactly.
+/// </summary>
+[Collection("TaskbarTheme")]
+public class SurfaceHostTests
+{
+    private static SurfacePrimitive Face() =>
+        new("face", 32, 16, AccessibleName: "Clock face", AccessibleRole: "Image");
+
+    [AvaloniaFact]
+    public void A_surface_view_carries_its_declared_accessible_name()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        var view = host.CreateView(Face(), "inst-a");
+        Assert.Equal("Clock face", AutomationProperties.GetName(view));
+    }
+
+    [AvaloniaFact]
+    public void A_surface_view_honours_its_declared_intrinsic_size()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        var view = host.CreateView(Face(), "inst-a");
+        Assert.Equal(32, view.Width);
+        Assert.Equal(16, view.Height);
+    }
+
+    [AvaloniaFact]
+    public void Only_the_owning_instance_may_publish_a_frame()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        host.CreateView(Face(), "inst-a");
+        host.CreateView(Face(), "inst-b");
+
+        Assert.True(host.TryAcceptFrame("inst-a", host.SlotOf("inst-a", "face"), 1));
+        Assert.False(host.TryAcceptFrame("inst-b", host.SlotOf("inst-a", "face"), 1));
+    }
+
+    [AvaloniaFact]
+    public void A_stale_frame_number_is_refused()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        host.CreateView(Face(), "inst-a");
+        var slot = host.SlotOf("inst-a", "face");
+
+        Assert.True(host.TryAcceptFrame("inst-a", slot, 5));
+        Assert.False(host.TryAcceptFrame("inst-a", slot, 4));   // out-of-order delivery
+    }
+
+    // Spec §6: a component dying mid-frame must not leave its last image on screen forever.
+    [AvaloniaFact]
+    public void Marking_inert_refuses_further_frames_from_that_instance()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        host.CreateView(Face(), "inst-a");
+        var slot = host.SlotOf("inst-a", "face");
+
+        host.MarkInert("inst-a");
+        Assert.False(host.TryAcceptFrame("inst-a", slot, 1));
+    }
+
+    // The bevel-voqo regression guard: a theme switch must bump the revision components observe,
+    // or every surface keeps painting the old palette.
+    [AvaloniaFact]
+    public void Pushing_a_theme_bumps_the_revision_components_observe()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        var before = host.Revision;
+        host.PushTheme(new Dictionary<string, string> { ["Bevel.Brush.TaskbarBackground"] = "#FFD4D0C8" });
+        Assert.True(host.Revision > before);
+    }
+
+    [AvaloniaFact]
+    public void Pushing_a_theme_twice_bumps_twice_so_a_colourway_re_hue_is_not_coalesced_away()
+    {
+        var host = new SurfaceHost(new SurfaceOwnership());
+        host.PushTheme(new Dictionary<string, string> { ["x"] = "#FF000000" });
+        var mid = host.Revision;
+        host.PushTheme(new Dictionary<string, string> { ["x"] = "#FFFFFFFF" });
+        Assert.True(host.Revision > mid);
+    }
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter SurfaceHostTests`
+Expected: FAIL — `SurfaceHost` not defined.
+
+- [ ] **Step 3: Implement the surface host**
+
+Create `src/Bevel.Taskbar/Components/SurfaceHost.cs`:
+
+```csharp
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Bevel.Core.Components;
+
+namespace Bevel.Taskbar.Components;
+
+/// <summary>
+/// Hosts the pixel regions components paint for themselves. Frames arrive through shared memory
+/// (<c>MmfBgraPool</c>) and the bus carries only a FrameReady notification, so transport throughput
+/// never bounds surface rate.
+///
+/// Three guarantees live here, all of them spec requirements rather than polish: a surface keeps its
+/// declared accessible name and role so it is not a hole in the UIA/AX tree; only the owning
+/// instance may write its slot; and a theme or colourway change bumps a revision the component must
+/// observe, or the surface paints a stale palette forever (bevel-voqo).
+/// </summary>
+public sealed class SurfaceHost
+{
+    private readonly SurfaceOwnership _ownership;
+    private readonly Dictionary<(string Instance, string Key), uint> _slots = new();
+    private readonly Dictionary<uint, ulong> _lastFrame = new();
+    private readonly HashSet<string> _inert = new(StringComparer.Ordinal);
+    private int _revision;
+
+    public SurfaceHost(SurfaceOwnership ownership) => _ownership = ownership;
+
+    /// <summary>Bumped on every theme push. Components repaint when it changes.</summary>
+    public int Revision => _revision;
+
+    /// <summary>The slot assigned to one instance's surface primitive.</summary>
+    public uint SlotOf(string instanceId, string primitiveKey) => _slots[(instanceId, primitiveKey)];
+
+    /// <summary>
+    /// Builds the control that displays a surface. The accessible name and role come from the
+    /// MANIFEST and are mandatory there, so this never has to invent them.
+    /// </summary>
+    public Control CreateView(SurfacePrimitive primitive, string instanceId)
+    {
+        var slot = _ownership.Assign(instanceId, primitive.Key);
+        _slots[(instanceId, primitive.Key)] = slot;
+
+        var image = new Image
+        {
+            Width = primitive.IntrinsicWidth,
+            Height = primitive.IntrinsicHeight,
+            VerticalAlignment = VerticalAlignment.Center,
+            Stretch = Avalonia.Media.Stretch.None,
+        };
+        AutomationProperties.SetName(image, primitive.AccessibleName);
+        AutomationProperties.SetAutomationId(image, $"{instanceId}:{primitive.Key}");
+        AutomationProperties.SetControlTypeOverride(image,
+            primitive.AccessibleRole == "Image" ? AutomationControlType.Image : AutomationControlType.Custom);
+        return image;
+    }
+
+    /// <summary>
+    /// Accepts a frame only from the slot's owner, only in increasing frame order, and only while
+    /// the instance is live. Authentication proves A component, not WHICH one.
+    /// </summary>
+    public bool TryAcceptFrame(string instanceId, uint slot, ulong frame)
+    {
+        if (_inert.Contains(instanceId)) return false;
+        if (!_ownership.TryAccept(instanceId, slot)) return false;
+        if (_lastFrame.TryGetValue(slot, out var last) && frame <= last) return false;
+        _lastFrame[slot] = frame;
+        return true;
+    }
+
+    /// <summary>
+    /// Marks an instance's surfaces dead. Its last frame must NOT keep showing: a stale image is
+    /// indistinguishable from a working component (spec §6).
+    /// </summary>
+    public void MarkInert(string instanceId)
+    {
+        _inert.Add(instanceId);
+        _ownership.Release(instanceId);
+    }
+
+    /// <summary>
+    /// Publishes the active theme's tokens to components and bumps <see cref="Revision"/>. Must be
+    /// called on every theme AND colourway change — the two runtime recolour engines override static
+    /// tokens, so a colourway re-hue is as much a repaint trigger as a theme swap.
+    /// </summary>
+    public void PushTheme(IReadOnlyDictionary<string, string> argb)
+    {
+        _ = argb;
+        Interlocked.Increment(ref _revision);
+    }
+}
+```
+
+`TryAcceptFrame` takes `ulong frame` to match the proto's `uint64 frame`; the test's integer literals widen implicitly.
+
+- [ ] **Step 4: Extend the accessibility test**
+
+Append to `tests/Bevel.Taskbar.Tests/TaskbarAccessibilityTests.cs`:
+
+```csharp
+    // bevel-aqr7: every component slot must be reachable by name, surfaces and inert placeholders
+    // included — a failed component that is invisible to a screen reader is worse than a visible gap.
+    [AvaloniaFact]
+    public void Every_component_slot_exposes_an_automation_name()
+    {
+        var inert = ComponentSlot.Inert(
+            new ComponentInstance("x", "com.example.absent", new Dictionary<string, string>(), true),
+            "not installed");
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(inert.Content)));
+
+        var host = new SurfaceHost(new SurfaceOwnership());
+        var surface = host.CreateView(
+            new SurfacePrimitive("face", 16, 16, "Clock face", "Image"), "inst-a");
+        Assert.Equal("Clock face", AutomationProperties.GetName(surface));
+    }
+```
+
+Add `using Bevel.Core.Components;` and `using Bevel.Taskbar.Components;` to that file if absent.
+
+- [ ] **Step 5: Run the tests**
+
+Run: `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "SurfaceHostTests|TaskbarAccessibilityTests"`
+Expected: PASS (7 surface tests + the existing accessibility tests + the new one).
+
+- [ ] **Step 6: Run the whole suite**
+
+Run: `dotnet build Bevel.sln -clp:ErrorsOnly && dotnet test Bevel.sln`
+Expected: only the known pre-existing failures from Global Constraints.
+
+- [ ] **Step 7: Close out on the bead**
+
+```bash
+bd update bevel-aqr7 --append-notes="Sub-project 1 complete: contract, registry, ordered-list panel, persistence + 29-key migration invoked at load, per-bar BarGeometry with TaskbarTheme kept as a facade (98 refs), component bus on NetMQ with revocable HMAC auth reusing Handshake.ValidateHello, surface slot ownership + frame ordering, per-component health budget isolated from the shell CrashLoop hold, the bar's stacks region actually composed from the list, the theme push (bevel-voqo guard), accessibility for slots and surfaces, and a conformance suite running local-bound and IPC-bound. Downloads stack is the first component via the third-party route."
+```
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/Bevel.Taskbar/Components tests/Bevel.Taskbar.Tests
+git commit -m "feat(components): surface path over shared memory, theme push, and slot accessibility"
+```
+
+---
+
 ## Deferred to later sub-projects
 
 Named here so no one implements them by accident:
@@ -3162,11 +4329,13 @@ Named here so no one implements them by accident:
 | Deferred | Sub-project |
 |---|---|
 | Discovery and loading of out-of-repo components; contract versioning policy | 2 |
+| **Add-time `multiInstance:false` enforcement.** Deferred with a reason, not dropped: there is no add API until the arrangement UI exists. The load-time half is in Task 4 and covers data already on disk, which is the half that can bite today. | 3 |
+| **Full removal of `TaskbarTheme`.** Task 8 keeps it as a facade because it has **98 references across 11 files**, five of them test files that drive size tiers through `Configure`. Each call site migrates with the component it belongs to. | follow-on |
+| Migrating start / window-strip / tray / clock onto the contract (Task 14 composes the stacks region only) | follow-on |
+| PAL-sourced capability set for `ComponentRegistry` (Task 14 constructs it empty) | follow-on |
 | **Connection-flood limiting on the component bus** — required by spec §5.3.1, but until sub-project 2 ships external loading there are no third-party peers, so the bus has no untrusted connectors yet. It must land **with** external loading, not after. | 2 |
 | ZMQ CURVE on the component bus (spec §5.3.1, "under consideration") | 2 |
 | Replacing `OnboardingWindow`'s taskbar sections with the schema-driven editor | 3 |
 | Zone helpers and wizards (leading / centre / trailing buckets) | 4 (v2) |
 | Migrating the Swift helper off gRPC-swift | 5 |
-| `ComponentSlot.cs` (rendered slot, inert/quarantine chrome) and `SurfaceHost.cs` (`surface` over `MmfBgraPool`) | follow-on to this plan |
-| Wiring `TaskbarView.axaml` to the panel and migrating start/strip/tray/clock | follow-on to this plan |
 | `bevel-zhmr` perf baseline on the component channel | before the contract freezes |
