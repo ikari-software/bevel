@@ -4133,7 +4133,9 @@ public sealed class ComponentBarHost
             catch (Exception) { /* a component misbehaving on teardown is its problem, not the bar's */ }
         }
         _channels.Clear();
-        _slots.Clear();
+
+        // Func<ComponentSlot> plans, not slots: control construction is deferred to the UI hop below.
+        var plans = new List<Func<ComponentSlot>>();
 
         var normalized = ComponentListNormalizer.Normalize(
             instances, id => _registry.TryResolve(id, out var m) ? m : null);
@@ -4149,14 +4151,14 @@ public sealed class ComponentBarHost
 
             if (!_registry.TryResolve(inst.TypeId, out var type))
             {
-                _slots.Add(ComponentSlot.Inert(inst, "This component is not installed."));
+                plans.Add(() => ComponentSlot.Inert(inst, "This component is not installed."));
                 continue;
             }
 
             var channel = _registry.CreateChannel(inst);
             if (channel is null)
             {
-                _slots.Add(ComponentSlot.Inert(inst, "This component could not start."));
+                plans.Add(() => ComponentSlot.Inert(inst, "This component could not start."));
                 continue;
             }
 
@@ -4164,23 +4166,32 @@ public sealed class ComponentBarHost
             try
             {
                 var state = await channel.ConnectAsync(inst, ct).ConfigureAwait(false);
-                _slots.Add(state.Inert
-                    ? ComponentSlot.Inert(inst, "This component stopped responding.")
-                    : ComponentSlot.Live(inst, type, state));
+                plans.Add(state.Inert
+                    ? () => ComponentSlot.Inert(inst, "This component stopped responding.")
+                    : () => ComponentSlot.Live(inst, type, state));
             }
             catch (Exception)
             {
                 // A component that throws on start costs its own slot. Quarantine decides whether
                 // it is retried; it must never reach the shell's CrashLoop budget.
                 var verdict = _health.RecordCrash(inst.InstanceId);
-                _slots.Add(ComponentSlot.Inert(inst, verdict == ComponentVerdict.Quarantine
+                plans.Add(() => ComponentSlot.Inert(inst, verdict == ComponentVerdict.Quarantine
                     ? "This component failed repeatedly and has been disabled."
                     : "This component failed to start."));
             }
         }
 
+        // ComponentSlot.Live/Inert CONSTRUCT Avalonia controls, so they must run on the UI thread.
+        // ApplyAsync is invoked via Task.Run from ApplyComponentRegion, which means every call —
+        // not just a contended one — would otherwise build Button/Border on a ThreadPool thread and
+        // throw "Call from invalid thread" the first time the real shell starts. Earlier tests never
+        // caught this because they all called ApplyAsync directly from the AvaloniaFact UI thread,
+        // never through Task.Run, so the production startup path was never exercised.
+        // Therefore: plan the slots off-thread (cheap closures), CREATE them inside the UI hop.
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            _slots.Clear();
+            foreach (var plan in plans) _slots.Add(plan());
             _panel.Children.Clear();
             foreach (var slot in _slots) _panel.Children.Add(slot.Content);
         });
