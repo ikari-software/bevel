@@ -72,4 +72,18 @@ public class BarGeometryTests
     [Fact]
     public void Rows_below_one_are_clamped()
         => Assert.Equal(30, new BarGeometry(rows: 0).Height);
+
+    // Fix round 1, Finding 1: Contribute (anonymous) and SetContribution/RemoveContribution (keyed)
+    // share ONE backing store. Mixing them on one instance must not silently discard either side.
+    [Fact]
+    public void Bare_and_keyed_contributions_share_one_backing_store()
+    {
+        var g = new BarGeometry(rows: 1);
+        g.Contribute(40);
+        g.SetContribution("a", 18);
+        Assert.Equal(40, g.ButtonHeight);   // the max across both the anonymous and keyed forms
+
+        g.RemoveContribution("a");
+        Assert.Equal(40, g.ButtonHeight);   // the anonymous contribution survives the keyed removal
+    }
 }

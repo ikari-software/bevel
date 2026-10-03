@@ -72,9 +72,12 @@ public class TaskbarComponentsPanelTests
         Assert.Equal(100, b.Bounds.Width, 1);
     }
 
-    // Review Focus 5
+    // Review Focus 5. Both children keep the default weight (1.0), so totalWeight == 2 here and
+    // the even-split (divide-by-zero guard) branch is never reached — that branch is actually
+    // exercised by Zero_weight_greedy_children_do_not_produce_NaN below. Renamed (fix round 1,
+    // Minor) to describe what this test actually checks.
     [AvaloniaFact]
-    public void A_list_of_only_spacers_shares_the_width_without_dividing_by_zero()
+    public void Two_equal_weight_spacers_share_the_width_evenly()
     {
         var a = Child(ComponentSizing.Greedy, 0);
         var b = Child(ComponentSizing.Greedy, 0);

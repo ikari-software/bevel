@@ -6,14 +6,26 @@ namespace Bevel.Taskbar.Components;
 /// One bar's composed geometry. Replaces <c>TaskbarTheme</c>'s mutable statics: height is MEASURED
 /// from the components actually on this bar, and the same composed value drives both the window
 /// height and the OS work-area claim — one derivation, not two (spec §4.4). Per-bar rather than
-/// static because two displays may carry different components (bevel-tjr2).
+/// static because two displays may carry different components (bevel-tjr2). <see cref="Contribute"/>
+/// and the keyed <see cref="SetContribution"/>/<see cref="RemoveContribution"/> pair share ONE
+/// backing store, so mixing them on one instance is safe — see <see cref="Contribute"/>'s doc.
 /// </summary>
 public sealed class BarGeometry
 {
     /// <summary>Win2000 classic default, used when no component has contributed.</summary>
     private const int DefaultButtonHeight = 24;
 
+    /// <summary>
+    /// Reserved key under which <see cref="Contribute"/> stores its value in the SAME backing
+    /// dictionary <see cref="SetContribution"/>/<see cref="RemoveContribution"/> use. One backing
+    /// store, not two: an earlier version wrote <c>_buttonHeight</c> directly from <c>Contribute</c>
+    /// and rebuilt it from <c>_byInstance</c> alone inside <c>Rederive</c>, so any bare
+    /// <c>Contribute</c> call was silently discarded by a later keyed call on the same instance.
+    /// </summary>
+    private const string AnonymousKey = "__anonymous";
+
     private readonly int _rows;
+    private readonly Dictionary<string, int> _byInstance = new(StringComparer.Ordinal);
     // Null means "nothing has contributed yet" — kept DISTINCT from the default value, or a
     // contribution smaller than the default (Small tier = 18) would be silently ignored.
     private int? _buttonHeight;
@@ -37,45 +49,62 @@ public sealed class BarGeometry
     public int Height => TaskbarHeight + (_rows - 1) * RowHeight;
 
     /// <summary>
-    /// Records one component's desired button height. The tallest wins, so a single Big-tier strip
-    /// grows the bar while a clock asking for 16 does not shrink it.
+    /// Records an anonymous contribution under the reserved <see cref="AnonymousKey"/>, in the same
+    /// backing store <see cref="SetContribution"/>/<see cref="RemoveContribution"/> use — so mixing
+    /// this with the keyed API on one instance is safe: neither can silently discard the other's
+    /// value. Monotonic within its own key: the tallest bare <c>Contribute</c> call wins, so a
+    /// single Big-tier strip grows the bar while a later clock asking for 16 does not shrink it. To
+    /// let a contribution SHRINK, give it its own instance id and use <see cref="SetContribution"/>
+    /// instead.
     /// </summary>
     public void Contribute(int heightDip)
     {
         if (heightDip <= 0) return;
-        if (_buttonHeight is { } current && heightDip <= current) return;
-        _buttonHeight = heightDip;
-        _iconSize = IconSizeForButtonHeight(heightDip);
+        if (_byInstance.TryGetValue(AnonymousKey, out var current) && heightDip <= current) return;
+        _byInstance[AnonymousKey] = heightDip;
+        Recompute();
     }
 
     /// <summary>
-    /// Replaces one instance's contribution and re-derives from ALL of them. Needed because
-    /// <see cref="Contribute"/> is a monotonic max: without this, a Big→Normal tier change could
-    /// never shrink the bar — exactly the stale-value failure class bevel-kclq records.
+    /// Replaces one instance's contribution in the same backing store <see cref="Contribute"/>
+    /// writes to, and re-derives <see cref="ButtonHeight"/> from ALL contributions (keyed and
+    /// anonymous alike). Needed because a single contribution is otherwise a monotonic max: without
+    /// a way to replace or drop a specific instance's value, a Big→Normal tier change could never
+    /// shrink the bar — exactly the stale-value failure class bevel-kclq records.
     /// </summary>
     public void SetContribution(string instanceId, int heightDip)
     {
         if (heightDip > 0) _byInstance[instanceId] = heightDip;
         else _byInstance.Remove(instanceId);
-        Rederive();
+        Recompute();
     }
 
     /// <summary>Drops an instance's contribution (component removed or quarantined) and re-derives.</summary>
     public void RemoveContribution(string instanceId)
     {
-        if (_byInstance.Remove(instanceId)) Rederive();
+        if (_byInstance.Remove(instanceId)) Recompute();
     }
 
-    private readonly Dictionary<string, int> _byInstance = new(StringComparer.Ordinal);
-
-    /// <summary>Live per-instance contributions, so a row-count change can rebuild without losing them.</summary>
+    /// <summary>
+    /// Live contributions, keyed and anonymous alike (the latter under the reserved
+    /// <see cref="AnonymousKey"/>), so a row-count change can rebuild without losing any of them.
+    /// </summary>
     public IReadOnlyDictionary<string, int> Contributions => _byInstance;
 
-    private void Rederive()
+    /// <summary>Re-derives <see cref="ButtonHeight"/>/<see cref="TaskIconSize"/> as the max over ALL
+    /// current contributions — the one place both <see cref="Contribute"/> and the keyed API read
+    /// from, so the two can never disagree about what has been recorded.</summary>
+    private void Recompute()
     {
         _buttonHeight = null;
         _iconSize = 16;
-        foreach (var h in _byInstance.Values) Contribute(h);
+        foreach (var h in _byInstance.Values)
+        {
+            if (h <= 0) continue;
+            if (_buttonHeight is { } current && h <= current) continue;
+            _buttonHeight = h;
+            _iconSize = IconSizeForButtonHeight(h);
+        }
     }
 
     /// <summary>Button height for a user-facing size tier. Normal reproduces Win2000's 24/28/30.</summary>

@@ -34,9 +34,18 @@ public sealed class TaskbarWindow : BevelWindow
     internal Bevel.Taskbar.Components.BarGeometry Geometry => _geometry;
 
     /// <summary>
-    /// Records one component instance's height contribution and re-derives this bar's geometry.
-    /// Keyed by instance so a tier change can SHRINK the bar — a monotonic max could not, which is
-    /// the stale-value failure bevel-kclq records.
+    /// Records one component instance's height contribution, keyed by instance so a tier change
+    /// can later SHRINK the bar (a monotonic max could not — the stale-value failure bevel-kclq
+    /// records), and re-derives <see cref="Geometry"/> accordingly.
+    ///
+    /// This does NOT yet change the rendered bar: <see cref="ReapplyMetrics"/> still sizes
+    /// <c>MinHeight</c>/<c>MaxHeight</c> from the <c>TaskbarTheme</c> facade, not from
+    /// <see cref="Geometry"/>.<c>Height</c>, so today this call updates internal state with no
+    /// observable effect on window size. That is intentional for this task — migrating
+    /// <c>ReapplyMetrics</c> (and <c>SetRows</c>, <c>OnScreensChanged</c>,
+    /// <c>PositionAtPrimaryDisplayBottom</c>) off the facade is follow-on work, deliberately
+    /// deferred because the facade has ~98 call sites across 11 files, including five test files
+    /// that drive size tiers through it — see <c>TaskbarTheme</c>'s own doc comment.
     /// </summary>
     internal void ContributeHeight(string instanceId, int heightDip)
     {
