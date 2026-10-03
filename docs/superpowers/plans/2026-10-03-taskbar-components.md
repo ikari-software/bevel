@@ -4278,8 +4278,15 @@ Closes the last spec requirements with no owning task: `FrameReady` over `MmfBgr
 **Files:**
 - Create: `src/Bevel.Taskbar/Components/SurfaceHost.cs`
 - Modify: `src/Bevel.Taskbar/Components/ComponentBarHost.cs` — push theme, route frames
+- **Modify: `src/Bevel.Taskbar/Components/ComponentHealth.cs` — add a lock (see below)**
 - Test: `tests/Bevel.Taskbar.Tests/SurfaceHostTests.cs`
 - Test: `tests/Bevel.Taskbar.Tests/TaskbarAccessibilityTests.cs` (extend the existing file)
+
+### 15.0 `ComponentHealth` must be locked before this task wires the bus to it
+
+`ComponentHealth` holds three unsynchronised collections — `Dictionary<string,int> _crashes`, `Dictionary<string,DateTime> _heartbeats`, `HashSet<string> _quarantined`. That was harmless while only `ApplyCoreAsync` touched it. **This task creates the exposure**: a `Heartbeat` envelope arrives on the **NetMQ poller thread** and calls `RecordHeartbeat`, while `ApplyCoreAsync` calls `RecordCrash` from a background thread and the watchdog calls `CheckWatchdog` from a third. Three threads, unsynchronised dictionaries — torn reads, lost quarantine state, or an outright `InvalidOperationException`, surfacing as a component that will not quarantine or one that quarantines a healthy sibling.
+
+`SurfaceOwnership` was locked for precisely this reason when it was reviewed; `ComponentHealth` has the identical exposure and was missed. Add the same treatment: a `private readonly object _gate = new();` with `RecordCrash`, `RecordHeartbeat`, `CheckWatchdog` and `Reset` each locking it. Invoke no callback while holding the lock. The existing seven `ComponentHealthTests` must still pass unchanged — locking is transparent to single-threaded callers.
 
 **Interfaces:**
 - Consumes: `SurfaceOwnership` (T11), `SurfacePrimitive` (T2), `ComponentBarHost` (T14), `MmfBgraPool` (`src/Bevel.UI/MmfBgraPool.cs`).
