@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Linq;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
@@ -501,13 +502,18 @@ public partial class TaskbarView : UserControl
     /// </summary>
     /// <summary>Clicking a mirrored tray icon forwards the click (with its button + modifiers) to the
     /// real menu-bar status item, so the owning app reveals its menu (spec §5.5, bevel-m3.3).</summary>
-    private async void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTrayIconPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control c || c.DataContext is not TrayItemViewModel item || _vm is null) return;
         var props = e.GetCurrentPoint(c).Properties;
         var button = props.IsRightButtonPressed ? TrayButton.Right : TrayButton.Left;
         e.Handled = true;
-        await _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
+        // Release the implicit pointer capture: the reveal is a slow async round-trip (helper move + press),
+        // and if this handler held the press gesture, macOS/Avalonia would funnel every later click back to
+        // THIS image (bevel-6fin: observed all clicks routing to the first-pressed icon). Fire-and-forget the
+        // reveal so the press gesture ends immediately.
+        e.Pointer.Capture(null);
+        _ = _vm.Tray.Forward(item.Id, button, ToTrayModifiers(e.KeyModifiers));
     }
 
     /// <summary>Refreshes a folder stack's recent-contents list (and clears its new-item cue) as its

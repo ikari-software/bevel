@@ -6,6 +6,11 @@ import GRPCCore
 import GRPCProtobuf
 import ScreenCaptureKit
 
+private extension CGEventField {
+    /// The private CGEventField carrying the window ID an event targets (bevel-6fin, from Ice: 0x33).
+    static let windowID = CGEventField(rawValue: 0x33)!   // swiftlint:disable:this force_unwrapping
+}
+
 /// Menu-bar status-item mirroring — the "Ice technique" (docs/spec/02-macos-platform.md §5).
 ///
 /// M3-A (this file) implements **discovery + limited mode (§5.5)**: it enumerates the menu-bar
@@ -61,6 +66,16 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         FileHandle.standardError.write(Data(("[BEVEL-TRAY] " + msg + "\n").utf8))
     }
 
+    /// TEMP (bevel-6fin): always-on file trace for the reveal path (stderr isn't captured in this run).
+    private func rlog(_ msg: String) {
+        let line = msg + "\n"
+        if let h = FileHandle(forWritingAtPath: "/tmp/bevel-reveal.log") {
+            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+        } else {
+            try? line.write(toFile: "/tmp/bevel-reveal.log", atomically: true, encoding: .utf8)
+        }
+    }
+
     /// Hard feature flag: BEVEL_TRAY_DISABLE=1 turns the systray subsystem off entirely (empty tray),
     /// leaving the rest of the shell untouched (Req 10.1). The escape hatch when a build breaks it.
     private let subsystemDisabled = ProcessInfo.processInfo.environment["BEVEL_TRAY_DISABLE"] == "1"
@@ -83,26 +98,147 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// SetConsolidation handler (via a main-actor hop) and the enumerator's self-exclusion (U3/U5).
     nonisolated(unsafe) var controlItem: MenuBarControlItem?
 
-    /// Reveal-at-top click (U6/C2). When consolidated the target may be hidden off-screen, where
-    /// `forwardClick`'s on-screen lookup can't find it. Temporarily collapse the control item to bring
-    /// the items back onto the bar, forward the click there (the owning app's menu opens at the TOP,
-    /// mirroring Ice — true bottom-native is impossible, C3 is dead), then rehide on a timer.
-    /// Menu-dismiss-based rehide is the polish (see the plan's open questions).
+    /// Click forwarding (bevel-6fin). When `park` is set, the caller (app) has just collapsed its control
+    /// item so THIS item is momentarily on-screen; the helper session-tap Cmd-drags it to a parked slot
+    /// right of the control (so it survives the caller's re-hide) and presses it → the owning app's menu
+    /// opens at the top. Non-park is a plain forward to the item's current on-screen position.
     func forwardClickWithReveal(
-        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) async -> Bool {
-        let wasHiding = self.controlItem?.isHidingItems ?? false
-        if wasHiding {
-            self.controlItem?.requestHidden(false)
-            try? await Task.sleep(nanoseconds: 400_000_000)   // let the timer apply + the bar reflow items back
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32,
+        park: Bool) async -> Bool {
+        rlog("forwardClickWithReveal park=\(park) item=\(itemID)")
+        if park { return revealParkAndClick(itemID: itemID, button: button, modifiers: modifiers) }
+        return forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+    }
+
+    /// Single-item reveal via Ice's SELF-ADDRESSED-event move (bevel-6fin; studied from jordanbaird/Ice).
+    /// The item is hidden OFF-SCREEN and we do NOT reveal the bar. We craft mouse events addressed to the
+    /// item's window + owning process (not to a screen point), un-suppress synthetic events during remote-
+    /// drag, and post them to the SESSION tap — so the move lands regardless of cursor position and survives
+    /// remote desktop (unlike a cursor-warp HID-tap drag). Move this one item to a slot left of the Clock
+    /// (right of the expanded control → it stays visible), then AX-press it so its menu opens at the top.
+    /// Restore-to-origin is the next step (first cut leaves the clicked item parked).
+    private func revealParkAndClick(
+        itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
+        let parts = itemID.split(separator: ":")
+        guard parts.count == 2, let pid = pid_t(parts[0]), let win = Int(parts[1]) else { rlog("  bad itemID"); return false }
+        guard let (clockRect, clockWin) = clockWindow() else { rlog("  no clock anchor"); return false }
+        rlog("  clock win=\(clockWin) x=\(Int(clockRect.origin.x)); moving item win=\(win) pid=\(pid)")
+        let dropPoint = CGPoint(x: clockRect.origin.x - 1, y: clockRect.midY)   // just LEFT of the clock
+        let moved = moveItemTargeted(windowID: win, pid: pid, to: dropPoint, targetWindowID: clockWin)
+        usleep(150_000)   // let the bar reflow the moved item on-screen
+        guard let (rect, _) = onScreenRect(itemID: itemID) else {
+            rlog("  item \(win) NOT on-screen after move (moved=\(moved))"); return false
         }
-        let delivered = self.forwardClick(itemID: itemID, button: button, modifiers: modifiers)
-        if wasHiding {
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 5_000_000_000)   // leave time to use the menu, then rehide
-                self?.controlItem?.requestHidden(true)
-            }
+        let point = CGPoint(x: rect.midX, y: rect.midY)
+        let ok = pressViaAX(at: point, itemID: itemID, rightClick: button == .right)
+            || clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
+        rlog("  item \(win) parked at x=\(Int(rect.origin.x)); press ok=\(ok); scheduling restore")
+        scheduleRestore(windowID: win, pid: pid)
+        return ok
+    }
+
+    /// Auto-restore (bevel-6fin): after time to use the menu, move the revealed item back into the hidden
+    /// region so the tray returns to its consolidated state. Ice re-hides on a timer too.
+    private func scheduleRestore(windowID: Int, pid: pid_t) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            self?.restoreItem(windowID: windowID, pid: pid)
         }
-        return delivered
+    }
+
+    /// Moves a parked item back to the LEFT of our BevelTrayControl — which, expanded, keeps everything to
+    /// its left off-screen, so the item hides again. The same self-addressed move, in reverse.
+    private func restoreItem(windowID: Int, pid: pid_t) {
+        guard let (ctrlRect, ctrlWin) = controlWindow() else { rlog("  restore: no control anchor"); return }
+        let dropPoint = CGPoint(x: ctrlRect.origin.x - 1, y: ctrlRect.midY)
+        _ = moveItemTargeted(windowID: windowID, pid: pid, to: dropPoint, targetWindowID: ctrlWin)
+        rlog("  restored item \(windowID) to left of control")
+    }
+
+    /// Our BevelTrayControl status item's frame + window number (by window name), even off-screen.
+    private func controlWindow() -> (CGRect, Int)? {
+        guard let wins = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowName as String] as? String) == "BevelTrayControl" {
+            if let num = w[kCGWindowNumber as String] as? Int,
+               let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary) { return (r, num) }
+        }
+        return nil
+    }
+
+    /// The item's current on-screen bounds + window number, matched by the windowNumber half of item_id.
+    private func onScreenRect(itemID: String) -> (CGRect, Int)? {
+        let parts = itemID.split(separator: ":")
+        guard parts.count == 2, let num = Int(parts[1]),
+              let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowNumber as String] as? Int) == num {
+            if let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 { return (r, num) }
+        }
+        return nil
+    }
+
+    /// The menu-bar Clock's frame + window number — the park anchor (rightmost always-visible system item).
+    private func clockWindow() -> (CGRect, Int)? {
+        guard let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowName as String] as? String) == "Clock" {
+            if let num = w[kCGWindowNumber as String] as? Int,
+               let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.origin.y <= 40 { return (r, num) }
+        }
+        return nil
+    }
+
+    /// Ice's move (bevel-6fin): reposition a menu-bar item by posting mouse events SELF-ADDRESSED to its
+    /// window + process, not to a screen location — so it works on an off-screen item and through remote
+    /// desktop. Cmd-down "grabs" the item (location irrelevant → 20000,20000); the up is addressed to the
+    /// TARGET window at the drop point, dropping the item there. Session tap + remote-drag un-suppression.
+    private func moveItemTargeted(windowID: Int, pid: pid_t, to dropPoint: CGPoint, targetWindowID: Int) -> Bool {
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
+        permitRemoteEvents()
+        let grabAnywhere = CGPoint(x: 20_000, y: 20_000)
+        guard let down = itemEvent(.leftMouseDown, at: grabAnywhere, windowID: windowID, pid: pid, source: source, cmd: true, click: false),
+              let up = itemEvent(.leftMouseUp, at: dropPoint, windowID: targetWindowID, pid: pid, source: source, cmd: false, click: false)
+        else { return false }
+        // Deliver directly to the owning process (Ice's ultimate delivery is postToPid). Post to the
+        // session tap too, since Ice's relay routes through it. Longer holds let the drag-rearrange settle.
+        down.post(tap: .cgSessionEventTap)
+        down.postToPid(pid)
+        usleep(90_000)
+        up.post(tap: .cgSessionEventTap)
+        up.postToPid(pid)
+        usleep(90_000)
+        return true
+    }
+
+    /// Builds a mouse CGEvent addressed to a specific menu-bar item window + process (Ice's menuBarItemEvent):
+    /// the window/process fields make macOS route it to that item regardless of cursor position and let it
+    /// ride the session tap instead of the HID stream remote desktop owns. `cmd` = Cmd-held (the move grab);
+    /// `click` sets clickState so a down/up opens the item's menu.
+    private func itemEvent(_ mouseType: CGEventType, at location: CGPoint, windowID: Int, pid: pid_t,
+                           source: CGEventSource, cmd: Bool, click: Bool) -> CGEvent? {
+        guard let e = CGEvent(mouseEventSource: source, mouseType: mouseType, mouseCursorPosition: location, mouseButton: .left)
+        else { return nil }
+        e.flags = cmd ? .maskCommand : []
+        e.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+        e.setIntegerValueField(.eventSourceUserData, value: Int64(truncatingIfNeeded: ObjectIdentifier(e).hashValue))
+        e.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+        e.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+        e.setIntegerValueField(.windowID, value: Int64(windowID))
+        if click { e.setIntegerValueField(.mouseEventClickState, value: 1) }
+        return e
+    }
+
+    /// Un-suppress synthetic events during remote-mouse-drag / suppression-interval states (Ice's
+    /// permitAllEvents) — the other half of surviving remote desktop.
+    private func permitRemoteEvents() {
+        guard let src = CGEventSource(stateID: .combinedSessionState) else { return }
+        let permitAll: CGEventFilterMask = [.permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents]
+        src.setLocalEventsFilterDuringSuppressionState(permitAll, state: .eventSuppressionStateRemoteMouseDrag)
+        src.setLocalEventsFilterDuringSuppressionState(permitAll, state: .eventSuppressionStateSuppressionInterval)
     }
 
     func registerMethods<Transport: ServerTransport>(with router: inout RPCRouter<Transport>) {
@@ -201,7 +337,8 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 let req = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ForwardClickReply()
                 reply.delivered = await self.forwardClickWithReveal(
-                    itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers)
+                    itemID: req.message.itemID, button: req.message.button, modifiers: req.message.modifiers,
+                    park: req.message.park)
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -456,6 +593,121 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         try? text.write(toFile: "/tmp/bevel-geo.log", atomically: true, encoding: .utf8)
     }
 
+    /// GO/NO-GO variation pass (bevel-6fin): when /tmp/bevel-dragtest exists, try SEVERAL synthetic Cmd-drag
+    /// techniques on one on-screen item and log which (if any) actually moves it — separating "synthetic drag
+    /// can't reposition macOS-26 Control-Center items" (all fail → approach dead) from "my first sequence was
+    /// wrong" (one works → build it). Restores the item after any move. One-shot. → /tmp/bevel-dragtest.log.
+    private func cmdDragValidation() {
+        let marker = "/tmp/bevel-dragtest"
+        guard FileManager.default.fileExists(atPath: marker) else { return }
+        try? FileManager.default.removeItem(atPath: marker)   // one-shot
+
+        guard let (rect, num) = pickDragCandidate() else {
+            try? "no draggable candidate found".write(toFile: marker + ".log", atomically: true, encoding: .utf8)
+            return
+        }
+        var log = "candidate win=\(num) x=\(Int(rect.origin.x)) w=\(Int(rect.width)) midY=\(Int(rect.midY))\n"
+
+        // Each attempt re-reads the item's live x (so it self-adjusts if a prior attempt shifted it),
+        // drags +60px with the given technique, checks movement, and reverses with the SAME technique.
+        func attempt(_ name: String, _ drag: (CGPoint, CGPoint) -> Void) {
+            guard let x0 = currentX(ofWindow: num) else { log += "\(name): item gone\n"; return }
+            let from = CGPoint(x: x0 + rect.width / 2, y: rect.midY)
+            let to = CGPoint(x: from.x + 60, y: from.y)
+            drag(from, to)
+            usleep(450_000)
+            let x1 = currentX(ofWindow: num)
+            let moved = x1.map { abs($0 - x0) > 8 } ?? false
+            log += "\(name): x \(Int(x0)) -> \(x1.map { String(Int($0)) } ?? "gone")  \(moved ? "MOVED ✓" : "no")\n"
+            if moved, let x1 = x1 {   // reverse with the same technique
+                drag(CGPoint(x: x1 + rect.width / 2, y: rect.midY), from)
+                usleep(350_000)
+            }
+        }
+
+        attempt("A hid + flags-only")      { f, t in synthCmdDrag(from: f, to: t, tap: .cghidEventTap,     realCmdKey: false, threshold: false, slow: false) }
+        attempt("B hid + real-Cmd-key")    { f, t in synthCmdDrag(from: f, to: t, tap: .cghidEventTap,     realCmdKey: true,  threshold: true,  slow: false) }
+        attempt("C session + real-Cmd")    { f, t in synthCmdDrag(from: f, to: t, tap: .cgSessionEventTap, realCmdKey: true,  threshold: true,  slow: false) }
+        attempt("D hid + real-Cmd + slow") { f, t in synthCmdDrag(from: f, to: t, tap: .cghidEventTap,     realCmdKey: true,  threshold: true,  slow: true) }
+
+        let anyMoved = log.contains("MOVED ✓")
+        log += anyMoved ? "\nVERDICT: at least one technique moved it → synthetic Cmd-drag is VIABLE ✓\n"
+                        : "\nVERDICT: NOTHING moved it → macOS blocks synthetic rearrange of CC items ✗\n"
+        try? log.write(toFile: marker + ".log", atomically: true, encoding: .utf8)
+    }
+
+    /// Picks one on-screen mirrored status item to experiment on: a sane-width item in the menu-bar band,
+    /// preferring a mid-bar one (skip the leftmost few) so it isn't a fixed system anchor and has drag room.
+    private func pickDragCandidate() -> (CGRect, Int)? {
+        guard let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        let candidates: [(CGRect, Int)] = wins.compactMap { w in
+            guard (w[kCGWindowLayer as String] as? Int) == statusWindowLayer,
+                  let num = w[kCGWindowNumber as String] as? Int,
+                  let bd = w[kCGWindowBounds as String] as? [String: Any],
+                  let r = CGRect(dictionaryRepresentation: bd as CFDictionary),
+                  r.origin.y <= 40, r.origin.x > 200, r.width >= 12, r.width <= 60 else { return nil }
+            return (r, num)
+        }.sorted { $0.0.origin.x < $1.0.origin.x }
+        return candidates.dropFirst(3).first ?? candidates.last
+    }
+
+    private func currentX(ofWindow num: Int) -> CGFloat? {
+        guard let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        for w in wins where (w[kCGWindowNumber as String] as? Int) == num {
+            if let bd = w[kCGWindowBounds as String] as? [String: Any],
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary) { return r.origin.x }
+        }
+        return nil
+    }
+
+    /// Synthesize a Command-drag with tunable technique. `realCmdKey` posts an actual Cmd keyDown/keyUp
+    /// (not just the event flag) so the WindowServer sees the modifier truly held; `threshold` sends a tiny
+    /// initial drag to trip the drag-start recognizer; `slow` lengthens the holds/steps. `tap` picks the
+    /// injection point (HID vs session).
+    private func synthCmdDrag(from: CGPoint, to: CGPoint, tap: CGEventTapLocation,
+                              realCmdKey: Bool, threshold: Bool, slow: Bool) {
+        let src = CGEventSource(stateID: .combinedSessionState)
+        let flags: CGEventFlags = .maskCommand
+        if realCmdKey, let kd = CGEvent(keyboardEventSource: src, virtualKey: 0x37, keyDown: true) {
+            kd.flags = .maskCommand; kd.post(tap: tap); usleep(40_000)
+        }
+        CGWarpMouseCursorPosition(from)
+        usleep(20_000)
+        if let e = CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: from, mouseButton: .left) {
+            e.flags = flags; e.post(tap: tap)
+        }
+        usleep(20_000)
+        if let e = CGEvent(mouseEventSource: src, mouseType: .leftMouseDown, mouseCursorPosition: from, mouseButton: .left) {
+            e.flags = flags; e.post(tap: tap)
+        }
+        usleep(slow ? 220_000 : 90_000)
+        if threshold {   // a small initial move to register the gesture as a drag
+            let p = CGPoint(x: from.x + 5, y: from.y)
+            if let e = CGEvent(mouseEventSource: src, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left) {
+                e.flags = flags; e.post(tap: tap)
+            }
+            usleep(50_000)
+        }
+        let steps = slow ? 24 : 12
+        for i in 1...steps {
+            let t = CGFloat(i) / CGFloat(steps)
+            let p = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+            if let e = CGEvent(mouseEventSource: src, mouseType: .leftMouseDragged, mouseCursorPosition: p, mouseButton: .left) {
+                e.flags = flags; e.post(tap: tap)
+            }
+            usleep(slow ? 32_000 : 16_000)
+        }
+        usleep(80_000)
+        if let e = CGEvent(mouseEventSource: src, mouseType: .leftMouseUp, mouseCursorPosition: to, mouseButton: .left) {
+            e.flags = flags; e.post(tap: tap)
+        }
+        if realCmdKey, let ku = CGEvent(keyboardEventSource: src, virtualKey: 0x37, keyDown: false) {
+            ku.flags = []; ku.post(tap: tap); usleep(30_000)
+        }
+    }
+
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
@@ -464,7 +716,8 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// fetch per call, then a per-window screenshot; the caller throttles the cadence (the 2s poll).
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
-        dumpGeometry()   // TEMP (bevel-7hf4): geometry probe for single-item reveal; self-gated by /tmp/bevel-geo
+        dumpGeometry()        // TEMP (bevel-7hf4): geometry probe; self-gated by /tmp/bevel-geo
+        cmdDragValidation()   // TEMP (bevel-6fin): synthetic Cmd-drag go/no-go; self-gated by /tmp/bevel-dragtest
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.

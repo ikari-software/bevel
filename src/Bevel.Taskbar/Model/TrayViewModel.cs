@@ -114,13 +114,24 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
 
     /// <summary>Forwards a click on a mirrored item to the real status item (spec §5.5), and promotes
     /// it into the visible set (light LRU) so an item you use stays reachable inline.</summary>
+    private bool _revealBusy;
+
     public async Task<bool> Forward(TrayItemId id, TrayButton button, TrayModifiers modifiers)
     {
-        PromoteToVisible(id);
-        // Reveal-on-click (C2): with overlay-hide (bevel-7hf4) landed, the real items are never moved —
-        // they stay on-screen under the level-26 cover, so this click AX-presses their live coordinates
-        // directly and the resulting system menu pops above the overlay. No collapse/reveal/rehide dance.
-        return await (_tray?.ForwardClickAsync(id, button, modifiers) ?? Task.FromResult(false));
+        if (_tray is null) return false;
+        if (!_consolidated)
+        {
+            PromoteToVisible(id);
+            return await _tray.ForwardClickAsync(id, button, modifiers);
+        }
+        // Single-item reveal (bevel-6fin): the host relocates JUST this hidden item to a visible parked slot
+        // (Ice's self-addressed-event move — no bar reveal, works through remote desktop) and presses it. It's
+        // a slow round-trip, so ignore rapid clicks while one is in flight — a second click must not race the
+        // first. (No PromoteToVisible here: reordering the strip mid-reveal would shuffle it under the cursor.)
+        if (_revealBusy) return false;
+        _revealBusy = true;
+        try { return await _tray.ForwardClickAsync(id, button, modifiers, park: true); }
+        finally { _revealBusy = false; }
     }
 
     /// <summary>Moves an item into the last inline slot if it's currently overflowed — a used item

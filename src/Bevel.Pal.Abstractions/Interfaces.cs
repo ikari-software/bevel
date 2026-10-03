@@ -45,8 +45,10 @@ public interface ISystemTrayHost
 
     /// <summary>Forwards a click on a mirrored item to the real status item so its menu/popover opens
     /// (spec §5.5). Returns false if the item is gone / couldn't be located. Default no-op for hosts
-    /// that don't own a real tray source.</summary>
-    Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, CancellationToken ct = default)
+    /// that don't own a real tray source. <paramref name="park"/> (bevel-6fin) means the item is currently
+    /// hidden but the caller has just revealed the bar — the host should relocate this one item to a slot
+    /// that survives re-hide, then press it (single-item reveal).</summary>
+    Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers, bool park = false, CancellationToken ct = default)
         => Task.FromResult(false);
 
     event EventHandler<TrayItem>? ItemAdded;

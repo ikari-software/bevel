@@ -226,7 +226,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
             case CoreCommandKind.ForwardTrayClick:
                 var delivered = await _tray.ForwardClickAsync(
                     new TrayItemId(cmd.TrayItemId ?? throw new ArgumentException("ForwardTrayClick needs TrayItemId")),
-                    cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, ct).ConfigureAwait(false);
+                    cmd.TrayButton ?? TrayButton.Left, cmd.TrayModifiers ?? TrayModifiers.None, ct: ct).ConfigureAwait(false);
                 return new CoreResponse(Ok: true, Delivered: delivered);
             default:
                 return CoreResponse.Fail($"unknown command {cmd.Kind}");

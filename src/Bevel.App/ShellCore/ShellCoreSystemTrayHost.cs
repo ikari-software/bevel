@@ -55,8 +55,11 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
-        CancellationToken ct = default)
+        bool park = false, CancellationToken ct = default)
     {
+        // NOTE (bevel-6fin): single-item reveal (park) rides the app-side control item + MacOSSystemTrayHost,
+        // which the --role=all path uses directly. In split mode the reveal/hide (SetNativeTrayHiddenAsync)
+        // is already a no-op here, so park is not threaded through the ShellCore command yet.
         if (!_core.IsConnected) return false;
         try
         {

@@ -107,13 +107,15 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     }
 
     public async Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
-        CancellationToken ct = default)
+        bool park = false, CancellationToken ct = default)
     {
         if (_disposed) return false;
         // Bound the click on a wedged helper (bevel-dem): forwardClick can walk several AX calls, each
-        // capped ~1s helper-side, so a 3s deadline keeps a dead tray click from hanging the caller.
+        // capped ~1s helper-side, so a 3s deadline keeps a dead tray click from hanging the caller. The
+        // park path (bevel-6fin) additionally runs a synthetic Cmd-drag (~1s) before the press, so give it
+        // a longer deadline.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        cts.CancelAfter(TimeSpan.FromSeconds(park ? 8 : 3));
         try
         {
             var tray = GetTrayClient();
@@ -124,6 +126,7 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                     ? ForwardClickRequest.Types.Button.Right
                     : ForwardClickRequest.Types.Button.Left,
                 Modifiers = (uint)modifiers,
+                Park = park,
             }, headers: AuthHeader(), cancellationToken: cts.Token);
             return reply.Delivered;
         }

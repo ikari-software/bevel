@@ -86,6 +86,10 @@ message ForwardClickRequest {
   Button button = 2;
   // Modifier bitmask mirrored into the synthesized event: shift=1, control=2, option=4, command=8.
   uint32 modifiers = 3;
+  // Single-item reveal (bevel-6fin): the item is currently hidden but the caller has just revealed the bar,
+  // so the helper should session-tap Cmd-drag THIS item to a parked slot right of the control (survives the
+  // caller's re-hide), press it to open its menu, and schedule a restore back to its origin.
+  bool park = 4;
 }
 
 message ForwardClickReply {
