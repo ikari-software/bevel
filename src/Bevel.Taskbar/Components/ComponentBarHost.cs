@@ -18,6 +18,14 @@ public sealed class ComponentBarHost
     private readonly List<IComponentChannel> _channels = new();
     private readonly List<ComponentSlot> _slots = new();
 
+    // Owns surface slot assignment and the theme-push revision for every SurfacePrimitive this bar
+    // hosts. Kept here (rather than threaded through the constructor) so this task does not have to
+    // change the existing constructor signature that TaskbarView.axaml.cs and the conformance tests
+    // already call. Exposed via <see cref="Surfaces"/> so the theme services and the bus-message
+    // dispatch for FrameReady/ThemePush (both still owned by call sites outside this class) have a
+    // single place to reach.
+    private readonly SurfaceHost _surfaces = new(new SurfaceOwnership());
+
     // ApplyAsync is fired from startup AND from every settings push, each on a background thread.
     // Two overlapping runs would concurrently mutate _channels, _slots, and the plain
     // Dictionary/HashSet state inside ComponentHealth and BarGeometry — throwing
@@ -35,6 +43,16 @@ public sealed class ComponentBarHost
     public Control View => _panel;
 
     public IReadOnlyList<ComponentSlot> Slots => _slots;
+
+    /// <summary>
+    /// The surface pixel path for every <c>SurfacePrimitive</c> this bar hosts. A theme or colourway
+    /// change must call <see cref="SurfaceHost.PushTheme"/> on this instance — not on a private
+    /// SurfaceHost elsewhere — or a surface keeps painting a stale palette (bevel-voqo). Likewise,
+    /// FrameReady envelopes arriving off the component bus must resolve to <see
+    /// cref="SurfaceHost.TryAcceptFrame"/> here so ownership and frame ordering are enforced against
+    /// the SAME slot table the bar's own teardown (<see cref="ApplyCoreAsync"/>) releases from.
+    /// </summary>
+    public SurfaceHost Surfaces => _surfaces;
 
     /// <summary>
     /// Rebuilds the region from <paramref name="instances"/>. Safe to call on a settings change —
