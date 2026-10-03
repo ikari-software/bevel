@@ -623,7 +623,7 @@ git commit -m "feat(components): manifest, primitive tree, and validation that r
 
 **Interfaces:**
 - Consumes: `ComponentManifest`, `ComponentSettingsField`, `ComponentFieldKind` (Task 2).
-- Produces: `ComponentInstance` record with `InstanceId`, `TypeId`, `Settings` (`Dictionary<string,string>`), `Visible`; `ComponentInstance.NewId()`; `ComponentInstance.ReadSetting(ComponentManifest, string key) → string`. Also PINS `ComponentSettingsField.TryRead` behaviour, which Task 2 shipped untested — every branch, including the Enum path with a null `AllowedValues`.
+- Produces: `ComponentInstance` record with `InstanceId`, `TypeId`, `Settings` (`Dictionary<string,string>`), `Visible`; `ComponentInstance.NewId()`; `ComponentInstance.ReadSetting(ComponentManifest, string key) → string`; `ComponentInstance.DeepClone()` (named so because CS8859 forbids a record member called `Clone`). Also PINS `ComponentSettingsField.TryRead` behaviour, which Task 2 shipped untested — every branch, including the Enum path with a null `AllowedValues`.
 
 Settings values are **strings**, parsed through the schema. That keeps the persisted shape AOT-friendly (no `JsonElement` in the source-generated context) and puts type knowledge in exactly one place.
 
@@ -813,9 +813,14 @@ public sealed record ComponentInstance(
         return value;
     }
 
-    /// <summary>A deep copy. Required because <see cref="Settings"/> is mutable reference state and
-    /// <c>BevelSettings.CopyFrom</c> would otherwise alias it between snapshots.</summary>
-    public ComponentInstance Clone()
+    /// <summary>
+    /// A deep copy. Required because <see cref="Settings"/> is mutable reference state and
+    /// <c>BevelSettings.CopyFrom</c> would otherwise alias it between snapshots.
+    /// Named <c>DeepClone</c> and NOT <c>Clone</c>: C# reserves that member name on records
+    /// (CS8859 — "Members named 'Clone' are disallowed in records"), because the compiler
+    /// synthesises its own copy method for `with` expressions. Verified by compiling it.
+    /// </summary>
+    public ComponentInstance DeepClone()
         => this with { Settings = new Dictionary<string, string>(Settings) };
 }
 ```
@@ -823,7 +828,7 @@ public sealed record ComponentInstance(
 - [ ] **Step 4: Run the tests**
 
 Run: `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter ComponentInstanceTests`
-Expected: PASS (19 cases — 11 facts plus 2 theories covering every TryRead branch).
+Expected: PASS (18 cases — 11 facts plus 2 theories, 7 rows, covering every TryRead branch).
 
 - [ ] **Step 5: Commit**
 
@@ -1305,7 +1310,7 @@ git commit -m "feat(components): ordered-list layout panel — spacer is a compo
 - Test: `tests/Bevel.Core.Tests/ComponentPersistenceTests.cs`
 
 **Interfaces:**
-- Consumes: `ComponentInstance` (Task 3).
+- Consumes: `ComponentInstance` and **`ComponentInstance.DeepClone()`** (Task 3 — NOT `Clone()`, which C# forbids on records per CS8859).
 - Produces: `BevelSettings.TaskbarComponents` (`ComponentInstance[]`), persisted under the raw key `taskbarComponents`.
 
 `CopyFrom` copies properties by **reflection**, skipping `string[]` and hand-cloning `TaskbarStacks`. `ComponentInstance[]` is also mutable reference state, so it needs the same explicit treatment or snapshots will alias each other's settings dictionaries.
@@ -1423,7 +1428,7 @@ Add the getter next to `GetStringArray` (~line 719):
 `CopyFrom` — beside the `TaskbarStacks` clone (~line 932):
 
 ```csharp
-        TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.Clone());
+        TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
 ```
 
 Exclude it from the reflection loop by widening the existing type guard:
