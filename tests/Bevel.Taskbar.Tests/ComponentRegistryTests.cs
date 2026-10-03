@@ -32,6 +32,20 @@ public class ComponentRegistryTests
         => Assert.False(Registry().TryResolve("com.example.nope", out _));
 
     [Fact]
+    public void A_null_manifest_is_refused_without_throwing()
+    {
+        // Register's parameter is non-nullable ComponentManifest, so this looks redundant to a
+        // same-assembly caller — but the ordinary way a malformed third-party manifest arrives is
+        // JsonSerializer.Deserialize<ComponentManifest>(...) returning null for an empty/corrupt
+        // file, which bypasses the compiler's nullability check entirely. Register must not throw
+        // on that path: a third-party manifest must never be able to take the shell down merely by
+        // registering.
+        var r = Registry();
+        Assert.False(r.Register(null!, _ => new FakeChannel()));
+        Assert.False(r.TryResolve("run.bevel.bad", out _));
+    }
+
+    [Fact]
     public void An_invalid_manifest_is_refused_at_registration()
     {
         var r = Registry();
