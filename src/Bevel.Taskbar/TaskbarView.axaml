@@ -336,7 +336,10 @@
                     Margin="0,1,2,1">
             <!-- Folder stacks (bevel-12g): tray-adjacent buttons LEFT of the notification well (not
                  inside it) — a folder whose flyout shows recent contents as a preview grid (bevel-9elh).
-                 A blue dot cues new items. Click refreshes + opens the flyout; each cell opens its file. -->
+                 A blue dot cues new items. Click refreshes + opens the flyout; each cell opens its file.
+                 Restored to the pre-component-list hardcoded binding (whole-branch review Fix 1): the
+                 component substrate has no renderer yet, so ComponentRegionHost below stays mounted but
+                 composes nothing rather than regressing this shipped feature. -->
             <ItemsControl ItemsSource="{Binding Stacks.Stacks}" VerticalAlignment="Center" Margin="0,0,4,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -370,6 +373,14 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+            <!-- Component-list-composed region (bevel-aqr7 Task 14): the substrate (registry/normalizer/
+                 health/ComponentBarHost, spec §9) stays mounted and exercised end-to-end from
+                 BevelSettings.TaskbarComponents, but ApplyComponentRegion currently composes NO slots —
+                 see its filter comment. No component type has a renderer yet (ComponentSlot.Live just
+                 stringifies settings), so rendering one here would regress the stacks feature restored
+                 above. The filter widens per type as each renderer lands. -->
+            <ContentControl x:Name="ComponentRegionHost" VerticalAlignment="Center" Margin="0,0,4,0" />
 
             <classic:ClassicBorderDecorator BorderStyle="Sunken"
                                             BorderThickness="{DynamicResource Bevel.Metric.TrayWellBorder}"

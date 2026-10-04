@@ -12,7 +12,9 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
+using Bevel.Core.Components;
 using Bevel.Pal.Abstractions;
+using Bevel.Taskbar.Components;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -173,6 +175,43 @@ public class TaskbarAccessibilityTests
         int priorAppPid, int frontmostPid, int ownPid, bool expected)
     {
         Assert.Equal(expected, TaskbarWindow.ShouldHandBackKeyFocus(priorAppPid, frontmostPid, ownPid));
+    }
+
+    // ── Every component slot is reachable by name (bevel-aqr7) ───────────
+
+    // bevel-aqr7: every component slot must be reachable by name, surfaces and inert placeholders
+    // included — a failed component that is invisible to a screen reader is worse than a visible gap.
+    [AvaloniaFact]
+    public void Every_component_slot_exposes_an_automation_name()
+    {
+        var inert = ComponentSlot.Inert(
+            new ComponentInstance("x", "com.example.absent", new Dictionary<string, string>(), true),
+            "not installed");
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(inert.Content)));
+
+        var host = new SurfaceHost(new SurfaceOwnership());
+        var surface = host.CreateView(
+            new SurfacePrimitive("face", 16, 16, "Clock face", "Image"), "inst-a");
+        Assert.Equal("Clock face", AutomationProperties.GetName(surface));
+    }
+
+    /// <summary>
+    /// Whole-branch review Fix 8: when the type resolves (a failed-to-start, hung or quarantined
+    /// component — as opposed to a genuinely uninstalled one), the Inert slot's automation name must
+    /// announce the manifest's <c>DisplayName</c>, not the raw <c>TypeId</c>. A reverse-DNS string
+    /// like <c>com.example.widget</c> is not something a screen reader should read aloud.
+    /// </summary>
+    [AvaloniaFact]
+    public void An_inert_slot_announces_the_manifest_display_name_when_the_type_resolves()
+    {
+        var type = StackComponentManifest.Create();
+        var inert = ComponentSlot.Inert(
+            new ComponentInstance("x", type.Id, new Dictionary<string, string>(), true),
+            "stopped responding", type);
+
+        var name = AutomationProperties.GetName(inert.Content);
+        Assert.Contains(type.DisplayName, name);
+        Assert.DoesNotContain(type.Id, name);
     }
 
     // ── Test doubles ─────────────────────────────────────────────────────

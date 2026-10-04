@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The component bus (bevel-aqr7). Deliberately NOT in Bevel.Core (the domain layer does not
+       use NetMQ, and every process would then carry it) and NOT in Bevel.ShellCore.Ipc, whose
+       charter is BCL-only with no NuGet. This project is the one place NetMQ and the component
+       protobufs live. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetMQ" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Bevel.ComponentBus.Tests" />
+    <!-- Bevel.Taskbar.Tests calls ComponentBusServer.WaitForPeer directly (ComponentConformanceTests,
+         RemoteComponentChannelTests) — needed once WaitForPeer went internal (whole-branch review
+         Fix 8: it is documented "tests only"). -->
+    <InternalsVisibleTo Include="Bevel.Taskbar.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
+    <Protobuf Include="..\..\proto\components\*.proto" GrpcServices="None"
+              Link="Proto\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

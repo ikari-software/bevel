@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Bevel.Core.Components;
 using Microsoft.Data.Sqlite;
 
 namespace Bevel.Core;
@@ -538,9 +539,15 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarLocked", _settings.TaskbarLocked, d.TaskbarLocked, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarAlwaysOnTop", _settings.TaskbarAlwaysOnTop, d.TaskbarAlwaysOnTop, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarShowDesktopButton", _settings.TaskbarShowDesktopButton, d.TaskbarShowDesktopButton, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarComponentsVersion", _settings.TaskbarComponentsVersion, d.TaskbarComponentsVersion, SettingsJsonContext.Default.Int32);
         // Arrays + per-theme overrides: prune when identical to the default / empty.
         if (_settings.TaskbarStacks.SequenceEqual(d.TaskbarStacks)) _raw.Remove("taskbarStacks");
         else _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
+        // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
+        // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
+        if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
+        else _raw["taskbarComponents"] = JsonSerializer.SerializeToElement(
+            _settings.TaskbarComponents, SettingsJsonContext.Default.ComponentInstanceArray);
         foreach (var (id, overrides) in _themeOverrides)
         {
             if (overrides.CrispBevels is null) _raw.Remove($"theme:{id}");
@@ -637,6 +644,13 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private void ApplyRaw()
     {
+        // Read together, not as two independent object-initializer lines: a corrupt "taskbarComponents"
+        // must force the version marker back to 0 too, or it would be indistinguishable from a
+        // deliberately empty bar and the version gate below would never re-fire (see
+        // GetComponentInstances's doc comment).
+        var components = GetComponentInstances("taskbarComponents", out var componentsCorrupt);
+        var componentsVersion = componentsCorrupt ? 0 : GetInt("taskbarComponentsVersion") ?? 0;
+
         _settings = new BevelSettings
         {
             ThemeId = GetString("themeId") ?? "win2000",
@@ -662,6 +676,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
+            TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
+            TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
             TaskbarShowClock = GetBool("taskbarShowClock") ?? true,
             TaskbarClock24Hour = GetBool("taskbarClock24Hour") ?? true,
@@ -696,6 +712,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarShowDesktopButton = GetBool("taskbarShowDesktopButton") ?? false,
         };
 
+        // One-time fold of the legacy flat taskbar keys (bevel-aqr7). Gated on the VERSION marker,
+        // not on emptiness: an empty list is a legitimate user choice, and re-migrating it every
+        // start would silently resurrect components they removed. Placed here — inside ApplyRaw,
+        // the single "project the raw blob into the typed model" chokepoint shared by LoadAsync,
+        // ReloadIfChangedAsync, ApplyPatchJsonAsync and the static ProjectBlob/TryProjectBlob — so
+        // the migration runs through the exact same pipeline every caller uses, with the settings
+        // object still local to this method and not yet published to any caller.
+        if (_settings.TaskbarComponentsVersion == 0)
+        {
+            _settings.TaskbarComponents = TaskbarComponentsMigration.BuildDefaultList(_settings);
+            _settings.TaskbarComponentsVersion = 1;
+        }
+
         _themeOverrides.Clear();
         foreach (var (key, el) in _raw)
         {
@@ -719,6 +748,43 @@ public sealed class SettingsService : ISettingsService, IDisposable
     private string[]? GetStringArray(string key)
         => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array
             ? el.Deserialize(SettingsJsonContext.Default.StringArray) : null;
+
+    /// <summary>
+    /// Reads the persisted component list. On a corrupt or foreign-shaped value, sets
+    /// <paramref name="corrupt"/> so the caller can force <c>TaskbarComponentsVersion</c> back to 0
+    /// alongside this returning null — the two are read from independent raw keys, so without this
+    /// a corrupt "taskbarComponents" sitting next to an intact "taskbarComponentsVersion":1 would be
+    /// indistinguishable from a deliberate zero-component bar (spec §6): the version gate would never
+    /// fire again and the user would be stuck with a permanently empty taskbar. A broken component
+    /// list must never cost the user their settings OR the rest of their bar.
+    /// </summary>
+    private ComponentInstance[]? GetComponentInstances(string key, out bool corrupt)
+    {
+        corrupt = false;
+        if (!_raw.TryGetValue(key, out var el)) return null;
+        // Whole-branch review Fix 7: a value like {"taskbarComponents": {"instanceId":"a",...}} (an
+        // object, not an array) deserializes without throwing JsonException via STJ's lenient
+        // element-to-array handling in some shapes, which let a foreign-shaped value slip past this
+        // guard silently instead of tripping `corrupt`. Reject any non-Array JsonValueKind up front,
+        // before Deserialize ever runs, so every corrupt shape — not just the ones STJ happens to
+        // throw on — forces TaskbarComponentsVersion back to 0 via `corrupt`.
+        if (el.ValueKind != JsonValueKind.Array)
+        {
+            corrupt = true;
+            return null;
+        }
+        try
+        {
+            return el.Deserialize(SettingsJsonContext.Default.ComponentInstanceArray);
+        }
+        catch (JsonException)
+        {
+            // Corrupt or foreign-shaped value: fall back to "not migrated" rather than failing the
+            // whole settings load. The caller forces TaskbarComponentsVersion to 0 via `corrupt`.
+            corrupt = true;
+            return null;
+        }
+    }
 
     /// <summary>Close the shared connection (additive; existing callers that never dispose are unaffected).</summary>
     public void Dispose()
@@ -912,6 +978,14 @@ public sealed class BevelSettings
     /// <summary>Show a Win7-style "Show desktop" sliver at the far right that minimizes every window.</summary>
     public bool TaskbarShowDesktopButton { get; set; }
 
+    /// <summary>bevel-aqr7: the bar as an ordered list of component instances. Empty means "not yet
+    /// migrated" — <c>TaskbarComponentsMigration</c> folds the legacy flat keys on first read.</summary>
+    public ComponentInstance[] TaskbarComponents { get; set; } = Array.Empty<ComponentInstance>();
+
+    /// <summary>bevel-aqr7: schema generation of <see cref="TaskbarComponents"/>. 0 = never migrated
+    /// from the legacy flat keys. Distinguishes "not migrated yet" from "deliberately empty".</summary>
+    public int TaskbarComponentsVersion { get; set; }
+
     /// <summary>A detached snapshot copy — used by the Properties dialog to revert on Cancel.</summary>
     public BevelSettings Clone()
     {
@@ -927,9 +1001,11 @@ public sealed class BevelSettings
     {
         foreach (var p in typeof(BevelSettings).GetProperties(
                      System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-            if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0 && p.PropertyType != typeof(string[]))
+            if (p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0
+                && p.PropertyType != typeof(string[]) && p.PropertyType != typeof(ComponentInstance[]))
                 p.SetValue(this, p.GetValue(other));
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
+        TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }
 

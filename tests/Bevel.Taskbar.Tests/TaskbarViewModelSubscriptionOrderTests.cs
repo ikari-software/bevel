@@ -68,13 +68,18 @@ public class TaskbarViewModelSubscriptionOrderTests
 
         _ = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
 
-        // The ctor's FIRST settings read seeds StacksViewModel's one-shot folder list (a separate,
-        // lower-priority staleness finding of its own — StacksViewModel never subscribes to Changed
-        // at all, so it is out of scope here). What this test guards is the read/subscribe PAIR for
-        // menu-bar consolidation: "subscribe" must land before the SECOND read (the one that feeds
-        // ApplyConsolidation). If a "read" came first there instead, a settings snapshot landing in
-        // that gap (e.g. the core's on-connect broadcast racing DI construction) would be lost until
-        // some later, unrelated settings edit happens to fire Changed again.
+        // The FIRST read is StacksViewModel's one-shot folder seed (settings?.Current.TaskbarStacks) —
+        // whole-branch review Fix 1 restored the stacks region to its pre-component-list hand-built
+        // ItemsControl (TaskbarView.axaml bound to Stacks.Stacks), since no component type has a
+        // renderer yet and ComponentBarHost's generic Button regressed the shipped feature. That read
+        // is a one-shot startup seed, not a live subscription, so there is nothing to race: Stacks
+        // never changes again from this value.
+        //
+        // The guarded property is about the PAIR that follows: "subscribe" must land before the
+        // SECOND read — the one that feeds ApplyConsolidation. If that read came first instead, a
+        // settings snapshot landing in the gap (e.g. the core's on-connect broadcast racing DI
+        // construction) would be lost until some later, unrelated settings edit happens to fire
+        // Changed again.
         Assert.Equal(new[] { "read", "subscribe", "read" }, settings.CallOrder);
     }
 
