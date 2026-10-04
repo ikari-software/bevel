@@ -1,0 +1,62 @@
+Bevel Desktop
+Copyright 2026 Cezar "ikari" Pokorski
+
+This product includes software developed as part of the Bevel Desktop project
+(https://bevel.run / https://github.com/ikari-software/bevel), licensed under the
+Apache License, Version 2.0. See LICENSE for the full terms.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+The LICENSE at the root of this repository covers Bevel's own source. The
+components below are vendored or depended upon under their OWN terms, which the
+Apache-2.0 grant does not alter or extend. Nothing here is relicensed.
+
+Classic.Avalonia  —  MIT License
+    Vendored at third_party/classic-avalonia/, with its original LICENSE file
+    retained alongside it at third_party/classic-avalonia/LICENSE.
+    MODIFIED by this project: the colour-scheme definitions under
+    Classic.Avalonia.Theme/Colors/ have been changed to carry Bevel's palettes.
+    The MIT terms, including the copyright and permission notice, continue to
+    apply to that subtree.
+
+Avalonia  —  MIT License
+    https://github.com/AvaloniaUI/Avalonia
+
+gRPC (grpc-dotnet, grpc-swift) and Protocol Buffers  —  Apache License 2.0
+    https://github.com/grpc/grpc-dotnet
+    https://github.com/grpc/grpc-swift
+    https://github.com/protocolbuffers/protobuf
+
+SQLite  —  Public Domain
+    https://www.sqlite.org/copyright.html
+
+--------------------------------------------------------------------------------
+A note on what this repository is NOT
+--------------------------------------------------------------------------------
+
+Bevel Desktop is developed open-core. This repository holds the open components
+and they are Apache-2.0. Some components — notably the Filer file manager and
+certain widgets — are developed in a separate, private repository under
+proprietary terms and are NOT covered by this LICENSE. An official Bevel build
+may therefore combine Apache-2.0 code from here with proprietary code from
+elsewhere; the Apache-2.0 grant applies to the former and confers no rights in
+the latter.
+
+See docs/legal/open-core-boundary.md for exactly which components sit on which
+side of that line, and why.
+
+--------------------------------------------------------------------------------
+Trademarks
+--------------------------------------------------------------------------------
+
+"Bevel" and "Bevel Desktop", the Bevel mark, and the bevel.run domain are not
+licensed by the Apache-2.0 grant. Section 6 of the License expressly withholds
+trademark rights. A fork is free to use this source; it is not free to present
+itself as Bevel.
+
+Bevel is an independent project. It is not affiliated with, endorsed by, or
+sponsored by Microsoft, Apple, or any other operating-system vendor, and the
+visual styles it ships are original designs rather than reproductions of any
+vendor's product.
