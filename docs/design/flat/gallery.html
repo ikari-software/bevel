@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bevel Flat — Whistler Watercolor Source vs Runtime Comparison</title>
+<style>
+  :root {
+    --bg: #1e1e24;
+    --card: #282830;
+    --border: #3f3f4e;
+    --text: #f0f0f5;
+    --muted: #a0a0b2;
+    --accent: #4a85df;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 32px;
+  }
+  header {
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+  h1 { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  p.lead { color: var(--muted); font-size: 15px; }
+
+  .section { margin-bottom: 40px; }
+  h2 {
+    font-size: 17px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 1000px) {
+    .comparison-grid { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card-header {
+    padding: 10px 16px;
+    background: #202028;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .badge-ref {
+    background: #4a2830;
+    color: #ff99aa;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-render {
+    background: #1b3860;
+    color: #8cb8ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .card-body {
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #181820;
+    flex: 1;
+  }
+  .card-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .card-footer {
+    padding: 10px 16px;
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    background: #22222a;
+  }
+
+  .full-strip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .variations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bevel Flat — Whistler Watercolor Visual Inspection</h1>
+  <p class="lead">Side-by-side comparison between authentic Whistler build 2419 & Classic Shell Watercolor references and Bevel Flat runtime renders.</p>
+</header>
+
+<div class="section">
+  <h2>1. Window Frame & Controls</h2>
+  <div class="comparison-grid">
+    <div class="card">
+      <div class="card-header">
+        <span>Whistler Build 2419 Reference</span>
+        <span class="badge-ref">REFERENCE</span>
+      </div>
+      <div class="card-body">
+        <img src="source-analysis/reference-whistler.jpg" alt="Whistler Reference">
+      </div>
+      <div class="card-footer">
+        Key traits: Solid 4px cobalt border, bold white title on blue gradient, uniform blue square caption buttons with white glyphs, warm paper (#ECE9D8) interior.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span>Bevel Flat Runtime Render (Blue)</span>
+        <span class="badge-render">RUNTIME RENDER</span>
+      </div>
+      <div class="card-body">
+        <img src="renders/flat-window-blue.png" alt="Bevel Flat Window">
+      </div>
+      <div class="card-footer">
+        Verified: Continuous 4px cobalt border (#3567CB), gradient caption (#4A85DF &rarr; #2862C8), 21&times;19px blue caption buttons, #ECE9D8 warm paper body, Whistler blue controls.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2. Start Menu Composition</h2>
+  <div class="comparison-grid">
+    <div class="card">
+      <div class="card-header">
+        <span>Classic Shell Watercolor Reference</span>
+        <span class="badge-ref">REFERENCE</span>
+      </div>
+      <div class="card-body">
+        <img src="source-analysis/reference-classic-shell.jpg" alt="Classic Shell Reference">
+      </div>
+      <div class="card-footer">
+        Key traits: Compact two-column menu, solid white pinned list with blue selection, saturated Whistler blue Places column with white text, pale cream footer.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span>Bevel Flat Runtime Render (Blue)</span>
+        <span class="badge-render">RUNTIME RENDER</span>
+      </div>
+      <div class="card-body">
+        <img src="renders/flat-startmenu-blue.png" alt="Bevel Flat Start Menu" style="max-height: 540px;">
+      </div>
+      <div class="card-footer">
+        Verified: 390px width, blue gradient header, white pinned list, saturated Whistler blue Places column (#3570D6 &rarr; #2862C8) with white text, warm cream footer.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3. Taskbar & Start Button</h2>
+  <div class="full-strip">
+    <div class="card-header">
+      <span>Bevel Flat Runtime Taskbar vs Original Start Button Asset</span>
+      <span class="badge-render">RUNTIME RENDER</span>
+    </div>
+    <div class="card-body" style="flex-direction: column; gap: 16px; align-items: flex-start;">
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <span style="font-size: 12px; color: var(--muted); font-weight: 600;">Original Asset:</span>
+        <img src="source-analysis/original-start-button.png" alt="Original Start Button" style="border: 1px solid #444; padding: 4px; background: #000;">
+        <span style="font-size: 12px; color: var(--muted);">Square-cornered raised bevel, pale cream/periwinkle face, dark bold text.</span>
+      </div>
+      <div style="width: 100%;">
+        <span style="font-size: 12px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 8px;">Flat Runtime Taskbar (900&times;30):</span>
+        <img src="renders/flat-taskbar-blue.png" alt="Bevel Flat Taskbar" style="width: 100%; height: auto;">
+      </div>
+    </div>
+    <div class="card-footer">
+      Verified: Flat warm paper strip (#F4F2E8 &rarr; #ECE9D8), square-cornered raised classic bevel Start button (#EEF0EA &rarr; #D6D8CE) with dark bold text and Bevel brand cube, inset clock well.
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4. Variations & Theme Separation</h2>
+  <div class="variations-grid">
+    <div class="card">
+      <div class="card-header"><span>Flat Ergonomic</span></div>
+      <div class="card-body"><img src="renders/flat-window-ergonomic.png" alt="Ergonomic"></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>Flat Silver</span></div>
+      <div class="card-body"><img src="renders/flat-window-silver.png" alt="Silver"></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>Flat Amber</span></div>
+      <div class="card-body"><img src="renders/flat-window-amber.png" alt="Amber"></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span>Pastel Identity (Separated)</span></div>
+      <div class="card-body"><img src="renders/pastel-window.png" alt="Pastel"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

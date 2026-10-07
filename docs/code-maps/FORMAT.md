@@ -19,7 +19,7 @@ only when that first map or source evidence shows they're needed.
 Agents find well-named files cheaply with search; maps pay for what search can't see. Priority order:
 
 1. **Ownership / boundary facts** — which layer owns the data or behaviour ("live theme colour comes from
-   `LunaVariantService` / `ColorSchemeService`, not the static `.axaml`"; "`Bevel.Core` must not reference Avalonia").
+   `Blue2001VariantService` / `ColorSchemeService`, not the static `.axaml`"; "`Bevel.Core` must not reference Avalonia").
 2. **Disambiguation between siblings** — when several files could plausibly own a change, say which is which
    ("Win2000 window chrome = `BevelWindow` in `Bevel.UI`; the taskbar's window/tray model = `ShellModel` in
    `Bevel.Taskbar/Model`").

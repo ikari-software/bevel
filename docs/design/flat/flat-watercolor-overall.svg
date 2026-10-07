@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900" viewBox="0 0 1280 900" role="img" aria-labelledby="title desc">
+  <title id="title">Flat — Whistler Watercolor source target</title>
+  <desc id="desc">Source-led Flat target: compact Classic Shell Start composition, warm gray shell, white main menu column, blue-lilac places column, saturated blue selection and pale yellow new-item state.</desc>
+  <defs>
+    <linearGradient id="desktop" x2="0" y2="1"><stop stop-color="#D3D5CE"/><stop offset="1" stop-color="#B9BDB8"/></linearGradient>
+    <linearGradient id="bar" x2="0" y2="1"><stop stop-color="#B9C7D7"/><stop offset=".18" stop-color="#A2A8E1"/><stop offset=".52" stop-color="#688ADE"/><stop offset=".86" stop-color="#A2A8E1"/><stop offset="1" stop-color="#B9C7D7"/></linearGradient>
+    <linearGradient id="header" x2="0" y2="1"><stop stop-color="#BBC8F0"/><stop offset=".45" stop-color="#A2A8E1"/><stop offset="1" stop-color="#688ADE"/></linearGradient>
+    <linearGradient id="footer" x2="0" y2="1"><stop stop-color="#D9E3F3"/><stop offset="1" stop-color="#A6AED5"/></linearGradient>
+    <linearGradient id="start" x2="0" y2="1"><stop stop-color="#D7E1D0"/><stop offset=".5" stop-color="#B4C4AD"/><stop offset="1" stop-color="#94A48E"/></linearGradient>
+    <linearGradient id="selection" x2="0" y2="1"><stop stop-color="#3F82D0"/><stop offset="1" stop-color="#316AC5"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="8"/><feOffset dy="5"/><feComponentTransfer><feFuncA type="linear" slope=".18"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>.ink{fill:#38393F}.white{fill:#fff}.muted{fill:#717370}.micro{font:600 10px Tahoma,Arial,sans-serif;letter-spacing:1.3px}.small{font:11px Tahoma,Arial,sans-serif}.tiny{font:10px Tahoma,Arial,sans-serif}.strong{font-weight:bold}</style>
+  </defs>
+  <rect width="1280" height="900" fill="#F1F1EF"/>
+  <text x="42" y="50" class="micro muted">FLAT / SOURCE-LED OVERALL TARGET</text>
+  <text x="42" y="82" font-family="Tahoma,Arial,sans-serif" font-size="26" font-weight="bold" fill="#38393F">Whistler Watercolor shell</text>
+  <text x="44" y="105" class="small muted">Compact Classic Shell composition, vectorized for HiDPI. Pastel is not represented here.</text>
+
+  <rect x="36" y="130" width="1208" height="680" rx="1" fill="url(#desktop)" stroke="#A1A3A2"/>
+  <path d="M36 130h600c-100 38-196 34-302 18-106-16-206 25-298 14Z" fill="#C5B2B2" opacity=".12"/>
+  <path d="M936 130h308v340c-95-44-148-35-216-18-49 12-88-23-140-30 29-76 22-181 48-292Z" fill="#A2A8E1" opacity=".16"/>
+
+  <g transform="translate(62 170)"><rect width="42" height="36" rx="1" fill="#F1F1EF" fill-opacity=".72" stroke="#FFFFFF"/><path d="M8 11h25v16H8zM8 11V7h10l3 4" fill="#FEEAB6" stroke="#9B8652"/><text x="21" y="52" text-anchor="middle" class="tiny ink">Home</text></g>
+
+  <!-- Bevel client window: source menu material is separate from this frame decision. -->
+  <g filter="url(#shadow)">
+    <rect x="300" y="190" width="730" height="430" rx="0" fill="#F1F1EF" stroke="#A1A3A2"/>
+    <rect x="302" y="192" width="726" height="27" fill="url(#header)"/>
+    <text x="318" y="210" class="small white strong">Home — File Manager</text>
+    <g transform="translate(950 198)"><rect width="16" height="13" fill="#D9E3F3" stroke="#8B9EC9"/><path d="M4 8h8" stroke="#38393F"/><rect x="20" width="16" height="13" fill="#D9E3F3" stroke="#8B9EC9"/><rect x="25" y="3" width="6" height="6" fill="none" stroke="#38393F"/><rect x="40" width="16" height="13" fill="#C5B2B2" stroke="#A88D8D"/><path d="m44 3 8 7m0-7-8 7" stroke="#38393F"/></g>
+    <rect x="302" y="219" width="726" height="22" fill="#EDEDEA" stroke="#C2C5BC"/><text x="314" y="234" class="tiny ink">File</text><text x="350" y="234" class="tiny ink">Edit</text><text x="389" y="234" class="tiny ink">View</text><text x="432" y="234" class="tiny ink">Go</text><text x="463" y="234" class="tiny ink">Tools</text><text x="510" y="234" class="tiny ink">Help</text>
+    <rect x="302" y="241" width="726" height="30" fill="#EDEDEA" stroke="#C2C5BC"/><rect x="314" y="247" width="24" height="18" fill="#F1F1EF" stroke="#C2C5BC"/><path d="m330 251-5 5 5 5m-5-5h10" fill="none" stroke="#3272D3"/><rect x="342" y="247" width="24" height="18" fill="#F1F1EF" stroke="#C2C5BC"/><path d="m350 251 5 5-5 5m5-5h-10" fill="none" stroke="#3272D3"/>
+    <rect x="302" y="271" width="726" height="25" fill="#F1F1EF"/><text x="314" y="287" class="tiny muted">Address</text><rect x="357" y="276" width="655" height="16" fill="#FFFFFF" stroke="#C2C5BC"/><text x="370" y="287" class="tiny ink">This PC › Home</text>
+    <rect x="302" y="296" width="726" height="324" fill="#FFFFFF"/>
+    <rect x="302" y="296" width="726" height="20" fill="#EDEDEA" stroke="#C2C5BC"/><path d="M535 296v20M680 296v20M830 296v20" stroke="#A6AED5"/><text x="314" y="310" class="tiny ink strong">Name</text><text x="550" y="310" class="tiny ink strong">Size</text><text x="694" y="310" class="tiny ink strong">Type</text><text x="844" y="310" class="tiny ink strong">Date Modified</text>
+    <rect x="303" y="329" width="725" height="25" fill="url(#selection)"/><text x="314" y="345" class="small white">Design ideas</text><text x="550" y="345" class="tiny white">Folder</text><text x="694" y="345" class="tiny white">File folder</text>
+    <path d="M302 354h726M302 379h726M302 404h726M302 429h726M302 454h726" stroke="#C2C5BC"/><text x="314" y="371" class="small ink">Welcome note.txt</text><text x="314" y="396" class="small ink">Reference</text><text x="314" y="421" class="small ink">Watercolor</text><text x="314" y="446" class="small ink">Soft edges.svg</text>
+    <rect x="1014" y="316" width="12" height="304" fill="#EDF0F6" stroke="#C2C5BC"/><rect x="1015" y="343" width="10" height="58" fill="#E6F0F1" stroke="#A6AED5"/><circle cx="1020" cy="369" r="1.5" fill="#7E8EB8"/><circle cx="1020" cy="377" r="1.5" fill="#7E8EB8"/><circle cx="1020" cy="385" r="1.5" fill="#7E8EB8"/>
+  </g>
+
+  <!-- Source-like compact Start menu -->
+  <g filter="url(#shadow)">
+    <rect x="58" y="488" width="340" height="286" rx="0" fill="#F1F1EF" stroke="#A1A3A2"/>
+    <rect x="59" y="489" width="338" height="50" fill="url(#header)"/><rect x="77" y="501" width="26" height="26" fill="#C5B2B2" stroke="#FFFFFF"/><text x="115" y="512" class="small white strong">ikari</text><text x="115" y="528" class="tiny white">Whistler Watercolor</text>
+    <rect x="59" y="539" width="210" height="190" fill="#FFFFFF"/><rect x="269" y="539" width="128" height="190" fill="#D9E3F3"/>
+    <text x="72" y="556" class="micro muted">PROGRAMS</text><rect x="69" y="565" width="190" height="24" fill="url(#selection)"/><text x="79" y="581" class="small white">File Manager</text><rect x="69" y="594" width="190" height="24" fill="#FEEAB6"/><text x="79" y="610" class="small ink">New item</text><text x="79" y="642" class="small ink">Notes</text><text x="79" y="671" class="small ink">Documents</text><text x="79" y="704" class="small ink">All Programs ›</text>
+    <text x="281" y="556" class="micro muted">PLACES</text><text x="281" y="582" class="small ink">Documents</text><text x="281" y="608" class="small ink">Pictures</text><text x="281" y="634" class="small ink">Settings</text><text x="281" y="660" class="small ink">Help</text><text x="281" y="686" class="small ink">Network</text>
+    <rect x="59" y="729" width="338" height="44" fill="url(#footer)"/><text x="72" y="756" class="small ink">Log Off</text><text x="322" y="756" class="small ink">Turn Off</text>
+  </g>
+  <rect x="36" y="824" width="1208" height="48" fill="url(#bar)" stroke="#A1A3A2"/><rect x="48" y="833" width="92" height="29" fill="url(#start)" stroke="#A1A3A2"/><text x="66" y="852" class="small ink strong">Start</text><rect x="150" y="835" width="174" height="27" fill="#316AC5" stroke="#244F9C"/><text x="162" y="852" class="small white">Home — File Manager</text><text x="1190" y="852" text-anchor="end" class="small ink">2:14 PM</text>
+
+  <text x="42" y="894" class="micro muted">SOURCE MATERIAL / WARM GRAY FACE · BLUE-VIOLET WATERCOLOUR BANDS · BLUE SELECTION · COMPACT CLASSIC GEOMETRY</text>
+</svg>

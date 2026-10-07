@@ -119,7 +119,7 @@ mytheme.beveltheme
 ```
 
 - **PKG-01** No assemblies; loader rejects `x:Class`, code-behind, and non-`avares`/package-relative URIs. AXAML parse errors at install time fail `InstallPackageAsync` with line/column diagnostics. **Distribution (2026-09-30):** Bevel Desktop does **not** host a third-party theme gallery; themes may be installed from **git repositories** the user supplies. **Licensing / liability copy for that path is TBD** (parked asks in `docs/legal/open-questions-parked.md`). Engineering line that is fixed now: packages are **declarative-only** (no code-carrying themes). Provenance fields on `theme.json` should be designed in when the git-install path lands; do not invent a curation marketplace.
-- **PKG-02** First-party themes are compiled assemblies (`Bevel.Themes.Win2000|Luna|Win11`) for startup speed but CI also packs and round-trips them as `.beveltheme` (THM-02), so the third-party path is continuously exercised and the "supported AXAML subset" doc stays honest.
+- **PKG-02** First-party themes are compiled assemblies (`Bevel.Themes.Industrial1999|Luna|Win11`) for startup speed but CI also packs and round-trips them as `.beveltheme` (THM-02), so the third-party path is continuously exercised and the "supported AXAML subset" doc stays honest.
 - **PKG-03** Missing pieces fall back to the base layer (§1.2). A theme may legitimately ship only a palette + icons (a "reskin" of Classic templates) by declaring `"inherits": "win2000"` — template inheritance resolves at load, one level deep only. The v1 **stub second theme** is exactly this: an `"inherits": "win2000"` palette-swap package (plus at least one structurally different control template — see Risk 8) that keeps the swap path (ENG-05), install, and rollback continuously exercised at near-zero asset cost.
 - **PKG-04** Third-party SDK (post-v1, architected now): `bevel theme new|pack|validate|preview` CLI; `preview` boots the shell against `Bevel.Pal.Fake` (01-architecture.md DI-05) with a scripted desktop and produces a screenshot gallery of every control state — the same harness our own visual-regression tests use (09-engineering-plan.md).
 
@@ -336,7 +336,7 @@ Verified against the upstream repo (BAndysc/Classic.Avalonia, MIT, targets Avalo
 | Gap | Our plan |
 |---|---|
 | Taskbar, Start menu, tray, desktop icon grid, balloon tips | `Bevel.*` templated widgets, ENG-03, behavior in 07-shell-ux.md |
-| File manager chrome (address bar, rebar toolbars, Details header, folder tree band) | 06-file-manager.md; templates in `Bevel.Themes.Win2000` |
+| File manager chrome (address bar, rebar toolbars, Details header, folder tree band) | 06-file-manager.md; templates in `Bevel.Themes.Industrial1999` |
 | Metrics-as-data, semantic resource keys, theme manifest/packaging | §2–3 (upstream hardcodes values in templates) |
 | Classic color schemes (recolorability) | W2K-01; requires auditing upstream templates for literal brushes → ENG-01 refactor |
 | DPI device-pixel snapping & integer pixel-art scaling | §4; extend `ClassicBorderDecorator` per DPI-01 |
@@ -344,7 +344,7 @@ Verified against the upstream repo (BAndysc/Classic.Avalonia, MIT, targets Avalo
 | Luna, Win11 themes | Ours entirely, post-v1 (§9–10; FluentTheme base for W11) |
 | Icon/cursor/sound assets | §6 pipeline (upstream ships none of consequence) |
 
-**Decision: fork, don't just depend.** We need invasive changes (resource-key refactor ENG-01, metrics extraction MET-01, DPI-01 snapping) that upstream may not want. Fork into `Bevel.Themes.Win2000` with clear MIT attribution, keep a periodic upstream diff-merge while divergence is low, and upstream any generally-useful fixes (nine-slice control, DPI snapping) as goodwill. Rationale: velocity and fidelity control outweigh merge cost; MIT makes this clean. Rejected: (a) depend-and-override — the override surface would exceed the library; (b) write from scratch — throws away a working, debugged port of WPF's classic theme for no benefit.
+**Decision: fork, don't just depend.** We need invasive changes (resource-key refactor ENG-01, metrics extraction MET-01, DPI-01 snapping) that upstream may not want. Fork into `Bevel.Themes.Industrial1999` with clear MIT attribution, keep a periodic upstream diff-merge while divergence is low, and upstream any generally-useful fixes (nine-slice control, DPI snapping) as goodwill. Rationale: velocity and fidelity control outweigh merge cost; MIT makes this clean. Rejected: (a) depend-and-override — the override surface would exceed the library; (b) write from scratch — throws away a working, debugged port of WPF's classic theme for no benefit.
 
 ---
 

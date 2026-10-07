@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">Bevel Flat — Whistler Watercolor source detail target</title>
+  <desc id="desc">Flat-only details derived from the supplied Watercolor.skin: compact Classic Shell plates, saturated blue selection, pale yellow new selection, white main menu, aqua places panel, and sliced separators.</desc>
+  <defs>
+    <linearGradient id="paper" x2="0" y2="1"><stop stop-color="#F1F1EF"/><stop offset="1" stop-color="#EDEDEA"/></linearGradient>
+    <linearGradient id="plate" x2="0" y2="1"><stop stop-color="#F1F1EF"/><stop offset="1" stop-color="#EDEDEA"/></linearGradient>
+    <linearGradient id="hover" x2="0" y2="1"><stop stop-color="#FFF9E8"/><stop offset=".5" stop-color="#F8E5B5"/><stop offset="1" stop-color="#F1D296"/></linearGradient>
+    <linearGradient id="selection" x2="0" y2="1"><stop stop-color="#3F82D0"/><stop offset="1" stop-color="#316AC5"/></linearGradient>
+    <style>.ink{fill:#152F42}.white{fill:#fff}.muted{fill:#5F7882}.micro{font:600 10px Tahoma,Arial,sans-serif;letter-spacing:1.4px}.small{font:11px Tahoma,Arial,sans-serif}.tiny{font:10px Tahoma,Arial,sans-serif}.label{font:600 12px Tahoma,Arial,sans-serif}</style>
+  </defs>
+  <rect width="1400" height="900" fill="url(#paper)"/>
+  <text x="52" y="56" class="micro muted">BEVEL FLAT / SOURCE DETAIL TARGET</text>
+  <text x="52" y="96" fill="#152F42" font-family="Tahoma,Arial,sans-serif" font-size="36" font-weight="bold">Classic Shell rules, vector-clean.</text>
+  <text x="54" y="123" class="small muted">Flat-only. These specimens are read from the supplied Watercolor.skin and source images.</text>
+
+  <text x="54" y="170" class="micro muted">01 / SOURCE PALETTE</text>
+  <rect x="54" y="190" width="112" height="42" fill="#FFFFFF" stroke="#BBD4D8"/><text x="64" y="208" class="tiny ink">MAIN</text><text x="64" y="223" class="tiny muted">#FFFFFF</text>
+  <rect x="174" y="190" width="112" height="42" fill="#316AC5"/><text x="184" y="208" class="tiny white">SELECT</text><text x="184" y="223" class="tiny white">#316AC5</text>
+  <rect x="294" y="190" width="112" height="42" fill="#5096F8"/><text x="304" y="208" class="tiny white">SECOND</text><text x="304" y="223" class="tiny white">#5096F8</text>
+  <rect x="414" y="190" width="112" height="42" fill="#FEEAB6"/><text x="424" y="208" class="tiny ink">NEW</text><text x="424" y="223" class="tiny muted">#FEEAB6</text>
+  <rect x="534" y="190" width="112" height="42" fill="#D9E3F3"/><text x="544" y="208" class="tiny ink">PLACES</text><text x="544" y="223" class="tiny muted">aqua panel</text>
+  <rect x="654" y="190" width="112" height="42" fill="#CFE3DF"/><text x="664" y="208" class="tiny ink">DESKTOP</text><text x="664" y="223" class="tiny muted">eucalyptus</text>
+
+  <text x="54" y="282" class="micro muted">02 / MENU ITEM STATES</text>
+  <rect x="54" y="302" width="274" height="31" fill="#FFFFFF" stroke="#BBD4D8"/><text x="68" y="322" class="small ink">Normal menu row</text>
+  <rect x="54" y="342" width="274" height="31" fill="url(#selection)"/><text x="68" y="362" class="small white">Selected / hot row</text>
+  <rect x="54" y="382" width="274" height="31" fill="#FEEAB6"/><text x="68" y="402" class="small ink">New / installed row</text>
+  <rect x="54" y="422" width="274" height="31" fill="#FFFFFF" stroke="#BBD4D8"/><text x="68" y="442" class="small muted">Disabled row</text>
+  <path d="M54 472h274" stroke="#4E8CA0"/><text x="54" y="494" class="tiny muted">Separator: a single source-colored rule, inset after the icon gutter.</text>
+
+  <text x="420" y="282" class="micro muted">03 / TWO-COLUMN PANEL</text>
+  <rect x="420" y="302" width="470" height="188" fill="#FFFFFF" stroke="#4D93A5"/>
+  <rect x="420" y="302" width="276" height="188" fill="#FFFFFF"/><rect x="696" y="302" width="194" height="188" fill="#D9E3F3"/>
+  <text x="438" y="328" class="micro muted">MAIN PROGRAMS</text><rect x="436" y="340" width="244" height="28" fill="url(#selection)"/><text x="449" y="359" class="small white">File Manager</text><rect x="436" y="375" width="244" height="28" fill="#FEEAB6"/><text x="449" y="394" class="small ink">New item</text>
+  <text x="716" y="328" class="micro muted">PLACES</text><text x="716" y="355" class="small ink">Documents</text><text x="716" y="382" class="small ink">Pictures</text><text x="716" y="409" class="small ink">Settings</text><text x="716" y="436" class="small ink">Help</text>
+  <text x="420" y="520" class="tiny muted">White main background; cool aqua places column; no pastel lavender card treatment.</text>
+
+  <text x="950" y="282" class="micro muted">04 / COMPACT CHROME</text>
+  <rect x="950" y="302" width="350" height="32" fill="url(#plate)" stroke="#6EA7B1"/><path d="M963 314h12v10h-12z" fill="#FEE7A8" stroke="#A58B50"/><text x="984" y="322" class="small ink">Window caption / Tahoma bold</text>
+  <g transform="translate(1150 308)"><rect width="20" height="18" rx="4" fill="#EAF5F5" stroke="#7FADB6"/><path d="M5 10h10" stroke="#286B82"/><rect x="25" width="20" height="18" rx="4" fill="#EAF5F5" stroke="#7FADB6"/><rect x="31" y="5" width="8" height="8" fill="none" stroke="#286B82"/><rect x="50" width="20" height="18" rx="4" fill="#F2B9B8" stroke="#D9A5AA"/><path d="m56 5 8 8m0-8-8 8" stroke="#5A4C52"/></g>
+  <rect x="950" y="354" width="350" height="34" rx="3" fill="url(#plate)" stroke="#A1A3A2"/><text x="965" y="376" class="small ink">Compact vector button</text>
+  <rect x="950" y="400" width="350" height="34" fill="#EDEDEA" stroke="#BBD4D8"/><rect x="951" y="401" width="348" height="16" fill="#EDEDEA"/><text x="965" y="417" class="tiny ink">Details header / thin raised plate</text>
+  <rect x="950" y="446" width="18" height="105" fill="#EDEDEA" stroke="#BBD4D8"/><rect x="951" y="480" width="16" height="47" rx="4" fill="#E6F0F1" stroke="#A1A3A2"/><circle cx="959" cy="497" r="2" fill="#7EAEB7"/><circle cx="959" cy="506" r="2" fill="#7EAEB7"/><circle cx="959" cy="515" r="2" fill="#7EAEB7"/><text x="982" y="466" class="tiny muted">15px matte scrollbar, source-colored grip</text>
+
+  <text x="54" y="620" class="micro muted">05 / VARIATION SYSTEM</text>
+  <rect x="54" y="642" width="120" height="38" fill="#BBC8F0" stroke="#8B9EC9"/><text x="114" y="666" text-anchor="middle" class="small ink">Blue</text>
+  <rect x="186" y="642" width="120" height="38" fill="#C7E3DC" stroke="#75B6A7"/><text x="246" y="666" text-anchor="middle" class="small ink">Ergonomic</text>
+  <rect x="318" y="642" width="120" height="38" fill="#EDF0F1" stroke="#BFC0C0"/><text x="378" y="666" text-anchor="middle" class="small ink">Silver</text>
+  <rect x="450" y="642" width="120" height="38" fill="#DCC7B7" stroke="#A98A78"/><text x="510" y="666" text-anchor="middle" class="small ink">Amber</text>
+  <text x="54" y="710" class="tiny muted">Flat exposes four source variations: Blue, Ergonomic, Silver, and Amber (Olive removed, Violet replaced by Amber). Pastel has no variation axis.</text>
+  <text x="54" y="850" class="micro muted">FLAT ONLY / SOURCE-LED TARGET / HIGH-DPI VECTOR, NO BITMAP SKIN ASSETS</text>
+</svg>
