@@ -54,6 +54,8 @@
     <ProjectReference Include="..\Bevel.ShellCore.Ipc\Bevel.ShellCore.Ipc.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Industrial1999\Bevel.Themes.Industrial1999.csproj" />
     <ProjectReference Include="..\Bevel.Themes.Blue2001\Bevel.Themes.Blue2001.csproj" />
+    <ProjectReference Include="..\Bevel.Themes.Pastel\Bevel.Themes.Pastel.csproj" />
+    <ProjectReference Include="..\Bevel.Themes.Flat\Bevel.Themes.Flat.csproj" />
     <ProjectReference Include="..\Bevel.Desktop\Bevel.Desktop.csproj" />
     <ProjectReference Include="..\Bevel.Taskbar\Bevel.Taskbar.csproj" />
     <ProjectReference Include="..\Bevel.FileManager\Bevel.FileManager.csproj" />

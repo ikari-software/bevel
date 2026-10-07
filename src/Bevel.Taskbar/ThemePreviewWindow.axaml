@@ -1,0 +1,68 @@
+<ui:BevelWindow xmlns="https://github.com/avaloniaui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:ui="using:Bevel.UI"
+                  x:Class="Bevel.Taskbar.ThemePreviewWindow"
+                  Title="Theme Preview"
+                  Width="520" Height="430"
+                  WindowStartupLocation="CenterOwner"
+                  CanResize="True">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+    <StackPanel Grid.Row="0" Spacing="2" Margin="2,0,2,10">
+      <TextBlock Text="Built-in control preview" FontSize="15" FontWeight="SemiBold" />
+      <TextBlock Text="A small sample of the controls used throughout Bevel." FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
+    </StackPanel>
+    <TabControl Grid.Row="1">
+      <TabItem Header="Controls">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10" Margin="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Normal button" />
+              <Button Content="Default" IsDefault="True" />
+              <ToggleButton Content="Toggle" IsChecked="True" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <CheckBox Content="Checked" IsChecked="True" />
+              <CheckBox Content="Unchecked" />
+              <RadioButton Content="Selected" GroupName="Preview" IsChecked="True" />
+              <RadioButton Content="Other" GroupName="Preview" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBox Width="190" Text="Watercolor field" />
+              <ComboBox Width="160" SelectedIndex="0">
+                <ComboBoxItem>Soft aqua</ComboBoxItem>
+                <ComboBoxItem>Warm paper</ComboBoxItem>
+                <ComboBoxItem>Ink and sage</ComboBoxItem>
+              </ComboBox>
+            </StackPanel>
+            <TextBlock Text="Slider" FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
+            <Slider Minimum="0" Maximum="100" Value="62" />
+            <TextBlock Text="Progress" FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
+            <ProgressBar Minimum="0" Maximum="100" Value="62" />
+            <HeaderedContentControl Header="A framed group" HorizontalContentAlignment="Stretch">
+              <TextBlock Text="Headered content follows the active skin." Margin="8" />
+            </HeaderedContentControl>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Menu">
+        <StackPanel Margin="8" Spacing="8">
+          <Menu>
+            <MenuItem Header="File">
+              <MenuItem Header="New" />
+              <MenuItem Header="Open" />
+              <MenuItem Header="Save" />
+            </MenuItem>
+            <MenuItem Header="Edit">
+              <MenuItem Header="Undo" />
+              <MenuItem Header="Copy" />
+            </MenuItem>
+          </Menu>
+          <TextBlock Text="Menu, menu items, tabs, and the scrollable page are all live controls." TextWrapping="Wrap" Foreground="{DynamicResource Bevel.Brush.GrayText}" />
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
+      <Button x:Name="CloseButton" Content="Close" IsDefault="True" MinWidth="80" />
+    </StackPanel>
+  </Grid>
+</ui:BevelWindow>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Bevel Flat: vector Whistler Watercolor recreation, separate from Pastel. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />
+    <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
+    <AvaloniaXaml Include="FlatTheme.axaml" />
+  </ItemGroup>
+
+</Project>

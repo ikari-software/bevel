@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Bevel Pastel: the soft watercolor-inspired skin, kept separate from the Industrial default. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <ProjectReference Include="..\..\third_party\classic-avalonia\Classic.Avalonia.Theme\Classic.Avalonia.Theme.csproj" />
+    <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
+  </ItemGroup>
+
+</Project>

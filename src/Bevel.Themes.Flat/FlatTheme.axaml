@@ -1,0 +1,639 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:Avalonia.Controls.Converters"
+        xmlns:common="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:commonControls="clr-namespace:Classic.CommonControls;assembly=Classic.CommonControls.Avalonia"
+        xmlns:classic="clr-namespace:Classic.Avalonia.Theme;assembly=Classic.Avalonia.Theme"
+        xmlns:utils="clr-namespace:Classic.Avalonia.Theme.Utils;assembly=Classic.Avalonia.Theme">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <Color x:Key="Bevel.Color.ButtonFace">#ECE9D8</Color>
+      <Color x:Key="Bevel.Color.ButtonHighlight">#FFFFFF</Color>
+      <Color x:Key="Bevel.Color.ButtonLight">#F4F2E8</Color>
+      <Color x:Key="Bevel.Color.ButtonShadow">#ACA899</Color>
+      <Color x:Key="Bevel.Color.ButtonDkShadow">#716F64</Color>
+      <Color x:Key="Bevel.Color.Window">#FFFFFF</Color>
+      <Color x:Key="Bevel.Color.WindowText">#1A202C</Color>
+      <Color x:Key="Bevel.Color.WindowFrame">#3567CB</Color>
+      <Color x:Key="Bevel.Color.GrayText">#716F64</Color>
+      <Color x:Key="Bevel.Color.Menu">#ECE9D8</Color>
+      <Color x:Key="Bevel.Color.MenuText">#1A202C</Color>
+      <Color x:Key="Bevel.Color.Scrollbar">#EDF0F6</Color>
+      <Color x:Key="Bevel.Color.ActiveTitle">#3570D6</Color>
+      <Color x:Key="Bevel.Color.GradientActiveTitle">#2862C8</Color>
+      <Color x:Key="Bevel.Color.InactiveTitle">#B0C0D8</Color>
+      <Color x:Key="Bevel.Color.GradientInactiveTitle">#95A8C5</Color>
+      <Color x:Key="Bevel.Color.Highlight">#316AC5</Color>
+      <Color x:Key="Bevel.Color.HighlightText">#FFFFFF</Color>
+      <Color x:Key="Bevel.Color.ActiveTitleText">#FFFFFF</Color>
+      <Color x:Key="Bevel.Color.InactiveTitleText">#D8E2F0</Color>
+      <Color x:Key="Bevel.Color.HotTracking">#3272D3</Color>
+      <Color x:Key="Bevel.Color.Desktop">#C2C5BC</Color>
+      <Color x:Key="{x:Static common:SystemColors.ActiveCaptionColorKey}">#3570D6</Color>
+      <Color x:Key="{x:Static common:SystemColors.GradientActiveCaptionColorKey}">#2862C8</Color>
+      <Color x:Key="{x:Static common:SystemColors.ActiveCaptionTextColorKey}">#FFFFFF</Color>
+      <Color x:Key="{x:Static common:SystemColors.InactiveCaptionColorKey}">#B0C0D8</Color>
+      <Color x:Key="{x:Static common:SystemColors.GradientInactiveCaptionColorKey}">#95A8C5</Color>
+      <Color x:Key="{x:Static common:SystemColors.InactiveCaptionTextColorKey}">#FFFFFF</Color>
+
+      <SolidColorBrush x:Key="Bevel.Brush.Window" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Bevel.Brush.WindowText" Color="#1A202C" />
+      <SolidColorBrush x:Key="Bevel.Brush.Menu" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Bevel.Brush.MenuText" Color="#1A202C" />
+      <SolidColorBrush x:Key="Bevel.Brush.ButtonFace" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Bevel.Brush.ButtonHighlight" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Bevel.Brush.ButtonLight" Color="#F4F2E8" />
+      <SolidColorBrush x:Key="Bevel.Brush.ButtonShadow" Color="#ACA899" />
+      <SolidColorBrush x:Key="Bevel.Brush.ButtonDkShadow" Color="#716F64" />
+      <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="#3567CB" />
+      <SolidColorBrush x:Key="Flat.Brush.ColumnHeader" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Flat.Brush.ColumnHeaderLight" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Flat.Brush.ColumnSeparator" Color="#ACA899" />
+      <SolidColorBrush x:Key="Bevel.Brush.GrayText" Color="#716F64" />
+      <SolidColorBrush x:Key="Bevel.Brush.Scrollbar" Color="#EDF0F6" />
+      <SolidColorBrush x:Key="Bevel.Brush.Highlight" Color="#316AC5" />
+      <SolidColorBrush x:Key="Bevel.Brush.HighlightText" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Bevel.Brush.HotTracking" Color="#3272D3" />
+      <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="#C2C5BC" />
+      <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#1A202C" />
+      <SolidColorBrush x:Key="Bevel.Brush.ActiveTitleText" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Bevel.Brush.InactiveTitleText" Color="#D8E2F0" />
+      <SolidColorBrush x:Key="{x:Static common:SystemColors.ControlBrushKey}" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Flat.Brush.TitleToneDark" Color="#1E4EAA" />
+      <SolidColorBrush x:Key="Flat.Brush.FooterRoundButtonBorder" Color="#8CB8FF" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionButton" Color="#2862C8" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionButtonBorder" Color="#7AA4EB" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionButtonHover" Color="#3B7AE6" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionButtonPressed" Color="#163F94" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionClose" Color="#2862C8" />
+      <SolidColorBrush x:Key="Flat.Brush.CaptionGlyph" Color="#FFFFFF" />
+
+      <LinearGradientBrush x:Key="Flat.Brush.CaptionActive" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#5E9CF9"/><GradientStop Offset="1" Color="#4A8CEF"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.CaptionInactive" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#C0CEE0"/><GradientStop Offset="1" Color="#9FB2CA"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.Button" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#FCFBF8"/><GradientStop Offset="1" Color="#EDE9DD"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.ButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#FFFDF5"/><GradientStop Offset=".5" Color="#F6E7C4"/><GradientStop Offset="1" Color="#EED49E"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.ButtonPressed" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#DCD7C8"/><GradientStop Offset="1" Color="#E8E4D7"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.Taskbar" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#F4F2E8"/><GradientStop Offset="1" Color="#ECE9D8"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.Tray" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#E4E0D0"/><GradientStop Offset="1" Color="#ECE9D8"/>
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="Flat.Brush.TaskButton" Color="#ECE9D8" />
+      <LinearGradientBrush x:Key="Flat.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#FFF9E8"/><GradientStop Offset="1" Color="#F1D296"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#D4E2F6"/><GradientStop Offset="1" Color="#ADC5EB"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.Start" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#EEF0EA"/><GradientStop Offset=".5" Color="#E5E7E1"/><GradientStop Offset="1" Color="#D6D8CE"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.StartHover" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#BDD8F4"/><GradientStop Offset=".5" Color="#A7C7EA"/><GradientStop Offset="1" Color="#93B7DF"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.StartPressed" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#8CAFD8"/><GradientStop Offset=".5" Color="#9AB7D8"/><GradientStop Offset="1" Color="#B8D0EC"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.Progress" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset=".5" Color="#3570D6"/><GradientStop Offset="1" Color="#2862C8"/>
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="Flat.Brush.Field" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Flat.Brush.Border" Color="#9B988D" />
+      <SolidColorBrush x:Key="Flat.Brush.Focus" Color="#3570D6" />
+      <SolidColorBrush x:Key="Flat.Brush.BorderHover" Color="#3570D6" />
+      <SolidColorBrush x:Key="Flat.Brush.Check" Color="#316AC5" />
+      <SolidColorBrush x:Key="Flat.Brush.ProgressTrack" Color="#E2DFD2" />
+      <SolidColorBrush x:Key="Flat.Brush.ScrollThumb" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Flat.Brush.MenuSeparator" Color="#ACA899" />
+      <SolidColorBrush x:Key="Flat.Brush.MenuGutter" Color="#ECE9D8" />
+
+      <LinearGradientBrush x:Key="Bevel.Brush.CaptionActive" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#5E9CF9"/><GradientStop Offset="1" Color="#4A8CEF"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.CaptionInactive" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#C0CEE0"/><GradientStop Offset="1" Color="#9FB2CA"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.TaskbarBackground" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#F4F2E8"/><GradientStop Offset="1" Color="#ECE9D8"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.TrayWell" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#E4E0D0"/><GradientStop Offset="1" Color="#ECE9D8"/>
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerLight" Color="Transparent" />
+      <SolidColorBrush x:Key="Bevel.Brush.TaskbarDividerDark" Color="Transparent" />
+      <Thickness x:Key="Bevel.Metric.TrayWellBorder">0</Thickness>
+      <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
+      <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>
+      <x:Double x:Key="Flat.Metric.StartMenuWidth">390</x:Double>
+      <x:Double x:Key="Flat.Metric.StartMenuHeight">440</x:Double>
+      <x:Double x:Key="Flat.Metric.StartMenuHeaderHeight">52</x:Double>
+      <x:Double x:Key="Flat.Metric.StartMenuFooterHeight">40</x:Double>
+      <CornerRadius x:Key="Flat.Metric.StartMenuCornerRadius">0</CornerRadius>
+      <CornerRadius x:Key="Flat.Metric.StartMenuRowCornerRadius">0</CornerRadius>
+      <CornerRadius x:Key="Flat.Metric.StartMenuIconCornerRadius">0</CornerRadius>
+
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuBorder" Color="#3567CB" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuPinned" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuPlaces" Color="#3570D6" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuText" Color="#1A202C" />
+      <LinearGradientBrush x:Key="Flat.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset="1" Color="#2862C8"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="#ECE9D8"/><GradientStop Offset="1" Color="#DCD7C8"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="Flat.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%">
+        <GradientStop Offset="0" Color="#FFE7A8"/><GradientStop Offset="1" Color="#B8D0F4"/>
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuHeaderRule" Color="#2054BE" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuHeaderRuleLight" Color="#7AA4EB" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuFooterHover" Color="#ADC5EB" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuFooterRule" Color="#ACA899" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuBorderSoft" Color="#ACA899" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuDivider" Color="#ACA899" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuFolder" Color="#FEEAB6" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuComputer" Color="#B9CCEF" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuGeneric" Color="#D9E3F3" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuHelp" Color="#3570D6" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuLogOff" Color="#3570D6" />
+      <SolidColorBrush x:Key="Flat.Brush.StartMenuTurnOff" Color="#3570D6" />
+      <LinearGradientBrush x:Key="Flat.Brush.StartMenuPlacesGradient" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#3570D6"/><GradientStop Offset="1" Color="#2862C8"/>
+      </LinearGradientBrush>
+      <SolidColorBrush x:Key="Flat.Brush.MenuArea" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Flat.Brush.MenuBorder" Color="#ACA899" />
+
+      <!-- Temporary aliases consumed by Luna-authored control templates and the existing Start menu. -->
+      <LinearGradientBrush x:Key="Blue2001.Brush.Button" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FCFBF8"/><GradientStop Offset=".5" Color="#F4F1E6"/><GradientStop Offset="1" Color="#EDE9DD"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.ButtonHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FFFDF5"/><GradientStop Offset=".5" Color="#F6E7C4"/><GradientStop Offset="1" Color="#EED49E"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.ButtonPressed" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#DCD7C8"/><GradientStop Offset="1" Color="#E8E4D7"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Blue2001.Brush.ButtonBorder" Color="#9B988D" />
+      <SolidColorBrush x:Key="Blue2001.Brush.ButtonBorderDefault" Color="#3570D6" />
+      <SolidColorBrush x:Key="Blue2001.Brush.ButtonBorderHover" Color="#3570D6" />
+      <LinearGradientBrush x:Key="Blue2001.Brush.Field" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FDFCF9"/><GradientStop Offset=".15" Color="#FFFFFF"/><GradientStop Offset="1" Color="#FFFFFF"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#F2EFE4"/><GradientStop Offset="1" Color="#ECE9D8"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FFF9E8"/><GradientStop Offset="1" Color="#F1D296"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#D4E2F6"/><GradientStop Offset="1" Color="#ADC5EB"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonBorder" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonCheckedBorder" Color="#3570D6" />
+      <LinearGradientBrush x:Key="Blue2001.Brush.Start" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset=".5" Color="#3570D6"/><GradientStop Offset="1" Color="#2862C8"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.StartHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#5C95ED"/><GradientStop Offset=".5" Color="#4580DB"/><GradientStop Offset="1" Color="#336ECE"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Blue2001.Brush.StartPressed" Color="#2458B8" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartBorder" Color="#1C4B9C" />
+      <SolidColorBrush x:Key="Blue2001.Brush.Check" Color="#316AC5" />
+      <LinearGradientBrush x:Key="Blue2001.Brush.Progress" StartPoint="0%,0%" EndPoint="100%,0%"><GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset=".5" Color="#3570D6"/><GradientStop Offset="1" Color="#2862C8"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Blue2001.Brush.ScrollTrack" Color="#F0EDE4" />
+      <SolidColorBrush x:Key="Blue2001.Brush.TrackBorder" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.Grip" Color="#859AB8" />
+      <SolidColorBrush x:Key="Blue2001.Brush.MenuBorder" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.MenuArea" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Blue2001.Brush.MenuGutter" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Blue2001.Brush.MenuSeparator" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.TabPanel" Color="#ECE9D8" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuBorder" Color="#3567CB" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinnedColumn" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinTitle" Color="#1A202C" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinSub" Color="#716F64" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceText" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuDivider" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlacesDivider" Color="#5A8EE6" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterHover" Color="#ADC5EB" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterRule" Color="#ACA899" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRule" Color="#2054BE" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRuleLight" Color="#7AA4EB" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconFolder" Color="#FEEAB6" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuComputerIcon" Color="#B9CCEF" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconGeneric" Color="#D9E3F3" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinIconFallback" Color="#D9E3F3" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconBorder" Color="#A6AED5" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHelpIcon" Color="#3570D6" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuLogOffIcon" Color="#3570D6" />
+      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuTurnOffIcon" Color="#3570D6" />
+      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset="1" Color="#2862C8"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#ECE9D8"/><GradientStop Offset="1" Color="#DCD7C8"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%"><GradientStop Offset="0" Color="#FFE7A8"/><GradientStop Offset="1" Color="#B8D0F4"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%"><GradientStop Offset="0" Color="#3570D6"/><GradientStop Offset="1" Color="#2862C8"/></LinearGradientBrush>
+
+      <x:Double x:Key="Bevel.Metric.CaptionHeight">26</x:Double>
+      <x:Double x:Key="Bevel.Metric.CaptionButtonWidth">21</x:Double>
+      <x:Double x:Key="Bevel.Metric.CaptionButtonHeight">19</x:Double>
+      <x:Double x:Key="Bevel.Metric.EdgeThickness">1</x:Double>
+      <x:Double x:Key="Bevel.Metric.ScrollBarSize">16</x:Double>
+      <x:Double x:Key="Bevel.Metric.MenuBarHeight">21</x:Double>
+      <x:Double x:Key="Bevel.Metric.MenuItemHeight">21</x:Double>
+      <x:Double x:Key="Bevel.Metric.TaskbarHeight">30</x:Double>
+      <CornerRadius x:Key="Bevel.Metric.CornerRadius">0</CornerRadius>
+      <Thickness x:Key="Bevel.Metric.WindowContentBorder">4,0,4,4</Thickness>
+      <Thickness x:Key="Bevel.Metric.WindowContentInset">0</Thickness>
+      <Thickness x:Key="Bevel.Metric.CaptionMargin">0</Thickness>
+      <Thickness x:Key="Bevel.Metric.CaptionPadding">6,0,3,0</Thickness>
+      <Thickness x:Key="Bevel.Metric.ButtonPadding">8,2</Thickness>
+      <classic:EdgeRendering x:Key="Bevel.Edge.Rendering">Smooth</classic:EdgeRendering>
+      <x:Boolean x:Key="{x:Static common:SystemParameters.FontAliasingKey}">False</x:Boolean>
+      <x:Double x:Key="{x:Static common:SystemParameters.WindowCaptionHeightKey}">26</x:Double>
+      <!-- ControlBrushKey is defined once above for the watercolor window surface. -->
+
+
+
+      <ControlTheme x:Key="Flat.Theme.CaptionButton" TargetType="Button">
+        <Setter Property="Width" Value="21"/><Setter Property="Height" Value="19"/><Setter Property="Padding" Value="0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Background" Value="{DynamicResource Flat.Brush.CaptionButton}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.CaptionButtonBorder}"/>
+        <Setter Property="Template"><ControlTemplate TargetType="Button"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}"/></Border></ControlTemplate></Setter>
+        <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.CaptionButtonHover}"/></Style>
+        <Style Selector="^:pressed /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.CaptionButtonPressed}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="{x:Type CaptionButtons}" TargetType="CaptionButtons">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Template"><ControlTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="2" Margin="0,0,2,0">
+          <Button x:Name="PART_FullScreenButton" IsVisible="False" Focusable="False" Theme="{StaticResource Flat.Theme.CaptionButton}"/>
+          <Button x:Name="PART_MinimizeButton" Focusable="False" AutomationProperties.Name="Minimize" Theme="{StaticResource Flat.Theme.CaptionButton}"><Path Data="M2,9 L10,9 L10,11 L2,11 Z" Fill="{DynamicResource Flat.Brush.CaptionGlyph}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+          <Button x:Name="PART_RestoreButton" Focusable="False" AutomationProperties.Name="Maximize" Theme="{StaticResource Flat.Theme.CaptionButton}"><Path Data="M1,1 L11,1 11,11 1,11 Z" Fill="Transparent" Stroke="{DynamicResource Flat.Brush.CaptionGlyph}" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+          <Button x:Name="PART_CloseButton" Focusable="False" AutomationProperties.Name="Close" Theme="{StaticResource Flat.Theme.CaptionButton}" Background="{DynamicResource Flat.Brush.CaptionClose}"><Path Data="M2,2 L10,10 M10,2 L2,10" Stroke="{DynamicResource Flat.Brush.CaptionGlyph}" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"/></Button>
+        </StackPanel></ControlTemplate></Setter>
+        <Style Selector="^:fullscreen /template/ Button#PART_FullScreenButton"><Setter Property="IsVisible" Value="True"/></Style>
+        <Style Selector="^:fullscreen /template/ Button#PART_RestoreButton"><Setter Property="IsVisible" Value="False"/></Style>
+        <Style Selector="^:fullscreen /template/ Button#PART_MinimizeButton"><Setter Property="IsVisible" Value="False"/></Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="Bevel.Theme.Button" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/>
+        <Setter Property="Background" Value="{DynamicResource Flat.Brush.Button}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="10,3"/><Setter Property="MinHeight" Value="23"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template"><ControlTemplate>
+          <Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="1">
+            <ContentPresenter Name="PART_ContentPresenter" Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True"/>
+          </Border>
+        </ControlTemplate></Setter>
+        <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.ButtonHover}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.BorderHover}"/></Style>
+        <Style Selector="^:pressed /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.ButtonPressed}"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="Bevel.Theme.CheckBox" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template"><ControlTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="7" Background="Transparent">
+            <Border Name="Box" Width="14" Height="14" CornerRadius="1" VerticalAlignment="Center" Background="{DynamicResource Flat.Brush.Field}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1">
+              <Path Name="Check" Margin="3,3,2,2" Stroke="{DynamicResource Flat.Brush.Check}" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L2.5,5.5 L7,0" Opacity="0"/>
+            </Border>
+            <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True"/>
+          </StackPanel>
+        </ControlTemplate></Setter>
+        <Style Selector="^:checked /template/ Path#Check"><Setter Property="Opacity" Value="1"/></Style>
+        <Style Selector="^:indeterminate /template/ Path#Check"><Setter Property="Opacity" Value=".55"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.RadioButton" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template"><ControlTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="7" Background="Transparent">
+            <Grid Width="14" Height="14" VerticalAlignment="Center"><Ellipse Fill="{DynamicResource Flat.Brush.Field}" Stroke="{DynamicResource Flat.Brush.Border}" StrokeThickness="1"/><Ellipse Name="Dot" Width="6" Height="6" Fill="{DynamicResource Flat.Brush.Check}" Opacity="0"/></Grid>
+            <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True"/>
+          </StackPanel>
+        </ControlTemplate></Setter>
+        <Style Selector="^:checked /template/ Ellipse#Dot"><Setter Property="Opacity" Value="1"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.TextBox" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/><Setter Property="Background" Value="{DynamicResource Flat.Brush.Field}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="5,3"/><Setter Property="MinHeight" Value="24"/><Setter Property="CaretBrush" Value="{DynamicResource Bevel.Brush.HotTracking}"/><Setter Property="SelectionBrush" Value="{DynamicResource Bevel.Brush.Highlight}"/><Setter Property="SelectionForegroundBrush" Value="{DynamicResource Bevel.Brush.HighlightText}"/>
+        <Setter Property="Template"><ControlTemplate><Border Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="1"><ScrollViewer Name="PART_ScrollViewer" Margin="{TemplateBinding Padding}" AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}" HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}" VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"><TextPresenter Name="PART_TextPresenter" Text="{TemplateBinding Text, Mode=TwoWay}" CaretBrush="{TemplateBinding CaretBrush}" SelectionBrush="{TemplateBinding SelectionBrush}" SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}" CaretIndex="{TemplateBinding CaretIndex}" SelectionStart="{TemplateBinding SelectionStart}" SelectionEnd="{TemplateBinding SelectionEnd}" PasswordChar="{TemplateBinding PasswordChar}" RevealPassword="{TemplateBinding RevealPassword}" TextWrapping="{TemplateBinding TextWrapping}" TextAlignment="{TemplateBinding TextAlignment}"/></ScrollViewer></Border></ControlTemplate></Setter>
+        <Style Selector="^:focus-within /template/ Border#Frame"><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Focus}"/><Setter Property="BorderThickness" Value="2"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.ComboBox" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/><Setter Property="Background" Value="{DynamicResource Flat.Brush.Field}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="6,3"/><Setter Property="MinHeight" Value="25"/>
+        <Setter Property="Template"><ControlTemplate><Grid ColumnDefinitions="*,26"><Border Grid.ColumnSpan="2" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="1"/><ContentPresenter Grid.Column="0" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/><ToggleButton Grid.Column="1" Name="DropDownButton" Focusable="False" IsChecked="{TemplateBinding IsDropDownOpen, Mode=TwoWay}" Background="{DynamicResource Flat.Brush.Button}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="0,4,4,0"><Path Data="M0,0 L8,0 4,5 Z" Fill="{DynamicResource Bevel.Brush.HotTracking}" HorizontalAlignment="Center" VerticalAlignment="Center"/></ToggleButton><Popup Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}" Placement="Bottom" MinWidth="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="{TemplateBinding MaxDropDownHeight}" IsLightDismissEnabled="True"><Border Background="{DynamicResource Bevel.Brush.Menu}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="1"><ScrollViewer><ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"/></ScrollViewer></Border></Popup></Grid></ControlTemplate></Setter>
+        <Style Selector="^:focus-within"><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Focus}"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar">
+        <Setter Property="Background" Value="{DynamicResource Flat.Brush.ProgressTrack}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="MinHeight" Value="16"/><Setter Property="MinWidth" Value="20"/>
+        <Setter Property="Template"><ControlTemplate TargetType="ProgressBar"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="1" Padding="2"><LayoutTransformControl x:Name="PART_LayoutTransformControl"><DockPanel x:Name="PART_Track" LastChildFill="False" ClipToBounds="True"><Border x:Name="PART_Indicator" Background="{DynamicResource Flat.Brush.Progress}" CornerRadius="1" ClipToBounds="True"><Rectangle x:Name="PART_IndicatorFill" IsVisible="False"/></Border></DockPanel></LayoutTransformControl></Border></ControlTemplate></Setter>
+        <Style Selector="^:horizontal"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="VerticalAlignment" Value="Top"/></Style><Style Selector="^:vertical"><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="VerticalAlignment" Value="Stretch"/></Style><Style Selector="^:vertical /template/ LayoutTransformControl#PART_LayoutTransformControl"><Setter Property="LayoutTransform"><RotateTransform Angle="90"/></Setter></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.Slider" TargetType="Slider">
+        <Setter Property="MinHeight" Value="24"/>
+        <Setter Property="Template"><ControlTemplate TargetType="Slider"><Border Background="Transparent"><Track Name="PART_Track" Orientation="Horizontal" Minimum="{Binding Minimum, RelativeSource={RelativeSource TemplatedParent}}" Maximum="{Binding Maximum, RelativeSource={RelativeSource TemplatedParent}}" Value="{Binding Value, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"><Track.DecreaseButton><RepeatButton Name="PART_DecreaseButton" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border VerticalAlignment="Center" Height="4" CornerRadius="1" Background="{DynamicResource Bevel.Brush.Highlight}"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseButton><Track.IncreaseButton><RepeatButton Name="PART_IncreaseButton" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border VerticalAlignment="Center" Height="4" CornerRadius="1" Background="{DynamicResource Flat.Brush.ProgressTrack}"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseButton><Track.Thumb><Thumb Name="Thumb" Width="14" Height="20"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource Flat.Brush.Button}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="1"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb></Track></Border></ControlTemplate></Setter>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.HeaderedContentControl" TargetType="HeaderedContentControl" BasedOn="{StaticResource {x:Type HeaderedContentControl}}">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.TabItem" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/><Setter Property="Padding" Value="10,4"/><Setter Property="Margin" Value="0,2,1,0"/>
+        <Setter Property="Template"><ControlTemplate><Border Name="Tab" Background="#ECE9D8" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1,1,1,0" CornerRadius="1,1,0,0"><ContentPresenter Margin="{TemplateBinding Padding}" Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" TextElement.Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" RecognizesAccessKey="True"/></Border></ControlTemplate></Setter>
+        <Style Selector="^:selected"><Setter Property="ZIndex" Value="1"/><Setter Property="Margin" Value="0,0,1,-1"/></Style>
+        <Style Selector="^:selected /template/ Border#Tab"><Setter Property="Background" Value="#FFFFFF"/></Style>
+        <Style Selector="^:disabled"><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.TabControl" TargetType="TabControl">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/><Setter Property="Background" Value="#FFFFFF"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="8"/>
+        <Setter Property="Template"><ControlTemplate><Grid RowDefinitions="Auto,*"><ItemsPresenter Name="PART_ItemsPresenter" Grid.Row="0" ZIndex="1" ItemsPanel="{TemplateBinding ItemsPanel}"/><Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0,1,1,1"><ContentPresenter Name="PART_SelectedContentHost" Margin="{TemplateBinding Padding}" Content="{TemplateBinding SelectedContent}" ContentTemplate="{TemplateBinding SelectedContentTemplate}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></Grid></ControlTemplate></Setter>
+        <Setter Property="ItemsPanel"><ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate></Setter>
+      </ControlTheme>
+      <ControlTheme x:Key="Flat.Theme.ScrollLineButton" TargetType="RepeatButton">
+        <Setter Property="Background" Value="#ECE9D8"/><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.HotTracking}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/><Setter Property="Focusable" Value="False"/><Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template"><ControlTemplate TargetType="RepeatButton"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="1"><Path HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{TemplateBinding Foreground}" Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"/></Border></ControlTemplate></Setter>
+        <Style Selector="^:pressed /template/ Border#Face"><Setter Property="Background" Value="#C4DEE4"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Flat.Theme.ScrollPageButton" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False"/><Setter Property="IsTabStop" Value="False"/><Setter Property="Template"><ControlTemplate TargetType="RepeatButton"><Rectangle Fill="Transparent"/></ControlTemplate></Setter>
+      </ControlTheme>
+      <ControlTheme x:Key="Flat.Theme.ScrollThumb" TargetType="Thumb">
+        <Setter Property="Template"><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource Flat.Brush.ScrollThumb}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="1"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="3"><Ellipse Width="3" Height="3" Fill="#87B4BE"/><Ellipse Width="3" Height="3" Fill="#87B4BE"/><Ellipse Width="3" Height="3" Fill="#87B4BE"/></StackPanel></Border></ControlTemplate></Setter>
+      </ControlTheme>
+      <ControlTheme x:Key="Flat.Theme.ScrollThumbH" TargetType="Thumb">
+        <Setter Property="Template"><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource Flat.Brush.ScrollThumb}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="1"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="3"><Ellipse Width="3" Height="3" Fill="#87B4BE"/><Ellipse Width="3" Height="3" Fill="#87B4BE"/><Ellipse Width="3" Height="3" Fill="#87B4BE"/></StackPanel></Border></ControlTemplate></Setter>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.ScrollBar" TargetType="ScrollBar">
+        <Setter Property="Background" Value="#EDF0F6"/><Setter Property="BorderThickness" Value="0"/>
+        <Style Selector="^:vertical"><Setter Property="Width" Value="{DynamicResource Bevel.Metric.ScrollBarSize}"/><Setter Property="MinWidth" Value="{DynamicResource Bevel.Metric.ScrollBarSize}"/><Setter Property="Template"><ControlTemplate><Grid Background="{TemplateBinding Background}" RowDefinitions="Auto,*,Auto"><RepeatButton Name="PART_LineUpButton" Grid.Row="0" Theme="{StaticResource Flat.Theme.ScrollLineButton}" Height="{DynamicResource Bevel.Metric.ScrollBarSize}" Content="M0,5 L8,5 4,0 Z"/><Track Name="PART_Track" Grid.Row="1" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value, Mode=TwoWay}" ViewportSize="{TemplateBinding ViewportSize}" Orientation="{TemplateBinding Orientation}" DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}" IsDirectionReversed="True"><Track.DecreaseButton><RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Flat.Theme.ScrollPageButton}"/></Track.DecreaseButton><Track.IncreaseButton><RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Flat.Theme.ScrollPageButton}"/></Track.IncreaseButton><Track.Thumb><Thumb Theme="{StaticResource Flat.Theme.ScrollThumb}"/></Track.Thumb></Track><RepeatButton Name="PART_LineDownButton" Grid.Row="2" Theme="{StaticResource Flat.Theme.ScrollLineButton}" Height="{DynamicResource Bevel.Metric.ScrollBarSize}" Content="M0,0 L4,5 8,0 Z"/></Grid></ControlTemplate></Setter></Style>
+        <Style Selector="^:horizontal"><Setter Property="Height" Value="{DynamicResource Bevel.Metric.ScrollBarSize}"/><Setter Property="MinHeight" Value="{DynamicResource Bevel.Metric.ScrollBarSize}"/><Setter Property="Template"><ControlTemplate><Grid Background="{TemplateBinding Background}" ColumnDefinitions="Auto,*,Auto"><RepeatButton Name="PART_LineUpButton" Grid.Column="0" Theme="{StaticResource Flat.Theme.ScrollLineButton}" Width="{DynamicResource Bevel.Metric.ScrollBarSize}" Content="M5,0 L5,8 0,4 Z"/><Track Name="PART_Track" Grid.Column="1" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value, Mode=TwoWay}" ViewportSize="{TemplateBinding ViewportSize}" Orientation="{TemplateBinding Orientation}" DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"><Track.DecreaseButton><RepeatButton Name="PART_PageUpButton" Theme="{StaticResource Flat.Theme.ScrollPageButton}"/></Track.DecreaseButton><Track.IncreaseButton><RepeatButton Name="PART_PageDownButton" Theme="{StaticResource Flat.Theme.ScrollPageButton}"/></Track.IncreaseButton><Track.Thumb><Thumb Theme="{StaticResource Flat.Theme.ScrollThumbH}"/></Track.Thumb></Track><RepeatButton Name="PART_LineDownButton" Grid.Column="2" Theme="{StaticResource Flat.Theme.ScrollLineButton}" Width="{DynamicResource Bevel.Metric.ScrollBarSize}" Content="M0,0 L5,4 0,8 Z"/></Grid></ControlTemplate></Setter></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.Menu" TargetType="Menu" BasedOn="{StaticResource {x:Type Menu}}">
+        <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Menu}"/><Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}"/>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.MenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.MenuText}"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="7,3"/>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.ToggleButton" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}"/>
+        <Setter Property="Background" Value="{DynamicResource Flat.Brush.TaskButton}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="10,3"/><Setter Property="MinHeight" Value="23"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template"><ControlTemplate TargetType="ToggleButton"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="1" Padding="{TemplateBinding Padding}"><ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></ControlTemplate></Setter>
+        <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.TaskButtonHover}"/></Style>
+        <Style Selector="^:checked /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.TaskButtonChecked}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Focus}"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button">
+        <Setter Property="Foreground" Value="#1A202C"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Background" Value="{DynamicResource Flat.Brush.Start}"/>
+        <Setter Property="Template"><ControlTemplate TargetType="Button"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="0" Padding="{TemplateBinding Padding}"><ContentPresenter Content="{TemplateBinding Content}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></ControlTemplate></Setter>
+        <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.StartHover}"/><Setter Property="BorderBrush" Value="#3570D6"/></Style>
+        <Style Selector="^:pressed /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.StartPressed}"/><Setter Property="BorderBrush" Value="#2458B8"/></Style>
+      </ControlTheme>
+      <ControlTheme x:Key="{x:Type commonControls:StatusBar}"
+                    TargetType="commonControls:StatusBar">
+        <Setter Property="Margin" Value="0,1,0,0" />
+        <Setter Property="Height" Value="22" />
+        <Setter Property="Background" Value="{DynamicResource Bevel.Brush.ButtonFace}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="{TemplateBinding Background}" BorderBrush="#ACA899" BorderThickness="0,1,0,0">
+              <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+
+      <ControlTheme x:Key="{x:Type commonControls:StatusBarItem}"
+                    TargetType="commonControls:StatusBarItem">
+        <Setter Property="Background" Value="#E5E2D2" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Margin" Value="2,1" />
+        <Setter Property="Padding" Value="6,1" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border BorderBrush="#9E9B90"
+                    BorderThickness="1,1,0,0"
+                    Background="{TemplateBinding Background}">
+              <Border BorderBrush="#FDFBF5" BorderThickness="0,0,1,1">
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Margin="{TemplateBinding Padding}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  ClipToBounds="True"
+                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+              </Border>
+            </Border>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+
+      <ControlTheme x:Key="{x:Type utils:AutoAttachTitleBar}" TargetType="utils:AutoAttachTitleBar">
+        <Setter Property="Height" Value="{DynamicResource {x:Static common:SystemParameters.WindowCaptionHeightKey}}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Panel>
+              <!-- Base active / inactive gradient background -->
+              <Border x:Name="PART_GradientBar" CornerRadius="{DynamicResource Bevel.Metric.CornerRadius}" IsHitTestVisible="False" />
+
+              <!-- Authentic Whistler Watercolor right-side dual-tone transition:
+                   Luminous translucent cyan/blue floating tiles with soft diffuse shadows,
+                   flowing continuously from a gentle entry all the way rightward right up to the caption buttons. -->
+              <Canvas x:Name="PART_DualTone" HorizontalAlignment="Right" Width="220" Height="{DynamicResource {x:Static common:SystemParameters.WindowCaptionHeightKey}}" IsHitTestVisible="False">
+                <!-- Underlying right-side darker cobalt wash (soft entry at x = 30, solid dark cobalt from x = 120 through x = 220) -->
+                <Rectangle Canvas.Left="30" Canvas.Top="0" Width="190" Height="26">
+                  <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                      <GradientStop Offset="0" Color="#001E4EAA" />
+                      <GradientStop Offset="0.25" Color="#331E4EAA" />
+                      <GradientStop Offset="0.55" Color="#881E4EAA" />
+                      <GradientStop Offset="0.8" Color="#D91E4EAA" />
+                      <GradientStop Offset="1" Color="#FF1E4EAA" />
+                    </LinearGradientBrush>
+                  </Rectangle.Fill>
+                </Rectangle>
+
+                <!-- Soft diffuse drop shadows: two blurred, low-alpha shadow steps (+1 and +2 offsets) vertically centered -->
+                <!-- First outer soft shadow ring (opacity 0.08) -->
+                <Canvas Opacity="0.08">
+                  <!-- Row 0 (y = 1) -->
+                  <Rectangle Canvas.Left="12" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="28" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="44" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="60" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="76" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="92" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="108" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="124" Canvas.Top="2" Width="6" Height="6" Fill="#051230" />
+
+                  <!-- Row 1 (y = 7) -->
+                  <Rectangle Canvas.Left="20" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="36" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="52" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="68" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="84" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="100" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="116" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="132" Canvas.Top="8" Width="6" Height="6" Fill="#051230" />
+
+                  <!-- Row 2 (y = 13) -->
+                  <Rectangle Canvas.Left="12" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="28" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="44" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="60" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="76" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="92" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="108" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+                  <Rectangle Canvas.Left="124" Canvas.Top="14" Width="6" Height="6" Fill="#051230" />
+
+                  <!-- Row 3 (y = 19) -->
+                  <Rectangle Canvas.Left="20" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="36" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="52" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="68" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="84" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="100" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="116" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                  <Rectangle Canvas.Left="132" Canvas.Top="20" Width="6" Height="5" Fill="#051230" />
+                </Canvas>
+
+                <!-- Inner soft shadow (opacity 0.14) -->
+                <Canvas Opacity="0.14">
+                  <!-- Row 0 (y = 1) -->
+                  <Rectangle Canvas.Left="11" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="27" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="43" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="59" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="75" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="91" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="107" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="123" Canvas.Top="2" Width="4" Height="4" Fill="#051230" />
+
+                  <!-- Row 1 (y = 7) -->
+                  <Rectangle Canvas.Left="19" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="35" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="51" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="67" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="83" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="99" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="115" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="131" Canvas.Top="8" Width="4" Height="4" Fill="#051230" />
+
+                  <!-- Row 2 (y = 13) -->
+                  <Rectangle Canvas.Left="11" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="27" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="43" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="59" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="75" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="91" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="107" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="123" Canvas.Top="14" Width="4" Height="4" Fill="#051230" />
+
+                  <!-- Row 3 (y = 19) -->
+                  <Rectangle Canvas.Left="19" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="35" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="51" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="67" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="83" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="99" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="115" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                  <Rectangle Canvas.Left="131" Canvas.Top="20" Width="4" Height="4" Fill="#051230" />
+                </Canvas>
+
+                <!-- Luminous floating glass tiles: balanced bell-curve luminosity fading gently at both ends -->
+                <Canvas>
+                  <!-- Row 0 (y = 1) -->
+                  <Rectangle Canvas.Left="10" Canvas.Top="1" Width="4" Height="4" Fill="#99CEFF" Opacity="0.20" />
+                  <Rectangle Canvas.Left="26" Canvas.Top="1" Width="4" Height="4" Fill="#A8D4FF" Opacity="0.45" />
+                  <Rectangle Canvas.Left="42" Canvas.Top="1" Width="4" Height="4" Fill="#BAE0FF" Opacity="0.70" />
+                  <Rectangle Canvas.Left="58" Canvas.Top="1" Width="4" Height="4" Fill="#CCECFF" Opacity="0.90" />
+                  <Rectangle Canvas.Left="74" Canvas.Top="1" Width="4" Height="4" Fill="#DCF4FF" Opacity="0.98" />
+                  <Rectangle Canvas.Left="90" Canvas.Top="1" Width="4" Height="4" Fill="#EBF8FF" Opacity="0.85" />
+                  <Rectangle Canvas.Left="106" Canvas.Top="1" Width="4" Height="4" Fill="#F2FAFF" Opacity="0.55" />
+                  <Rectangle Canvas.Left="122" Canvas.Top="1" Width="4" Height="4" Fill="#EDF8FF" Opacity="0.25" />
+
+                  <!-- Row 1 (y = 7) -->
+                  <Rectangle Canvas.Left="18" Canvas.Top="7" Width="4" Height="4" Fill="#A0D0FF" Opacity="0.30" />
+                  <Rectangle Canvas.Left="34" Canvas.Top="7" Width="4" Height="4" Fill="#B0DAFF" Opacity="0.58" />
+                  <Rectangle Canvas.Left="50" Canvas.Top="7" Width="4" Height="4" Fill="#C4E7FF" Opacity="0.82" />
+                  <Rectangle Canvas.Left="66" Canvas.Top="7" Width="4" Height="4" Fill="#D6F1FF" Opacity="0.95" />
+                  <Rectangle Canvas.Left="82" Canvas.Top="7" Width="4" Height="4" Fill="#EBF8FF" Opacity="0.92" />
+                  <Rectangle Canvas.Left="98" Canvas.Top="7" Width="4" Height="4" Fill="#F2FAFF" Opacity="0.70" />
+                  <Rectangle Canvas.Left="114" Canvas.Top="7" Width="4" Height="4" Fill="#EDF8FF" Opacity="0.40" />
+                  <Rectangle Canvas.Left="130" Canvas.Top="7" Width="4" Height="4" Fill="#E0F0FF" Opacity="0.18" />
+
+                  <!-- Row 2 (y = 13) -->
+                  <Rectangle Canvas.Left="10" Canvas.Top="13" Width="4" Height="4" Fill="#99CEFF" Opacity="0.20" />
+                  <Rectangle Canvas.Left="26" Canvas.Top="13" Width="4" Height="4" Fill="#A8D4FF" Opacity="0.45" />
+                  <Rectangle Canvas.Left="42" Canvas.Top="13" Width="4" Height="4" Fill="#BAE0FF" Opacity="0.70" />
+                  <Rectangle Canvas.Left="58" Canvas.Top="13" Width="4" Height="4" Fill="#CCECFF" Opacity="0.90" />
+                  <Rectangle Canvas.Left="74" Canvas.Top="13" Width="4" Height="4" Fill="#DCF4FF" Opacity="0.98" />
+                  <Rectangle Canvas.Left="90" Canvas.Top="13" Width="4" Height="4" Fill="#EBF8FF" Opacity="0.85" />
+                  <Rectangle Canvas.Left="106" Canvas.Top="13" Width="4" Height="4" Fill="#F2FAFF" Opacity="0.55" />
+                  <Rectangle Canvas.Left="122" Canvas.Top="13" Width="4" Height="4" Fill="#EDF8FF" Opacity="0.25" />
+
+                  <!-- Row 3 (y = 19) -->
+                  <Rectangle Canvas.Left="18" Canvas.Top="19" Width="4" Height="4" Fill="#A0D0FF" Opacity="0.30" />
+                  <Rectangle Canvas.Left="34" Canvas.Top="19" Width="4" Height="4" Fill="#B0DAFF" Opacity="0.58" />
+                  <Rectangle Canvas.Left="50" Canvas.Top="19" Width="4" Height="4" Fill="#C4E7FF" Opacity="0.82" />
+                  <Rectangle Canvas.Left="66" Canvas.Top="19" Width="4" Height="4" Fill="#D6F1FF" Opacity="0.95" />
+                  <Rectangle Canvas.Left="82" Canvas.Top="19" Width="4" Height="4" Fill="#EBF8FF" Opacity="0.92" />
+                  <Rectangle Canvas.Left="98" Canvas.Top="19" Width="4" Height="4" Fill="#F2FAFF" Opacity="0.70" />
+                  <Rectangle Canvas.Left="114" Canvas.Top="19" Width="4" Height="4" Fill="#EDF8FF" Opacity="0.40" />
+                  <Rectangle Canvas.Left="130" Canvas.Top="19" Width="4" Height="4" Fill="#E0F0FF" Opacity="0.18" />
+                </Canvas>
+              </Canvas>
+
+              <DockPanel Margin="{DynamicResource Bevel.Metric.CaptionPadding}">
+                <utils:CaptionButtonsEx Name="PART_CaptionButtons" DockPanel.Dock="Right" VerticalAlignment="Center" />
+
+                <utils:WindowIconRenderer
+                  RenderOptions.BitmapInterpolationMode="None"
+                  IsHitTestVisible="False"
+                  VerticalAlignment="Center"
+                  Margin="0,0,4,0"
+                  IsVisible="{Binding $parent[Window].Icon, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  Source="{Binding $parent[Window].Icon}"
+                  SourceOverride="{Binding (classic:ClassicWindow.SmallIcon), RelativeSource={RelativeSource Mode=FindAncestor, AncestorType=Window}, FallbackValue={x:Null}}"
+                  Width="16" Height="16" />
+
+                <TextBlock Text="{Binding $parent[Window].Title}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Left"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="0,0,16,0"
+                           FontFamily="{DynamicResource {x:Static common:NonClientMetrics.CaptionFontKey}}"
+                           FontSize="{DynamicResource {x:Static common:NonClientMetrics.CaptionFontSizeKey}}"
+                           IsHitTestVisible="False"
+                           Foreground="{DynamicResource {x:Static common:SystemColors.ActiveCaptionTextBrushKey}}" FontWeight="Bold" />
+              </DockPanel>
+            </Panel>
+          </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^ /template/ Border#PART_GradientBar">
+          <Setter Property="Background" Value="{DynamicResource Bevel.Brush.CaptionInactive}" />
+        </Style>
+
+        <Style Selector="^ /template/ Canvas#PART_DualTone">
+          <Setter Property="IsVisible" Value="False" />
+        </Style>
+
+        <Style Selector="^:active /template/ Border#PART_GradientBar">
+          <Setter Property="Background" Value="{DynamicResource Bevel.Brush.CaptionActive}" />
+        </Style>
+
+        <Style Selector="^:active /template/ Canvas#PART_DualTone">
+          <Setter Property="IsVisible" Value="True" />
+        </Style>
+      </ControlTheme>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+    <Style Selector=":is(Window) /template/ classic|ClassicBorderDecorator#Bd">
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector=":is(Window)">
+    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Window}"/>
+    <Setter Property="TransparencyLevelHint" Value="Transparent"/>
+  </Style>
+</Styles>

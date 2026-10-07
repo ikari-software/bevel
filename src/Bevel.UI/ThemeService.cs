@@ -35,7 +35,8 @@ public static class ThemeService
     {
         (Bevel.Core.ThemeIds.Industrial1999, "Bevel 1999 Industrial"),
         (Bevel.Core.ThemeIds.Blue2001, "Bevel 2001 Blue"),
-        ("flat", "Bevel Flat (preview)"),
+        (Bevel.Core.ThemeIds.Flat, "Bevel Flat (Whistler Watercolor)"),
+        (Bevel.Core.ThemeIds.Pastel, "Bevel Pastel (preview)"),
     };
 
     /// <summary>The default theme id. Empty/unknown resolves here.</summary>
@@ -52,11 +53,7 @@ public static class ThemeService
 
     /// <summary>The token-override dictionary a theme merges, or null when it ships none (base theme, or
     /// a Styles-set theme that carries its tokens inside its own <see cref="StylesFor"/> bundle).</summary>
-    private static string? SourceFor(string id) => id switch
-    {
-        "flat" => "avares://Bevel.Themes.Industrial1999/ThemeFlat.axaml",
-        _ => null,
-    };
+    private static string? SourceFor(string id) => null;
 
     /// <summary>A theme's control-template <c>Styles</c> set (its own <c>ControlTheme</c>s + tokens),
     /// added to <see cref="Application.Styles"/> so it overrides the Classic templates by precedence,
@@ -66,6 +63,8 @@ public static class ThemeService
     private static string? StylesFor(string id) => id switch
     {
         "blue2001" => "avares://Bevel.Themes.Blue2001/Blue2001Theme.axaml",
+        Bevel.Core.ThemeIds.Flat => "avares://Bevel.Themes.Flat/FlatTheme.axaml",
+        Bevel.Core.ThemeIds.Pastel => "avares://Bevel.Themes.Pastel/PastelTheme.axaml",
         _ => null,
     };
 
@@ -121,7 +120,7 @@ public static class ThemeService
             catch (Exception ex)
             {
                 applied = false;
-                Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex.Message}");
+                Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex}");
                 // ROLL THE FAILED ENTRY BACK OUT (bevel-bxol). Styles.Add inserts first and re-resolves
                 // after, so a throw leaves a HALF-WIRED StyleInclude sitting in app.Styles — its Loaded
                 // content never materialised. Every later resource lookup walks that entry, and

@@ -498,6 +498,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("colorScheme", _settings.ColorScheme, d.ColorScheme, SettingsJsonContext.Default.String);
         SetOrPrune("blue2001Color", _settings.Blue2001Color, d.Blue2001Color, SettingsJsonContext.Default.String);
         SetOrPrune("blue2001Gloss", _settings.Blue2001Gloss, d.Blue2001Gloss, SettingsJsonContext.Default.String);
+        SetOrPrune("flatVariant", _settings.FlatVariant, d.FlatVariant, SettingsJsonContext.Default.String);
         SetOrPrune("uiFontFamily", _settings.UiFontFamily, d.UiFontFamily, SettingsJsonContext.Default.String);
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
@@ -643,6 +644,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             ColorScheme = GetString("colorScheme") ?? "",
             Blue2001Color = GetString("blue2001Color") ?? "",
             Blue2001Gloss = GetString("blue2001Gloss") ?? "",
+            FlatVariant = GetString("flatVariant") ?? "",
             UiFontFamily = GetString("uiFontFamily") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
@@ -745,6 +747,9 @@ public sealed class BevelSettings
 
     /// <summary>Luna gloss variant (Hybrid/Gloss/Matte) — the Luna theme's gloss axis. Empty = Hybrid.</summary>
     public string Blue2001Gloss { get; set; } = "";
+
+    /// <summary>Flat Whistler Watercolor variation (Blue/Ergonomic/Silver/Amber). Empty = Blue.</summary>
+    public string FlatVariant { get; set; } = "";
 
     /// <summary>UI font family override (FNT-01 / bevel-9js). Empty = the theme's bundled face
     /// (Noto Sans). Any installed family name shadows <c>Bevel.Font.UI</c> shell-wide.</summary>

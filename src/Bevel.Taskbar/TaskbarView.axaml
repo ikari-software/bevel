@@ -103,7 +103,7 @@
         <!-- Start button: full bar height (no dead space above it in multi-row mode), but capped
              to ~3 button rows in code so a very tall bar keeps a sane Start button. -->
         <Button x:Name="StartButton" Grid.Column="0"
-                Width="74" Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
+                Width="74" Margin="{DynamicResource Bevel.Metric.StartButtonMargin}" Classes="taskbar-start"
                 Theme="{DynamicResource Bevel.Theme.StartButton}"
                 Focusable="True"
                 AutomationProperties.Name="Start"

@@ -21,6 +21,7 @@ public static class ThemeIds
 {
     public const string Industrial1999 = "industrial1999";
     public const string Blue2001 = "blue2001";
+    public const string Pastel = "pastel";
     public const string Flat = "flat";
 
     /// <summary>The id an empty or missing value resolves to.</summary>

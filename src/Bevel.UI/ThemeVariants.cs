@@ -60,6 +60,15 @@ public static class ThemeVariants
                     s => s.Blue2001Gloss, (s, v) => s.Blue2001Gloss = v),
             },
             s => Blue2001VariantService.Apply(s.Blue2001Color, s.Blue2001Gloss)),
+
+        [ThemeIds.Flat] = new ThemeVariantSpec(ThemeIds.Flat,
+            new[]
+            {
+                new ThemeOption("Watercolor variation", FlatVariantService.Variants,
+                    s => s.FlatVariant, (s, v) => s.FlatVariant = v),
+            },
+            s => FlatVariantService.Apply(s)),
+        [ThemeIds.Pastel] = new ThemeVariantSpec(ThemeIds.Pastel, Array.Empty<ThemeOption>(), _ => { }),
     };
 
     /// <summary>The active theme's option specs, or empty if the theme contributes none.</summary>
@@ -76,6 +85,8 @@ public static class ThemeVariants
         // theme (e.g. a Win2000 scheme's WindowCaptionHeightKey=18 shrinking Luna's 25 caption — bevel-p3va).
         if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Blue2001, StringComparison.OrdinalIgnoreCase))
             Blue2001VariantService.Clear();
+        if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Flat, StringComparison.OrdinalIgnoreCase))
+            FlatVariantService.Clear();
         if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Industrial1999, StringComparison.OrdinalIgnoreCase))
             ColorSchemeService.Clear();
 

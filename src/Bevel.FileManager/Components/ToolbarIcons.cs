@@ -65,23 +65,23 @@ public static class ToolbarIcons
     private static readonly string TokHT = ThemeTokens.ColorHighlightText;        // #FFFFFF
     private static readonly string TokHK = ThemeTokens.ColorHotTracking;          // #000080
 
-    // ── Resolved brushes (lazy, theme-aware) ────────────────────────────────
+    // ── Resolved brushes (lazy, theme-aware) ────────���───────────────────────
 
     private static IBrush White         => Brushes.White;
-    private static IBrush Green         => VGrad(TokHL, TokAT, "#0A246A", "#0A246A");          // toolbar green
-    private static IBrush GreenEdge     => S(TokBD, "#404040");
-    private static IBrush Blue          => VGrad(TokGA, TokAT, "#A6CAF0", "#0A246A");          // toolbar blue
-    private static IBrush BlueEdge      => S(TokBD, "#404040");
-    private static IBrush Gray          => S(TokBS, "#808080");
-    private static IBrush FolderBack    => VGrad(TokBF, TokBS, "#D4D0C8", "#808080");
-    private static IBrush FolderFront   => VGrad(TokBH, TokBL, "#FFFFFF", "#D4D0C8");
-    private static IBrush FolderEdge    => S(TokBD, "#404040");
-    private static IBrush Paper         => VGrad(TokW, TokBF, "#FFFFFF", "#D4D0C8");
-    private static IBrush PaperEdge     => S(TokHK, "#000080");
-    private static IBrush PaperLine     => S(TokBS, "#808080");
-    private static IBrush Red           => S(TokHL, "#0A246A"); // using highlight as red accent
-    private static IBrush Board         => VGrad(TokBF, TokBS, "#D4D0C8", "#808080");
-    private static IBrush BoardEdge     => S(TokBD, "#404040");
+    private static IBrush Green         => new SolidColorBrush(Color.Parse("#469E4A"));
+    private static IBrush GreenEdge     => new SolidColorBrush(Color.Parse("#235826"));
+    private static IBrush Blue          => new SolidColorBrush(Color.Parse("#2B6DD8"));
+    private static IBrush BlueEdge      => new SolidColorBrush(Color.Parse("#16428C"));
+    private static IBrush Gray          => new SolidColorBrush(Color.Parse("#76736A"));
+    private static IBrush FolderBack    => new SolidColorBrush(Color.Parse("#E0A838"));
+    private static IBrush FolderFront   => new SolidColorBrush(Color.Parse("#FFD15C"));
+    private static IBrush FolderEdge    => new SolidColorBrush(Color.Parse("#8C5E14"));
+    private static IBrush Paper         => Brushes.White;
+    private static IBrush PaperEdge     => new SolidColorBrush(Color.Parse("#6E6B62"));
+    private static IBrush PaperLine     => new SolidColorBrush(Color.Parse("#4A85DF"));
+    private static IBrush Red           => new SolidColorBrush(Color.Parse("#D9383A"));
+    private static IBrush Board         => new SolidColorBrush(Color.Parse("#C2884A"));
+    private static IBrush BoardEdge     => new SolidColorBrush(Color.Parse("#6E4518"));
 
     // Folder path data is shared with the list-view glyphs — single source of truth in Glyphs.
 
@@ -166,25 +166,25 @@ public static class ToolbarIcons
         Folder(), FolderFlap());
 
     public static Bitmap? Cut() => Raster(
-        P("M4.6,11.4 L12.2,3.4", null, Gray, 1.1),
-        P("M11.4,11.4 L3.8,3.4", null, Gray, 1.1),
-        E(2.6, 10.0, 3.2, 3.2, White, Gray, 0.9),
-        E(9.2, 10.0, 3.2, 3.2, White, Gray, 0.9));
+        P("M4.6,11.4 L12.2,3.4", null, Blue, 1.4),
+        P("M11.4,11.4 L3.8,3.4", null, Blue, 1.4),
+        E(2.2, 9.6, 3.8, 3.8, White, Red, 1.2),
+        E(8.8, 9.6, 3.8, 3.8, White, Red, 1.2));
 
     public static Bitmap? Copy() => Raster(
-        P("M6.2,2.6 H10.8 L12.8,4.6 V11.0 H6.2 Z", Paper, PaperEdge, 0.5),
-        P("M3.4,5.2 H8.0 L10.0,7.2 V13.2 H3.4 Z", Paper, PaperEdge, 0.5),
-        P("M4.6,8.4 H8.6 M4.6,10.0 H8.6", null, PaperLine, 0.6));
+        P("M6.2,2.6 H10.8 L12.8,4.6 V11.0 H6.2 Z", Paper, Blue, 0.8),
+        P("M3.4,5.2 H8.0 L10.0,7.2 V13.2 H3.4 Z", Paper, Blue, 0.8),
+        P("M4.6,8.4 H8.6 M4.6,10.0 H8.6", null, PaperLine, 0.8));
 
     public static Bitmap? Paste() => Raster(
-        P("M3.4,3.2 H12.6 V14.2 H3.4 Z", Board, BoardEdge, 0.6),
-        P("M6.4,2.0 H9.6 V3.6 H6.4 Z", Gray, BoardEdge, 0.5),
-        P("M5.2,5.2 H10.8 V12.4 H5.2 Z", Paper, PaperEdge, 0.5),
-        P("M6.2,7.4 H9.8 M6.2,9.0 H9.8 M6.2,10.6 H8.6", null, PaperLine, 0.6));
+        P("M3.4,3.2 H12.6 V14.2 H3.4 Z", Board, BoardEdge, 0.8),
+        P("M6.4,2.0 H9.6 V3.6 H6.4 Z", Gray, BoardEdge, 0.6),
+        P("M5.2,5.2 H10.8 V12.4 H5.2 Z", Paper, Blue, 0.7),
+        P("M6.2,7.4 H9.8 M6.2,9.0 H9.8 M6.2,10.6 H8.6", null, PaperLine, 0.8));
 
     public static Bitmap? Undo() => Raster(
-        P("M3.4,8.6 A4.6,4.6 0 1 1 8,13.2", null, Blue, 1.4),
-        P("M3.4,8.6 L2.4,5.6 L5.8,6.4 Z", Blue));
+        P("M6.4,7.2 C7.4,5.0 9.6,4.0 12.0,4.6 C14.2,5.2 15.2,7.4 14.6,9.8 C13.8,11.8 12.0,13.4 9.5,13.5", null, Blue, 1.5),
+        P("M1.6,7.2 L6.6,3.8 L6.6,10.2 Z", Blue));
 
     public static Bitmap? Delete() => Raster(
         P("M4.2,4.2 L11.8,11.8", null, Red, 2.2),

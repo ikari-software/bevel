@@ -29,6 +29,7 @@ public class ThemeIdTests
     [Theory]
     [InlineData(ThemeIds.Blue2001)]
     [InlineData(ThemeIds.Industrial1999)]
+    [InlineData(ThemeIds.Pastel)]
     [InlineData(ThemeIds.Flat)]
     public void Current_ids_pass_through_unchanged(string id)
         => Assert.Equal(id, ThemeIds.OrDefault(id));
@@ -51,7 +52,7 @@ public class ThemeIdTests
     [Fact]
     public void No_current_id_carries_a_vendor_name()
     {
-        foreach (var id in new[] { ThemeIds.Industrial1999, ThemeIds.Blue2001, ThemeIds.Flat, ThemeIds.Default })
+        foreach (var id in new[] { ThemeIds.Industrial1999, ThemeIds.Blue2001, ThemeIds.Pastel, ThemeIds.Flat, ThemeIds.Default })
         {
             Assert.DoesNotContain("luna", id, System.StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("win2000", id, System.StringComparison.OrdinalIgnoreCase);

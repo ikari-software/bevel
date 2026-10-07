@@ -1,21 +1,9 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:classic="using:Classic.Avalonia.Theme">
-    <!--
-      "Bevel Flat" — stub second theme (PKG-03 / bevel-9js).
-
-      Proves the theme-switch ENGINE (ThemeService) end-to-end: a theme is a token-override
-      dictionary merged over the base Tokens.axaml at Application level, swapped live at runtime.
-      This one flips the non-colour axes that already cascade — edge rendering to Crisp (hard,
-      flat bands instead of the Win2000 default's eased 3-D bevels) plus tighter chrome metrics —
-      so switching to it visibly reskins the shell without touching the palette (that stays on the
-      user's colour scheme).
-
-      Metrics that don't yet reach the vendored Classic control templates (pending the ENG-01
-      template migration) are set here anyway so they light up for free once that lands.
-    -->
+    <!-- Legacy Flat resource dictionary retained for compatibility; ThemeService now routes Flat to
+         the full watercolor Styles set in Bevel.Themes.Aquarelle/FlatTheme.axaml. -->
     <classic:EdgeRendering x:Key="Bevel.Edge.Rendering">Crisp</classic:EdgeRendering>
-
     <x:Double x:Key="Bevel.Metric.CaptionHeight">22</x:Double>
     <x:Double x:Key="Bevel.Metric.EdgeThickness">1</x:Double>
     <x:Double x:Key="Bevel.Metric.MenuItemHeight">20</x:Double>

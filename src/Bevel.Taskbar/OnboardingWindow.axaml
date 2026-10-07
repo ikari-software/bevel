@@ -314,6 +314,9 @@
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Theme" FontSize="11" VerticalAlignment="Center" Width="84" />
                                 <ComboBox x:Name="ThemeCombo" FontSize="11" Width="160" VerticalAlignment="Center" />
+                                <Button x:Name="PreviewThemeButton" Width="28" Height="26" Padding="0" ToolTip.Tip="Preview the selected theme" AutomationProperties.Name="Preview selected theme">
+                                    <Path Data="M2,2 L18,2 18,14 2,14 Z M5,17 L15,17" Stroke="{DynamicResource Bevel.Brush.HotTracking}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"/>
+                                </Button>
                             </StackPanel>
                             <TextBlock Text="The visual style engine (chrome geometry, bevels, metrics). The colour scheme and font below layer on top."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" Margin="20,0,0,0" />

@@ -135,10 +135,12 @@ public partial class StartMenu : UserControl
     /// cascade uses, so it stays off-thread and current.</summary>
     private void ApplyThemeLayout()
     {
-        var luna = Bevel.UI.ThemeService.Current == Bevel.Core.ThemeIds.Blue2001;
-        Blue2001Layout.IsVisible = luna;
-        ClassicLayout.IsVisible = !luna;
-        if (luna && !_lunaWired)
+        var flat = Bevel.UI.ThemeService.Current == Bevel.Core.ThemeIds.Flat;
+        var twoColumn = Bevel.UI.ThemeService.Current is Bevel.Core.ThemeIds.Blue2001 or Bevel.Core.ThemeIds.Flat or Bevel.Core.ThemeIds.Pastel;
+        Blue2001Layout.IsVisible = twoColumn;
+        Blue2001Layout.Classes.Set("flat-start", flat);
+        ClassicLayout.IsVisible = !twoColumn;
+        if (twoColumn && !_lunaWired)
         {
             Blue2001UserName.Text = CurrentUserDisplayName();
             if (_programsVm is not null)

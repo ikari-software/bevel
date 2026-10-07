@@ -63,6 +63,25 @@
             <!-- Edge (px) of the square Start badge; StartLogo picks the mark's detail level from it. 20 fits the
                  ~26px Classic button with room for the bevel. -->
             <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>
+
+            <!-- Shared two-column Start layout defaults. Flat/Pastel override these through their own
+                 theme dictionaries; Luna keeps the original compact XP proportions. -->
+            <x:Double x:Key="Flat.Metric.StartMenuWidth">390</x:Double>
+            <x:Double x:Key="Flat.Metric.StartMenuHeight">440</x:Double>
+            <x:Double x:Key="Flat.Metric.StartMenuHeaderHeight">52</x:Double>
+            <x:Double x:Key="Flat.Metric.StartMenuFooterHeight">40</x:Double>
+            <CornerRadius x:Key="Flat.Metric.StartMenuCornerRadius">8,8,5,5</CornerRadius>
+            <CornerRadius x:Key="Flat.Metric.StartMenuRowCornerRadius">3</CornerRadius>
+            <CornerRadius x:Key="Flat.Metric.StartMenuIconCornerRadius">4</CornerRadius>
+            <SolidColorBrush x:Key="Flat.Brush.StartMenuFooterText" Color="#FFFFFF" />
+            <LinearGradientBrush x:Key="Flat.Brush.FooterRoundButton" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#66A4F8"/>
+                <GradientStop Offset="1" Color="#2064D8"/>
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="Flat.Brush.FooterRoundButtonBorder" Color="#8CB8FF" />
+            <SolidColorBrush x:Key="Flat.Brush.ColumnHeader" Color="#D4D0C8" />
+            <SolidColorBrush x:Key="Flat.Brush.ColumnHeaderLight" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Flat.Brush.ColumnSeparator" Color="#808080" />
         </ResourceDictionary>
     </Styles.Resources>
 </Styles>
