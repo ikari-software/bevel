@@ -47,7 +47,7 @@ Bar height, work-area band, row height, and icon metrics each have exactly one a
 Vector only — SVG or code-drawn geometry bound to theme tokens. Never a raster asset for chrome. **Never disable antialiasing**, including "for authenticity". Never upscale; re-render at the target size.
 
 ### Theming
-`LunaVariantService` and `ColorSchemeService` **override** static theme tokens and must be `Clear()`'d symmetrically when switching away. A new brush must exist in *every* skin — a token defined in one theme renders invisible in the others. Do not add `RequestedThemeVariant` / `ThemeVariantScope` overrides; the app pins Light deliberately.
+`Blue2001VariantService` and `ColorSchemeService` **override** static theme tokens and must be `Clear()`'d symmetrically when switching away. A new brush must exist in *every* skin — a token defined in one theme renders invisible in the others. Do not add `RequestedThemeVariant` / `ThemeVariantScope` overrides; the app pins Light deliberately.
 
 ### No hiding
 Never hide a dead control or route around a missing feature. Wire it to real functionality or build it. Hiding relabels a gap as intentional — and that includes leaving a PAL capability unregistered so "unsupported here" becomes an accident of DI resolution rather than a stated fact. Register an explicit null object with a comment saying why.
