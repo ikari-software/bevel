@@ -14,11 +14,19 @@ using Bevel.FileManager.FileOperations;
 var outPath = args.Length > 0 ? args[0] : "fm.png";
 var width = args.Length > 1 ? int.Parse(args[1]) : 760;
 var height = args.Length > 2 ? int.Parse(args[2]) : 560;
+var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
 
 AppBuilder.Configure<Bevel.App.App>()
     .UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
     .SetupWithoutStarting();
+
+if (themeArg is not null)
+{
+    var themeId = themeArg["--theme=".Length..];
+    if (!Bevel.UI.ThemeService.Apply(themeId))
+        throw new InvalidOperationException($"Theme failed to apply: {themeId}");
+}
 
 // A deterministic sample folder so the listing has representative rows.
 var dir = Path.Combine(Path.GetTempPath(), "bevel-shot-" + Guid.NewGuid().ToString("N"));
@@ -73,6 +81,9 @@ static void Pump(int cycles)
 Pump(30);
 controller.NavigateTo(new VfsPath("file", dir));
 Pump(60);
+win.Title = "Home — File Manager";
+var tab = win.GetVisualDescendants().OfType<Avalonia.Controls.TabItem>().FirstOrDefault();
+if (tab != null) tab.Header = "Home";
 
 // 4th arg "Glyph:<semanticId>" paints a single icon glyph at (width) px on a neutral card —
 // e.g. `BevelShot out.png 256 256 Glyph:doc.iso`.

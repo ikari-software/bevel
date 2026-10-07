@@ -23,8 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Bevel.UI\Bevel.UI.csproj" />
-    <ProjectReference Include="..\..\src\Bevel.Themes.Win2000\Bevel.Themes.Win2000.csproj" />
-    <ProjectReference Include="..\..\src\Bevel.Themes.Luna\Bevel.Themes.Luna.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Themes.Industrial1999\Bevel.Themes.Industrial1999.csproj" />
+    <ProjectReference Include="..\..\src\Bevel.Themes.Blue2001\Bevel.Themes.Blue2001.csproj" />
   </ItemGroup>
 
   <ItemGroup>

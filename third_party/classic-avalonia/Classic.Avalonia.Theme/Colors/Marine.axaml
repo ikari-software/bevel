@@ -5,7 +5,7 @@
   <!--
     auto-generated: do NOT edit by hand.
     Classic color scheme (W2K-01 / bevel-c75), generated from
-    src/Bevel.Themes.Win2000/schemes.json by tools/ThemeGen. Edit the JSON and run
+    src/Bevel.Themes.Industrial1999/schemes.json by tools/ThemeGen. Edit the JSON and run
     tools/ThemeGen (dotnet run); CI fails when this file drifts from a fresh generation.
   -->
   <Color x:Key="{x:Static common:SystemColors.ActiveBorderColorKey}">#ff88c0b8</Color>

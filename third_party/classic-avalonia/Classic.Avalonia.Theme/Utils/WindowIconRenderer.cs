@@ -8,7 +8,7 @@ using Avalonia.Media.Imaging;
 
 namespace Classic.Avalonia.Theme.Utils;
 
-internal class WindowIconRenderer : Control
+public class WindowIconRenderer : Control
 {
     public static readonly StyledProperty<WindowIcon?> SourceProperty = AvaloniaProperty.Register<WindowIconRenderer, WindowIcon?>(nameof(Source));
 

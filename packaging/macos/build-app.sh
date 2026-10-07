@@ -87,6 +87,10 @@ APP="$STAGE"
 # App payload → Contents/MacOS; the apphost is renamed to CFBundleExecutable (Bevel).
 cp -R "$OUT/publish-app/." "$APP/Contents/MacOS/"
 mv "$APP/Contents/MacOS/Bevel.App" "$APP/Contents/MacOS/Bevel"
+# PublishSingleFile still drops dependency .pdb next to the apphost when a referenced project
+# built with symbols (DebugType defaults); codesign then refuses the bundle ("code object is
+# not signed"). Strip them — they are not loadable and must never ship.
+find "$APP/Contents/MacOS" -type f \( -name '*.pdb' -o -name '*.xml' -o -name '*.deps.json' \) -delete
 # bevelctl ships alongside, on-PATH once the user symlinks it (see the cask/postinstall).
 cp "$OUT/publish-cli/bevelctl" "$APP/Contents/MacOS/bevelctl"
 

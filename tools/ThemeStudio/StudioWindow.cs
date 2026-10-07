@@ -13,7 +13,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Bevel.UI;
-using Bevel.UI.Luna;
+using Bevel.UI.Blue2001;
 using Classic.CommonControls;
 
 namespace ThemeStudio;
@@ -133,8 +133,8 @@ public sealed class StudioWindow : BevelWindow
             var id = ThemeService.Themes[Math.Max(0, c.SelectedIndex)].Id;
             ClearOverrides();                       // drop tweaks so the new theme's own values show
             ThemeService.Apply(id);
-            if (id == "luna") LunaVariantService.Apply(_color, _gloss);
-            else LunaVariantService.Clear();        // else Luna's injected caption/highlight brushes linger
+            if (id == "luna") Blue2001VariantService.Apply(_color, _gloss);
+            else Blue2001VariantService.Clear();        // else Luna's injected caption/highlight brushes linger
             RebuildLater();                         // re-read editors from what the theme now defines
         };
         return c;
@@ -142,15 +142,15 @@ public sealed class StudioWindow : BevelWindow
 
     private ComboBox ColorCombo()
     {
-        var c = Combo(LunaVariantService.Colors.Select(x => x.Display), IndexOf(LunaVariantService.Colors, _color));
-        c.SelectionChanged += (_, _) => { _color = LunaVariantService.Colors[Math.Max(0, c.SelectedIndex)].Id; ClearOverrides(); LunaVariantService.Apply(_color, _gloss); RebuildLater(); };
+        var c = Combo(Blue2001VariantService.Colors.Select(x => x.Display), IndexOf(Blue2001VariantService.Colors, _color));
+        c.SelectionChanged += (_, _) => { _color = Blue2001VariantService.Colors[Math.Max(0, c.SelectedIndex)].Id; ClearOverrides(); Blue2001VariantService.Apply(_color, _gloss); RebuildLater(); };
         return c;
     }
 
     private ComboBox GlossCombo()
     {
-        var c = Combo(LunaVariantService.Glosses.Select(x => x.Display), IndexOf(LunaVariantService.Glosses, _gloss));
-        c.SelectionChanged += (_, _) => { _gloss = LunaVariantService.Glosses[Math.Max(0, c.SelectedIndex)].Id; ClearOverrides(); LunaVariantService.Apply(_color, _gloss); RebuildLater(); };
+        var c = Combo(Blue2001VariantService.Glosses.Select(x => x.Display), IndexOf(Blue2001VariantService.Glosses, _gloss));
+        c.SelectionChanged += (_, _) => { _gloss = Blue2001VariantService.Glosses[Math.Max(0, c.SelectedIndex)].Id; ClearOverrides(); Blue2001VariantService.Apply(_color, _gloss); RebuildLater(); };
         return c;
     }
 
@@ -363,7 +363,7 @@ public sealed class StudioWindow : BevelWindow
 
     /// <summary>
     /// Write the current Bevel.* overrides back to the active theme's source. theme.json is the source of
-    /// truth for both themes; Luna also patches its hand-mirrored LunaTokens.axaml (not yet wired to
+    /// truth for both themes; Luna also patches its hand-mirrored Blue2001Tokens.axaml (not yet wired to
     /// ThemeGen), while Win2000 runs ThemeGen so Tokens.axaml + ThemeTokens.cs regenerate. Targeted regex
     /// so only the touched values change (formatting + comments preserved). Caption SystemColors keys are
     /// not persisted yet (they live outside theme.json).
@@ -374,9 +374,9 @@ public sealed class StudioWindow : BevelWindow
         if (root is null) { _status.Text = "could not locate repo root (Bevel.sln)"; return; }
 
         var luna = ThemeService.Current == "luna";
-        var dir = Path.Combine(root, "src", luna ? "Bevel.Themes.Luna" : "Bevel.Themes.Win2000");
+        var dir = Path.Combine(root, "src", luna ? "Bevel.Themes.Blue2001" : "Bevel.Themes.Industrial1999");
         var jsonPath = Path.Combine(dir, "theme.json");
-        var xamlPath = Path.Combine(dir, luna ? "LunaTokens.axaml" : "Tokens.axaml");
+        var xamlPath = Path.Combine(dir, luna ? "Blue2001Tokens.axaml" : "Tokens.axaml");
 
         var saved = 0;
         var skipped = new List<string>();
@@ -404,7 +404,7 @@ public sealed class StudioWindow : BevelWindow
 
         var note = skipped.Count == 0 ? "" : $"  (skipped: {string.Join(", ", skipped)})";
         if (luna)
-            _status.Text = $"saved {saved} → theme.json + LunaTokens.axaml{note}";
+            _status.Text = $"saved {saved} → theme.json + Blue2001Tokens.axaml{note}";
         else
         {
             _status.Text = $"patched {saved} → theme.json — running ThemeGen…{note}";
