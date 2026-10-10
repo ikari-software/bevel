@@ -26,6 +26,11 @@ public static class FlatVariantService
         if (Application.Current?.Resources is not { } resources) return;
         Clear();
         var id = IsKnown(settings.FlatVariant) ? settings.FlatVariant : Default;
+        // "Blue" is the theme-native look: FlatTheme.axaml already defines every token injected
+        // below with the correct source-led pigments, so re-injecting them here would only shadow
+        // the theme with stale values (and the 2-stop Gradient() cannot express the 3-stop caption ramp).
+        if (string.Equals(id, Default, StringComparison.OrdinalIgnoreCase))
+            return;
         var (caption, captionEnd, taskbar, taskbarEnd, select, selectEnd, places, start, startEnd, placeText, toneDark, frame, btn, btnBorder, btnHover, btnPress, progress) = id switch
         {
             "Ergonomic" => ("#C7E3DC", "#75B6A7", "#ECE9D8", "#ECE9D8", "#6B936A", "#527B51", "#75B6A7", "#C7E3DC", "#75B6A7", "#FFFFFF", "#527B51", "#75B6A7", "#75B6A7", "#A4CDC4", "#88C1B3", "#5C998B", "#75B6A7"),

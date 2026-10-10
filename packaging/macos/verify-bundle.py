@@ -35,8 +35,10 @@ XAML_ASSEMBLIES = (
     "Bevel.Taskbar.dll",
     "Bevel.Desktop.dll",
     "Bevel.FileManager.dll",
-    "Bevel.Themes.Win2000.dll",
-    "Bevel.Themes.Luna.dll",
+    "Bevel.Themes.Industrial1999.dll",
+    "Bevel.Themes.Blue2001.dll",
+    "Bevel.Themes.Pastel.dll",
+    "Bevel.Themes.Flat.dll",
     "Classic.Avalonia.Theme.dll",
     "Classic.CommonControls.Avalonia.dll",
 )
