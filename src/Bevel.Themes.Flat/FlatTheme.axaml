@@ -437,16 +437,16 @@
                    flowing continuously from a gentle entry all the way rightward right up to the caption buttons. -->
               <Canvas x:Name="PART_DualTone" HorizontalAlignment="Right" Width="220" Height="{DynamicResource {x:Static common:SystemParameters.WindowCaptionHeightKey}}" IsHitTestVisible="False">
                 <!-- Underlying right-side darker cobalt wash (soft entry at x = 30, solid dark cobalt from x = 120 through x = 220) -->
-                <Rectangle Canvas.Left="30" Canvas.Top="0" Width="190" Height="26">
-                  <Rectangle.Fill>
+                <Rectangle Canvas.Left="30" Canvas.Top="0" Width="190" Height="26" Fill="{DynamicResource Flat.Brush.TitleToneDark}">
+                  <Rectangle.OpacityMask>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
-                      <GradientStop Offset="0" Color="#001E4EAA" />
-                      <GradientStop Offset="0.25" Color="#331E4EAA" />
-                      <GradientStop Offset="0.55" Color="#881E4EAA" />
-                      <GradientStop Offset="0.8" Color="#D91E4EAA" />
-                      <GradientStop Offset="1" Color="#FF1E4EAA" />
+                      <GradientStop Offset="0" Color="#00000000" />
+                      <GradientStop Offset="0.25" Color="#33000000" />
+                      <GradientStop Offset="0.55" Color="#88000000" />
+                      <GradientStop Offset="0.8" Color="#D9000000" />
+                      <GradientStop Offset="1" Color="#FF000000" />
                     </LinearGradientBrush>
-                  </Rectangle.Fill>
+                  </Rectangle.OpacityMask>
                 </Rectangle>
 
                 <!-- Soft diffuse drop shadows: two blurred, low-alpha shadow steps (+1 and +2 offsets) vertically centered -->
@@ -617,6 +617,10 @@
 
         <Style Selector="^:active /template/ Border#PART_GradientBar">
           <Setter Property="Background" Value="{DynamicResource Bevel.Brush.CaptionActive}" />
+        </Style>
+
+        <Style Selector="^:active /template/ Canvas#PART_DualTone">
+          <Setter Property="IsVisible" Value="True" />
         </Style>
       </ControlTheme>
     </ResourceDictionary>

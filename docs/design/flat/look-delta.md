@@ -44,7 +44,7 @@ Reference shorthand:
 | 15 | Selection — secondary | #5096F8 (README; R-CS y=532..569 x=0..390 band) | **No token exists** | **Gap — not fixable here:** no secondary-selection brush is mapped in FlatTheme.axaml (selection-inactive state). Follow-up token needed |
 | 16 | New-item selection | Pale warm yellow #FEEAB6 (README; SVG-O line 46 "New item" row fill; R-CS sparse ≈37 px due to JPEG) | Only icon tint `Flat.Brush.StartMenuFolder` #FEEAB6 (165) / `Blue2001.Brush.StartMenuPlaceIconFolder` (215) | **Gap — not fixable here:** no new-item *row* brush is consumed by the menu template; row-state mapping is a StartMenu.axaml follow-up |
 | 17 | Borders / corner radii | Square corners throughout (README direction; classic bitmap slices are square; shared Classic templates carry no radius) | Chrome `Bevel.Metric.CornerRadius` 0 (236), start menu radii 0 (142-144) ✓ — but every Flat control template rounds 1px (277 Button, 291 CheckBox, 315 TextBox, 321 ComboBox ×3, 327 ProgressBar ×2, 332 Slider ×3, 339 TabItem, 346 TabControl, 351 scroll line button, 358/361 scroll thumbs, 380 ToggleButton) | **Flatten all 1px radii → 0** |
-| 18 | Caption decoration | Clean gradient band, chrome only (R-W caption band; SVG-O header band is a plain gradient) | `PART_DualTone` translucent glass-tile canvas re-enabled on `:active` (625-627), drawing the pastel-era floating tiles over active captions | **Remove the `:active` re-show style** so the tile layer stays hidden (canvas + base style remain, dormant) |
+| 18 | Caption decoration | Clean gradient band with shadowed pixels dual-tone effect at color transition | `PART_DualTone` canvas re-enabled on `:active` with floating pixel tiles and diffuse shadows | **Keep active re-show style** so the authentic Whistler Watercolor shadowed pixel transition renders over active captions |
 
 ## 2. Applied corrections (FlatTheme.axaml, old → new)
 
@@ -59,7 +59,7 @@ Reference shorthand:
 | 226 | `Blue2001.Brush.StartMenuPlacesColumn` | cobalt gradient `#3570D6→#2862C8` | solid `#D9E3F3` |
 | 234 | `Bevel.Metric.MenuItemHeight` | `21` | `18` |
 | 277, 291, 315, 321 (×3), 327 (×2), 332 (×3), 339, 346, 351, 358, 361, 380 | control-template `CornerRadius` | `1` / `0,4,4,0` / `1,1,0,0` / `0,1,1,1` | `0` / `0` / `0,0,0,0` / `0` — pairs positionally: 321 ComboBox `0,4,4,0`→`0`, 339 TabItem `1,1,0,0`→literal `0,0,0,0`, 380 ToggleButton `0,1,1,1`→`0`, remainder `1`→`0` |
-| 625-627 | `^:active /template/ Canvas#PART_DualTone` re-show style | active captions re-enable the glass-tile canvas | style removed; canvas stays hidden |
+| 625-627 | `^:active /template/ Canvas#PART_DualTone` re-show style | active captions re-enable the glass-tile canvas | **Kept** (`PART_DualTone` active style retained for shadowed pixels effect) |
 
 Kept intentionally (already on target): frame #3567CB, white client, warm menubar #ECE9D8
 (21px), warm taskbar 30px, start-button face/hover/pressed ramps, #316AC5 selection,
