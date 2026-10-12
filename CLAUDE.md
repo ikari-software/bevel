@@ -85,9 +85,23 @@ dotnet run --project src/Bevel.App -- --role=filer --open-path ~/Documents   # a
 # child instead just gets it respawned by the supervisor.
 pkill -f "dist/Bevel.app/Contents/MacOS/Bevel$"      # SIGTERM, no -9
 # Best of all, when the UI is alive: Start > Turn Off.
-# If it is genuinely wedged and -9 is unavoidable, restore the Dock by hand afterwards:
-#   defaults write com.apple.dock autohide -bool false && killall Dock
+
+# HALF-DEAD SHELL (launcher crashed, children orphaned to launchd, Dock left hidden)? Don't do it by
+# hand — that is what this script is for. It signals the launcher when one is alive, else SIGTERMs the
+# orphans in order (UI roles, then core last so it flushes settings.db), and only touches the Dock when
+# Bevel can no longer restore it itself — reading ~/.bevel/dock-claimed.json for the value Bevel
+# CAPTURED before hiding, rather than assuming you want it visible.
+./packaging/macos/bevel-recover.sh              # diagnose + recover gently
+./packaging/macos/bevel-recover.sh --dry-run    # report only
+./packaging/macos/bevel-recover.sh --force      # SIGKILL the wedged, then heal the Dock explicitly
+# A clean SIGTERM needs no Dock fix at all: MacOSDockController restores it from AppDomain.ProcessExit.
+# That is the whole reason -9 is forbidden — it skips that handler and strands the Dock.
 ```
+
+**Diagnosing a crash.** Every role mirrors unhandled exceptions into `$TMPDIR/bevel-restart.log`
+(`RestartDiag`), because a macOS crash report shows only `IL_Throw → DispatchManagedException →
+PROCAbort` with the managed frames unsymbolicated — the exception type and stack are unrecoverable from
+the report alone. **Read that log before theorising:** `grep FATAL "$TMPDIR/bevel-restart.log"`.
 
 Benchmarks live in `benchmarks/Bevel.Benchmarks` (BenchmarkDotNet; **not** in `Bevel.sln` —
 build/run explicitly). See `docs/perf.md`.
