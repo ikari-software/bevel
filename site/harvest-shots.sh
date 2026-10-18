@@ -41,7 +41,15 @@ run() { # run <csproj> <filter>  — env comes from the caller
 echo "==> info panes (4)"
 BEVEL_INFO_DIR="$TMP/info" && mkdir -p "$BEVEL_INFO_DIR"
 BEVEL_INFO_DIR="$BEVEL_INFO_DIR" run "$FM" "FullyQualifiedName~InfoPaneStyleTest.Each_style_renders"
-for t in win2000 winxp modern win9x; do cp "$TMP/info/infopane-$t.png" "$OUT/"; produced "infopane-$t.png"; done
+# Take whatever tags the test actually wrote rather than restating its [InlineData] list here.
+# That list IS the shot filenames, and it moved once already: the theme-ID migration renamed the
+# win2000 tag to industrial1999 in the test and in index.html, but this loop kept asking for
+# infopane-win2000.png and so failed the drift gate on every push for six days. Counting them
+# keeps the check honest in the other direction — a test that silently stops rendering is a
+# failure here, not four quietly stale committed PNGs.
+for f in "$TMP"/info/infopane-*.png; do cp "$f" "$OUT/"; produced "$(basename "$f")"; done
+n=$(ls "$TMP"/info/infopane-*.png | wc -l | tr -d ' ')
+[ "$n" = 4 ] || { echo "expected 4 info-pane shots, got $n — did InfoPaneStyleTest change?" >&2; exit 1; }
 
 echo "==> settings dialog, Appearance tab"
 BEVEL_ONB_APPEARANCE_OUT="$OUT/theme-industrial1999.png" \
@@ -58,6 +66,16 @@ echo "==> Start menu, type-to-search"
 BEVEL_RENDER_OUT="$OUT/startmenu-search.png" \
   run "$TB" "FullyQualifiedName~Render_searching_start_menu_to_png&DisplayName~win2000"
 produced "startmenu-search.png"
+
+echo "==> flat + pastel skin tiles"
+# The page's two newest tiles were hand-copied out of the design-review renders in 46b8e2d and
+# never wired in, so the audit below has been failing them as UNPRODUCED ever since. They come from
+# the SAME test the reviewers read, redirected with BEVEL_FLATPASTEL_DIR; the page tile is the Blue
+# variation, which is what Flat ships as its default.
+FP="$TMP/flatpastel" && mkdir -p "$FP"
+BEVEL_FLATPASTEL_DIR="$FP" run "$TB" "FullyQualifiedName~RenderFlatAndPastelComparisonTest"
+cp "$FP/flat-window-blue.png" "$OUT/theme-flat.png";  produced "theme-flat.png"
+cp "$FP/pastel-window.png"    "$OUT/theme-pastel.png"; produced "theme-pastel.png"
 
 echo "==> Luna colourways, four up"
 BEVEL_LUNA_4UP_OUT="$OUT/blue2001-4up.png" \

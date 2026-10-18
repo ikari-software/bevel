@@ -23,8 +23,49 @@ namespace Bevel.Taskbar.Tests;
 [Collection("TaskbarTheme")]
 public class RenderFlatAndPastelComparisonTest
 {
-    private static readonly string OutDir = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "../../../../../docs/design/flat/renders"));
+    /// <summary>
+    /// Where the crops land. Defaults to the checked-in design-review set under
+    /// docs/design/flat/renders, and <c>BEVEL_FLATPASTEL_DIR</c> redirects it so site/harvest-shots.sh
+    /// can take theme-flat.png / theme-pastel.png from the same render the reviewers look at, rather
+    /// than someone hand-copying a crop into site/shots and leaving the page to drift from the skin.
+    /// </summary>
+    private static readonly string OutDir =
+        Environment.GetEnvironmentVariable("BEVEL_FLATPASTEL_DIR") is { Length: > 0 } dir
+            ? Path.GetFullPath(dir)
+            : Path.GetFullPath(
+                Path.Combine(AppContext.BaseDirectory, "../../../../../docs/design/flat/renders"));
+
+    /// <summary>Whether this run is harvesting for the landing page rather than for design review.</summary>
+    private static bool ForSite =>
+        Environment.GetEnvironmentVariable("BEVEL_FLATPASTEL_DIR") is { Length: > 0 };
+
+    /// <summary>
+    /// Writes one crop at the resolution its CONSUMER requires — the two differ, and conflating them
+    /// corrupts one of them.
+    ///
+    /// Design review (the default) stays at 1x because docs/design/flat/look-delta.md verifies these
+    /// renders by absolute pixel coordinate — "x=0..3, x=516..519" for the 520-wide window frame,
+    /// "clock digits x=866..887" for the 900x30 taskbar — and pins two of them by sha256. Rendering
+    /// them at 2x would leave every coordinate in that document quietly wrong.
+    ///
+    /// The landing page requires 2x: index.html declares the LOGICAL size and site/check-shot-sizes.py
+    /// enforces that the file is twice it, so a 1x tile fails that gate and looks smeared beside its
+    /// neighbours on a Retina display. <see cref="Bevel.TestSupport.SiteShot"/> also settles the frame
+    /// before saving, which the page's byte-comparison drift check needs.
+    /// </summary>
+    private static void SaveCrop(Window window, string fileName)
+    {
+        var path = Path.Combine(OutDir, fileName);
+        if (ForSite)
+        {
+            Bevel.TestSupport.SiteShot.Save(window, path);
+            return;
+        }
+
+        var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        frame!.Save(path);
+    }
 
     private sealed class ComparisonPinnedClock : TimeProvider
     {
@@ -130,9 +171,7 @@ public class RenderFlatAndPastelComparisonTest
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
-        frame!.Save(Path.Combine(OutDir, fileName));
+        SaveCrop(window, fileName);
         window.Close();
     }
 
@@ -205,9 +244,7 @@ public class RenderFlatAndPastelComparisonTest
             clock.Time = new ComparisonPinnedClock();
         Dispatcher.UIThread.RunJobs();
 
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
-        frame!.Save(Path.Combine(OutDir, fileName));
+        SaveCrop(window, fileName);
         window.Close();
     }
 }
