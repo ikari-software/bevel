@@ -13,7 +13,13 @@ namespace Bevel.FileManager.Components;
 /// Win2000 Explorer toolbar, never traced from Microsoft assets). Each glyph is composed in a
 /// 16-unit space and rasterized once at 2x into a 16-DIP <see cref="Bitmap"/> for the classic
 /// <c>ToolBarButton.SmallIcon</c> slot — crisp on HiDPI, gradients instead of dithering.
-/// Colors resolve from the active theme via <see cref="ThemeTokens"/> so glyphs adapt to all 14 schemes.
+/// Color follows what the glyph DEPICTS, which is how the XP/Vista icon sets did it:
+/// <list type="bullet">
+/// <item>Objects — a folder, a sheet of paper, a direction arrow — keep their own literal colour in
+/// every scheme, because a folder is amber whatever the window chrome is doing.</item>
+/// <item>Chrome — the Views grid, the tick, text rules, outlines — resolves from the active theme via
+/// <see cref="ThemeTokens"/> and so adapts across all 14 schemes.</item>
+/// </list>
 /// </summary>
 public static class ToolbarIcons
 {
@@ -52,18 +58,15 @@ public static class ToolbarIcons
         new(ResolveColor(tokenKey, fallbackHex));
 
     // ── Semantic color token aliases (Win2000 Standard fallbacks in comments) ──
+    // Only the tokens the CHROME glyphs use live here — see the class comment for why the
+    // object glyphs are literal instead. Re-add an alias when a glyph actually needs it; an
+    // unreferenced one is CS0414, which CI gates to an error.
 
-    private static readonly string TokBF = ThemeTokens.ColorButtonFace;           // #D4D0C8
-    private static readonly string TokBH = ThemeTokens.ColorButtonHighlight;      // #FFFFFF
-    private static readonly string TokBL = ThemeTokens.ColorButtonLight;          // #D4D0C8
-    private static readonly string TokBS = ThemeTokens.ColorButtonShadow;         // #808080
     private static readonly string TokBD = ThemeTokens.ColorButtonDkShadow;       // #404040
-    private static readonly string TokW  = ThemeTokens.ColorWindow;               // #FFFFFF
     private static readonly string TokAT = ThemeTokens.ColorActiveTitle;          // #0A246A
     private static readonly string TokGA = ThemeTokens.ColorGradientActiveTitle;  // #A6CAF0
     private static readonly string TokHL = ThemeTokens.ColorHighlight;            // #0A246A
     private static readonly string TokHT = ThemeTokens.ColorHighlightText;        // #FFFFFF
-    private static readonly string TokHK = ThemeTokens.ColorHotTracking;          // #000080
 
     // ── Resolved brushes (lazy, theme-aware) ────────���───────────────────────
 
