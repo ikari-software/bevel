@@ -28,7 +28,7 @@ public class RenderGroupedFocusTest
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
             var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
             var wm = new StubWindowManager();
@@ -88,7 +88,7 @@ public class RenderGroupedFocusTest
         }
         finally
         {
-            Bevel.UI.ThemeService.Apply("win2000");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 }

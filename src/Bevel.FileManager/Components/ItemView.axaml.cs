@@ -264,9 +264,9 @@ public partial class ItemView : UserControl
         => Avalonia.Application.Current?.TryGetResource(key, null, out var v) == true && v is IBrush b
             ? b
             : new SolidColorBrush(Color.Parse(fallbackHex));
-    static readonly IBrush SelectionFill = ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlight, "#0A246A");
-    static readonly IBrush SelectionText = ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlightText, "#FFFFFF");
-    static readonly IBrush NormalText = ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
+    static IBrush SelectionFill => ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlight, "#0A246A");
+    static IBrush SelectionText => ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlightText, "#FFFFFF");
+    static IBrush NormalText => ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
         new(sel => sel ? SelectionFill : Brushes.Transparent);
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
@@ -337,8 +337,9 @@ public partial class ItemView : UserControl
     private FuncDataTemplate<ItemViewModel> BuildDetailsTemplate() => new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        // No horizontal gridlines — classic Filer details view has plain white rows.
+        // Keep rows on the active window surface; classic details view does not add horizontal gridlines.
         var row = new Border { Padding = new(2, 1) };
+        row[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
         var g = new Grid { Height = 20 };
         g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
@@ -366,7 +367,9 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> ThumbTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var b = new Border { BorderBrush = new SolidColorBrush(0xFFACA899), BorderThickness = new(1), Padding = new(4), Margin = new(2), Background = Brushes.White };
+        var b = new Border { BorderThickness = new(1), Padding = new(4), Margin = new(2) };
+        b[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
+        b[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindowFrame);
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
         s.Children.Add(Glyphs.Icon(96, vm.IconKey));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));

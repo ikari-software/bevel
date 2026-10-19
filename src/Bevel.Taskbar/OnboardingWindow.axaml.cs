@@ -137,6 +137,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         OpacitySlider.ValueChanged += OnAppearanceSliderChanged;
         BgColorBox.TextChanged += (_, _) => PersistAppearance();
         ThemeCombo.SelectionChanged += OnThemeChanged;
+        PreviewThemeButton.Click += OnPreviewTheme;
         FontFamilyCombo.SelectionChanged += OnFontFamilyChanged;
         TrayCapSlider.ValueChanged += OnTraySliderChanged;
         TrayIconSizeSlider.ValueChanged += OnTraySliderChanged;
@@ -560,6 +561,24 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
             if (string.Equals(Bevel.UI.FontService.Families[i], family, StringComparison.OrdinalIgnoreCase))
                 return i + 1;
         return 0;   // a family that's no longer installed falls back to the theme default
+    }
+
+    private async void OnPreviewTheme(object? sender, RoutedEventArgs e)
+    {
+        var idx = ThemeCombo.SelectedIndex;
+        if (idx < 0 || idx >= Bevel.UI.ThemeService.Themes.Count) return;
+        var selected = Bevel.UI.ThemeService.Themes[idx].Id;
+        var previous = Bevel.UI.ThemeService.Current;
+        if (!Bevel.UI.ThemeService.Apply(selected)) return;
+
+        var preview = new ThemePreviewWindow();
+        preview.Closed += (_, _) =>
+        {
+            if (!string.Equals(previous, selected, StringComparison.Ordinal))
+                Bevel.UI.ThemeService.Apply(previous);
+        };
+        var owner = this;
+        await preview.ShowDialog(owner);
     }
 
     /// <summary>Theme picker (PKG-03): swaps the whole token bundle live via

@@ -6,7 +6,8 @@
  * needs one, and a build step would be one more thing between a harvested screenshot and the live page.
  *
  * Serves from this directory: `/` and `/index.html` both return the page, `/shots/*` the real renders,
- * plus `/robots.txt`, `/agents.txt`, `/sitemap.xml`, and `/updates/*` (Velopack feed stubs).
+ * plus `/robots.txt`, `/agents.txt`, `/sitemap.xml`, `/updates/*` (Velopack feed stubs), and
+ * `/downloads/*` (release binaries staged locally — gitignored, included in `deno deploy`).
  *
  * Canonical host is https://bevel.run/ — ikari.software/bevel-desktop is a 301 alias.
  */
@@ -51,6 +52,8 @@ const SCRIPT_SRC = await inlineScriptHashes();
  * instead. serveDir already emits an ETag, so an unchanged shot costs a 304, not a re-download. */
 function cacheControl(pathname: string): string {
   if (pathname.startsWith("/shots/")) return "public, no-cache";
+  // Binaries are versioned in the filename (Bevel-0.1.0.dmg); cache hard so re-downloads are cheap.
+  if (pathname.startsWith("/downloads/")) return "public, max-age=86400, immutable";
   return "public, max-age=0, must-revalidate";
 }
 

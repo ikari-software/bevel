@@ -6,11 +6,11 @@
         <!-- App-wide UI font: bundled Noto Sans (OFL), the Tahoma metric-substitute.
              ContentControlThemeFontFamily is what the Classic theme's Window binds, and
              FontFamily inherits down the visual tree. -->
-        <FontFamily x:Key="ContentControlThemeFontFamily">avares://Bevel.Themes.Win2000/Assets/#Noto Sans</FontFamily>
+        <FontFamily x:Key="ContentControlThemeFontFamily">avares://Bevel.Themes.Industrial1999/Assets/#Noto Sans</FontFamily>
     </Application.Resources>
     <Application.Styles>
-        <!-- Default theme = Bevel.Themes.Win2000 (M0: re-exports Classic.Avalonia). -->
-        <StyleInclude Source="avares://Bevel.Themes.Win2000/Win2000Theme.axaml" />
+        <!-- Default theme = Bevel.Themes.Industrial1999 (M0: re-exports Classic.Avalonia). -->
+        <StyleInclude Source="avares://Bevel.Themes.Industrial1999/Industrial1999Theme.axaml" />
 
         <!-- Live-themable control contract (bevel-dob): bind each control's Theme to the shared
              Bevel.Theme.* swap key. Swapping the active theme changes those resources, and because Theme

@@ -31,6 +31,59 @@ final class WindowServiceSpawnerTests: XCTestCase {
                 deterministic to assert.
                 """)
         }
+        // AXIsProcessTrusted() IS NOT ENOUGH. It answers "does this process claim the grant",
+        // which comes back true for a binary launched from an Accessibility-granted terminal —
+        // while every real cross-app AX query still returns nothing, because the grant is keyed to
+        // a signing identity/binary that a freshly built `swift test` bundle does not have. The
+        // symptom is brutal to diagnose from here: AXWindows answers .success with an empty (or
+        // unusable) list for EVERY app, so the helper never AX-correlates the spawned window, never
+        // reads its AX title, and correctly drops it at the no-title gate — and the test fails with
+        // "window not found" as though the helper were broken.
+        //
+        // So prove AX actually WORKS: some other regular app on this machine must expose at least
+        // one AX window that maps to a real CGWindowID. If not a single one does, AX is non-functional
+        // for this runner and these tests cannot mean anything — skip, as this gate always intended.
+        guard axCanSeeSomeoneElsesWindow() else {
+            throw XCTSkip("""
+                Accessibility reports trusted, but no cross-app AX window is readable from this \
+                test runner — AXWindows is empty or unusable for every running app. That is a \
+                grant that does not really apply to this binary (TCC keys Accessibility to a \
+                signing identity / binary path, and a freshly built test bundle has none), not a \
+                bug in the helper: without AX titles the helper correctly drops untitled windows. \
+                Run these from an AX-granted host, e.g. the signed dev app's test target, or grant \
+                Accessibility to the exact binary running the tests.
+                """)
+        }
+    }
+
+    /// True when at least one OTHER regular app exposes an AX window that resolves to a real
+    /// CGWindowID. The predicate is deliberately the SAME one `WindowServiceImpl`'s correlation
+    /// depends on — `_AXUIElementGetWindow` returning success with a non-zero id — because anything
+    /// weaker passes when AX is useless:
+    ///
+    /// Measured on an unauthorized runner, every regular app returns a ONE-element AXWindows array
+    /// holding the *application* element rather than a window: its AXTitle is the app's name, its
+    /// AXPosition is kAXErrorAttributeUnsupported (-25205), and `_AXUIElementGetWindow` answers
+    /// kAXErrorIllegalArgument (-25201). A "can I read AXPosition?" check is therefore not enough —
+    /// some app elements (Finder's) DO answer AXPosition, which made this gate pass while not one
+    /// window on the machine was actually correlatable.
+    ///
+    /// One success anywhere is enough; apps that answer nothing are skipped rather than counted as
+    /// evidence either way.
+    private func axCanSeeSomeoneElsesWindow() -> Bool {
+        let own = getpid()
+        for app in NSWorkspace.shared.runningApplications
+        where app.activationPolicy == .regular && app.processIdentifier != own {
+            let axApp = AXUIElementCreateApplication(app.processIdentifier)
+            var windows: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windows) == .success,
+                  let list = windows as? [AXUIElement], !list.isEmpty else { continue }
+            for axWin in list {
+                var cgID: CGWindowID = 0
+                if _AXUIElementGetWindow(axWin, &cgID) == .success, cgID != 0 { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - Tests

@@ -97,7 +97,18 @@ public sealed record ForeignWindow(
     bool IsAppPresence = false,
     /// <summary>Owning app's bundle id (a stable machine key), used for app-level actions like Quit
     /// (bevel-ww71). Distinct from <see cref="AppId"/>, which is the friendly display name.</summary>
-    string? BundleId = null);
+    string? BundleId = null,
+    /// <summary>True when the window is in native (green-button) fullscreen, which puts it on its own
+    /// Space. Distinct from a zoomed/maximized window, which merely fills the usable area of the
+    /// current Space. Consumers that act on geometry must treat the two differently: a fullscreen
+    /// window's rect is the whole display by definition, so it "overlaps" any shell chrome without
+    /// being in its way (bevel-ex8n). <b>False when unknown</b> — never guessed.</summary>
+    bool IsFullscreen = false,
+    /// <summary>True when the window's Mission Control Space is known and no display is currently
+    /// showing it. Such a window is still enumerated (CGWindowList <c>.optionAll</c>) and carries its
+    /// last-known rect, which is stale as a position on the screen you are looking at. <b>False when
+    /// unknown</b> — a missing Spaces symbol must not make every window look remote.</summary>
+    bool IsOnOtherSpace = false);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

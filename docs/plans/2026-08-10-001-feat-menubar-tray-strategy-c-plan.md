@@ -293,7 +293,7 @@ Grouped into four phases; dependency-ordered. U-IDs are stable.
   on selection, AX `PerformAction` the corresponding element. If AX can't read the menu without opening
   it, classify the item as non-proxiable and fall back to U6. Keep the subset detection conservative.
 - **Patterns to follow:** existing AX usage (`axTitle`, `pressViaAX`); Luna context-menu theming in
-  `src/Bevel.UI`/`Bevel.Themes.Luna`; the `ISystemTrayHost` async pattern.
+  `src/Bevel.UI`/`Bevel.Themes.Blue2001`; the `ISystemTrayHost` async pattern.
 - **Test scenarios:**
   - Covers R4. A readable-menu item renders a bottom menu whose entries match the AX tree (tree→menu
     mapping unit-tested from a fixture tree).

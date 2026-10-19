@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Bevel.Core;
-using Bevel.UI.Luna;
+using Bevel.UI.Blue2001;
 
 namespace Bevel.UI;
 
@@ -54,12 +54,21 @@ public static class ThemeVariants
         ["luna"] = new ThemeVariantSpec("luna",
             new[]
             {
-                new ThemeOption("Colour", LunaVariantService.Colors,
-                    s => s.LunaColor, (s, v) => s.LunaColor = v),
-                new ThemeOption("Gloss", LunaVariantService.Glosses,
-                    s => s.LunaGloss, (s, v) => s.LunaGloss = v),
+                new ThemeOption("Colour", Blue2001VariantService.Colors,
+                    s => s.Blue2001Color, (s, v) => s.Blue2001Color = v),
+                new ThemeOption("Gloss", Blue2001VariantService.Glosses,
+                    s => s.Blue2001Gloss, (s, v) => s.Blue2001Gloss = v),
             },
-            s => LunaVariantService.Apply(s.LunaColor, s.LunaGloss)),
+            s => Blue2001VariantService.Apply(s.Blue2001Color, s.Blue2001Gloss)),
+
+        [ThemeIds.Flat] = new ThemeVariantSpec(ThemeIds.Flat,
+            new[]
+            {
+                new ThemeOption("Watercolor variation", FlatVariantService.Variants,
+                    s => s.FlatVariant, (s, v) => s.FlatVariant = v),
+            },
+            s => FlatVariantService.Apply(s)),
+        [ThemeIds.Pastel] = new ThemeVariantSpec(ThemeIds.Pastel, Array.Empty<ThemeOption>(), _ => { }),
     };
 
     /// <summary>The active theme's option specs, or empty if the theme contributes none.</summary>
@@ -74,9 +83,11 @@ public static class ThemeVariants
         // Deactivate engines that own shared resource keys before applying the active theme's — each
         // engine merges Application-level resources that would otherwise linger and outrank the incoming
         // theme (e.g. a Win2000 scheme's WindowCaptionHeightKey=18 shrinking Luna's 25 caption — bevel-p3va).
-        if (!string.Equals(s.ThemeId, "luna", StringComparison.OrdinalIgnoreCase))
-            LunaVariantService.Clear();
-        if (!string.Equals(s.ThemeId, "win2000", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Blue2001, StringComparison.OrdinalIgnoreCase))
+            Blue2001VariantService.Clear();
+        if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Flat, StringComparison.OrdinalIgnoreCase))
+            FlatVariantService.Clear();
+        if (!string.Equals(s.ThemeId, Bevel.Core.ThemeIds.Industrial1999, StringComparison.OrdinalIgnoreCase))
             ColorSchemeService.Clear();
 
         if (ByTheme.TryGetValue(s.ThemeId, out var spec))

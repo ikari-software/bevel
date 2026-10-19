@@ -57,7 +57,7 @@ lands, tighten the matching budget and update the table above.
   UI/dispatcher thread, which BDN's engine thread isn't; it throws "Call from invalid thread". Bitmaps
   (`TrayIconTint`) are thread-agnostic and benchmark fine. A future UI-thread harness could cover glyph
   build.
-- **Theme apply** (`ThemeService`/`LunaVariantService`), **taskbar reflow end-to-end**, and **IPC round-trips**
+- **Theme apply** (`ThemeService`/`Blue2001VariantService`), **taskbar reflow end-to-end**, and **IPC round-trips**
   (taskbar↔core↔helper) — these need a live Avalonia app / running processes, out of scope for the pure-CPU
   micro-harness. Profile with `dotnet-trace` under real churn when they're suspected.
 

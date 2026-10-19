@@ -6,7 +6,7 @@ using Avalonia.Controls.Chrome;
 
 namespace Classic.Avalonia.Theme.Utils;
 
-internal class CaptionButtonsEx : CaptionButtons
+public class CaptionButtonsEx : CaptionButtons
 {
     private static FieldInfo? showingAsDialogField;
 

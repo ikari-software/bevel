@@ -71,7 +71,7 @@ public sealed class AddressBarFolderGlyphTests
         Assert.NotEqual(Colors.Red, original);
 
         // A recolour engine changes a token at Application level, then invalidates Glyphs' brush cache —
-        // exactly what LunaVariantService / ColorSchemeService / ThemeService do on a switch.
+        // exactly what Blue2001VariantService / ColorSchemeService / ThemeService do on a switch.
         var resources = Application.Current!.Resources;
         resources[ThemeTokens.ColorIconFolderBackTop] = Colors.Red;
         try

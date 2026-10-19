@@ -305,7 +305,9 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             Bounds: f is null ? default : new PalRect(f.X, f.Y, f.Width, f.Height),
             IconPng: icon.Length == 0 ? null : icon,
             IsAppPresence: tw.IsAppPresence,
-            BundleId: string.IsNullOrEmpty(tw.AppBundleId) ? null : tw.AppBundleId);
+            BundleId: string.IsNullOrEmpty(tw.AppBundleId) ? null : tw.AppBundleId,
+            IsFullscreen: tw.IsFullscreen,
+            IsOnOtherSpace: tw.IsOnOtherSpace);
     }
 
     public void Dispose()

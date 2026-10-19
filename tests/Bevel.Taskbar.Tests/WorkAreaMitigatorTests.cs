@@ -23,8 +23,10 @@ public class WorkAreaMitigatorTests
         => new(Directory.CreateDirectory(Path.Combine(
                Path.GetTempPath(), "bevel-tests", Guid.NewGuid().ToString("n"))).FullName);
 
-    private static ForeignWindow Win(string id, PalRect bounds, bool minimized = false)
-        => new(new ForeignWindowId(id), "Test", "com.test", minimized, false, bounds);
+    private static ForeignWindow Win(string id, PalRect bounds, bool minimized = false,
+        bool fullscreen = false, bool otherSpace = false)
+        => new(new ForeignWindowId(id), "Test", "com.test", minimized, false, bounds,
+               IsFullscreen: fullscreen, IsOnOtherSpace: otherSpace);
 
     private static WorkAreaMitigator Make(RecordingWindowManager wm, FixedClock clock)
         => new(wm, ScratchSettings(), () => Band, clock);
@@ -217,6 +219,80 @@ public class WorkAreaMitigatorTests
         m.Dispose();
     }
 
+    /// <summary>
+    /// bevel-ex8n: a native-fullscreen window's rect IS the display, so it overlaps the band by
+    /// definition — yet it lives on its own Space where the bar is not drawn at all. Nudging it
+    /// corrects nothing and mangles the user's window. Geometry alone cannot tell this apart from a
+    /// zoomed window, which is why the flag has to come down from the helper.
+    /// </summary>
+    [Fact]
+    public async Task Fullscreen_window_is_never_nudged()
+    {
+        // Same overlapping geometry as the nudge test, so ONLY the flag can be what spares it.
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300), fullscreen: true));
+        var m = Make(wm, new FixedClock());
+
+        Assert.Equal(0, await m.MitigateOnceAsync());
+        Assert.Empty(wm.Repositions);
+    }
+
+    /// <summary>
+    /// bevel-ex8n: enumeration uses CGWindowList <c>.optionAll</c>, so a window parked on a Space no
+    /// display is showing is listed with the last frame it had on screen. Its "overlap" is an
+    /// artefact of where it used to be, and AX cannot address it anyway.
+    /// </summary>
+    [Fact]
+    public async Task Window_on_another_space_is_never_nudged()
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300), otherSpace: true));
+        var m = Make(wm, new FixedClock());
+
+        Assert.Equal(0, await m.MitigateOnceAsync());
+        Assert.Empty(wm.Repositions);
+    }
+
+    /// <summary>
+    /// bevel-v9vr: the reposition RPC throws for a window AX cannot reach, and the throw used to
+    /// escape the per-window loop and end the whole pass — so every window after the first failure
+    /// silently went uncorrected, behind the caller's empty catch.
+    /// </summary>
+    [Fact]
+    public async Task One_failing_reposition_does_not_abort_the_pass()
+    {
+        var wm = new RecordingWindowManager(
+            Win("w1", new PalRect(0, 800, 400, 300)),
+            Win("w2", new PalRect(400, 800, 400, 300)),
+            Win("w3", new PalRect(800, 800, 400, 300)));
+        wm.FailFor.Add("w2");
+        var m = Make(wm, new FixedClock());
+
+        // w2 is attempted and fails; the other two succeed, so the pass reports 2.
+        Assert.Equal(2, await m.MitigateOnceAsync());
+        Assert.Equal(new[] { "w1", "w2", "w3" }, wm.Repositions.Select(r => r.Id.Value).ToArray());
+    }
+
+    /// <summary>The attempt is recorded even when the reposition throws, so an unreachable window
+    /// costs one try per rate-limit window instead of one per pass — it used to be retried forever,
+    /// because the bookkeeping line sat after the throwing await.</summary>
+    [Fact]
+    public async Task Failing_window_is_rate_limited_like_any_other()
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        wm.FailFor.Add("w1");
+        var clock = new FixedClock();
+        var m = Make(wm, clock);
+
+        Assert.Equal(0, await m.MitigateOnceAsync());   // tried, failed
+        Assert.Single(wm.Repositions);
+
+        await m.MitigateOnceAsync();                    // same frame, inside the limiter → not retried
+        Assert.Single(wm.Repositions);
+
+        clock.Advance(TimeSpan.FromSeconds(3));
+        await m.MitigateOnceAsync();                    // limiter elapsed → one more try
+        Assert.Equal(2, wm.Repositions.Count);
+    }
+
     private static bool Crosses(PalRect w, PalRect band)
         => w.Y < band.Y + band.Height && w.Y + w.Height > band.Y
         && w.X < band.X + band.Width && w.X + w.Width > band.X;
@@ -241,10 +317,18 @@ public class WorkAreaMitigatorTests
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
             => ValueTask.FromResult(_windows);
 
+        /// <summary>Window ids whose reposition throws, modelling a window AX cannot address at all
+        /// (another Space, an app with its AX API off) — the core turns the helper's rejection into
+        /// an InvalidOperationException. Attempts are still recorded, so a test can assert the engine
+        /// TRIED and simply did not succeed.</summary>
+        public HashSet<string> FailFor { get; } = new();
+
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
         {
             Repositions.Add((id, bounds));
             OnReposition?.Invoke(Repositions.Count);
+            if (FailFor.Contains(id.Value))
+                throw new InvalidOperationException($"shell-core Reposition failed: {id.Value} unreachable");
             return Task.CompletedTask;
         }
 

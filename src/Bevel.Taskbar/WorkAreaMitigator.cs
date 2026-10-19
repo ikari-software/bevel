@@ -206,7 +206,7 @@ public sealed class WorkAreaMitigator : IDisposable
             var id = w.Id.Value;
             live.Add(id);
 
-            if (w.IsMinimized || !Overlaps(w.Bounds, band))
+            if (!IsCandidate(w) || !Overlaps(w.Bounds, band))
             {
                 // Clear of the band (or gone from view): whatever we last attempted for this window
                 // took, so it can be corrected again immediately next time it crosses in — a
@@ -221,9 +221,26 @@ public sealed class WorkAreaMitigator : IDisposable
             var newHeight = band.Y - w.Bounds.Y;
             if (newHeight < MinUsableHeight) continue; // never squash a window into unusability
 
-            await _windowManager.RepositionAsync(w.Id, w.Bounds with { Height = newHeight }, ct);
+            // Record the attempt BEFORE the await, and keep going on failure (bevel-v9vr). One
+            // window's reposition must not end the pass: the reposition RPC throws for windows AX
+            // cannot address at all — the core surfaces a helper rejection as Ok=false, which
+            // ShellCoreWindowManager.Send turns into an InvalidOperationException — and an uncaught
+            // throw here skipped every window later in the enumeration. Worse, it latched: the
+            // thrower never reached the line below, so the back-off never applied and the next pass
+            // died at the same window, silently, behind the caller's empty catch.
             _attempts[id] = new Attempt(w.Bounds, _time.GetUtcNow().UtcDateTime);
-            repositioned++;
+            try
+            {
+                await _windowManager.RepositionAsync(w.Id, w.Bounds with { Height = newHeight }, ct);
+                repositioned++;
+            }
+            catch (OperationCanceledException) { throw; }  // our own cancellation — end the pass
+            catch (Exception ex)
+            {
+                // Per-window and non-fatal. The attempt is already recorded, so an unreachable
+                // window costs one try per rate-limit window rather than one per pass.
+                Console.Error.WriteLine($"[workarea] reposition failed for {id}: {ex.Message}");
+            }
         }
 
         Prune(live);
@@ -237,6 +254,25 @@ public sealed class WorkAreaMitigator : IDisposable
             foreach (var stale in _attempts.Keys.Where(k => !live.Contains(k)).ToList())
                 _attempts.TryRemove(stale, out _);
     }
+
+    /// <summary>
+    /// Whether this window is eligible for nudging at all, independent of geometry (bevel-ex8n).
+    /// Overlap alone is not evidence that a window is in the bar's way:
+    /// <list type="bullet">
+    ///   <item><b>Minimized</b> — off-screen; its last frame is stale.</item>
+    ///   <item><b>Fullscreen</b> — a native-fullscreen window's rect IS the display, so it always
+    ///   "overlaps" the band, yet it lives on its own Space where the bar is not even drawn. There
+    ///   is nothing to mitigate, and shrinking it only mangles the user's window. (Option-zoom /
+    ///   maximize stays on the user Space and is still corrected — that is the feature.)</item>
+    ///   <item><b>On another Space</b> — enumeration uses CGWindowList <c>.optionAll</c>, so windows
+    ///   parked on Spaces no display is showing are listed with their last-known rect. Their overlap
+    ///   is an artefact of where they were, and AX cannot address them anyway.</item>
+    /// </list>
+    /// Both new flags are conservative at the source: unknown never claims fullscreen or other-Space,
+    /// so a missing SkyLight symbol or an AX-less app degrades to exactly today's behaviour.
+    /// </summary>
+    private static bool IsCandidate(ForeignWindow w)
+        => !w.IsMinimized && !w.IsFullscreen && !w.IsOnOtherSpace;
 
     private static bool Overlaps(PalRect w, PalRect band)
         => w.Y < band.Y + band.Height
