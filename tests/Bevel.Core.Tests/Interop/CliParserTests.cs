@@ -59,6 +59,17 @@ public class BevelCtlParserTests
     public void Launch_requires_one_app_id() => Assert.Contains("one application id", Err("launch"));
 
     [Fact]
+    public void Quit_parses_bare() => Assert.Equal(BevelVerb.Quit, Ok("quit").Verb);
+
+    /// <summary>Quit tears down the WHOLE shell, so a mistyped operand ("quit filer") must be an error
+    /// rather than a silently-broader action than the user asked for.</summary>
+    [Fact]
+    public void Quit_rejects_operands() => Assert.Contains("no arguments", Err("quit", "filer"));
+
+    [Fact]
+    public void Quit_is_listed_in_the_usage() => Assert.Contains("quit", BevelCtlParser.Usage);
+
+    [Fact]
     public void Query_programs_parses() => Assert.Equal(QueryKind.Programs, Ok("query", "programs").Query);
 
     [Fact]

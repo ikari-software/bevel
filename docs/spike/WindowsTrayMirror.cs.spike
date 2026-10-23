@@ -1,0 +1,368 @@
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Text;
+using Bevel.Pal.Abstractions;
+
+namespace Bevel.Pal.Windows;
+
+/// <summary>
+/// Reads Explorer's notification area through UI Automation (bevel-2t7u), so Bevel's tray shows the
+/// icons the user actually has instead of the honest-but-empty v1 fallback.
+///
+/// <para><b>Why UIA, and not either approach the spike analysed.</b> Owning <c>Shell_TrayWnd</c>
+/// (bevel-ncfp.4 approach 1) only receives <c>Shell_NotifyIcon</c> traffic when Explorer's taskbar is
+/// genuinely not running: the sender resolves the tray with <c>FindWindow("Shell_TrayWnd", NULL)</c>
+/// and Explorer's window still wins that lookup while it merely sits hidden, so it needs true
+/// shell-replacement mode. Cross-process <c>TB_*</c> enumeration (approach 2) reads the undocumented
+/// <c>TBBUTTON</c>/<c>dwData</c> layout out of Explorer's address space and is version- and
+/// bitness-sensitive — explicitly rejected for v1. UIA is a documented accessibility surface needing
+/// neither shell replacement nor foreign memory reads.</para>
+///
+/// <para><b>The constraint that shapes everything here, measured on a live desktop:</b> the tray is
+/// fully enumerable while Explorer's bar is AUTO-HIDDEN (9 items, identical to the visible baseline)
+/// and completely absent once that window is <c>SW_HIDE</c>-den — the UIA tree collapses to a
+/// childless "Taskbar" root. Mirroring and hiding Explorer's window are therefore mutually exclusive,
+/// and the dock controller stops at auto-hide while a mirror is running. Auto-hide is what releases
+/// the work area anyway (bevel-h0sr), so the claim loses nothing by not also hiding.</para>
+///
+/// <para><b>Icons.</b> UIA exposes no bitmap for a status item. The obvious substitute — the owning
+/// process's exe icon — is WRONG here: UIA reports the HOST process, so on Win11 every item claims
+/// explorer.exe and they all come out wearing Explorer's face (measured: six items, six identical
+/// 5245-byte glyphs). The glyph is therefore the item's own rendered pixels, cropped from a single
+/// PrintWindow grab of the notification area per snapshot. An item whose pixels cannot be cropped
+/// arrives icon-less and the tray cell renders its placeholder (bevel-yduf) rather than being
+/// dropped.</para>
+/// </summary>
+[SupportedOSPlatform("windows")]
+internal sealed class WindowsTrayMirror
+{
+    /// <summary>Class-name prefix every Win11 notification-area element carries
+    /// (SystemTray.NormalButton, .AccentButton, .OmniButton, …).</summary>
+    private const string TrayClassPrefix = "SystemTray.";
+
+    /// <summary>Shell-owned chrome that is NOT a third-party status item: Bevel draws its own clock and
+    /// overflow affordance, and "Show Desktop" is a taskbar gesture. Matched on the automation name,
+    /// which Windows localises for us.</summary>
+    private static readonly string[] ShellOwnChrome = { "Clock", "Show Desktop", "Show Hidden Icons" };
+
+    /// <summary>One enumeration of the live notification area. Returns empty — never throws — when the
+    /// tray cannot be read (no Explorer, UIA unavailable, or the window hidden): an empty tray is a
+    /// legitimate state, and a shell must not fall over on a missing accessibility tree.</summary>
+    public IReadOnlyList<TrayItem> Snapshot()
+    {
+        try
+        {
+            var tray = FindWindowW("Shell_TrayWnd", null);
+            if (tray == IntPtr.Zero) return Array.Empty<TrayItem>();
+
+            var automation = (IUIAutomation)new CUIAutomation();
+            var root = automation.ElementFromHandle(tray);
+            if (root is null) return Array.Empty<TrayItem>();
+
+            // ONE grab for the whole snapshot; every item is a slice of it.
+            var canvas = CaptureNotificationArea();
+
+            var found = new List<TrayItem>();
+            Collect(automation, root, found, canvas, depth: 0);
+            return found;
+        }
+        catch (COMException) { return Array.Empty<TrayItem>(); }
+        catch (InvalidCastException) { return Array.Empty<TrayItem>(); }   // UIA not registered
+        catch (NotSupportedException) { return Array.Empty<TrayItem>(); }
+    }
+
+    private void Collect(IUIAutomation automation, IUIAutomationElement element, List<TrayItem> into,
+        TrayCanvas? canvas, int depth)
+    {
+        // The tray sits a few levels under Shell_TrayWnd; a bounded walk stops one pathological tree
+        // from turning a 2s poll into a stall.
+        if (depth > 5 || into.Count > 64) return;
+
+        IUIAutomationElementArray? children;
+        try { children = element.FindAll(TreeScope_Children, automation.CreateTrueCondition()); }
+        catch (COMException) { return; }
+        if (children is null) return;
+
+        int count;
+        try { count = children.Length; }
+        catch (COMException) { return; }
+
+        for (var i = 0; i < count; i++)
+        {
+            IUIAutomationElement child;
+            try { child = children.GetElement(i); }
+            catch (COMException) { continue; }
+            if (child is null) continue;
+
+            var cls = GetString(child, UIA_ClassNamePropertyId);
+            if (cls.StartsWith(TrayClassPrefix, StringComparison.Ordinal))
+            {
+                if (TryBuild(child, cls, canvas) is { } item) into.Add(item);
+                continue;   // a tray button's children are its own glyph/text, not more items
+            }
+
+            Collect(automation, child, into, canvas, depth + 1);
+        }
+    }
+
+    private static TrayItem? TryBuild(IUIAutomationElement element, string className, TrayCanvas? canvas)
+    {
+        var name = GetString(element, UIA_NamePropertyId);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        // Windows packs the tooltip into the name across several lines ("Network ikari's net\nInternet
+        // access"); the first line identifies the item, the rest is status detail.
+        var firstLine = name.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+        foreach (var chrome in ShellOwnChrome)
+            if (firstLine.StartsWith(chrome, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+        // The host process (explorer.exe for every Win11 status item) — recorded for diagnostics only.
+        // It is NOT the owning app and must never be used to pick the glyph; see the icon note below.
+        var pid = GetInt(element, UIA_ProcessIdPropertyId);
+        var host = pid > 0 ? ProcessImagePath((uint)pid) : null;
+
+        // UIA's runtime id is its own stable handle for the element: it survives re-enumeration while
+        // the item exists, which is the identity the tray reconciler needs to tell add from update.
+        var id = RuntimeIdOf(element) ?? className + ":" + firstLine;
+        var bounds = BoundsOf(element);
+
+        return new TrayItem(
+            new TrayItemId(id),
+            Tooltip: name.Replace("\r", "").Replace('\n', ' ').Trim(),
+            OwnerBundleId: host,
+            OwnerName: firstLine,
+            IconPng: canvas is not null && bounds is { } b ? CropGlyph(canvas, b) : null,
+            Bounds: bounds,
+            IsLive: true);
+    }
+
+    // ── Icons: the item's own rendered pixels, cropped out of one window grab ──────────
+    //
+    // NOT the owning process's exe icon, which is the obvious idea and is wrong: UIA reports the HOST
+    // process, so every Win11 status item claims to belong to explorer.exe and they would all wear
+    // Explorer's icon. Measured — six items, six identical 5245-byte glyphs.
+    //
+    // So the glyph is the real thing: one PrintWindow grab of the notification area per snapshot, then
+    // a slice per item using the bounds UIA already gave us. PrintWindow (not a screen read) because
+    // Bevel's own topmost bar sits directly over that strip.
+
+    /// <summary>The notification-area grab backing the current snapshot: pixels plus the window's
+    /// screen origin, so item bounds (which UIA reports in SCREEN space) can be made window-relative.</summary>
+    private sealed record TrayCanvas(byte[] Bgra, int Width, int Height, int OriginX, int OriginY);
+
+    private static TrayCanvas? CaptureNotificationArea()
+    {
+        var tray = FindWindowW("Shell_TrayWnd", null);
+        if (tray == IntPtr.Zero) return null;
+
+        // The notification area proper, not the whole bar: a smaller grab, and its origin is what the
+        // item bounds are relative to.
+        var notify = FindWindowExW(tray, IntPtr.Zero, "TrayNotifyWnd", null);
+        var target = notify != IntPtr.Zero ? notify : tray;
+
+        if (!GetWindowRect(target, out var rect)) return null;
+        if (WindowsWindowManager.CaptureWindowBgra(target) is not { } grab) return null;
+        return new TrayCanvas(grab.Bgra, grab.Width, grab.Height, rect.Left, rect.Top);
+    }
+
+    /// <summary>
+    /// Cuts one item's glyph out of the shared grab and keys its background to transparent.
+    ///
+    /// The captured pixels carry Explorer's own bar behind the glyph, which would land as a dark block
+    /// on Bevel's grey or blue bar. The surround is a flat fill, so the corner pixel IS the background
+    /// colour: everything within a tight tolerance of it becomes transparent. Deliberately tight — a
+    /// loose threshold eats dark pixels INSIDE a glyph and leaves it full of holes.
+    /// </summary>
+    private static byte[]? CropGlyph(TrayCanvas canvas, PalRect bounds)
+    {
+        var x0 = bounds.X - canvas.OriginX;
+        var y0 = bounds.Y - canvas.OriginY;
+        if (x0 < 0 || y0 < 0 || bounds.Width <= 0 || bounds.Height <= 0) return null;
+        if (x0 + bounds.Width > canvas.Width || y0 + bounds.Height > canvas.Height) return null;
+
+        // Square, centred: a tray cell is taller than it is wide (32x48 here) and the glyph sits in the
+        // middle, so a square crop keeps it from arriving stretched.
+        var edge = Math.Min(bounds.Width, bounds.Height);
+        if (edge <= 0) return null;
+        x0 += (bounds.Width - edge) / 2;
+        y0 += (bounds.Height - edge) / 2;
+
+        var cell = new byte[edge * edge * 4];
+        for (var y = 0; y < edge; y++)
+            Array.Copy(canvas.Bgra, ((y0 + y) * canvas.Width + x0) * 4, cell, y * edge * 4, edge * 4);
+
+        KeyOutBackground(cell, edge);
+        return WindowsWindowManager.EncodeBgraPng(cell, edge, edge, preserveAlpha: true);
+    }
+
+    /// <summary>
+    /// Alpha-keys the flat surround. PrintWindow gives no usable alpha, so the cell arrives fully
+    /// opaque and the corner sample is the bar colour behind the glyph.
+    ///
+    /// The key is SOFT on purpose. A binary in/out test leaves every antialiased edge pixel fully
+    /// opaque, which reads as a speckled fringe around each glyph once it lands on a bar of a
+    /// different colour. Ramping alpha with distance from the background instead keeps the
+    /// antialiasing the glyph was drawn with.
+    /// </summary>
+    private static void KeyOutBackground(byte[] cell, int edge)
+    {
+        byte bb = cell[0], bg = cell[1], br = cell[2];   // top-left pixel = background
+
+        // Below `floor` is background; above `ceiling` is solid glyph; between the two, alpha ramps.
+        const int floorDistance = 12;
+        const int ceilingDistance = 48;
+
+        for (var i = 0; i < cell.Length; i += 4)
+        {
+            var distance = Math.Max(Math.Abs(cell[i] - bb),
+                           Math.Max(Math.Abs(cell[i + 1] - bg), Math.Abs(cell[i + 2] - br)));
+
+            cell[i + 3] = distance <= floorDistance ? (byte)0
+                : distance >= ceilingDistance ? (byte)255
+                : (byte)((distance - floorDistance) * 255 / (ceilingDistance - floorDistance));
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? window);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    private static string? ProcessImagePath(uint pid)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) return null;
+        try
+        {
+            var sb = new StringBuilder(1024);
+            uint size = (uint)sb.Capacity;
+            return QueryFullProcessImageName(handle, 0, sb, ref size) ? sb.ToString() : null;
+        }
+        finally { CloseHandle(handle); }
+    }
+
+    // ── UIA property helpers (read BY ID so the interop stays tiny) ──────
+
+    private static string GetString(IUIAutomationElement e, int propertyId)
+    {
+        try { return e.GetCurrentPropertyValue(propertyId) as string ?? string.Empty; }
+        catch (COMException) { return string.Empty; }
+    }
+
+    private static int GetInt(IUIAutomationElement e, int propertyId)
+    {
+        try { return e.GetCurrentPropertyValue(propertyId) is int i ? i : 0; }
+        catch (COMException) { return 0; }
+    }
+
+    private static PalRect? BoundsOf(IUIAutomationElement e)
+    {
+        try
+        {
+            if (e.GetCurrentPropertyValue(UIA_BoundingRectanglePropertyId) is not double[] r || r.Length < 4)
+                return null;
+            return new PalRect((int)r[0], (int)r[1], (int)r[2], (int)r[3]);
+        }
+        catch (COMException) { return null; }
+    }
+
+    private static string? RuntimeIdOf(IUIAutomationElement e)
+    {
+        try
+        {
+            if (e.GetCurrentPropertyValue(UIA_RuntimeIdPropertyId) is not int[] id || id.Length == 0) return null;
+            return string.Join('.', id);
+        }
+        catch (COMException) { return null; }
+    }
+
+    private const int TreeScope_Children = 2;
+    private const int UIA_RuntimeIdPropertyId = 30000;
+    private const int UIA_BoundingRectanglePropertyId = 30001;
+    private const int UIA_ProcessIdPropertyId = 30002;
+    private const int UIA_NamePropertyId = 30005;
+    private const int UIA_ClassNamePropertyId = 30012;
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowW(string? lpClassName, string? lpWindowName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr h);
+
+    [DllImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder name, ref uint size);
+}
+
+// ── Minimal UI Automation COM interop ────────────────────────────────────
+//
+// Only the vtable slots this mirror actually calls carry real signatures; the entries in front of them
+// are placeholders that exist purely to keep the offsets right (never invoked, so their shapes do not
+// matter). Declared here rather than in a shared interop file, per the port's no-shared-interop rule,
+// and kept deliberately small: reading properties BY ID avoids the ~80-method IUIAutomationElement
+// surface a fully-typed binding would otherwise need.
+
+[ComImport, Guid("ff48dba4-60ef-4201-aa87-54103eef594e")]
+internal class CUIAutomation { }
+
+[ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomation
+{
+    void CompareElements();             // 1
+    void CompareRuntimeIds();           // 2
+    void GetRootElement();              // 3
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IUIAutomationElement ElementFromHandle(IntPtr hwnd);    // 4
+    void ElementFromPoint();            // 5
+    void GetFocusedElement();           // 6
+    void GetRootElementBuildCache();    // 7
+    void ElementFromHandleBuildCache(); // 8
+    void ElementFromPointBuildCache();  // 9
+    void GetFocusedElementBuildCache(); // 10
+    void CreateTreeWalker();            // 11
+    void get_ControlViewWalker();       // 12
+    void get_ContentViewWalker();       // 13
+    void get_RawViewWalker();           // 14
+    void get_RawViewCondition();        // 15
+    void get_ControlViewCondition();    // 16
+    void get_ContentViewCondition();    // 17
+    void CreateCacheRequest();          // 18
+    /// <summary>Returned as a bare IUnknown on purpose: the condition is only ever handed straight
+    /// back to <see cref="IUIAutomationElement.FindAll"/>, and typing it would force a QueryInterface
+    /// for IUIAutomationCondition that the real object refuses with E_NOINTERFACE.</summary>
+    [return: MarshalAs(UnmanagedType.IUnknown)]
+    object CreateTrueCondition();                           // 19
+}
+
+[ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationElement
+{
+    void SetFocus();                    // 1
+    void GetRuntimeId();                // 2
+    void FindFirst();                   // 3
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IUIAutomationElementArray FindAll(int scope,
+        [MarshalAs(UnmanagedType.IUnknown)] object condition);                     // 4
+    void FindFirstBuildCache();         // 5
+    void FindAllBuildCache();           // 6
+    void BuildUpdatedCache();           // 7
+    [return: MarshalAs(UnmanagedType.Struct)]
+    object GetCurrentPropertyValue(int propertyId);         // 8
+}
+
+[ComImport, Guid("14314595-b4bc-4055-95f2-58f2e42c9855"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationElementArray
+{
+    int Length { get; }                 // 1
+    [return: MarshalAs(UnmanagedType.Interface)]
+    IUIAutomationElement GetElement(int index);             // 2
+}

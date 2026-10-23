@@ -129,6 +129,17 @@ public sealed class WindowsDesktopEnvironment : IDesktopEnvironment, IDisposable
         }
     }
 
+    /// <summary>The primary monitor's id, or nothing when no monitor reports itself primary (a
+    /// headless/off-Windows run). Lets the dock controller check whether the edge has actually been
+    /// surrendered without duplicating the enumeration.</summary>
+    internal static IEnumerable<MonitorId> PrimaryMonitorIds()
+    {
+        if (!OperatingSystem.IsWindows()) yield break;
+        foreach (var mi in EnumerateMonitorInfos())
+            if ((mi.dwFlags & MONITORINFOF_PRIMARY) != 0)
+                yield return new MonitorId(mi.DeviceName);
+    }
+
     /// <summary>Live monitor work/full rects in physical pixels. Used by tests to assert
     /// SPI_SETWORKAREA actually moved <c>rcWork</c> (PR #1 #14) rather than only "did not throw".</summary>
     internal static bool TryGetWorkArea(MonitorId monitor, out PalRect work, out PalRect full)
@@ -498,6 +509,9 @@ public sealed class WindowsDockController : IDockController, IDisposable
     private readonly object _gate = new();
     private bool? _priorVisible;
     private bool _claimed;
+    /// <summary>The native taskbar's ABM_GETSTATE flags before we claimed the edge, so releasing (or
+    /// crash-healing) puts the user's own auto-hide / always-on-top choice back rather than a guess.</summary>
+    private int? _priorAppBarState;
     private bool _disposed;
 
     private static readonly string MarkerDir =
@@ -537,10 +551,36 @@ public sealed class WindowsDockController : IDockController, IDisposable
                 _priorVisible ??= trays.Exists(IsWindowVisible);
                 foreach (var hwnd in trays)
                     ShowWindow(hwnd, SW_HIDE);
+
+                // Release Explorer's work-area reservation BEFORE resetting the work area.
+                //
+                // Hiding Shell_TrayWnd does NOT drop the taskbar's AppBar registration: Explorer keeps
+                // reserving its strip, and it re-asserts that reservation instantly, so SPI_SETWORKAREA
+                // never takes — measured on a 2560x1440 desktop, the work area stayed 0..1392 with no
+                // transient change at all, while our bar sat at 1410. Everything that clamps to the work
+                // area (notably popups: the Start menu's bottom landed on 1392) therefore floated 18px
+                // above our bar — the "menus open too far up" report, and the Windows half of bevel-h0sr.
+                //
+                // Putting the native taskbar into AUTO-HIDE is the supported way to make Explorer give
+                // the space back (measured: work area immediately becomes the full 0..1440). It is a
+                // global, user-visible setting, so the PRIOR state is captured and restored on release
+                // and on crash-heal, exactly like the bar's visibility. It is also invisible to the user
+                // while we hold the claim, since Shell_TrayWnd is hidden anyway.
+                _priorAppBarState ??= GetAppBarState();
+                SetAppBarState(ABS_AUTOHIDE);
+
                 _claimed = true;
-                WriteMarker(_priorVisible ?? true);
-                // Drop Filer's leftover AppBar inset so our bar can sit on the physical bottom.
+                WriteMarker(_priorVisible ?? true, _priorAppBarState ?? 0);
+                // Now that nothing is re-asserting it, drop any leftover AppBar inset so our bar can sit
+                // on the physical bottom.
                 _desktop?.ResetWorkAreasToFull();
+                // ...and again once Explorer has actually let go. Explorer releases its reservation
+                // ASYNCHRONOUSLY after ABM_SETSTATE, so the SPIF_SENDCHANGE broadcast above still
+                // carries the OLD inset — and whoever cached that (Avalonia caches the work area and
+                // clamps every popup to it) keeps clamping to a rect that no longer exists. Measured:
+                // the Start menu's bottom stuck on the stale 1392 while the bar sat at 1410, an 18px
+                // gap that persisted even though the live work area had become the full 1440.
+                ReassertWorkAreaWhenExplorerReleases();
             }
             else
             {
@@ -572,11 +612,18 @@ public sealed class WindowsDockController : IDockController, IDisposable
         bool showAgain = _priorVisible ?? ReadMarkerPriorVisible() ?? true;
         if (OperatingSystem.IsWindows())
         {
+            // Give Explorer its work-area reservation back FIRST, so the bar it is about to show again
+            // has somewhere to live. Leaking the auto-hide flag would leave the user's taskbar
+            // auto-hiding after Bevel exits — a setting they never chose — so this must run on the
+            // crash-heal path too, which is why the prior state is in the marker.
+            SetAppBarState(_priorAppBarState ?? ReadMarkerPriorAppBarState() ?? 0);
+
             foreach (var hwnd in FindTrayWindows())
                 ShowWindow(hwnd, showAgain ? SW_SHOW : SW_HIDE);
         }
         _claimed = false;
         _priorVisible = null;
+        _priorAppBarState = null;
         DeleteMarker();
     }
 
@@ -589,6 +636,7 @@ public sealed class WindowsDockController : IDockController, IDisposable
             // user is not stuck without a taskbar until they happen to launch Bevel again and quit cleanly.
             _claimed = true;
             _priorVisible = ReadMarkerPriorVisible() ?? true;
+            _priorAppBarState = ReadMarkerPriorAppBarState();
             RestoreIfClaimed();
         }
         catch
@@ -610,15 +658,129 @@ public sealed class WindowsDockController : IDockController, IDisposable
         return null;
     }
 
-    private static void WriteMarker(bool priorVisible)
+    private static void WriteMarker(bool priorVisible, int priorAppBarState)
     {
         try
         {
             Directory.CreateDirectory(MarkerDir);
-            File.WriteAllText(MarkerFile, $"{{\"priorVisible\":{(priorVisible ? "true" : "false")}}}");
+            File.WriteAllText(MarkerFile,
+                $"{{\"priorVisible\":{(priorVisible ? "true" : "false")},\"priorAppBarState\":{priorAppBarState}}}");
         }
         catch { /* best-effort */ }
     }
+
+    /// <summary>The native taskbar's ABM_GETSTATE flags as they were before we claimed the edge, from
+    /// the marker a crashed session left behind. Null when absent (an older marker, or an unreadable
+    /// one) — the caller then restores 0, the stock "neither auto-hide nor always-on-top" state.</summary>
+    private static int? ReadMarkerPriorAppBarState()
+    {
+        try
+        {
+            var json = File.ReadAllText(MarkerFile);
+            const string key = "\"priorAppBarState\":";
+            var at = json.IndexOf(key, StringComparison.Ordinal);
+            if (at < 0) return null;
+            var tail = json[(at + key.Length)..].TrimStart();
+            var digits = new string(tail.TakeWhile(char.IsDigit).ToArray());
+            return int.TryParse(digits, out var v) ? v : null;
+        }
+        catch { return null; }
+    }
+
+    // ── Native taskbar AppBar state (shell32) ────────────────────────────────
+
+    private const uint ABM_GETSTATE = 0x00000004;
+    private const uint ABM_SETSTATE = 0x0000000A;
+    private const int ABS_AUTOHIDE = 0x0000001;
+
+    /// <summary>
+    /// Re-broadcasts the work area once Explorer has actually surrendered its reservation.
+    ///
+    /// The claim is a two-party handshake: we ask (ABM_SETSTATE), Explorer complies on its own
+    /// schedule. Anything we broadcast before it complies republishes the stale inset, so this polls
+    /// the live <c>rcWork</c> against <c>rcMonitor</c> and only then calls
+    /// <see cref="WindowsDesktopEnvironment.ResetWorkAreasToFull"/> again — same value, but this time
+    /// the SPIF_SENDCHANGE carries the TRUTH, which is what makes cached-work-area consumers refresh.
+    ///
+    /// Bounded and fire-and-forget: a shell must not block startup on Explorer, and if Explorer never
+    /// releases, the worst case is the pre-existing gap rather than a hang.
+    /// </summary>
+    private void ReassertWorkAreaWhenExplorerReleases()
+    {
+        if (!OperatingSystem.IsWindows() || _desktop is null) return;
+
+        _ = Task.Run(async () =>
+        {
+            for (var attempt = 0; attempt < 20; attempt++)   // ~2s budget
+            {
+                await Task.Delay(100).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_disposed || !_claimed) return;   // released (or torn down) while we waited
+                }
+                if (!PrimaryWorkAreaIsFull()) continue;
+
+                _desktop.ResetWorkAreasToFull();
+                return;
+            }
+        });
+    }
+
+    /// <summary>True when the primary monitor's work area spans its full bounds — i.e. nobody is
+    /// reserving an edge any more.</summary>
+    private static bool PrimaryWorkAreaIsFull()
+    {
+        try
+        {
+            foreach (var monitor in WindowsDesktopEnvironment.PrimaryMonitorIds())
+                return WindowsDesktopEnvironment.TryGetWorkArea(monitor, out var work, out var full)
+                       && work.Height == full.Height && work.Width == full.Width;
+        }
+        catch { /* best-effort, like every other step of the claim */ }
+        return false;
+    }
+
+    private static int GetAppBarState()
+    {
+        if (!OperatingSystem.IsWindows()) return 0;
+        try
+        {
+            var data = NewAppBarData();
+            return (int)SHAppBarMessage(ABM_GETSTATE, ref data);
+        }
+        catch { return 0; }
+    }
+
+    private static void SetAppBarState(int state)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            var data = NewAppBarData();
+            data.lParam = state;
+            SHAppBarMessage(ABM_SETSTATE, ref data);
+        }
+        catch { /* best-effort, exactly like the hide itself */ }
+    }
+
+    private static APPBARDATA NewAppBarData() =>
+        new() { cbSize = (uint)Marshal.SizeOf<APPBARDATA>() };
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct APPBARDATA
+    {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        // Layout-compatible with Win32 RECT. Declared here rather than reusing the environment class's
+        // RECT because that one is private to it, and cbSize must match THIS struct's size exactly.
+        public int rcLeft, rcTop, rcRight, rcBottom;
+        public int lParam;
+    }
+
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
 
     private static void DeleteMarker()
     {

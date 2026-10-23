@@ -132,6 +132,23 @@ public class AutomationCommandRouterTests
     }
 
     [Fact]
+    public async Task Quit_calls_the_lifecycle_seam_and_reports()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Quit });
+        Assert.Equal(ExitCodes.Ok, res.ExitCode);
+        Assert.Equal("quit", Assert.Single(_auto.Calls));
+        Assert.Contains("shutting down", res.Output);
+    }
+
+    [Fact]
+    public async Task Quit_json_reports_machine_readably()
+    {
+        var res = await Run(new ParsedCommand { Verb = BevelVerb.Quit, Json = true });
+        Assert.Equal(ExitCodes.Ok, res.ExitCode);
+        Assert.Equal("{\"quit\":true}", res.Output);
+    }
+
+    [Fact]
     public async Task Launch_without_appid_is_bad_args_and_does_not_hit_the_seam()
     {
         var res = await Run(new ParsedCommand { Verb = BevelVerb.Launch });
@@ -241,6 +258,12 @@ public class AutomationCommandRouterTests
         public Task LaunchAsync(string appId, CancellationToken ct)
         {
             Calls.Add($"launch:{appId}");
+            return Task.CompletedTask;
+        }
+
+        public Task QuitAsync(CancellationToken ct)
+        {
+            Calls.Add("quit");
             return Task.CompletedTask;
         }
     }

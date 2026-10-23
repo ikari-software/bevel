@@ -9,7 +9,7 @@ namespace Bevel.Interop.Cli;
 
 /// <summary>The verbs both surfaces expose that map onto <see cref="IShellAutomation"/>. (theme /
 /// register / permissions / doctor are separate subsystems, not automation verbs — parsed elsewhere.)</summary>
-public enum BevelVerb { Reveal, Open, Select, Mkdir, Delete, Duplicate, Move, Query, Launch }
+public enum BevelVerb { Reveal, Open, Select, Mkdir, Delete, Duplicate, Move, Query, Launch, Quit }
 
 /// <summary>What <c>query</c> asks for.</summary>
 public enum QueryKind { Windows, Selection, Version, Programs }

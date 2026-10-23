@@ -130,5 +130,7 @@ public sealed class AutomationSocketTests
             => Task.FromResult(new BevelStateSnapshot { Version = "9.9" });
         public Task SetAsync(AutomationTarget t, AutomationProperty p, string v, CancellationToken ct) => Task.CompletedTask;
         public Task LaunchAsync(string appId, CancellationToken ct) => Task.CompletedTask;
+
+        public Task QuitAsync(CancellationToken ct) => Task.CompletedTask;
     }
 }

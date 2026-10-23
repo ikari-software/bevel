@@ -18,13 +18,16 @@ public sealed class ShellAutomation : IShellAutomation
     private readonly IShellSurface _surface;
     private readonly IKnownFolders _known;
     private readonly IProgramSurface? _programs;
+    private readonly IShellLifecycle? _lifecycle;
 
-    public ShellAutomation(VfsRoot vfs, IShellSurface surface, IKnownFolders? knownFolders = null, IProgramSurface? programs = null)
+    public ShellAutomation(VfsRoot vfs, IShellSurface surface, IKnownFolders? knownFolders = null,
+        IProgramSurface? programs = null, IShellLifecycle? lifecycle = null)
     {
         _vfs = vfs;
         _surface = surface;
         _known = knownFolders ?? SystemKnownFolders.Instance;
         _programs = programs;
+        _lifecycle = lifecycle;
     }
 
     // ── Window-coupled verbs (delegate to the live surface) ──────────────────────────────────
@@ -46,6 +49,9 @@ public sealed class ShellAutomation : IShellAutomation
 
     public Task LaunchAsync(string appId, CancellationToken ct)
         => (_programs ?? throw new AutomationException("program launching is not available")).LaunchAsync(appId, ct);
+
+    public Task QuitAsync(CancellationToken ct)
+        => (_lifecycle ?? throw new AutomationException("shutting down is not available here")).QuitAsync(ct);
 
     // ── Filesystem verbs (run against the VFS) ───────────────────────────────────────────────
 

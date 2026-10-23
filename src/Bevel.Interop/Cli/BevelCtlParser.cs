@@ -13,7 +13,7 @@ namespace Bevel.Interop.Cli;
 public static class BevelCtlParser
 {
     public const string Usage =
-        "usage: bevelctl <reveal|open|select|mkdir|delete|duplicate|move|launch|query> ...\n" +
+        "usage: bevelctl <reveal|open|select|mkdir|delete|duplicate|move|launch|query|quit> ...\n" +
         "  reveal <path>... [--new-window]\n" +
         "  open <path> [--view icons|list|details]\n" +
         "  select <path>...\n" +
@@ -22,7 +22,8 @@ public static class BevelCtlParser
         "  duplicate <path>... [--to <dir>]\n" +
         "  move <path>... --to <dir>\n" +
         "  launch <app-id>\n" +
-        "  query <windows|selection|version|programs> [--json]";
+        "  query <windows|selection|version|programs> [--json]\n" +
+        "  quit";
 
     private static readonly string Home = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
 
@@ -108,6 +109,12 @@ public static class BevelCtlParser
                     "programs" => Ok(new ParsedCommand { Verb = BevelVerb.Query, Query = QueryKind.Programs, Json = json }),
                     _ => Err("query target must be windows|selection|version|programs"),
                 };
+
+            case "quit":
+                // No operands: quitting is the whole shell or nothing. Rejecting extras keeps a
+                // mistyped "quit filer" from silently tearing down everything.
+                if (operands.Count != 0) return Err("quit takes no arguments");
+                return Ok(new ParsedCommand { Verb = BevelVerb.Quit, Json = json });
 
             default:
                 return Err($"unknown command '{verb}'\n{Usage}");

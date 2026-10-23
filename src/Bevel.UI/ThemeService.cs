@@ -34,7 +34,10 @@ public static class ThemeService
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
         (Bevel.Core.ThemeIds.Industrial1999, "Bevel 1999 Industrial"),
-        (Bevel.Core.ThemeIds.Blue2001, "Bevel 2001 Blue"),
+        // NOT "Bevel 2001 Blue": blue is only this theme's DEFAULT colourway, and the colour axis
+        // (Blue/Silver/Black/Purple, Blue2001Variant.Colors) is user-switchable — so naming the theme
+        // after one of its own options contradicts the feature the moment anyone changes it.
+        (Bevel.Core.ThemeIds.Blue2001, "Bevel 2001"),
         (Bevel.Core.ThemeIds.Flat, "Bevel Flat (Whistler Watercolor)"),
         (Bevel.Core.ThemeIds.Pastel, "Bevel Pastel (preview)"),
     };
