@@ -126,6 +126,29 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.True(c.TaskbarShowDesktopButton);
     }
 
+    /// <summary>
+    /// Whole-branch review Fix 7: a <c>"taskbarComponents"</c> value that is valid JSON but the wrong
+    /// SHAPE (an object, not an array) must be treated the same as a corrupt list — not crash the
+    /// load, and not get stuck silently un-migrated. <c>GetComponentInstances</c> now rejects any
+    /// non-Array <c>JsonValueKind</c> before <c>Deserialize</c> ever runs, so <c>corrupt</c> trips
+    /// (forcing <c>TaskbarComponentsVersion</c> back to 0) and the one-time migration re-runs and
+    /// rebuilds the default list, exactly as it would for a genuinely corrupt value.
+    /// </summary>
+    [Fact]
+    public async Task A_non_array_taskbarComponents_value_is_treated_as_corrupt_not_crashed()
+    {
+        Directory.CreateDirectory(_dir);
+        await File.WriteAllTextAsync(
+            Path.Combine(_dir, "settings.json"),
+            """{ "taskbarComponents": { "bogus": "shape" }, "taskbarComponentsVersion": 1 }""");
+
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();   // must not throw
+
+        Assert.True(service.Current.TaskbarComponentsVersion >= 1);
+        Assert.NotEmpty(service.Current.TaskbarComponents);   // re-migrated, not stuck empty
+    }
+
     [Fact]
     public async Task Snapshot_json_is_byte_identical_to_the_persisted_blob(/* bevel-6nve */)
     {

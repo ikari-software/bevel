@@ -1,0 +1,57 @@
+syntax = "proto3";
+package bevel.components.v1;
+
+// The component bus. Separate from the internal shell bus: separate socket, separate nonce, so a
+// third-party component that discovers the internal port still cannot reach it.
+message ComponentEnvelope {
+  oneof payload {
+    Hello hello = 1;
+    StatePublish state = 2;
+    InputEvent input = 3;
+    FrameReady frame_ready = 4;
+    ThemePush theme = 5;
+    Heartbeat heartbeat = 6;
+  }
+}
+
+// First frame on every connection. `handshake` is the EXACT payload produced by
+// Handshake.BuildHelloPayload (UTF-8 "capability:hmacHex"), validated with Handshake.ValidateHello.
+message Hello {
+  string instance_id = 1;
+  bytes handshake = 2;
+  int32 contract_version = 3;
+}
+
+message StatePublish {
+  string instance_id = 1;
+  map<string, string> values = 2;
+  bool inert = 3;
+}
+
+message InputEvent {
+  string instance_id = 1;
+  string primitive_key = 2;
+  string kind = 3;
+}
+
+// Pixels NEVER travel on the bus: this only names the shared-memory slot that now holds frame n.
+message FrameReady {
+  string instance_id = 1;
+  string primitive_key = 2;
+  uint32 slot = 3;
+  uint64 frame = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+}
+
+// Pushed by the bar so a surface can paint in-skin, and re-pushed on theme or colourway change.
+// Named ThemePush, not ThemeTokens: Bevel.UI already has a public static ThemeTokens class, and a
+// Taskbar file importing both namespaces would hit CS0104.
+message ThemePush {
+  map<string, string> argb = 1;
+  uint32 revision = 2;
+}
+
+message Heartbeat {
+  string instance_id = 1;
+}

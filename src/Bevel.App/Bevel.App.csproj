@@ -45,6 +45,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Bevel.ComponentBus\Bevel.ComponentBus.csproj" />
     <ProjectReference Include="..\Bevel.Core\Bevel.Core.csproj" />
     <ProjectReference Include="..\Bevel.UI\Bevel.UI.csproj" />
     <ProjectReference Include="..\Bevel.Pal.Abstractions\Bevel.Pal.Abstractions.csproj" />

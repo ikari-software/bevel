@@ -23,6 +23,16 @@ internal static class Program
         App.Role = role;
         RestartDiag.Log($"boot: role={role} pal={pal}");
 
+        // bevel-aqr7 Task 1: a reachable NetMQ round-trip shipped IN the app (not just a test
+        // project) so an AOT publish can't trim it away — the actual gate for whether NetMQ
+        // survives NativeAOT with no JIT. Before any windowing/DI setup, same as the other verbs.
+        if (args.Contains("--selftest-bus"))
+        {
+            var ok = Bevel.ComponentBus.BusSelfTest.RoundTrip();
+            Console.WriteLine(ok ? "bus-selftest: ok" : "bus-selftest: FAILED");
+            Environment.Exit(ok ? 0 : 1);
+        }
+
         // Last-ditch crash forensics. An unhandled exception in a peer process abandons the managed stack
         // entirely: the OS crash report shows only IL_Throw -> DispatchManagedException -> PROCAbort with
         // the managed frames unsymbolicated, so "which exception, from where" is unrecoverable unless the
