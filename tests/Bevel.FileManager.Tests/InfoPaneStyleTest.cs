@@ -22,7 +22,10 @@ namespace Bevel.FileManager.Tests;
 public class InfoPaneStyleTest
 {
     [AvaloniaTheory]
-    [InlineData(InfoPaneStyle.Win2000, "win2000")]
+    // Tag is the SHOT FILENAME, so it follows the renamed theme, not the enum. The InfoPaneStyle
+    // enum member keeps its name for now: it is a separately-persisted settings value and needs its
+    // own migration (see the follow-up bead) — renaming it here would reset users' Folder Options.
+    [InlineData(InfoPaneStyle.Win2000, "industrial1999")]
     [InlineData(InfoPaneStyle.WinXP, "winxp")]
     [InlineData(InfoPaneStyle.Modern, "modern")]
     [InlineData(InfoPaneStyle.Win9x, "win9x")]
@@ -84,6 +87,21 @@ public class InfoPaneStyleTest
     /// non-flaky pattern already used for the taskbar settle debounce. A genuine regression still fails —
     /// just after the deadline instead of instantly.</para>
     /// </summary>
+    /// <summary>
+    /// How close an animated value has to get before it counts as arrived.
+    ///
+    /// ONE constant, used by both the wait and the assertion that follows it, because they were
+    /// allowed to disagree and that is precisely what flaked: the wait accepted an angle within
+    /// 0.001 of 180 while Assert.Equal(..., 3) demanded within 0.0005, so a poll landing in the
+    /// band between them satisfied the gate and then failed the check. CI caught it on a loaded
+    /// Windows runner at 179.99922975411999 — on a faster machine the animation reaches 180 exactly
+    /// before the next poll, which is why it passed everywhere else.
+    ///
+    /// A gate that is weaker than the postcondition it is supposed to guarantee is not a gate.
+    /// 0.001 of a degree is already far below anything visible.
+    /// </summary>
+    private const double Settled = 0.001;
+
     private static async System.Threading.Tasks.Task WaitUntil(Func<bool> settled, string because)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -130,18 +148,18 @@ public class InfoPaneStyleTest
 
         tasksToggle.IsChecked = false;
         tasksToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await WaitUntil(() => !tasksBody.IsVisible && Math.Abs(rotation.Angle - 180) < 0.001,
+        await WaitUntil(() => !tasksBody.IsVisible && Math.Abs(rotation.Angle - 180) <= Settled,
             "collapsing should hide the body and rotate the chevron to 180°");
         Assert.False(tasksBody.IsVisible);
-        Assert.Equal(180, rotation.Angle, 3);
+        Assert.Equal(180, rotation.Angle, Settled);
 
         tasksToggle.IsChecked = true;
         tasksToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await WaitUntil(() => tasksBody.IsVisible && tasksBody.Opacity >= 0.999 && Math.Abs(rotation.Angle) < 0.001,
+        await WaitUntil(() => tasksBody.IsVisible && tasksBody.Opacity >= 1 - Settled && Math.Abs(rotation.Angle) <= Settled,
             "expanding should show the body at full opacity and rotate the chevron back to 0°");
         Assert.True(tasksBody.IsVisible);
-        Assert.Equal(1, tasksBody.Opacity, 3);
-        Assert.Equal(0, rotation.Angle, 3);
+        Assert.Equal(1, tasksBody.Opacity, Settled);
+        Assert.Equal(0, rotation.Angle, Settled);
     }
 
     /// <summary>The WinXP (Luna) info-pane re-hues to the active Luna colour variant (bevel-e544): its
@@ -154,13 +172,13 @@ public class InfoPaneStyleTest
     [InlineData("Purple")]
     public void WinXP_recolours_to_luna_variant(string color)
     {
-        Bevel.UI.Luna.LunaVariantService.Apply(color, "Hybrid");
+        Bevel.UI.Blue2001.Blue2001VariantService.Apply(color, "Hybrid");
         try
         {
-            AssertContrast("Luna.Brush.InfoPaneHeadingText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneBodyText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneLinkText", 4.5);
-            AssertContrast("Luna.Brush.InfoPaneMutedText", 3.0);
+            AssertContrast("Blue2001.Brush.InfoPaneHeadingText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneBodyText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneLinkText", 4.5);
+            AssertContrast("Blue2001.Brush.InfoPaneMutedText", 3.0);
 
             var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
             pane.Title = "ikari";
@@ -184,7 +202,7 @@ public class InfoPaneStyleTest
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
         }
     }
 
@@ -217,7 +235,7 @@ public class InfoPaneStyleTest
     [AvaloniaFact]
     public void Open_WinXP_pane_tracks_live_variant_changes_and_restores_its_fallback()
     {
-        Bevel.UI.Luna.LunaVariantService.Clear();
+        Bevel.UI.Blue2001.Blue2001VariantService.Clear();
         var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
         var win = new Window { SystemDecorations = SystemDecorations.None, Width = 200, Height = 380, Content = pane };
         win.Show();
@@ -225,16 +243,16 @@ public class InfoPaneStyleTest
         try
         {
             var fallback = pane.Resources["InfoPane.Xp.Watermark"];
-            Bevel.UI.Luna.LunaVariantService.Apply("Purple", "Hybrid");
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
             var purple = pane.Resources["InfoPane.Xp.Watermark"];
             Assert.NotSame(fallback, purple);
 
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             Assert.Same(fallback, pane.Resources["InfoPane.Xp.Watermark"]);
         }
         finally
         {
-            Bevel.UI.Luna.LunaVariantService.Clear();
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             win.Close();
         }
     }

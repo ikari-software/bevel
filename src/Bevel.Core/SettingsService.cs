@@ -497,8 +497,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
             _raw[SchemaVersionKey] = JsonSerializer.SerializeToElement(CurrentSchemaVersion, SettingsJsonContext.Default.Int32);
         SetOrPrune("themeId", _settings.ThemeId, d.ThemeId, SettingsJsonContext.Default.String);
         SetOrPrune("colorScheme", _settings.ColorScheme, d.ColorScheme, SettingsJsonContext.Default.String);
-        SetOrPrune("lunaColor", _settings.LunaColor, d.LunaColor, SettingsJsonContext.Default.String);
-        SetOrPrune("lunaGloss", _settings.LunaGloss, d.LunaGloss, SettingsJsonContext.Default.String);
+        SetOrPrune("blue2001Color", _settings.Blue2001Color, d.Blue2001Color, SettingsJsonContext.Default.String);
+        SetOrPrune("blue2001Gloss", _settings.Blue2001Gloss, d.Blue2001Gloss, SettingsJsonContext.Default.String);
+        SetOrPrune("flatVariant", _settings.FlatVariant, d.FlatVariant, SettingsJsonContext.Default.String);
         SetOrPrune("uiFontFamily", _settings.UiFontFamily, d.UiFontFamily, SettingsJsonContext.Default.String);
         SetOrPrune("shellEnabled", _settings.ShellEnabled, d.ShellEnabled, SettingsJsonContext.Default.Boolean);
         SetOrPrune("showHiddenFiles", _settings.ShowHiddenFiles, d.ShowHiddenFiles, SettingsJsonContext.Default.Boolean);
@@ -653,10 +654,11 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
         _settings = new BevelSettings
         {
-            ThemeId = GetString("themeId") ?? "win2000",
+            ThemeId = ThemeIds.OrDefault(GetString("themeId")),
             ColorScheme = GetString("colorScheme") ?? "",
-            LunaColor = GetString("lunaColor") ?? "",
-            LunaGloss = GetString("lunaGloss") ?? "",
+            Blue2001Color = GetString("blue2001Color") ?? "",
+            Blue2001Gloss = GetString("blue2001Gloss") ?? "",
+            FlatVariant = GetString("flatVariant") ?? "",
             UiFontFamily = GetString("uiFontFamily") ?? "",
             ShellEnabled = GetBool("shellEnabled") ?? true,
             ShowHiddenFiles = GetBool("showHiddenFiles") ?? false,
@@ -729,7 +731,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         foreach (var (key, el) in _raw)
         {
             if (key.StartsWith("theme:", StringComparison.Ordinal) && el.ValueKind == JsonValueKind.Object)
-                _themeOverrides[key["theme:".Length..]] = el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
+                _themeOverrides[key["theme:".Length..]] =
+                    el.Deserialize(SettingsJsonContext.Default.ThemeOverrides) ?? new ThemeOverrides();
         }
     }
 
@@ -797,7 +800,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
 /// <summary>Typed settings model.</summary>
 public sealed class BevelSettings
 {
-    public string ThemeId { get; set; } = "win2000";
+    public string ThemeId { get; set; } = ThemeIds.Default;
 
     /// <summary>Win2000 colour scheme id (Classic <c>Colors/&lt;id&gt;.axaml</c>, W2K-01 / bevel-9js).
     /// Empty = "Windows Standard" (the default palette). This is the Win2000 theme's variant option;
@@ -805,11 +808,14 @@ public sealed class BevelSettings
     public string ColorScheme { get; set; } = "";
 
     /// <summary>Luna colour variant (Blue/Silver/Black/Purple) — the Luna theme's colour axis. Empty =
-    /// Blue (the reference). Combined at runtime with <see cref="LunaGloss"/> by the variant engine.</summary>
-    public string LunaColor { get; set; } = "";
+    /// Blue (the reference). Combined at runtime with <see cref="Blue2001Gloss"/> by the variant engine.</summary>
+    public string Blue2001Color { get; set; } = "";
 
     /// <summary>Luna gloss variant (Hybrid/Gloss/Matte) — the Luna theme's gloss axis. Empty = Hybrid.</summary>
-    public string LunaGloss { get; set; } = "";
+    public string Blue2001Gloss { get; set; } = "";
+
+    /// <summary>Flat Whistler Watercolor variation (Blue/Ergonomic/Silver/Amber). Empty = Blue.</summary>
+    public string FlatVariant { get; set; } = "";
 
     /// <summary>UI font family override (FNT-01 / bevel-9js). Empty = the theme's bundled face
     /// (Noto Sans). Any installed family name shadows <c>Bevel.Font.UI</c> shell-wide.</summary>

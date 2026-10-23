@@ -271,7 +271,7 @@ public partial class FileManagerWindow : BevelWindow
     /// InfoPane control, so the control is only ever handed a real, renderable style.</summary>
     private static Bevel.Core.InfoPaneStyle ResolveInfoPaneStyle(Bevel.Core.InfoPaneStyle style)
         => style == Bevel.Core.InfoPaneStyle.Auto
-            ? (Bevel.UI.ThemeService.Current == "luna" ? Bevel.Core.InfoPaneStyle.WinXP : Bevel.Core.InfoPaneStyle.Win2000)
+            ? (Bevel.UI.ThemeService.Current == Bevel.Core.ThemeIds.Blue2001 ? Bevel.Core.InfoPaneStyle.WinXP : Bevel.Core.InfoPaneStyle.Win2000)
             : style;
 
     /// <summary>Applies the current Folder Options to this window: the info-pane style + column visibility,

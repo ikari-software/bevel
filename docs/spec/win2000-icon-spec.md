@@ -182,7 +182,7 @@ static readonly string FolderBackBottom = ThemeTokens.ColorIconFolderBackBottom;
 
 ### 4.2 SVG/PNG Export (REQUIRED for designer handoff)
 
-Generate assets into `src/Bevel.Themes.Win2000/Assets/`:
+Generate assets into `src/Bevel.Themes.Industrial1999/Assets/`:
 
 ```
 Assets/
@@ -252,6 +252,6 @@ Per `docs/spec/05-theming.md` §6: "Asset pipeline — clean-room, CC0/OFL only.
 - `docs/reference/win2000/icons-pixel-art-style.md` — Icon design rules (sizes, light source, overlay badges)
 - `docs/reference/win2000/color-schemes-accessibility.md` — 14 named schemes + WinDaisy hex sources
 - `refs/win2000/icons-pixel-art-style/` — Pixel-sampling working material (git-ignored)
-- `src/Bevel.Themes.Win2000/theme.json` — Single source of truth for active theme
-- `src/Bevel.Themes.Win2000/schemes.json` — 14 scheme definitions
+- `src/Bevel.Themes.Industrial1999/theme.json` — Single source of truth for active theme
+- `src/Bevel.Themes.Industrial1999/schemes.json` — 14 scheme definitions
 - `tools/ThemeGen/Program.cs` — Generator (Tokens.axaml + ThemeTokens.cs + per-scheme .axaml)

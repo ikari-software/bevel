@@ -120,7 +120,7 @@
              name, since a null one announces as an unlabelled button. -->
         <Button x:Name="StartButton" Grid.Column="0"
                 MinWidth="{DynamicResource Bevel.Metric.StartButtonMinWidth}"
-                Margin="{DynamicResource Bevel.Metric.StartButtonMargin}"
+                Margin="{DynamicResource Bevel.Metric.StartButtonMargin}" Classes="taskbar-start"
                 Theme="{DynamicResource Bevel.Theme.StartButton}"
                 Focusable="True"
                 AutomationProperties.Name="Bevel"

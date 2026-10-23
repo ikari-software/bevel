@@ -725,7 +725,15 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return nil
         }
 
-        dbg("keep cg=\(cgID) '\(win.appName)' title='\(win.title)' min=\(win.isMinimized) frame=\(win.frame.width)x\(win.frame.height) hasAX=\(pass.axMap[cgID] != nil)")
+        // Spaces facts, resolved ONCE per admitted window and only after the drop gates — a rejected
+        // entry must not cost a WindowServer round trip, and `CGSCopySpacesForWindows` is per-window.
+        // These two tell a consumer acting on geometry what the frame alone cannot: whether an
+        // overlap with shell chrome is real (bevel-ex8n). Both fail closed on a dlsym miss.
+        let spaceIDs = pass.spaces.spaceIDs(of: cgID)
+        win.isOnOtherSpace = pass.spaces.isOnOtherSpace(spaces: spaceIDs)
+        win.isFullscreen = pass.spaces.isOnFullscreenSpace(spaces: spaceIDs)
+
+        dbg("keep cg=\(cgID) '\(win.appName)' title='\(win.title)' min=\(win.isMinimized) frame=\(win.frame.width)x\(win.frame.height) hasAX=\(pass.axMap[cgID] != nil) fs=\(win.isFullscreen) otherSpace=\(win.isOnOtherSpace)")
         return win
     }
 
@@ -1050,11 +1058,15 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 continue
             }
 
+            var mapped = 0
+            var viaFrame = 0
+            var unmapped = 0
             for axWin in windowList {
                 var cgId: CGWindowID = 0
                 let mapResult = _AXUIElementGetWindow(axWin, &cgId)
                 if mapResult == .success, cgId != 0 {
                     map[cgId] = axWin
+                    mapped += 1
                     continue
                 }
                 // SPI could not resolve the CGWindowID (observed for Finder folder windows).
@@ -1067,7 +1079,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                        claimed: Set(map.keys)
                    ) {
                     map[matched] = axWin
+                    viaFrame += 1
+                } else {
+                    unmapped += 1
                 }
+            }
+            // Correlation outcome per app. Worth a line even on success: an AX window that maps to no
+            // CGWindowID is invisible in the drop log (the CG entry is simply never AX-correlated and
+            // dies at the no-title gate), which makes "my window is missing" undiagnosable. A run where
+            // mappedBySPI is 0 for EVERY app means AX itself is not answering this process — the
+            // signature of a client without a real Accessibility grant, not of a misbehaving app.
+            if mapped > 0 || viaFrame > 0 || unmapped > 0 {
+                dbg("correlate pid=\(pid) axWindows=\(windowList.count) bySPI=\(mapped) byFrame=\(viaFrame) unmapped=\(unmapped)")
             }
         }
 

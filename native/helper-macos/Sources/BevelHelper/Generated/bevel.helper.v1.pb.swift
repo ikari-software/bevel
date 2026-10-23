@@ -337,6 +337,17 @@ public nonisolated struct Bevel_Helper_V1_TaskbarWindow: Sendable {
   /// exists, so the merge transition is duplicate-free.
   public var isAppPresence: Bool = false
 
+  /// True when the window is in native (green-button) fullscreen, i.e. it occupies a dedicated
+  /// fullscreen Space. NOT the same as zoomed/maximized, which stays on the user's Space. Consumers
+  /// acting on geometry need the difference: a fullscreen window's frame IS the display, so it
+  /// overlaps any shell chrome without being in its way (bevel-ex8n). False when undetermined.
+  public var isFullscreen: Bool = false
+
+  /// True when the window's Space is known and no display is showing it. Such windows are still
+  /// listed (the CG query uses .optionAll so minimized windows survive) and their frame is the last
+  /// one they had on screen. False when undetermined — never guessed from absence of evidence.
+  public var isOnOtherSpace: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1012,7 +1023,7 @@ nonisolated extension Bevel_Helper_V1_WindowRef: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TaskbarWindow"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0\u{3}is_fullscreen\0\u{3}is_on_other_space\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1030,6 +1041,8 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
       case 8: try { try decoder.decodeSingularMessageField(value: &self._frame) }()
       case 9: try { try decoder.decodeSingularBytesField(value: &self.appIconPng) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.isAppPresence) }()
+      case 11: try { try decoder.decodeSingularBoolField(value: &self.isFullscreen) }()
+      case 12: try { try decoder.decodeSingularBoolField(value: &self.isOnOtherSpace) }()
       default: break
       }
     }
@@ -1070,6 +1083,12 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if self.isAppPresence != false {
       try visitor.visitSingularBoolField(value: self.isAppPresence, fieldNumber: 10)
     }
+    if self.isFullscreen != false {
+      try visitor.visitSingularBoolField(value: self.isFullscreen, fieldNumber: 11)
+    }
+    if self.isOnOtherSpace != false {
+      try visitor.visitSingularBoolField(value: self.isOnOtherSpace, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1084,6 +1103,8 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if lhs._frame != rhs._frame {return false}
     if lhs.appIconPng != rhs.appIconPng {return false}
     if lhs.isAppPresence != rhs.isAppPresence {return false}
+    if lhs.isFullscreen != rhs.isFullscreen {return false}
+    if lhs.isOnOtherSpace != rhs.isOnOtherSpace {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

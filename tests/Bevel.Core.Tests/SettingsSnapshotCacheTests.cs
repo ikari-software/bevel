@@ -17,12 +17,12 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
         try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
     }
 
-    private const string LunaBlob = """
+    private const string Blue2001Blob = """
         {
           "schemaVersion": 1,
-          "themeId": "luna",
+          "themeId": "blue2001",
           "taskbarRows": 2,
-          "theme:luna": { "CrispBevels": true }
+          "theme:blue2001": { "CrispBevels": true }
         }
         """;
 
@@ -34,14 +34,14 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     public void Write_then_read_round_trips_the_version_and_the_settings()
     {
         var cache = new SettingsSnapshotCache(_dir);
-        Assert.True(cache.TryWrite(42, LunaBlob));
+        Assert.True(cache.TryWrite(42, Blue2001Blob));
 
         var read = cache.TryRead();
         Assert.NotNull(read);
         Assert.Equal(42, read.Value.Version);
         // Re-serialised, so compare by content — the same rule the peer uses against a live snapshot.
-        Assert.True(SettingsService.BlobsEquivalent(LunaBlob, read.Value.Json));
-        Assert.Equal("luna", SettingsService.ProjectBlob(read.Value.Json).Settings.ThemeId);
+        Assert.True(SettingsService.BlobsEquivalent(Blue2001Blob, read.Value.Json));
+        Assert.Equal(ThemeIds.Blue2001, SettingsService.ProjectBlob(read.Value.Json).Settings.ThemeId);
         Assert.Equal(2, SettingsService.ProjectBlob(read.Value.Json).Settings.TaskbarRows);
     }
 
@@ -49,8 +49,8 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     public void Write_is_atomic_and_leaves_no_temp_file_behind()
     {
         var cache = new SettingsSnapshotCache(_dir);
-        cache.TryWrite(1, LunaBlob);
-        cache.TryWrite(2, LunaBlob);
+        cache.TryWrite(1, Blue2001Blob);
+        cache.TryWrite(2, Blue2001Blob);
         Assert.Equal(new[] { SettingsSnapshotCache.FileName },
             Directory.GetFiles(_dir).Select(Path.GetFileName).ToArray());
     }
@@ -94,23 +94,23 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
         Assert.False(SettingsService.TryProjectBlob(blob, out _, out _));
         // The permissive path still yields defaults — that contract (missing file → defaults) is the
         // store's, not the peer's; the point is that a peer can now tell the two apart.
-        Assert.Equal("win2000", SettingsService.ProjectBlob(blob).Settings.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, SettingsService.ProjectBlob(blob).Settings.ThemeId);
     }
 
     [Fact]
     public void TryProjectBlob_accepts_an_empty_object_as_a_real_all_defaults_blob()
     {
         Assert.True(SettingsService.TryProjectBlob("{}", out var s, out var overrides));
-        Assert.Equal("win2000", s.ThemeId);
+        Assert.Equal(ThemeIds.Industrial1999, s.ThemeId);
         Assert.Empty(overrides);
     }
 
     [Fact]
     public void TryProjectBlob_projects_a_real_blob_with_its_overrides()
     {
-        Assert.True(SettingsService.TryProjectBlob(LunaBlob, out var s, out var overrides));
-        Assert.Equal("luna", s.ThemeId);
-        Assert.True(overrides["luna"].CrispBevels);
+        Assert.True(SettingsService.TryProjectBlob(Blue2001Blob, out var s, out var overrides));
+        Assert.Equal(ThemeIds.Blue2001, s.ThemeId);
+        Assert.True(overrides[ThemeIds.Blue2001].CrispBevels);
     }
 
     // ── SettingsService.BlobsEquivalent ──────────────────────────────────────────────────────────────
@@ -118,11 +118,12 @@ public sealed class SettingsSnapshotCacheTests : IDisposable
     [Fact]
     public void BlobsEquivalent_ignores_whitespace_and_key_order_but_not_values()
     {
-        Assert.True(SettingsService.BlobsEquivalent(LunaBlob,
-            "{\"theme:luna\":{\"CrispBevels\":true},\"taskbarRows\":2,\"themeId\":\"luna\",\"schemaVersion\":1}"));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, LunaBlob.Replace("\"luna\"", "\"win2000\"")));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, "{}"));
-        Assert.False(SettingsService.BlobsEquivalent(LunaBlob, null));
+        Assert.True(SettingsService.BlobsEquivalent(Blue2001Blob,
+            "{\"theme:blue2001\":{\"CrispBevels\":true},\"taskbarRows\":2,\"themeId\":\"blue2001\",\"schemaVersion\":1}"));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob,
+            Blue2001Blob.Replace("\"blue2001\"", "\"industrial1999\"")));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob, "{}"));
+        Assert.False(SettingsService.BlobsEquivalent(Blue2001Blob, null));
         Assert.False(SettingsService.BlobsEquivalent("not json", "not json"));
     }
 }

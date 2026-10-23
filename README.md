@@ -48,23 +48,24 @@ Third-party themes: **no hosted gallery**; install from **git repositories** onl
 Bevel.sln
 global.json / Directory.Build.props / Directory.Packages.props   # SDK pin + CPM
 src/
-  Bevel.Pal.Abstractions   # capability-oriented PAL interfaces + DTOs (BCL only)
-  Bevel.Core               # domain / services / settings / VFS (no Avalonia — ARCH-02)
-  Bevel.Pal.Fake           # deterministic in-memory PAL (--pal=fake)
-  Bevel.Pal.MacOS          # macOS PAL: AppKit interop, helper client, window/tray/icons
-  Bevel.Ipc                # gRPC-over-UDS helper transport (nonce auth)
-  Bevel.ShellCore.Ipc      # taskbar <-> core UDS transport
-  Bevel.Interop            # ObjC interop + automation control socket (bevel:// / CLI)
-  Bevel.UI                 # shared chrome (BevelWindow, Glyphs, theming services)
-  Bevel.Themes.Win2000     # default theme (aliases Classic.Avalonia.Theme)
-  Bevel.Themes.Luna        # Bevel 2001 Blue glossy vector ControlThemes
-  Bevel.Desktop            # desktop surface window
-  Bevel.Taskbar            # taskbar, Start menu, tray, background ShellModel
-  Bevel.FileManager        # Explorer window + components + VFS UI
-  Bevel.App                # executable: composition root, --role/--pal, window factories
-  bevelctl                 # small CLI
-tests/                     # xUnit + Avalonia.Headless (per-project test suites)
-benchmarks/Bevel.Benchmarks# BenchmarkDotNet (not in the solution)
+  Bevel.Pal.Abstractions      # capability-oriented PAL interfaces + DTOs (BCL only)
+  Bevel.Core                  # domain / services / settings / VFS (no Avalonia — ARCH-02)
+  Bevel.Pal.Fake              # deterministic in-memory PAL (--pal=fake)
+  Bevel.Pal.MacOS             # macOS PAL: AppKit interop, helper client, window/tray/icons
+  Bevel.Ipc                   # gRPC-over-UDS helper transport (nonce auth)
+  Bevel.ShellCore.Ipc         # taskbar <-> core UDS transport
+  Bevel.Interop               # ObjC interop + automation control socket (bevel:// / CLI)
+  Bevel.UI                    # shared chrome (BevelWindow, Glyphs, theming services)
+  Bevel.Themes.Industrial1999 # default theme (aliases Classic.Avalonia.Theme)
+  Bevel.Themes.Blue2001       # Bevel 2001 Blue glossy vector ControlThemes
+  Bevel.Desktop               # desktop surface window
+  Bevel.Taskbar               # taskbar, Start menu, tray, background ShellModel
+  Bevel.FileManager           # Explorer window + components + VFS UI — MOVING PRIVATE, see
+                              #   docs/legal/open-core-boundary.md
+  Bevel.App                   # executable: composition root, --role/--pal, window factories
+  bevelctl                    # small CLI
+tests/                        # xUnit + Avalonia.Headless (per-project test suites)
+benchmarks/Bevel.Benchmarks   # BenchmarkDotNet (not in the solution)
 native/helper-macos/       # Swift helper (BevelHelper): AX/CGWindowList/SCK over gRPC
 packaging/macos/           # build-app.sh, dev-sign.sh, notarization
 proto/                     # bevel.helper.v1.proto
@@ -82,3 +83,41 @@ Requires the .NET 10 SDK (pinned in `global.json`). Run the app with the Fake PA
 ```sh
 dotnet run --project src/Bevel.App -- --pal=fake
 ```
+
+## Licence
+
+Bevel Desktop is developed **open-core**.
+
+This repository is licensed under the **Apache License 2.0** — see [`LICENSE`](LICENSE) and
+[`NOTICE`](NOTICE). That covers everything here: the core, the taskbar, the themes, the PAL, the
+IPC transports and the tooling.
+
+Some components — notably the **Filer** file manager and certain widgets — are developed in a
+separate private repository under proprietary terms, and an official Bevel build combines the
+two. The Apache-2.0 grant applies to this repository's code and confers no rights in the
+proprietary parts. [`docs/legal/open-core-boundary.md`](docs/legal/open-core-boundary.md) records
+exactly where the line falls, why Apache-2.0 was chosen over GPL / FSL / PolyForm, and the
+constraints the seam has to satisfy — chiefly that **this repository must build, run and pass its
+tests with the private half absent.**
+
+`third_party/classic-avalonia/` is vendored [Classic.Avalonia](https://github.com/BAndysc/Classic.Avalonia)
+and remains **MIT** under its own terms; see the `LICENSE` and `NOTICE.md` beside it.
+
+"Bevel" and the Bevel mark are **not** licensed by the Apache-2.0 grant — §6 withholds trademark
+rights. Fork the source freely; don't ship it as Bevel.
+
+## Contributing
+
+Contributions are welcome, with one requirement: sign off your commits.
+
+```sh
+git commit -s     # adds: Signed-off-by: Your Name <you@example.com>
+```
+
+Signing off indicates you agree to the [Contributor License Agreement](CLA.md). Open-core needs a
+single copyright holder able to relicense open code into proprietary builds, so the CLA is asked
+up front — it cannot be retrofitted once a patch is merged. You keep the copyright in your
+contribution; you're granting a licence alongside it.
+
+Please don't submit code whose provenance you can't establish, and in particular no GPL/LGPL
+code — it would be incompatible with the above.

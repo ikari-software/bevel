@@ -73,6 +73,44 @@ final class SpaceContextTests: XCTestCase {
         XCTAssertFalse(ctx(current: [1], [:]).isOnOtherSpace(5), "no spaces reported → unknown, not 'other'")
         XCTAssertFalse(ctx(current: [], [5: [459]]).isOnOtherSpace(5), "no current spaces → SkyLight unavailable")
     }
+
+    // MARK: fullscreen Spaces (bevel-ex8n)
+
+    private func ctx(current: Set<Int>, fullscreen: Set<Int>, _ table: [CGWindowID: [Int]]) -> SpaceContext {
+        SpaceContext(current: current, fullscreen: fullscreen, spacesOf: { table[$0] ?? [] })
+    }
+
+    func testWindowOnAFullscreenSpaceIsFullscreen() {
+        // Display shows the fullscreen Space 77; window 9 is on it, window 8 is on the user Space 1.
+        let c = ctx(current: [77], fullscreen: [77], [9: [77], 8: [1]])
+        XCTAssertTrue(c.isOnFullscreenSpace(9))
+        XCTAssertFalse(c.isOnFullscreenSpace(8))
+    }
+
+    func testAFullscreenWindowIsRecognisedEvenWhileItsSpaceIsNotShowing() {
+        // Both facts are independent: a backgrounded fullscreen app is fullscreen AND on another Space.
+        let c = ctx(current: [1], fullscreen: [77], [9: [77]])
+        XCTAssertTrue(c.isOnFullscreenSpace(9))
+        XCTAssertTrue(c.isOnOtherSpace(9))
+    }
+
+    func testZoomedWindowOnTheUserSpaceIsNotFullscreen() {
+        // The distinction the whole flag exists for: a maximized/zoomed window still lives on the
+        // user's Space, so it stays eligible for work-area correction.
+        XCTAssertFalse(ctx(current: [1], fullscreen: [77], [5: [1]]).isOnFullscreenSpace(5))
+    }
+
+    func testUnknownNeverClaimsFullscreen() {
+        XCTAssertFalse(ctx(current: [1], fullscreen: [], [5: [77]]).isOnFullscreenSpace(5),
+                       "no fullscreen spaces known → SkyLight unavailable, not 'fullscreen'")
+        XCTAssertFalse(ctx(current: [1], fullscreen: [77], [:]).isOnFullscreenSpace(5),
+                       "window's spaces unknown → not 'fullscreen'")
+    }
+
+    func testFullscreenDefaultsToEmptyForCallersThatDoNotSupplyIt() {
+        // The default-argument init keeps every existing call site compiling AND fails closed.
+        XCTAssertFalse(ctx(current: [1], [5: [77]]).isOnFullscreenSpace(5))
+    }
 }
 
 // MARK: - ActivationPlan

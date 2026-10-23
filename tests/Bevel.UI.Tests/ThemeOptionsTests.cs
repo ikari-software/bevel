@@ -11,7 +11,7 @@ namespace Bevel.UI.Tests;
 /// <summary>
 /// The "Crisp bevels" runtime override (bevel-wym): ThemeOptions shadows the theme's
 /// Bevel.Edge.Rendering resource at Application level, and every decorator bound through the
-/// Win2000Theme style flips live — on AND back off (removing the shadow restores the theme's
+/// Industrial1999Theme style flips live — on AND back off (removing the shadow restores the theme's
 /// Smooth default through the same DynamicResource).
 /// </summary>
 public sealed class ThemeOptionsTests

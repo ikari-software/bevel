@@ -12,6 +12,11 @@ import Darwin
 ///
 /// Everything here is best-effort and side-effect free unless named `focusWindow` / `switchToSpace`.
 enum SkyLight {
+    /// `CGSSpaceType` for a Space created by native fullscreen (0 = user, 2 = system/dashboard).
+    /// Undocumented like the rest of SkyLight; a wrong value here only ever costs the fullscreen
+    /// distinction, which fails closed.
+    private static let kCGSSpaceFullScreen = 4
+
     private typealias MainConnection = @convention(c) () -> Int32
     private typealias CopySpacesForWindows = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
     private typealias CopyManagedDisplaySpaces = @convention(c) (Int32) -> Unmanaged<CFArray>?
@@ -69,6 +74,27 @@ enum SkyLight {
               let displays = copy(symbols.connection)?.takeRetainedValue() as? [[String: Any]]
         else { return [] }
         return Set(displays.compactMap { ($0["Current Space"] as? [String: Any])?["id64"] as? Int })
+    }
+
+    /// Every Space of kind FULLSCREEN, across all displays (empty when unavailable).
+    ///
+    /// A native-fullscreen window does not merely fill the screen — macOS gives it a dedicated Space
+    /// whose `type` is `kCGSSpaceFullScreen`. That is the only reliable way to tell it apart from a
+    /// zoomed/maximized window, which stays on the user's Space, and it needs no AX at all, so it
+    /// works for apps that expose no AX tree. Empty on a dlsym miss, which makes "is this fullscreen?"
+    /// answer false everywhere — the conservative direction.
+    static func fullscreenSpaceIDs() -> Set<Int> {
+        guard let copy = symbols.copyManagedDisplaySpaces,
+              let displays = copy(symbols.connection)?.takeRetainedValue() as? [[String: Any]]
+        else { return [] }
+        var out: Set<Int> = []
+        for display in displays {
+            guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
+            for space in spaces where (space["type"] as? Int) == kCGSSpaceFullScreen {
+                if let id = space["id64"] as? Int { out.insert(id) }
+            }
+        }
+        return out
     }
 
     /// Every Space `window` belongs to (`[]` = unknown). 0x7 = all space kinds (user, fullscreen, system).
@@ -298,22 +324,52 @@ enum SkyLight {
 /// tombstone stays on the Space it died on, which is on screen or was just left).
 struct SpaceContext {
     let current: Set<Int>
+    /// Spaces of kind fullscreen. Empty when unavailable, which makes every
+    /// `isOnFullscreenSpace` answer false.
+    let fullscreen: Set<Int>
     private let spacesOf: (CGWindowID) -> [Int]
 
-    init(current: Set<Int>, spacesOf: @escaping (CGWindowID) -> [Int]) {
+    init(current: Set<Int>, fullscreen: Set<Int> = [], spacesOf: @escaping (CGWindowID) -> [Int]) {
         self.current = current
+        self.fullscreen = fullscreen
         self.spacesOf = spacesOf
     }
 
     static func capture() -> SpaceContext {
-        SpaceContext(current: SkyLight.currentSpaceIDs(), spacesOf: SkyLight.spaceIDs(ofWindow:))
+        SpaceContext(
+            current: SkyLight.currentSpaceIDs(),
+            fullscreen: SkyLight.fullscreenSpaceIDs(),
+            spacesOf: SkyLight.spaceIDs(ofWindow:)
+        )
+    }
+
+    /// True only when the window is known to sit on a fullscreen Space. Unknown never claims
+    /// fullscreen: a false positive here would make the shell ignore an ordinary window that really
+    /// is covering its chrome, which is the bug this flag exists to prevent, inverted.
+    func isOnFullscreenSpace(_ window: CGWindowID) -> Bool {
+        isOnFullscreenSpace(spaces: spaceIDs(of: window))
     }
 
     /// True only when the window's Spaces are KNOWN and none of them is showing. Unknown (missing
     /// SkyLight symbols, empty answer) never claims "other Space": that would keep every ghost.
     func isOnOtherSpace(_ window: CGWindowID) -> Bool {
+        isOnOtherSpace(spaces: spaceIDs(of: window))
+    }
+
+    /// The Spaces a window belongs to. Exposed so a caller needing BOTH predicates pays for one
+    /// WindowServer round trip instead of two — `CGSCopySpacesForWindows` is per-window, and the
+    /// snapshot pass evaluates this for every admitted window.
+    func spaceIDs(of window: CGWindowID) -> [Int] { spacesOf(window) }
+
+    /// `isOnOtherSpace` against an already-fetched Space list.
+    func isOnOtherSpace(spaces: [Int]) -> Bool {
         guard !current.isEmpty else { return false }
-        let spaces = spacesOf(window)
         return !spaces.isEmpty && current.isDisjoint(with: spaces)
+    }
+
+    /// `isOnFullscreenSpace` against an already-fetched Space list.
+    func isOnFullscreenSpace(spaces: [Int]) -> Bool {
+        guard !fullscreen.isEmpty else { return false }
+        return !fullscreen.isDisjoint(with: spaces)
     }
 }

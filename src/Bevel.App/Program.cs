@@ -387,7 +387,42 @@ internal static class Program
             }
             return new byte[] { 1 }; // ack
         });
-        control.Start();
+        try
+        {
+            control.Start();
+        }
+        catch (UdsSocketBusyException ex)
+        {
+            // Another launcher is LIVE on our control socket. Standing down is already the INTENT —
+            // the exception's own message says "standing down instead of hijacking" (bevel-wio0) —
+            // but nothing caught it on this path, so standing down was implemented as SIGABRT. That
+            // is the crash this catch exists for: pid 51828, 2026-10-12 12:41:27, and twice more
+            // minutes earlier.
+            //
+            // The teardown below is the half that actually matters. By the time we get here
+            // supervisor.StartAsync has ALREADY spawned core and taskbar, so aborting re-parented
+            // them to launchd still holding core.sock and settings.db — which is exactly what makes
+            // the NEXT launch collide the same way. One crash compounded into a stuck shell with a
+            // hidden Dock and no owner. Kill our own children before leaving, in the same order as
+            // the normal teardown.
+            //
+            // Note this is reachable even though the single-instance lock was acquired moments ago:
+            // the lock (a file lease) and the socket probe (an authenticated handshake) are
+            // INDEPENDENT detectors and can disagree — the incumbent launcher can be gone while its
+            // socket is still served. Detecting it this late is itself the design flaw; see the
+            // follow-up bead for moving the probe up beside the lock, before anything is spawned.
+            var msg = $"another launcher is already serving {ex.SocketPath}; this launch is standing down";
+            Console.Error.WriteLine($"[launcher] {msg}");
+            RestartDiag.Log($"launcher: {msg}");
+            Task.Run(async () =>
+            {
+                await supervisor.DisposeAsync().ConfigureAwait(false);
+                await filerSupervisor.DisposeAsync().ConfigureAwait(false);
+                await control.DisposeAsync().ConfigureAwait(false);  // never bound → owner-only unlink keeps the incumbent's socket
+            }).GetAwaiter().GetResult();
+            Environment.ExitCode = 3;   // the exit code the core already uses for "stood down"
+            return;
+        }
 
         // Parked pre-warm (bevel-t48y): ONE hidden --park filer so the user's first "open folder"
         // is a Show dial — a frame — instead of a process cold start. Spawned AFTER core+taskbar

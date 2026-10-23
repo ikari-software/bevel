@@ -13,7 +13,7 @@ namespace Bevel.UI;
 /// Win2000 base <c>Tokens.axaml</c> that ships in the theme styles.
 ///
 /// <para>This is the packaging/switch <b>engine</b>: <see cref="Themes"/> is the registry and
-/// <see cref="Apply"/> is the runtime swap. The default theme ("win2000", the frozen id) merges
+/// <see cref="Apply"/> is the runtime swap. The default theme (<see cref="Bevel.Core.ThemeIds.Default"/>) merges
 /// nothing — the base tokens are the theme. Additional themes each contribute one override dict.</para>
 ///
 /// <para><b>v1 scope.</b> A theme currently composes the token axes that already cascade live —
@@ -30,19 +30,20 @@ namespace Bevel.UI;
 /// </summary>
 public static class ThemeService
 {
-    /// <summary>Selectable themes as (persisted id, display name). "win2000" is the frozen default id.</summary>
+    /// <summary>Selectable themes as (persisted id, display name).</summary>
     public static readonly IReadOnlyList<(string Id, string Display)> Themes = new[]
     {
-        ("win2000", "Bevel 1999 Industrial"),
-        // NOT "Bevel 2001 Blue": blue is only this theme's DEFAULT colourway, and the Luna colour axis
-        // (Blue/Silver/Black/Purple, LunaVariant.Colors) is user-switchable — so naming the theme after
-        // one of its own options contradicts the feature the moment anyone changes it.
-        ("luna", "Bevel 2001"),
-        ("flat", "Bevel Flat (preview)"),
+        (Bevel.Core.ThemeIds.Industrial1999, "Bevel 1999 Industrial"),
+        // NOT "Bevel 2001 Blue": blue is only this theme's DEFAULT colourway, and the colour axis
+        // (Blue/Silver/Black/Purple, Blue2001Variant.Colors) is user-switchable — so naming the theme
+        // after one of its own options contradicts the feature the moment anyone changes it.
+        (Bevel.Core.ThemeIds.Blue2001, "Bevel 2001"),
+        (Bevel.Core.ThemeIds.Flat, "Bevel Flat (Whistler Watercolor)"),
+        (Bevel.Core.ThemeIds.Pastel, "Bevel Pastel (preview)"),
     };
 
-    /// <summary>The default theme id (the base Win2000 tokens). Empty/unknown resolves here.</summary>
-    public const string DefaultTheme = "win2000";
+    /// <summary>The default theme id. Empty/unknown resolves here.</summary>
+    public const string DefaultTheme = Bevel.Core.ThemeIds.Default;
 
     /// <summary>The currently-applied theme id. Surfaces that swap whole layouts by theme (the Start
     /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.</summary>
@@ -55,11 +56,7 @@ public static class ThemeService
 
     /// <summary>The token-override dictionary a theme merges, or null when it ships none (base theme, or
     /// a Styles-set theme that carries its tokens inside its own <see cref="StylesFor"/> bundle).</summary>
-    private static string? SourceFor(string id) => id switch
-    {
-        "flat" => "avares://Bevel.Themes.Win2000/ThemeFlat.axaml",
-        _ => null,
-    };
+    private static string? SourceFor(string id) => null;
 
     /// <summary>A theme's control-template <c>Styles</c> set (its own <c>ControlTheme</c>s + tokens),
     /// added to <see cref="Application.Styles"/> so it overrides the Classic templates by precedence,
@@ -68,7 +65,9 @@ public static class ThemeService
     /// colours.</summary>
     private static string? StylesFor(string id) => id switch
     {
-        "luna" => "avares://Bevel.Themes.Luna/LunaTheme.axaml",
+        "blue2001" => "avares://Bevel.Themes.Blue2001/Blue2001Theme.axaml",
+        Bevel.Core.ThemeIds.Flat => "avares://Bevel.Themes.Flat/FlatTheme.axaml",
+        Bevel.Core.ThemeIds.Pastel => "avares://Bevel.Themes.Pastel/PastelTheme.axaml",
         _ => null,
     };
 
@@ -124,7 +123,7 @@ public static class ThemeService
             catch (Exception ex)
             {
                 applied = false;
-                Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex.Message}");
+                Console.Error.WriteLine($"[ThemeService] live re-template raised (theme={theme}): {ex}");
                 // ROLL THE FAILED ENTRY BACK OUT (bevel-bxol). Styles.Add inserts first and re-resolves
                 // after, so a throw leaves a HALF-WIRED StyleInclude sitting in app.Styles — its Loaded
                 // content never materialised. Every later resource lookup walks that entry, and

@@ -186,6 +186,15 @@ message TaskbarWindow {
   // dim icon-only button whose click reopens the app. Suppressed when a real window for the same bundle
   // exists, so the merge transition is duplicate-free.
   bool is_app_presence = 10;
+  // True when the window is in native (green-button) fullscreen, i.e. it occupies a dedicated
+  // fullscreen Space. NOT the same as zoomed/maximized, which stays on the user's Space. Consumers
+  // acting on geometry need the difference: a fullscreen window's frame IS the display, so it
+  // overlaps any shell chrome without being in its way (bevel-ex8n). False when undetermined.
+  bool is_fullscreen = 11;
+  // True when the window's Space is known and no display is showing it. Such windows are still
+  // listed (the CG query uses .optionAll so minimized windows survive) and their frame is the last
+  // one they had on screen. False when undetermined — never guessed from absence of evidence.
+  bool is_on_other_space = 12;
 }
 
 message PixelRect {

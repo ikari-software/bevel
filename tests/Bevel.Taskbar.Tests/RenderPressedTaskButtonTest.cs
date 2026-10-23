@@ -10,7 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
-using Bevel.UI.Luna;
+using Bevel.UI.Blue2001;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -28,7 +28,7 @@ public class RenderPressedTaskButtonTest
     private const int FaceSampleWidth = 40; // the label-free right end of a 150px button
 
     [AvaloniaFact]
-    public void Win2000_focused_button_is_sunken_and_distinct_from_its_neighbour()
+    public void Industrial1999_focused_button_is_sunken_and_distinct_from_its_neighbour()
     {
         var (window, view, _, _) = BuildBar(
             Win("w0", "Window 1", focused: true),
@@ -65,11 +65,11 @@ public class RenderPressedTaskButtonTest
     /// where a static-only colour would vanish.
     /// </summary>
     [AvaloniaFact]
-    public void Luna_focused_button_is_distinct_under_the_default_and_darkest_variants()
+    public void Blue2001_focused_button_is_distinct_under_the_default_and_darkest_variants()
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             var (window, view, _, _) = BuildBar(
                 Win("w0", "Window 1", focused: true),
                 Win("w1", "Window 2"));
@@ -80,7 +80,7 @@ public class RenderPressedTaskButtonTest
                 ("Purple", "BEVEL_PRESSED_LUNA_PURPLE_OUT", "bevel-pressed-luna-purple.png"),
             })
             {
-                LunaVariantService.Apply(color, "Hybrid");
+                Blue2001VariantService.Apply(color, "Hybrid");
                 var frame = CaptureStable(window);
                 Save(frame, env, file);
                 var (focused, other) = ButtonRects(view, window);
@@ -94,8 +94,8 @@ public class RenderPressedTaskButtonTest
         }
         finally
         {
-            LunaVariantService.Clear();
-            Bevel.UI.ThemeService.Apply("win2000");
+            Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
     }
 

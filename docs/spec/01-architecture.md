@@ -31,8 +31,8 @@ bevel/
 │   ├── Bevel.Pal.Linux/             # Linux PAL impl (X11 + Wayland strategies) → ch. 04
 │   ├── Bevel.Pal.Fake/              # deterministic in-memory PAL for tests & UI dev mode
 │   ├── Bevel.Ipc/                   # .proto contracts + generated C# client/server stubs
-│   ├── Bevel.Themes.Win2000/        # default theme (fork/extend Classic.Avalonia) → ch. 05
-│   ├── Bevel.Themes.Luna/
+│   ├── Bevel.Themes.Industrial1999/        # default theme (fork/extend Classic.Avalonia) → ch. 05
+│   ├── Bevel.Themes.Blue2001/
 │   └── Bevel.Themes.Win11/
 ├── native/
 │   ├── helper-macos/                # Swift Package "BevelHelper" (AX, SCKit, CGEvent, Apple Events)

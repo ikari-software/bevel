@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1160" viewBox="0 0 1280 1160" role="img" aria-labelledby="title desc">
+  <title id="title">Bevel Flat — Whistler Watercolor design spec</title>
+  <desc id="desc">A vector target for Bevel Flat: a high-DPI recreation of the Windows Whistler Watercolor / Classic Shell skin, with aqua-white chrome, thin frame, small rounded caption controls, and clear list-header and separator treatment.</desc>
+  <defs>
+    <linearGradient id="page" x2="0" y2="1"><stop offset="0" stop-color="#F7FAFA"/><stop offset="1" stop-color="#E9F1F1"/></linearGradient>
+    <linearGradient id="desk" x2="0" y2="1"><stop offset="0" stop-color="#D9ECE7"/><stop offset="1" stop-color="#C6E0DC"/></linearGradient>
+    <linearGradient id="caption" x2="0" y2="1"><stop offset="0" stop-color="#E4F3F5"/><stop offset=".28" stop-color="#C7E5EA"/><stop offset=".7" stop-color="#A5D4DE"/><stop offset="1" stop-color="#8EC7D4"/></linearGradient>
+    <linearGradient id="inactive" x2="0" y2="1"><stop offset="0" stop-color="#EDF3F3"/><stop offset="1" stop-color="#DDE8E9"/></linearGradient>
+    <linearGradient id="button" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F1F7F7"/><stop offset="1" stop-color="#E1EDEF"/></linearGradient>
+    <linearGradient id="hover" x2="0" y2="1"><stop offset="0" stop-color="#FFF9E8"/><stop offset=".55" stop-color="#F8E5B5"/><stop offset="1" stop-color="#F1D296"/></linearGradient>
+    <linearGradient id="selection" x2="0" y2="1"><stop offset="0" stop-color="#B7E0E9"/><stop offset="1" stop-color="#9ACEDF"/></linearGradient>
+    <linearGradient id="field" x2="0" y2="1"><stop offset="0" stop-color="#EDF5F6"/><stop offset=".18" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFFFFF"/></linearGradient>
+    <linearGradient id="taskbar" x2="0" y2="1"><stop offset="0" stop-color="#C9E6EC"/><stop offset=".08" stop-color="#B6DDE5"/><stop offset=".5" stop-color="#A4D2DE"/><stop offset=".92" stop-color="#B6DDE5"/><stop offset="1" stop-color="#C9E6EC"/></linearGradient>
+    <linearGradient id="start" x2="0" y2="1"><stop offset="0" stop-color="#D6EACB"/><stop offset=".55" stop-color="#AED69E"/><stop offset="1" stop-color="#87C584"/></linearGradient>
+    <linearGradient id="progress" x2="1" y2="0"><stop offset="0" stop-color="#C6E7DD"/><stop offset=".5" stop-color="#9BCFBD"/><stop offset="1" stop-color="#77B7A8"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur in="SourceAlpha" stdDeviation="10" result="b"/><feOffset dy="7" result="o"/><feColorMatrix in="o" type="matrix" values="0 0 0 0 .11 0 0 0 0 .18 0 0 0 0 .2 0 0 0 .16 0" result="s"/><feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>.ink{fill:#1B3850}.soft{fill:#6B7F86}.micro{font:600 10px/1.2 Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif;letter-spacing:1.4px}.ui{font:13px/1.3 Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif}.small{font:12px/1.3 Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif}.label{font:600 12px/1.3 Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif}.tiny{font:10.5px/1.3 Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif}</style>
+  </defs>
+  <rect width="1280" height="1160" fill="url(#page)"/>
+  <text x="56" y="70" class="micro soft">BEVEL / DESIGN SPEC</text>
+  <text x="56" y="112" fill="#1B3850" font-family="Inter,ui-sans-serif,system-ui,'Segoe UI',sans-serif" font-size="38" font-weight="620" letter-spacing="-1.4">Flat, as Whistler watercolor.</text>
+  <text x="58" y="139" class="ui soft">A faithful, antialiased, vector recreation: white/aqua chrome, blue-green ink, thin frame, soft color transitions.</text>
+
+  <rect x="48" y="170" width="1184" height="710" rx="16" fill="#FCFDFD" stroke="#C9DDE0"/>
+  <rect x="60" y="182" width="1160" height="686" rx="12" fill="url(#desk)"/>
+  <path d="M60 182h480c-45 42-118 54-204 47-94-8-161 30-226 24-26-2-40-10-50-19Z" fill="#F2B9B8" opacity=".18"/>
+  <path d="M1018 182h202v348c-70-32-104-51-164-40-67 12-84-25-142-34 29-63 42-158 104-274Z" fill="#D6C7ED" opacity=".16"/>
+  <path d="M60 712c114-48 205-47 298-12 75 28 111 72 202 84-84 60-320 83-500 84Z" fill="#B9DEC0" opacity=".22"/>
+
+  <!-- desktop icon -->
+  <g transform="translate(82 220)">
+    <rect width="42" height="36" rx="7" fill="#FFFFFF" fill-opacity=".78" stroke="#FFFFFF"/>
+    <path d="M9 10h24v16H9zM9 10V7h9l3 3" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".9"/>
+    <text x="21" y="55" text-anchor="middle" class="tiny ink">Home</text>
+  </g>
+
+  <!-- window -->
+  <g filter="url(#shadow)">
+    <rect x="270" y="242" width="790" height="490" rx="5" fill="#FFFFFF" stroke="#5B9FB0" stroke-width="1.2"/>
+    <rect x="271" y="243" width="788" height="36" rx="5" fill="url(#caption)"/>
+    <path d="M271 279h788" stroke="#8FC4CF"/>
+    <rect x="284" y="252" width="18" height="18" rx="4" fill="#F4F8F8" stroke="#93BDC5"/>
+    <path d="M288 260h10v7h-10zM288 260v-2h4l2 2" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/>
+    <text x="310" y="266" class="label ink">Home — File Manager</text>
+    <!-- caption controls -->
+    <g transform="translate(969 250)">
+      <rect width="22" height="21" rx="6" fill="#F0F6F6" fill-opacity=".75" stroke="#FFFFFF"/>
+      <path d="M6 12h10" stroke="#325A68" stroke-width="1.4" stroke-linecap="round"/>
+      <rect x="28" width="22" height="21" rx="6" fill="#F0F6F6" fill-opacity=".75" stroke="#FFFFFF"/>
+      <rect x="34" y="6" width="10" height="10" rx="1" fill="none" stroke="#325A68" stroke-width="1.2"/>
+      <rect x="56" width="22" height="21" rx="6" fill="#F2B9B8" stroke="#DDA7A8"/>
+      <path d="m62 6 10 10m0-10-10 10" stroke="#5D4B52" stroke-width="1.5" stroke-linecap="round"/>
+    </g>
+    <!-- menubar -->
+    <rect x="271" y="279" width="788" height="28" fill="#FFFFFF"/>
+    <text x="287" y="297" class="small ink">File</text><text x="327" y="297" class="small ink">Edit</text><text x="367" y="297" class="small ink">View</text><text x="411" y="297" class="small ink">Go</text><text x="443" y="297" class="small ink">Tools</text><text x="492" y="297" class="small ink">Help</text>
+    <path d="M271 306h788" stroke="#D8E7E9"/>
+    <!-- toolbar -->
+    <rect x="271" y="307" width="788" height="43" fill="#EAF3F4"/>
+    <g transform="translate(286 316)"><rect width="32" height="25" rx="5" fill="url(#button)" stroke="#9CBFC7"/><path d="m19 6-7 6.5 7 6.5M12 12.5h13" fill="none" stroke="#325A68" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g transform="translate(322 316)"><rect width="32" height="25" rx="5" fill="url(#button)" stroke="#9CBFC7"/><path d="m13 6 7 6.5-7 6.5M20 12.5H7" fill="none" stroke="#325A68" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g transform="translate(358 316)"><rect width="32" height="25" rx="5" fill="url(#button)" stroke="#9CBFC7"/><path d="M22 11a7 7 0 1 0 1 5M22 6v5h-5" fill="none" stroke="#325A68" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <!-- address -->
+    <rect x="271" y="350" width="788" height="34" fill="#FFFFFF"/>
+    <text x="286" y="371" class="tiny soft">Address</text>
+    <rect x="338" y="356" width="701" height="22" rx="4" fill="url(#field)" stroke="#9CBFC7"/>
+    <path d="M350 363h11l2 2h9v7h-22z" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/>
+    <text x="381" y="371" class="tiny ink">This PC</text><text x="431" y="371" class="tiny soft">›</text><text x="448" y="371" class="tiny ink">Home</text>
+    <!-- list area -->
+    <rect x="271" y="384" width="788" height="319" fill="#FFFFFF"/>
+    <rect x="271" y="384" width="788" height="26" fill="#DCECEF"/>
+    <path d="M270 410h790" stroke="#AFCED3"/>
+    <path d="M540 384v26M720 384v26M900 384v26" stroke="#AFCED3"/>
+    <text x="283" y="401" class="tiny ink strong">Name</text><text x="553" y="401" class="tiny ink strong">Size</text><text x="733" y="401" class="tiny ink strong">Type</text><text x="913" y="401" class="tiny ink strong">Date Modified</text>
+    <rect x="271" y="438" width="788" height="34" rx="3" fill="url(#selection)"/>
+    <path d="M285 424h14v13h-14zM285 424v-3h6l3 3" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/><text x="309" y="434" class="small ink">Design ideas</text>
+    <path d="M285 452h14v13h-14zM285 452v-3h6l3 3" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/><text x="309" y="463" class="small ink">Welcome note.txt</text>
+    <path d="M285 486h14v13h-14zM285 486v-3h6l3 3" fill="#D7EDEE" stroke="#88B7C0" stroke-width=".7"/><text x="309" y="497" class="small ink">Reference</text>
+    <path d="M285 520h14v13h-14zM285 520v-3h6l3 3" fill="#D7EDEE" stroke="#88B7C0" stroke-width=".7"/><text x="309" y="531" class="small ink">Watercolor</text>
+    <path d="M285 554h14v13h-14zM285 554v-3h6l3 3" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/><text x="309" y="565" class="small ink">Soft edges.svg</text>
+    <!-- scrollbar -->
+    <rect x="1030" y="410" width="14" height="293" fill="#EDF5F6" stroke="#C3D8DC"/>
+    <rect x="1030" y="410" width="14" height="16" rx="3" fill="url(#button)" stroke="#9CBFC7"/><path d="M1037 417v4m-3-2h6" stroke="#286B82" stroke-width="1.1"/>
+    <rect x="1030" y="468" width="14" height="84" rx="5" fill="url(#button)" stroke="#9CBFC7"/><circle cx="1037" cy="502" r="2" fill="#8EB6C0"/><circle cx="1037" cy="511" r="2" fill="#8EB6C0"/><circle cx="1037" cy="520" r="2" fill="#8EB6C0"/>
+    <rect x="1030" y="687" width="14" height="16" rx="3" fill="url(#button)" stroke="#9CBFC7"/><path d="M1034 693h6m-6 3 3-6 3 6" stroke="#286B82" stroke-width="1.1"/>
+    <!-- status -->
+    <rect x="271" y="703" width="788" height="28" fill="#EAF3F4"/>
+    <path d="M271 703h788" stroke="#C6DDE1"/><text x="286" y="721" class="tiny soft">5 items · 1 selected</text><text x="1041" y="721" text-anchor="end" class="tiny soft">Home</text>
+  </g>
+
+  <!-- start menu + taskbar -->
+  <g filter="url(#shadow)">
+    <rect x="70" y="538" width="370" height="278" rx="8" fill="#FFFFFF" stroke="#6EA7B1"/>
+    <rect x="70" y="538" width="370" height="56" fill="url(#caption)"/>
+    <circle cx="104" cy="566" r="19" fill="#FFE7A8" stroke="#FFFFFF" stroke-width="2"/><text x="132" y="563" class="label ink">Your workspace</text><text x="132" y="579" class="tiny ink">A quiet place to begin</text>
+    <rect x="70" y="594" width="215" height="175" fill="#FFFFFF"/>
+    <rect x="285" y="594" width="155" height="175" fill="#E7F1F2"/>
+    <text x="84" y="614" class="micro soft">PINNED</text><text x="300" y="614" class="micro soft">PLACES</text>
+    <path d="M84 628h13v12H84zM84 628v-3h6l3 3" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/><text x="107" y="638" class="small ink">File Manager</text>
+    <path d="M84 657h13v12H84zM84 657v-3h6l3 3" fill="#D7EDEE" stroke="#88B7C0" stroke-width=".7"/><text x="107" y="667" class="small ink">Documents</text>
+    <path d="M300 630h11v9h-11zM300 630v-2h5l2 2" fill="none" stroke="#88B7C0"/><text x="319" y="637" class="small ink">Pictures</text>
+    <path d="M300 657h11v9h-11zM300 657v-2h5l2 2" fill="none" stroke="#88B7C0"/><text x="319" y="664" class="small ink">Settings</text>
+    <rect x="70" y="769" width="370" height="47" fill="#C9E2CB"/>
+    <text x="84" y="798" class="small ink">Sign out</text><rect x="325" y="779" width="96" height="27" rx="7" fill="#F2B9B8" stroke="#DDA7A8"/><text x="340" y="798" class="small ink">Shut down</text>
+  </g>
+  <rect x="60" y="832" width="1160" height="36" fill="url(#taskbar)"/>
+  <path d="M60 832h1160" stroke="#96C4CF"/>
+  <rect x="70" y="835" width="98" height="29" rx="15" fill="url(#start)" stroke="#7FBD7F"/><path d="M86 845h10v10H86zM86 845l5-4 5 4" fill="none" stroke="#3F6B43" stroke-width="1.1"/><text x="106" y="855" class="small" fill="#3F6B43" font-weight="650">Start</text>
+  <rect x="180" y="836" width="174" height="27" rx="5" fill="url(#selection)" stroke="#77AAB8"/><path d="M194 844h10v10h-10zM194 844v-2h4l2 2" fill="#FFE7A8" stroke="#B99B5B" stroke-width=".7"/><text x="213" y="854" class="small ink">Home — File Manager</text>
+  <rect x="362" y="836" width="126" height="27" rx="5" fill="url(#button)" stroke="#9CBFC7"/><text x="376" y="854" class="small ink">Welcome note</text>
+  <rect x="1112" y="836" width="96" height="27" rx="5" fill="#A8D2DC" stroke="#88B7C0"/><text x="1125" y="854" class="small ink">2:14 PM</text>
+
+  <text x="60" y="899" class="micro soft">FRAME · CAPTION · MENUS · FILE HEADERS · SCROLLBAR · TASKBAR</text>
+  <path d="M48 920h1184" stroke="#D2E1E3"/>
+
+  <!-- controls row -->
+  <g transform="translate(56 946)">
+    <text y="0" class="micro soft">CONTROL LANGUAGE</text>
+    <rect y="20" width="100" height="32" rx="5" fill="url(#button)" stroke="#9CBFC7"/><text x="50" y="41" text-anchor="middle" class="small ink">Normal</text>
+    <rect x="112" y="20" width="100" height="32" rx="5" fill="url(#hover)" stroke="#D49A62"/><text x="162" y="41" text-anchor="middle" class="small ink">Hover</text>
+    <rect x="224" y="20" width="100" height="32" rx="5" fill="#CFE5E8" stroke="#8FB5C0"/><text x="274" y="42" text-anchor="middle" class="small ink">Pressed</text>
+    <rect y="72" width="100" height="32" rx="5" fill="url(#button)" stroke="#9CBFC7"/><rect x="4" y="76" width="92" height="24" rx="3" fill="none" stroke="#3E8699" stroke-width="2"/><text x="50" y="93" text-anchor="middle" class="small ink">Focus</text>
+    <rect x="112" y="72" width="100" height="32" rx="5" fill="#E7F1F2" stroke="#B9D1D6"/><text x="162" y="93" text-anchor="middle" class="small soft">Disabled</text>
+    <rect x="360" y="20" width="240" height="32" rx="4" fill="url(#field)" stroke="#9CBFC7"/><text x="372" y="41" class="small ink">Text field</text>
+    <rect x="612" y="20" width="180" height="32" rx="4" fill="url(#field)" stroke="#9CBFC7"/><text x="624" y="41" class="small ink">Combo field</text><path d="m760 32 6 6 6-6" fill="none" stroke="#286B82" stroke-width="1.4"/>
+    <rect x="360" y="72" width="240" height="32" rx="4" fill="#FFFFFF" stroke="#D5E4E6"/><rect x="362" y="94" width="238" height="2" fill="#C6DDE1"/><rect x="362" y="79" width="238" height="14" rx="2" fill="#DCECEF"/><text x="374" y="89" class="tiny ink">Column header</text>
+    <rect x="612" y="72" width="180" height="32" rx="4" fill="#E9F2F4" stroke="#C3D8DC"/><rect x="622" y="76" width="52" height="24" rx="4" fill="url(#button)" stroke="#9CBFC7"/><circle cx="648" cy="88" r="2" fill="#8EB6C0"/><circle cx="656" cy="88" r="2" fill="#8EB6C0"/><circle cx="664" cy="88" r="2" fill="#8EB6C0"/>
+    <text y="132" class="tiny soft">No gloss, no hard bevels: rounded plates, aqua separators, warm-yellow hover, soft progress.</text>
+  </g>
+
+  <text x="56" y="1128" class="micro soft">BEVEL FLAT / WHISTLER WATERCOLOR — VECTOR TARGET, NOT A RASTER SKIN</text>
+</svg>

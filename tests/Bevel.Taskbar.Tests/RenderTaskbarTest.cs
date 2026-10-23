@@ -1,3 +1,4 @@
+using Bevel.Core;
 using System;
 using System.Linq;
 using Avalonia;
@@ -57,7 +58,7 @@ public class RenderTaskbarTest
     {
         try
         {
-            Bevel.UI.ThemeService.Apply("luna");
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
             var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
             var wm = new StubWindowManager();
@@ -84,11 +85,11 @@ public class RenderTaskbarTest
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-taskbar.png");
             frame!.Save(outPath);
 
-            // Landing-page hero part — see RenderLunaStartMenuTest.
+            // Landing-page hero part — see RenderBlue2001StartMenuTest.
             if (Environment.GetEnvironmentVariable("BEVEL_HERO_PARTS") is { } heroParts)
                 Bevel.TestSupport.SiteShot.Save(window, Path.Combine(heroParts, "taskbar.png"));
         }
-        finally { Bevel.UI.ThemeService.Apply("win2000"); }
+        finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }
 
     [AvaloniaFact]

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bevel Flat theme — render delta · before/after</title>
+<style>
+  :root{
+    --bg:#0e1014; --card:#151922; --card-border:#232a36; --ink:#d7dce5; --dim:#8b93a3;
+    --accent:#7aa4eb; --amber:#e8b06a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding:32px 20px 64px;
+  }
+  .wrap{max-width:1000px; margin:0 auto;}
+  header h1{font-size:24px; font-weight:650; letter-spacing:.2px;}
+  header .sub{color:var(--dim); margin-top:6px;}
+  .legend{
+    margin-top:16px; display:flex; gap:22px; flex-wrap:wrap; color:var(--dim); font-size:13.5px;
+  }
+  .legend b{color:var(--ink); font-weight:600;}
+  .legend .k{color:var(--accent);}
+  .notes{
+    margin-top:14px; padding:12px 14px; border:1px solid var(--card-border); border-radius:10px;
+    background:#12151c; color:var(--dim); font-size:13.5px;
+  }
+  .notes code{background:#1c212b; padding:1px 5px; border-radius:4px; color:var(--amber); font-size:12.5px;}
+  .card{
+    margin-top:34px; background:var(--card); border:1px solid var(--card-border); border-radius:12px;
+    overflow:hidden;
+  }
+  .card .head{
+    position:relative; padding:12px 16px; border-bottom:1px solid var(--card-border); font-size:14px;
+  }
+  .card .head .name{font-weight:650; font-size:15px;}
+  .card .head .meta{color:var(--dim); font-size:13px; margin-top:2px;}
+  .card .head .meta .n{color:var(--accent); font-weight:600;}
+  .card .head .side{
+    position:absolute; top:50%; right:16px; transform:translateY(-50%);
+    color:var(--dim); font-size:11.5px; font-weight:700; letter-spacing:.6px;
+    text-transform:uppercase; white-space:nowrap;
+  }
+  .card .head .side .k{color:var(--accent);}
+  .cmp{
+    position:relative; --pos:50%; padding:0; background:#000;
+    cursor:ew-resize; touch-action:none; user-select:none; -webkit-user-select:none;
+    outline-offset:-1px;
+  }
+  .cmp .after{display:block; width:100%; height:auto;}
+  .cmp .before{
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    clip-path:inset(0 calc(100% - var(--pos)) 0 0); pointer-events:none;
+  }
+  .cmp .divider{
+    position:absolute; top:0; bottom:0; left:var(--pos); width:2px; margin-left:-1px;
+    background:#fff; box-shadow:0 0 5px rgba(0,0,0,.9); z-index:2; pointer-events:none;
+  }
+  .cmp .divider::after{
+    content:"⇔"; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    display:flex; align-items:center; justify-content:center;
+    background:#fff; color:#000; font-weight:700; font-size:13px;
+    height:26px; width:26px;
+    border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,.6);
+  }
+  .card .caption{
+    padding:12px 16px; border-top:1px solid var(--card-border); font-size:13.5px; color:var(--dim);
+  }
+  .card .caption .loc{color:#b9c1cd;}
+  footer{margin-top:40px; color:var(--dim); font-size:13px;}
+  footer a{color:var(--accent); text-decoration:none;}
+  @media (max-width:640px){ .legend{flex-direction:column; gap:8px;} .card .head .side{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Bevel Flat theme — render delta</h1>
+    <div class="sub">PRISTINE (`renders/_before/`, parent commit) → MINE (this pass, fresh 14:00 re-render) · source: <code>look-delta.md</code> §5 · 2026-10-10</div>
+  </header>
+
+  <div class="legend">
+    <span><b class="k">◀ BEFORE</b> = pristine render (`_before/`)</span>
+    <span><b class="k">AFTER ▶</b> = this pass</span>
+    <span><b>Drag the divider</b> to compare — exact pixel alignment</span>
+  </div>
+
+  <div class="notes">
+    Ten changed variants, ordered simplest→coarsest (table rows 1–10). Numbers = differing pixels on the fresh 14:00
+    re-render. <code>pastel-window</code>, <code>pastel-startmenu</code> and <code>flat-filer</code> diffed
+    <code>0 px</code> and are not shown. Taskbar clock digits are clock-phase-dependent
+    (49→146, 490→587 between the 10:59 and 14:00 runs) — see footnote below. Images are scaled to fit; natural
+    sizes: taskbar 900×30, window 520×360, start menu 390×537.
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">1 · flat-taskbar-blue</div><div class="meta"><span class="n">146 px</span> · 0.54% · taskbar 900×30</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-taskbar-blue before after comparison">
+      <img class="after" src="renders/flat-taskbar-blue.png" alt="flat-taskbar-blue after">
+      <img class="before" src="renders/_before/flat-taskbar-blue.png" alt="flat-taskbar-blue before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">clock digits x=866..887, y=10..19</span> — clock text/backplate recolored (<code>#242A34→#1A202C</code> ink); only non-Blue-early-return surface reachable at runtime.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">2 · flat-taskbar-ergonomic</div><div class="meta"><span class="n">146 px</span> · 0.54% · taskbar 900×30</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-taskbar-ergonomic before after comparison">
+      <img class="after" src="renders/flat-taskbar-ergonomic.png" alt="flat-taskbar-ergonomic after">
+      <img class="before" src="renders/_before/flat-taskbar-ergonomic.png" alt="flat-taskbar-ergonomic before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">clock digits x=866..887, y=10..19</span> — same clock recolor; phase-dependent as row 1.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">3 · flat-taskbar-silver</div><div class="meta"><span class="n">146 px</span> · 0.54% · taskbar 900×30</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-taskbar-silver before after comparison">
+      <img class="after" src="renders/flat-taskbar-silver.png" alt="flat-taskbar-silver after">
+      <img class="before" src="renders/_before/flat-taskbar-silver.png" alt="flat-taskbar-silver before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">clock digits x=866..887, y=10..19</span> — same clock recolor; phase-dependent as row 1.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">4 · pastel-taskbar</div><div class="meta"><span class="n">146 px</span> · 0.54% · taskbar 900×30</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="pastel-taskbar before after comparison">
+      <img class="after" src="renders/pastel-taskbar.png" alt="pastel-taskbar after">
+      <img class="before" src="renders/_before/pastel-taskbar.png" alt="pastel-taskbar before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">clock digits x=866..887, y=10..19</span> — baseline artifact only (§4); phase-dependent as row 1.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">5 · flat-taskbar-amber</div><div class="meta"><span class="n">587 px</span> · 2.17% · taskbar 900×30</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-taskbar-amber before after comparison">
+      <img class="after" src="renders/flat-taskbar-amber.png" alt="flat-taskbar-amber after">
+      <img class="before" src="renders/_before/flat-taskbar-amber.png" alt="flat-taskbar-amber before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">start button + first task button x=9..58, clock digits x=866..887, rows y=6..23</span> — amber theme’s start glyph + pressed/checked task button go warm-gray/paper → dark navy <code>#1A202C</code> family; clock recolor as above; phase-dependent (490 px on the 10:59 run).</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">6 · flat-window-silver</div><div class="meta"><span class="n">4 131 px</span> · 2.21% · window 520×360</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-window-silver before after comparison">
+      <img class="after" src="renders/flat-window-silver.png" alt="flat-window-silver after">
+      <img class="before" src="renders/_before/flat-window-silver.png" alt="flat-window-silver before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">caption buttons cluster x=310..519 y=40..62, y=73..74; caption/border rows y=0..15, 269..272</span> — caption buttons + thin caption bands recolored.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">7 · flat-window-amber</div><div class="meta"><span class="n">4 131 px</span> · 2.21% · window 520×360</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-window-amber before after comparison">
+      <img class="after" src="renders/flat-window-amber.png" alt="flat-window-amber after">
+      <img class="before" src="renders/_before/flat-window-amber.png" alt="flat-window-amber before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">caption buttons cluster x=310..519 y=40..62, y=73..74; caption/border rows</span> — same as silver (amber window chrome).</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">8 · flat-window-ergonomic</div><div class="meta"><span class="n">4 131 px</span> · 2.21% · window 520×360</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-window-ergonomic before after comparison">
+      <img class="after" src="renders/flat-window-ergonomic.png" alt="flat-window-ergonomic after">
+      <img class="before" src="renders/_before/flat-window-ergonomic.png" alt="flat-window-ergonomic before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">caption buttons cluster x=310..519 y=40..62, y=73..74; caption/border rows y=0..15, 269..272</span> — same as silver/amber (ergonomic window chrome); measured directly, byte-identical to silver/amber.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">9 · flat-window-blue</div><div class="meta"><span class="n">18 345 px</span> · 9.80% · window 520×360</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-window-blue before after comparison">
+      <img class="after" src="renders/flat-window-blue.png" alt="flat-window-blue after">
+      <img class="before" src="renders/_before/flat-window-blue.png" alt="flat-window-blue before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">full-width caption band y=0..25 (plus scattered glyph/edge rows)</span> — caption band pastel → 3-stop cobalt ramp <code>#4A85DF→#3570D6→#2862C8</code> with dual-tone shadowed floating pixel tiles; caption buttons + glyphs to <code>#3570D6</code>/<code>#7AA4EB</code>/white; corner radii flattened → square.</div>
+  </div>
+
+  <div class="card">
+    <div class="head"><div class="name">10 · flat-startmenu-blue</div><div class="meta"><span class="n">87 656 px</span> · 41.85% · start menu 390×537</div><div class="side"><b class="k">◀ BEFORE</b> · pristine &nbsp;&nbsp; <b class="k">AFTER ▶</b> · this pass</div></div>
+    <div class="cmp" tabindex="0" aria-label="flat-startmenu-blue before after comparison">
+      <img class="after" src="renders/flat-startmenu-blue.png" alt="flat-startmenu-blue after">
+      <img class="before" src="renders/_before/flat-startmenu-blue.png" alt="flat-startmenu-blue before">
+      <div class="divider"></div>
+      
+    </div>
+    <div class="caption"><span class="loc">whole menu surface: banner x=1..118, header band, pinned column, places column x=122..389, rows y=1..52 and y=57..495</span> — banner+places column saturated cobalt → pale lilac <code>#D9E3F3</code> with <code>#1A202C</code> ink place text (<code>#3570D6→#D9E3F3</code> single largest swap); selection row <code>#316AC5</code>, white pinned column, header/footer bands unchanged.</div>
+  </div>
+
+  <div class="notes">
+    <b>Phase-jitter footnote.</b> The five taskbar rows (1–5) are clock-phase-dependent: rows 1–4 moved 49→146 px and
+    row 5 moved 490→587 px between the 10:59 and the fresh 14:00 runs — exactly +97 px on every strip (the clock digits’
+    second-frame ink). The diff clusters are unchanged; only the set of differing digit-ink pixels moves. Rows 6–10 are
+    byte-stable across runs. Jitter source: <code>ClockWidget</code> / <code>TaskbarView</code> / <code>ShellModel</code>
+    Background-priority timers not settled by <code>RunJobs()</code> before capture — see <code>look-delta.md</code> §4.
+  </div>
+
+  <footer>
+    Numbers and readings from <a href="look-delta.md">look-delta.md</a> §5 (fresh 14:00 re-render). Renders:
+    <code>docs/design/flat/renders/</code> (after) · <code>docs/design/flat/renders/_before/</code> (pristine).
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll('.cmp').forEach(function (cmp) {
+    var set = function (clientX) {
+      var r = cmp.getBoundingClientRect();
+      if (r.width <= 0) return;
+      var p = ((clientX - r.left) / r.width) * 100;
+      p = Math.max(0, Math.min(100, p));
+      cmp.style.setProperty('--pos', p + '%');
+    };
+    cmp.addEventListener('pointerdown', function (e) {
+      cmp.setPointerCapture(e.pointerId);
+      cmp.classList.add('drag');
+      set(e.clientX);
+      e.preventDefault();
+    });
+    cmp.addEventListener('pointermove', function (e) {
+      if (cmp.classList.contains('drag')) set(e.clientX);
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      cmp.addEventListener(ev, function () { cmp.classList.remove('drag'); });
+    });
+    cmp.addEventListener('keydown', function (e) {
+      var d = 0;
+      if (e.key === 'ArrowLeft') d = -4;
+      else if (e.key === 'ArrowRight') d = 4;
+      if (d) {
+        e.preventDefault();
+        var cur = parseFloat(cmp.style.getPropertyValue('--pos')) || 50;
+        cmp.style.setProperty('--pos', Math.max(0, Math.min(100, cur + d)) + '%');
+      }
+    });
+  });
+</script>
+</body>
+</html>

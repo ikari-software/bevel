@@ -12,7 +12,7 @@ namespace Bevel.FileManager.Tests;
 /// <see cref="ThemeTokens"/> resolves in the running app's resources with the right type, the
 /// Win2000 palette matches the spec table (docs/spec/05-theming.md §8.1) exactly, the metrics
 /// match §3's Win2000 column, and each Bevel.Brush.* is wired to its Bevel.Color.* value.
-/// TestAppBuilder boots the real Bevel.App, so this exercises the actual Win2000Theme merge.
+/// TestAppBuilder boots the real Bevel.App, so this exercises the actual Industrial1999Theme merge.
 /// </summary>
 public sealed class ThemeTokenTests
 {
@@ -55,7 +55,7 @@ public sealed class ThemeTokenTests
     }
 
     [AvaloniaFact]
-    public void Win2000_palette_matches_the_spec_table()
+    public void Industrial1999_palette_matches_the_spec_table()
     {
         // docs/spec/05-theming.md §8.1 — "Windows Standard" scheme, verbatim.
         var expected = new Dictionary<string, string>
@@ -92,7 +92,7 @@ public sealed class ThemeTokenTests
     }
 
     [AvaloniaFact]
-    public void Win2000_metrics_match_the_spec_table()
+    public void Industrial1999_metrics_match_the_spec_table()
     {
         // docs/spec/05-theming.md §3 — Win2000 column, logical px at 1.0 scale.
         Assert.Equal(18d, Resolve(ThemeTokens.MetricCaptionHeight));

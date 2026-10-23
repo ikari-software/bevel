@@ -10,7 +10,7 @@
       All colour comes from theme tokens, never a hardcoded macOS red: the fill is the active skin's
       SELECTION colour and the text its selection foreground, so the pill is the Win2000 scheme's
       highlight under Win2000, the variant's blue/olive/silver under Luna — and both runtime recolor
-      engines (ColorSchemeService via SchemeAliases, LunaVariantService) already own these two keys, so
+      engines (ColorSchemeService via SchemeAliases, Blue2001VariantService) already own these two keys, so
       it follows a live scheme/variant switch with nothing extra to Clear().
 
       Geometry is code-drawn (a rounded Border), antialiased as Avalonia draws it by default — a 14px

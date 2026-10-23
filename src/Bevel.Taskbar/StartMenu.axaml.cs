@@ -76,7 +76,7 @@ public partial class StartMenu : UserControl
         if (toggleDesktop is null)
         {
             DesktopItem.IsEnabled = false;
-            LunaDesktopButton.IsEnabled = false;
+            Blue2001DesktopButton.IsEnabled = false;
         }
         BuildStaticSubmenus();
         WireFixedItemIcons();
@@ -124,17 +124,17 @@ public partial class StartMenu : UserControl
     private void FocusFirstItem(NavigationMethod how)
     {
         if (!MenuPopup.IsOpen) return;
-        if (LunaLayout.IsVisible)
+        if (Blue2001Layout.IsVisible)
         {
             // Visual-descendant order is NOT reading order here: All Programs is docked to the BOTTOM
             // but declared before the pinned list, so a plain First() landed the opening selection on
             // it — the user-visible "All Programs is highlighted by default". Skip it and take a real
             // pinned/place row, falling back to it only when the menu has nothing else to offer.
-            var rows = LunaLayout.GetVisualDescendants()
+            var rows = Blue2001Layout.GetVisualDescendants()
                 .OfType<Button>()
                 .Where(b => b.Classes.Contains("lunarow") && b.IsEffectivelyVisible)
                 .ToList();
-            var firstRow = rows.FirstOrDefault(b => !ReferenceEquals(b, LunaAllProgramsButton))
+            var firstRow = rows.FirstOrDefault(b => !ReferenceEquals(b, Blue2001AllProgramsButton))
                            ?? rows.FirstOrDefault();
             firstRow?.Focus(how);
         }
@@ -152,15 +152,17 @@ public partial class StartMenu : UserControl
     /// cascade uses, so it stays off-thread and current.</summary>
     private void ApplyThemeLayout()
     {
-        var luna = Bevel.UI.ThemeService.Current == "luna";
-        LunaLayout.IsVisible = luna;
-        ClassicLayout.IsVisible = !luna;
-        if (luna && !_lunaWired)
+        var flat = Bevel.UI.ThemeService.Current == Bevel.Core.ThemeIds.Flat;
+        var twoColumn = Bevel.UI.ThemeService.Current is Bevel.Core.ThemeIds.Blue2001 or Bevel.Core.ThemeIds.Flat or Bevel.Core.ThemeIds.Pastel;
+        Blue2001Layout.IsVisible = twoColumn;
+        Blue2001Layout.Classes.Set("flat-start", flat);
+        ClassicLayout.IsVisible = !twoColumn;
+        if (twoColumn && !_lunaWired)
         {
-            LunaUserName.Text = CurrentUserDisplayName();
+            Blue2001UserName.Text = CurrentUserDisplayName();
             if (_programsVm is not null)
             {
-                LunaPinned.ItemsSource = _programsVm.FrequentPrograms;   // curated: newest + most-used, capped
+                Blue2001Pinned.ItemsSource = _programsVm.FrequentPrograms;   // curated: newest + most-used, capped
                 // The pinned rows bind IconSource, but nothing triggered the (off-thread) icon load the way
                 // the classic cascade does — so pinned icons stayed blank. The frequent list is tiny and
                 // always visible, so load eagerly (EnsureIcon is async/non-blocking) rather than relying on
@@ -178,7 +180,7 @@ public partial class StartMenu : UserControl
 
     /// <summary>Attaches a plain Flyout to the Luna "All Programs" row, with content built entirely in
     /// code. A MenuFlyout's items and an inline-XAML flyout both came up 0×0 in this popup (its items
-    /// don't pick up LunaLayout's row styles or the app MenuItem theme, and popups don't inherit the
+    /// don't pick up Blue2001Layout's row styles or the app MenuItem theme, and popups don't inherit the
     /// menu's DataContext) — so every row here carries its own explicit size, brushes and hover, with
     /// no reliance on outside styles.</summary>
     private void WireAllProgramsFlyout()
@@ -199,11 +201,11 @@ public partial class StartMenu : UserControl
             MinWidth = 200,
             Child = scroll,
         };
-        // Chrome from the Luna theme tokens (resolved live), not literals — see LunaTheme.axaml.
-        frame[!Border.BackgroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPinnedColumn");
-        frame[!Border.BorderBrushProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceIconBorder");
+        // Chrome from the Luna theme tokens (resolved live), not literals — see Blue2001Theme.axaml.
+        frame[!Border.BackgroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPinnedColumn");
+        frame[!Border.BorderBrushProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceIconBorder");
         _allProgramsFlyout = new Flyout { Content = frame, Placement = PlacementMode.RightEdgeAlignedBottom };
-        LunaAllProgramsButton.Flyout = _allProgramsFlyout;
+        Blue2001AllProgramsButton.Flyout = _allProgramsFlyout;
 
         RebuildAllProgramsList();
         _programsVm.Programs.CollectionChanged += (_, _) => RebuildAllProgramsList();
@@ -229,7 +231,7 @@ public partial class StartMenu : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 13,
         };
-        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText");
+        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceText");
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         content.Children.Add(icon);
         content.Children.Add(label);
@@ -244,7 +246,7 @@ public partial class StartMenu : UserControl
         // Full-row Luna selection on hover; colours come from the theme tokens (resolved live), matching
         // the XAML Button.lunarow hover. Re-apply the themed foreground binding on exit.
         row.PointerEntered += (_, _) => { row.Background = ThemedBrush("Bevel.Brush.Highlight", Brushes.RoyalBlue); label.Foreground = Brushes.White; };
-        row.PointerExited += (_, _) => { row.Background = Brushes.Transparent; label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Luna.Brush.StartMenuPlaceText"); };
+        row.PointerExited += (_, _) => { row.Background = Brushes.Transparent; label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("Blue2001.Brush.StartMenuPlaceText"); };
         row.PointerPressed += (_, _) =>
         {
             if (p.LaunchCommand?.CanExecute(null) == true) p.LaunchCommand.Execute(null);
@@ -409,8 +411,8 @@ public partial class StartMenu : UserControl
         }
 
         UpdateSearchStrip();
-        if (LunaLayout.IsVisible)
-            LunaPinned.ItemsSource = _searchResults;
+        if (Blue2001Layout.IsVisible)
+            Blue2001Pinned.ItemsSource = _searchResults;
         else
             ShowClassicResults();
     }
@@ -447,10 +449,10 @@ public partial class StartMenu : UserControl
         var count = n switch { 0 => "no matches", 1 => "1 match", _ => $"{n} matches" };
         ClassicSearchText.Text = _filter.Query;
         ClassicSearchCount.Text = count;
-        LunaSearchText.Text = _filter.Query;
-        LunaSearchCount.Text = count;
-        ClassicSearchStrip.IsVisible = _filter.IsActive && !LunaLayout.IsVisible;
-        LunaSearchStrip.IsVisible = _filter.IsActive && LunaLayout.IsVisible;
+        Blue2001SearchText.Text = _filter.Query;
+        Blue2001SearchCount.Text = count;
+        ClassicSearchStrip.IsVisible = _filter.IsActive && !Blue2001Layout.IsVisible;
+        Blue2001SearchStrip.IsVisible = _filter.IsActive && Blue2001Layout.IsVisible;
     }
 
     /// <summary>Drops the query and puts both layouts back the way they were: Luna's pinned column returns to
@@ -460,9 +462,9 @@ public partial class StartMenu : UserControl
         _filter.Clear();
         _searchResults.Clear();
         ClassicSearchStrip.IsVisible = false;
-        LunaSearchStrip.IsVisible = false;
+        Blue2001SearchStrip.IsVisible = false;
         if (_programsVm is null) return;
-        if (_lunaWired) LunaPinned.ItemsSource = _programsVm.FrequentPrograms;
+        if (_lunaWired) Blue2001Pinned.ItemsSource = _programsVm.FrequentPrograms;
         ProgramsItem.IsSubMenuOpen = false;
         // Detach the result list before UpdateProgramsPlaceholder reaches for Items (see ShowClassicResults).
         if (ReferenceEquals(ProgramsItem.ItemsSource, _searchResults)) ProgramsItem.ItemsSource = null;
@@ -675,9 +677,9 @@ public partial class StartMenu : UserControl
 
     // Launch is driven by the row's Command="{Binding LaunchCommand}"; this handler only dismisses the
     // menu. (Don't also Execute the command here — that would launch the app twice.)
-    private void OnLunaProgramClick(object? sender, RoutedEventArgs e) => Close();
+    private void OnBlue2001ProgramClick(object? sender, RoutedEventArgs e) => Close();
 
-    private void OnLunaPlaceClick(object? sender, RoutedEventArgs e)
+    private void OnBlue2001PlaceClick(object? sender, RoutedEventArgs e)
     {
         // Places open a Bevel Filer window at the mapped folder (the row's Tag names it). Without this
         // the "My Documents / Pictures / Music / Computer" rows did nothing but close the menu.
@@ -696,13 +698,13 @@ public partial class StartMenu : UserControl
         "documents" => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
         _ => new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
     };
-    private void OnLunaSettingsClick(object? sender, RoutedEventArgs e) { Close(); OpenSystemSettings(); }   // Control Panel → OS settings
-    private void OnLunaBevelSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }   // Bevel Settings
-    private void OnLunaHelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
-    private void OnLunaSearchClick(object? sender, RoutedEventArgs e) { Close(); _openSearch(); }
-    private void OnLunaRunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
-    private void OnLunaLogOffClick(object? sender, RoutedEventArgs e) { Close(); _restart(); }
-    private void OnLunaTurnOffClick(object? sender, RoutedEventArgs e) { Close(); _quit(); }
+    private void OnBlue2001SettingsClick(object? sender, RoutedEventArgs e) { Close(); OpenSystemSettings(); }   // Control Panel → OS settings
+    private void OnBlue2001BevelSettingsClick(object? sender, RoutedEventArgs e) { Close(); _openSettings(); }   // Bevel Settings
+    private void OnBlue2001HelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
+    private void OnBlue2001SearchClick(object? sender, RoutedEventArgs e) { Close(); _openSearch(); }
+    private void OnBlue2001RunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
+    private void OnBlue2001LogOffClick(object? sender, RoutedEventArgs e) { Close(); _restart(); }
+    private void OnBlue2001TurnOffClick(object? sender, RoutedEventArgs e) { Close(); _quit(); }
     private void OnRestartClick(object? sender, RoutedEventArgs e)
     {
         Close();
@@ -741,7 +743,7 @@ public partial class StartMenu : UserControl
     {
         var text = running ? "Hide Desktop" : "Show Desktop";
         DesktopItem.Header = running ? "Hide _Desktop" : "Show _Desktop";
-        LunaDesktopText.Text = text;
+        Blue2001DesktopText.Text = text;
     }
 
     private void OnQuitClick(object? sender, RoutedEventArgs e)
