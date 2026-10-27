@@ -17,7 +17,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\..\proto\*.proto" GrpcServices="Client" Link="Proto\%(Filename)%(Extension)" />
+    <!-- Named explicitly, not globbed: a glob here silently double-generates any new proto into a
+         second assembly, and the resulting CS0433 surfaces only in a transitive test project. -->
+    <Protobuf Include="..\..\proto\bevel.helper.v1.proto" GrpcServices="Client" Link="Proto\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
