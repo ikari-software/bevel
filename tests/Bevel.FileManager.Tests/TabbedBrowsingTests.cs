@@ -176,7 +176,6 @@ public sealed class TabbedBrowsingTests : IDisposable
     [AvaloniaFact]
     public void CloseTab_removes_the_active_tab_and_falls_back_to_a_remaining_one()
     {
-        if (OperatingSystem.IsWindows()) return;   // Avalonia's headless backend can't PushFrame a nested dispatcher loop on Windows (framework limit, not Bevel); passes on Linux+macOS
         var (win, _, _) = BuildWindow(_dir);
         win.NewTab(); // tab 1 active
         Assert.Equal(2, win.TabCount);
@@ -191,7 +190,6 @@ public sealed class TabbedBrowsingTests : IDisposable
     [AvaloniaFact]
     public void CloseTab_on_a_non_active_tab_does_not_disturb_the_active_one()
     {
-        if (OperatingSystem.IsWindows()) return;   // Avalonia's headless backend can't PushFrame a nested dispatcher loop on Windows (framework limit, not Bevel); passes on Linux+macOS
         var (win, _, _) = BuildWindow(_dir);
         win.NewTab();
         var activeBefore = ActiveController(win);
