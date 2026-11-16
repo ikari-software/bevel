@@ -1,8 +1,8 @@
 {
-  "_comment": "Source of truth for the XP Luna Blue theme tokens (05-theming.md §9 LUN-02 palette, §3 metrics 'XP Luna' column, §5 fonts). Values are mirrored (as overrides over the Win2000 base) in Blue2001Tokens.axaml. Wiring this file into tools/ThemeGen so the axaml is generated + drift-checked like Win2000's is a follow-up (bevel-dob).",
-  "theme": "luna",
-  "inherits": "win2000",
-  "scheme": "Luna Blue",
+  "_comment": "Source of truth for the Bevel 2001 Blue theme tokens (05-theming.md §9 LUN-02 palette, §3 metrics 'XP Luna' column, §5 fonts). Values are mirrored (as overrides over the Win2000 base) in Blue2001Tokens.axaml. Wiring this file into tools/ThemeGen so the axaml is generated + drift-checked like Win2000's is a follow-up (bevel-dob).",
+  "theme": "blue2001",
+  "inherits": "industrial1999",
+  "scheme": "Bevel 2001 Blue",
   "edgeRendering": "Smooth",
   "palette": {
     "ButtonFace": "#ECE9D8",

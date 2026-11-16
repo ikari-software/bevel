@@ -1,6 +1,6 @@
 {
   "_comment": "Single source of truth for the Win2000 theme tokens (MET-01 / bevel-51t). Values: docs/spec/05-theming.md §8.1 (palette, 'Windows Standard'), §3 (metrics, Win2000 column), §5 FNT-01 (fonts). Edit THIS file and run `dotnet run --project tools/ThemeGen` — Tokens.axaml and ThemeTokens.cs are generated from it and CI fails on drift.",
-  "theme": "win2000",
+  "theme": "industrial1999",
   "scheme": "Windows Standard",
   "edgeRendering": "Smooth",
   "palette": {
