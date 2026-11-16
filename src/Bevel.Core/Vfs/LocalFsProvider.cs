@@ -71,12 +71,21 @@ public sealed partial class LocalFsProvider : IVfsProvider
         var name = info.Name;
         var childPath = VfsPath.Combine(folder, name);
 
-        // The entry can vanish or become inaccessible between the directory read and this access
-        // (TOCTOU) — skip that single entry rather than aborting the whole listing.
+        // The entry can vanish or become inaccessible between the directory read and here (TOCTOU) —
+        // skip that single entry rather than aborting the whole listing.
+        //
+        // DELIBERATELY File.GetAttributes AND NOT info.Attributes. FileSystemInfo caches its attributes
+        // from the directory read, and whether that cache is populated is PLATFORM-DEPENDENT: on
+        // Windows FindFirstFile returns them, so reading info.Attributes for an entry deleted mid-walk
+        // succeeds from cache and the entry is never skipped; on macOS/Linux the dirent lacks them, so
+        // the same read stats and still throws. Using the cached value therefore passed every local
+        // macOS run and failed only on windows-latest, where
+        // LocalFsProviderResilienceTests.Enumerate_skips_entries_that_vanish_between_listing_and_stat
+        // caught it. This call always stats, so the guard means the same thing everywhere.
         FileAttributes attrs;
         try
         {
-            attrs = info.Attributes;
+            attrs = File.GetAttributes(entry);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or IOException or UnauthorizedAccessException)
         {
