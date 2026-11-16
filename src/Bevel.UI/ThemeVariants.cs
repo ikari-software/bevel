@@ -35,15 +35,26 @@ public sealed record ThemeVariantSpec(
 
 /// <summary>
 /// The theme → appearance-options registry (bevel-luna-variants). Each theme OWNS its variant options
-/// here rather than the dialog knowing about them: Win2000 contributes its colour schemes, Luna its
-/// colour + gloss axes, and a future theme whatever it needs. <see cref="Apply"/> routes to the active
-/// theme's engine and deactivates the others, so shared chrome keys never bleed across themes.
+/// here rather than the dialog knowing about them: Bevel 1999 Industrial contributes its colour
+/// schemes, Bevel 2001 its colour + gloss axes, and a future theme whatever it needs. <see cref="Apply"/>
+/// routes to the active theme's engine and deactivates the others, so shared chrome keys never bleed
+/// across themes.
+///
+/// <para>Entries are keyed by <see cref="ThemeIds"/> constants, never by a string literal. The two
+/// flagship entries were once keyed on the pre-rename vendor ids and so could never be found — see
+/// the note on the dictionary below, and ThemeVariantRegistryTests, which fails if it recurs.</para>
 /// </summary>
 public static class ThemeVariants
 {
     private static readonly Dictionary<string, ThemeVariantSpec> ByTheme = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["win2000"] = new ThemeVariantSpec("win2000",
+        // KEY ON ThemeIds, NEVER ON A LITERAL (bevel-e14f). These two entries were keyed "win2000"
+        // and "luna" — ids ThemeIds says no longer exist and for which it deliberately provides no
+        // back-compat mapping. Since ThemeId persists as "industrial1999"/"blue2001", both lookups
+        // below could only MISS: OptionsFor returned empty, so the Appearance tab built from it had
+        // no pickers at all, and Apply's TryGetValue fell through, so a saved colourway or gloss was
+        // never applied. Nothing failed loudly — a dictionary miss just returns nothing.
+        [ThemeIds.Industrial1999] = new ThemeVariantSpec(ThemeIds.Industrial1999,
             new[]
             {
                 new ThemeOption("Colour scheme", ColorSchemeService.Schemes,
@@ -51,7 +62,7 @@ public static class ThemeVariants
             },
             s => ColorSchemeService.Apply(s.ColorScheme)),
 
-        ["luna"] = new ThemeVariantSpec("luna",
+        [ThemeIds.Blue2001] = new ThemeVariantSpec(ThemeIds.Blue2001,
             new[]
             {
                 new ThemeOption("Colour", Blue2001VariantService.Colors,
