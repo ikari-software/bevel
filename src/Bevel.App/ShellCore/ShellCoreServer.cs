@@ -367,7 +367,15 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 return new CoreResponse(Ok: true, Png: await _windows.CaptureWindowAsync(
                     Id(cmd), cmd.MaxWidth ?? 0, cmd.MaxHeight ?? 0, ct).ConfigureAwait(false));
             case CoreCommandKind.EnumerateInstalledApps:
-                return new CoreResponse(Ok: true, InstalledApps: await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false));
+                // SERVE THE CACHE (bevel-5erm). _installed is seeded at startup and kept current by the
+                // InstalledAppsChanged subscription, which is the whole reason it exists — but this
+                // handler used to re-walk the filesystem on every call, and the taskbar issues one at
+                // startup. That put a full app scan on the boot path twice over, right where it delays
+                // the bar filling in. Falling back to a live scan only when the cache is genuinely empty
+                // keeps a pre-seed caller correct rather than handing it an empty list.
+                return new CoreResponse(Ok: true, InstalledApps: _installed.Count > 0
+                    ? _installed
+                    : await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.GetRunningApps:
                 return new CoreResponse(Ok: true, RunningApps: await _apps.GetRunningAppsAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.TerminateApp:
