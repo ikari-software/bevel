@@ -13,6 +13,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
@@ -110,6 +111,9 @@ public partial class ItemView : UserControl
 
     private Point _dragStart;
     private bool _dragArmed;
+    /// <summary>The selection's IStorageItems, resolved from the PRESS so the OS file list is ready
+    /// before the drag threshold is crossed (bevel-u2x6).</summary>
+    private System.Threading.Tasks.Task<IStorageItem[]>? _dragStorageTask;
 
     private TextBox? _renameBox;
     private readonly FuncDataTemplate<ItemViewModel> _detailsTpl;
@@ -664,6 +668,11 @@ public partial class ItemView : UserControl
         _lastClickIdx = Idx(vm);
         _dragArmed = !ctrl;                 // a plain/shift press on an item can begin a drag
         _dragStart = e.GetPosition(this);
+        // START resolving the selection's IStorageItems NOW, not at drag time (bevel-u2x6). DoDragDrop
+        // has to run synchronously inside the move handler — awaiting a resolve first loses the OS drag
+        // gesture — so the work has to be in flight before the pointer passes the threshold. Selection is
+        // already final at this point: SelectOne/RangeTo/Toggle all ran above.
+        _dragStorageTask = ResolveStorageItemsAsync(_selectedOrder.Select(v => (v.Path.Value, v.IsFolder)).ToList());
         e.Handled = true;
     }
 
@@ -703,14 +712,54 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>Begin a drag of the current selection. The payload is our internal
-    /// FileDropPayload, which the drop side (and other Bevel windows) already understand.</summary>
+    /// <summary>Resolves selected paths to <see cref="IStorageItem"/>s for the OS drag payload.
+    ///
+    /// <para>Folders need <c>TryGetFolderFromPathAsync</c> and files <c>TryGetFileFromPathAsync</c> —
+    /// asking for a file at a directory path yields null, which is how a mixed selection would silently
+    /// drag only half of itself. Nulls are dropped rather than failing the whole drag: a selection the
+    /// provider cannot resolve (a VFS-only node such as a <c>computer://</c> entry) should still drag
+    /// internally via <see cref="FileDropPayload"/>.</para></summary>
+    private async System.Threading.Tasks.Task<IStorageItem[]> ResolveStorageItemsAsync(
+        IReadOnlyList<(string Path, bool IsFolder)> items)
+    {
+        var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (provider is null || items.Count == 0) return System.Array.Empty<IStorageItem>();
+
+        var resolved = new List<IStorageItem>(items.Count);
+        foreach (var (path, isFolder) in items)
+        {
+            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
+            IStorageItem? item = isFolder
+                ? await provider.TryGetFolderFromPathAsync(uri).ConfigureAwait(true)
+                : await provider.TryGetFileFromPathAsync(uri).ConfigureAwait(true);
+            if (item is not null) resolved.Add(item);
+        }
+        return resolved.ToArray();
+    }
+
+    /// <summary>Begin a drag of the current selection, carrying BOTH the internal
+    /// <see cref="FileDropPayload"/> and the OS <see cref="DataFormats.Files"/> list (bevel-u2x6).
+    ///
+    /// <para>It used to set only the private format. The drop side accepts both (see
+    /// <see cref="OnDrop"/>) and the taskbar's stack flyout has always set Files correctly, so the gap
+    /// was here alone: dragging a file out of Filer onto Finder, the desktop, Mail or a browser did
+    /// NOTHING — silently, because a drag with no format the target understands is simply refused. It
+    /// also meant Filer-to-Filer drags relied on a managed object surviving a trip between two separate
+    /// <c>--role=filer</c> processes, which is not something to count on.</para>
+    ///
+    /// <para>Both formats are set, never one: Files is what every other app reads, while the internal
+    /// payload is what preserves Bevel's own move/copy semantics on an internal drop. The Files list is
+    /// only attached when the press-time resolve has already completed — awaiting it here would yield
+    /// inside the pointer gesture and lose the drag, which is the same reason StackFlyoutView
+    /// pre-resolves on press. If it is not ready the drag still happens, exactly as before.</para></summary>
     async System.Threading.Tasks.Task StartDragAsync(PointerEventArgs e)
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
+        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
+            data.Set(DataFormats.Files, ready.Result);
         try
         {
             await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
