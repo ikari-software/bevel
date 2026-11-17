@@ -115,7 +115,7 @@ public sealed class PooledIconProvider : IIconProvider
     /// keys behave exactly as before.</para>
     ///
     /// <para>Cost: one stat per lookup, including on local-cache hits, because the key is what the hit
-    /// is looked up by. Measured at 1.7µs — 0.68ms for 400 paths, i.e. a whole Start menu for a fraction of one icon —
+    /// is looked up by. Measured at 1.7µs on macOS and ~35µs on a windows-latest runner (two stats for a directory there), both ~3 orders of magnitude under the render,
     /// against the ~11.8ms render it protects. <c>IconKeyStampTests</c> pins that budget.</para>
     /// </summary>
     internal static long SourceStamp(string pathOrExtension)
