@@ -120,18 +120,20 @@ public sealed class PooledIconProvider : IIconProvider
     /// </summary>
     internal static long SourceStamp(string pathOrExtension)
     {
-        if (string.IsNullOrEmpty(pathOrExtension) || pathOrExtension[0] != Path.DirectorySeparatorChar)
+        // Path.IsPathRooted, NOT a hand-rolled separator check. `pathOrExtension[0] != '/'` was the
+        // first version and it is Unix-only: a Windows path starts `D:\`, so EVERY key stamped 0 there
+        // and the staleness fix was inert on that whole platform while the local suite was green.
+        if (string.IsNullOrEmpty(pathOrExtension) || !Path.IsPathRooted(pathOrExtension))
             return 0;   // an extension or a relative key — nothing to stat
         try
         {
-            // DELIBERATELY two calls, not one. File.GetLastWriteTimeUtc answers for a DIRECTORY on
-            // macOS/Linux — which is why one call looked sufficient here — but on Windows the File.*
-            // time APIs return the 1601 sentinel for a directory path, so a bundle-shaped source
-            // stamped as 0 both before and after an update and the staleness fix silently did nothing
-            // on that platform. (windows-latest caught it; the same platform caught the same class of
-            // mistake in LocalFsProvider earlier — a file API that "works" on the dev machine is not
-            // evidence it works.) The file call answers first because the common Windows source is an
-            // .exe, so the directory call is only paid for a path that is one.
+            // Two calls, because the File.* time APIs report an unstattable path as the 1601 sentinel
+            // rather than throwing, and I have NOT verified from here whether Windows treats a
+            // DIRECTORY path as unstattable through File.GetLastWriteTimeUtc (macOS and Linux do
+            // answer for one). The directory call backstops that uncertainty instead of resting on it:
+            // the file call answers first, since the common Windows source is an .exe, so the second
+            // stat is only ever paid for a path the first could not read. IconKeyStampTests asserts
+            // both shapes stamp, and windows-latest is what makes that assertion mean anything.
             var ticks = File.GetLastWriteTimeUtc(pathOrExtension).Ticks;
             if (ticks == MissingTicks) ticks = Directory.GetLastWriteTimeUtc(pathOrExtension).Ticks;
             return ticks == MissingTicks ? 0 : ticks;
