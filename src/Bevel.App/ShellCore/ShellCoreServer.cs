@@ -131,8 +131,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
         // repopulate. (~10s covers a cold helper exec + connect.)
         var initialWindows = await SeedWhenHelperReadyAsync(_windows.EnumerateAsync, ct).ConfigureAwait(false);
-        var initialApps = await SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).ConfigureAwait(false);
-        var initialTray = await SeedOrEmptyAsync(_tray.GetItemsAsync, ct).ConfigureAwait(false);
+
+        // Apps and tray CONCURRENTLY, not one after the other (bevel-pa3j). They are independent reads
+        // of two different sources, and nothing between them orders one before the other — but the
+        // commit below (and therefore the snapshot burst every peer is waiting on) was gated on their
+        // SUM. They still start only after the windows seed, because that call is also the helper
+        // readiness probe: apps and tray share the helper's connection and have no retry budget of
+        // their own, so running them against a half-connected helper would just degrade both to empty.
+        var appsSeed = SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).AsTask();
+        var traySeed = SeedOrEmptyAsync(_tray.GetItemsAsync, ct).AsTask();
+        var initialApps = await appsSeed.ConfigureAwait(false);
+        var initialTray = await traySeed.ConfigureAwait(false);
         lock (_gate)
         {
             foreach (var w in initialWindows)
