@@ -206,15 +206,36 @@ public sealed class SettingsService : ISettingsService, IDisposable
     /// WriteAllText to the same path throw a sharing violation on Windows' exclusive locking. temp+replace makes
     /// each writer touch its own file; the replace is a fast atomic rename, and a lost race is harmless (the DB
     /// already holds the value). Callers hold <see cref="_writeLock"/>.</summary>
-    private async Task WritePassiveExportAsync(string json, CancellationToken ct)
+    private Task WritePassiveExportAsync(string json, CancellationToken ct) =>
+        WriteBestEffortExportAsync(_configPath, json, move: null, ct);
+
+    /// <summary>
+    /// The export write itself, scoped by INTENT: this mirror is best-effort by contract, so NO failure
+    /// of it may escape into a settings save.
+    ///
+    /// <para>The catch used to be typed to <see cref="IOException"/>, which does not cover the way the
+    /// race actually loses on Windows: <c>MoveFile</c> onto a destination another writer holds open
+    /// throws <see cref="UnauthorizedAccessException"/>, a sibling of IOException, not a subclass. So
+    /// two instances saving concurrently — the exact scenario the temp+replace dance exists for —
+    /// threw straight out of <see cref="SaveAsync"/> on Windows while POSIX's rename sailed through.
+    /// Intermittent, platform-specific, and invisible on a macOS dev machine; CI's windows-latest
+    /// runner is what caught it. Same lesson as ShellCoreServer's seed retry: type the catch to the
+    /// contract, not to the exception you happened to see.</para>
+    /// </summary>
+    /// <param name="move">Fault-injection seam for the replace step, so a test can assert the
+    /// swallow-and-clean-up behaviour without needing the platform whose failure mode it models.
+    /// Null uses the real atomic move.</param>
+    internal static async Task WriteBestEffortExportAsync(
+        string path, string json, Action<string, string>? move, CancellationToken ct)
     {
-        var tmp = _configPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             await File.WriteAllTextAsync(tmp, json, ct).ConfigureAwait(false);
-            File.Move(tmp, _configPath, overwrite: true);
+            if (move is null) File.Move(tmp, path, overwrite: true);
+            else move(tmp, path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             try { File.Delete(tmp); } catch { /* leave nothing behind */ }
         }
