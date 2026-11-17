@@ -507,14 +507,9 @@ public sealed class ShellModel : IDisposable
         });
     }
 
-    /// <summary>FNV-1a 64-bit over the PNG bytes — a cheap, stable content key for the icon cache.</summary>
-    internal static long Fnv1a64(byte[] data)
-    {
-        const ulong offset = 14695981039346656037UL, prime = 1099511628211UL;
-        ulong h = offset;
-        foreach (var b in data) { h ^= b; h *= prime; }
-        return unchecked((long)h);
-    }
+    /// <summary>A cheap, stable content key for the icon cache. Shared with the favicon cache and the
+    /// core's icon de-duplication, so it lives in <see cref="Bevel.Core.ContentHash"/>.</summary>
+    internal static long Fnv1a64(byte[] data) => Bevel.Core.ContentHash.Fnv1a64(data);
 
     // ── Programs ────────────────────────────────────────────────────────
 

@@ -266,20 +266,59 @@ public sealed class ShellCoreServer : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById.Remove(w.Id.Value)); return; }
-            _windowById.Remove(w.Id.Value);
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => Forget(w.Id.Value)); return; }
+            Forget(w.Id.Value);
         }
         BroadcastStamped(new CoreEvent(CoreEventKind.WindowClosed, Window: w));
     }
 
+    /// <summary>Drops a window from the projection AND forgets its last-sent icon, so an id that
+    /// comes back (macOS reuses window numbers) re-sends its icon instead of inheriting a stale
+    /// "already sent" claim. Caller holds <c>_gate</c>.</summary>
+    private void Forget(string id)
+    {
+        _windowById.Remove(id);
+        _sentIconHash.Remove(id);
+    }
+
     private void UpsertAndBroadcast(ForeignWindow w, CoreEventKind kind)
     {
+        ForeignWindow outbound;
         lock (_gate)
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
-            _windowById[w.Id.Value] = w;
+            _windowById[w.Id.Value] = w;   // the PROJECTION always keeps the icon, so snapshots carry it
+            outbound = WithoutUnchangedIcon(w);
         }
-        BroadcastStamped(new CoreEvent(kind, Window: w));
+        BroadcastStamped(new CoreEvent(kind, Window: outbound));
+    }
+
+    /// <summary>Last icon we actually sent for a window, by id. Guarded by <c>_gate</c>.</summary>
+    private readonly Dictionary<string, long> _sentIconHash = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Drops <see cref="ForeignWindow.IconPng"/> from an outbound delta when it is byte-identical to
+    /// the icon this window's last delta already carried (bevel-ougs).
+    ///
+    /// <para>WindowChanged fires on every title change — which for a browser or an editor is
+    /// essentially every keystroke — and each one base64'd the app's icon into the JSON frame again.
+    /// The icon is per-APP and practically never changes.</para>
+    ///
+    /// <para>Safe for the one consumer that reads it: <c>ShellModel.ApplyUpdate</c> re-attempts an icon
+    /// only while the button still has none, and its loader no-ops on a null PNG, so an omitted icon
+    /// never blanks a good one. The case that MUST keep working is the opposite one — a window first
+    /// seen before its app icon was ready arrives icon-less and depends on a later event to carry it.
+    /// Comparing hashes handles that: absent-then-present is a CHANGE and is sent. A client that
+    /// joins later is unaffected either way, since Hello replies with the full projection.</para>
+    /// </summary>
+    private ForeignWindow WithoutUnchangedIcon(ForeignWindow w)
+    {
+        var id = w.Id.Value;
+        var hash = w.IconPng is { Length: > 0 } png ? ContentHash.Fnv1a64(png) : 0L;
+        if (_sentIconHash.TryGetValue(id, out var last) && last == hash)
+            return hash == 0 ? w : w with { IconPng = null };
+        _sentIconHash[id] = hash;
+        return w;
     }
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps)
@@ -358,6 +397,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
                     return new CoreResponse(Ok: true, TrayItems: _trayById.Values.ToArray());
             case CoreCommandKind.EnumerateWindows:
                 return new CoreResponse(Ok: true, Windows: await _windows.EnumerateAsync(ct).ConfigureAwait(false));
+            case CoreCommandKind.EnumerateWindowsProjected:
+                // Straight off the projection the delta stream already maintains — no helper pass, and
+                // the icons dropped (bevel-ougs). Under _gate so it never observes a half-applied seed.
+                lock (_gate)
+                    return new CoreResponse(Ok: true,
+                        Windows: _windowById.Values.Select(w => w with { IconPng = null }).ToArray());
             case CoreCommandKind.Activate:
                 await _windows.ActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Minimize:
