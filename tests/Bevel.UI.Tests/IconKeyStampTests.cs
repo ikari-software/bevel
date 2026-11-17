@@ -93,6 +93,43 @@ public sealed class IconKeyStampTests : IDisposable
         Assert.Equal(9, second.Bgra[0]);
     }
 
+    /// <summary>Both shapes of source must stamp: a DIRECTORY (a macOS .app bundle) and a FILE (the
+    /// usual Windows source, an .exe).
+    ///
+    /// <para>This is the assertion windows-latest had to make for me. File.GetLastWriteTimeUtc answers
+    /// for a directory on macOS/Linux but returns the 1601 sentinel for one on Windows, so the first
+    /// version of the stamp was silently 0 — and therefore constant — for every bundle-shaped source on
+    /// that platform, which disables the whole staleness fix while every local test passes. A
+    /// file-API behaviour that holds on the dev machine is not evidence it holds anywhere else.</para></summary>
+    [Fact]
+    public void Both_a_directory_and_a_file_source_stamp()
+    {
+        var bundle = App("Bundle.app");
+        var exe = Path.Combine(_dir, "program.exe");
+        File.WriteAllBytes(exe, [0]);
+
+        Assert.NotEqual(0, PooledIconProvider.SourceStamp(bundle));
+        Assert.NotEqual(0, PooledIconProvider.SourceStamp(exe));
+    }
+
+    /// <summary>...and a changed FILE source re-renders too, not just a changed bundle.</summary>
+    [Fact]
+    public async Task A_changed_file_source_re_renders()
+    {
+        var (provider, inner, pool) = Build();
+        using var _ = pool;
+        var exe = Path.Combine(_dir, "app.exe");
+        File.WriteAllBytes(exe, [0]);
+
+        await provider.GetIconAsync(exe, 32);
+        Assert.Equal(1, inner.Renders);
+
+        File.SetLastWriteTimeUtc(exe, DateTime.UtcNow.AddSeconds(5));
+        await provider.GetIconAsync(exe, 32);
+
+        Assert.Equal(2, inner.Renders);
+    }
+
     /// <summary>An unchanged source still hits — the stamp must not defeat the cache it is protecting,
     /// which is the whole ~4 s-per-start win.</summary>
     [Fact]

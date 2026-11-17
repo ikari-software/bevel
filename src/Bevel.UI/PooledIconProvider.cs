@@ -96,6 +96,10 @@ public sealed class PooledIconProvider : IIconProvider
 
     private bool _poolFullReported;
 
+    /// <summary>What the File/Directory time APIs return for a path they cannot stat (1601-01-01) —
+    /// they report it instead of throwing, so it has to be recognised rather than caught.</summary>
+    private static readonly long MissingTicks = DateTime.FromFileTimeUtc(0).Ticks;
+
     /// <summary>
     /// A cheap stamp that CHANGES when the icon's source does, so a changed icon misses instead of
     /// being served forever from a key that cannot express it (bevel-iwju).
@@ -120,10 +124,17 @@ public sealed class PooledIconProvider : IIconProvider
             return 0;   // an extension or a relative key — nothing to stat
         try
         {
-            // File.GetLastWriteTimeUtc answers for directories too (an .app bundle IS a directory, and
-            // an update replaces it), and returns a sentinel rather than throwing when the path is gone.
-            var t = File.GetLastWriteTimeUtc(pathOrExtension);
-            return t == DateTime.FromFileTimeUtc(0) ? 0 : t.Ticks;
+            // DELIBERATELY two calls, not one. File.GetLastWriteTimeUtc answers for a DIRECTORY on
+            // macOS/Linux — which is why one call looked sufficient here — but on Windows the File.*
+            // time APIs return the 1601 sentinel for a directory path, so a bundle-shaped source
+            // stamped as 0 both before and after an update and the staleness fix silently did nothing
+            // on that platform. (windows-latest caught it; the same platform caught the same class of
+            // mistake in LocalFsProvider earlier — a file API that "works" on the dev machine is not
+            // evidence it works.) The file call answers first because the common Windows source is an
+            // .exe, so the directory call is only paid for a path that is one.
+            var ticks = File.GetLastWriteTimeUtc(pathOrExtension).Ticks;
+            if (ticks == MissingTicks) ticks = Directory.GetLastWriteTimeUtc(pathOrExtension).Ticks;
+            return ticks == MissingTicks ? 0 : ticks;
         }
         catch (Exception)
         {
