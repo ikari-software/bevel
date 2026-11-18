@@ -313,7 +313,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(4) };
-        s.Children.Add(Glyphs.Icon(32, vm.IconKey));
+        s.Children.Add(GlyphIcon.For(vm.IconKey, 32));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
         return Row(s);
     });
@@ -322,7 +322,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
-        s.Children.Add(Glyphs.Icon(16, vm.IconKey));
+        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
         s.Children.Add(NameCell(vm.DisplayName));
         return Row(s);
     });
@@ -331,7 +331,7 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
-        s.Children.Add(Glyphs.Icon(16, vm.IconKey));
+        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
         s.Children.Add(NameCell(vm.DisplayName));
         return Row(s);
     });
@@ -350,7 +350,7 @@ public partial class ItemView : UserControl
         g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(DateColWidthProperty));
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        name.Children.Add(Glyphs.Icon(16, vm.IconKey));
+        name.Children.Add(GlyphIcon.For(vm.IconKey, 16));
         name.Children.Add(NameCell(vm.DisplayName));
         g.Children.Add(name);
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
@@ -375,7 +375,7 @@ public partial class ItemView : UserControl
         b[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
         b[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindowFrame);
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
-        s.Children.Add(Glyphs.Icon(96, vm.IconKey));
+        s.Children.Add(GlyphIcon.For(vm.IconKey, 96));
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
         b.Child = s;
         return Row(b);

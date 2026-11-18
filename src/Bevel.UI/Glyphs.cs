@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Bevel.Core.Vfs;
 
 namespace Bevel.UI;
@@ -40,19 +42,50 @@ public static class Glyphs
     // cache when a theme/scheme/variant swap changes the underlying tokens (ce-review bevel-lha4).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IBrush> _brushCache = new();
 
-    /// <summary>Drop the resolved-brush cache. Called by the theme/scheme/variant engines after they
-    /// change the token values so the next icon build re-resolves against the new palette. Raises
-    /// <see cref="ThemeCacheInvalidated"/> so a glyph HOST that keeps a built icon alive (<see cref="GlyphIcon"/>)
-    /// can rebuild it — a built icon holds the brushes it was built with, and nothing else tells it they
-    /// went stale.</summary>
+    private static int _themeGeneration;
+    private static int _raisedGeneration;   // the generation the last raise announced (UI thread only)
+
+    /// <summary>Palette generation: advanced synchronously by every <see cref="InvalidateThemeCache"/>. A glyph
+    /// host stores the generation it built at and rebuilds only when this has moved on (<see cref="GlyphIcon"/>).</summary>
+    public static int ThemeGeneration => Volatile.Read(ref _themeGeneration);
+
+    /// <summary>Declare that the palette changed. EVERY recolour-engine mutation calls this AFTER writing its new
+    /// values into Application.Resources (ThemeService, ColorSchemeService, Blue2001VariantService and
+    /// FlatVariantService — Apply and Clear). It drops the brush cache and advances <see cref="ThemeGeneration"/>
+    /// immediately, then posts a raise of <see cref="ThemeCacheInvalidated"/> to the UI thread. Raises COALESCE: a
+    /// settings change runs several engines back to back in one handler, and only the first posted callback after
+    /// the last write raises (the rest see their generation already announced) — one raise, from the final palette
+    /// (bevel-yfkw). Coalescing is keyed on the generation, not on a pending flag, so a dropped post can never latch
+    /// the signal off: the next invalidation simply posts again. Callable from any thread.</summary>
     public static void InvalidateThemeCache()
     {
         _brushCache.Clear();
-        ThemeCacheInvalidated?.Invoke();
+        Interlocked.Increment(ref _themeGeneration);
+        Dispatcher.UIThread.Post(RaiseThemeCacheInvalidated);
     }
 
-    /// <summary>Raised after <see cref="InvalidateThemeCache"/> drops the brushes (UI thread — the theme
-    /// engines apply there). Subscribers rebuild any icon they are holding; they must unsubscribe on detach.</summary>
+    private static void RaiseThemeCacheInvalidated()
+    {
+        var generation = ThemeGeneration;
+        if (generation == _raisedGeneration) return;   // an earlier callback this pass already announced it
+        _raisedGeneration = generation;
+        // Clear again: anything built between an engine's invalidation and this pass must not survive into the
+        // subscribers' rebuilds.
+        _brushCache.Clear();
+        if (ThemeCacheInvalidated is not { } handlers) return;
+        // One subscriber's failure must not stop the others from recolouring, nor escape to the dispatcher.
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            try { ((Action)handler)(); }
+            catch (Exception ex) { Console.Error.WriteLine($"[Glyphs] ThemeCacheInvalidated subscriber threw: {ex}"); }
+        }
+    }
+
+    /// <summary>THE app-wide "palette changed" signal (bevel-yfkw): raised when any theme, colour scheme or
+    /// colourway changed the tokens Bevel draws from. Always POSTED — on the UI thread, after the engines have
+    /// finished writing, and coalesced to one raise however many engines ran back to back. Anything that
+    /// holds a built visual coloured from theme tokens (icons, cached brushes) rebuilds here; subscribers must
+    /// unsubscribe on detach. Prefer hosting a glyph in <see cref="GlyphIcon"/>, which already does this.</summary>
     public static event Action? ThemeCacheInvalidated;
 
     /// <summary>Vertical gradient from two theme token keys (cached per token pair).</summary>

@@ -179,9 +179,28 @@ internal static class Program
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
         var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
+
+        // Signal handling is armed BEFORE the (helper-dependent, up to ~7.5 s) seed in StartAsync (bevel-wheq
+        // review): a SIGTERM/SIGINT during the seed cancels it and still reaches the ordered teardown below,
+        // instead of the default action killing the process mid-seed (which orphans the helper). Cancel the
+        // default action so .NET does NOT terminate the process before that teardown runs.
+        using var stop = new ManualResetEventSlim(false);
+        using var shutdown = new CancellationTokenSource();
+        void RequestStop()
+        {
+            try { shutdown.Cancel(); } catch (ObjectDisposedException) { /* already tearing down */ }
+            stop.Set();
+        }
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; RequestStop(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; RequestStop(); });
+        using var winStop = Supervision.WindowsShutdownSignal.Register(RequestStop); // Windows graceful-stop (bevel-ncfp.2)
         try
         {
-            server.StartAsync().GetAwaiter().GetResult();
+            server.StartAsync(shutdown.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+        {
+            // Shut down while seeding: skip ReportReady and go straight to the ordered teardown.
         }
         catch (UdsSocketBusyException ex)
         {
@@ -199,15 +218,11 @@ internal static class Program
             Environment.ExitCode = 3;
             return;
         }
-        RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
+        if (!shutdown.IsCancellationRequested)
+            RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
 
-        // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
-        // newer binary; a bare shell sends it on quit. Cancel the default action so .NET does NOT
-        // terminate the process before the ordered teardown below runs (else the helper orphans).
-        using var stop = new ManualResetEventSlim(false);
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var winStop = Supervision.WindowsShutdownSignal.Register(stop.Set); // Windows graceful-stop (bevel-ncfp.2)
+        // Park until SIGTERM/SIGINT (handlers armed above). The supervisor (bevel-gww.4) signals this to swap
+        // the core to a newer binary; a bare shell sends it on quit.
         stop.Wait();
 
         // Ordered teardown: stop serving + drop PAL subscriptions first, then stop the helper. Both
@@ -285,9 +300,6 @@ internal static class Program
 
         // A leftover quit marker / heartbeat from a previous session must not suppress crash-respawn
         // or look like a live child this boot.
-        QuitRequest.Clear();
-        RoleHeartbeatStore.ClearAll();
-
         // The stop latch exists BEFORE the supervisor so the skew hook can close over it: a
         // VersionSkew verdict means the RUNNING launcher predates the on-disk bundle (children
         // always respawn from the current bundle, so only the launcher side can be stale). One
@@ -298,7 +310,7 @@ internal static class Program
         RoleProcessSupervisor supervisor = null!;
         supervisor = new RoleProcessSupervisor(
             processes,
-            pollInterval: TimeSpan.FromSeconds(1),
+            pollInterval: ShellHealthMonitor.SupervisorTick,   // the tick the ready timeout counts in
             coreReadyProbe: ct => CoreSocketProbe.WaitUntilServingAsync(coreSocket, coreNonce, TimeSpan.FromSeconds(5), ct),
             log: msg => Console.Error.WriteLine($"[launcher] {msg}"),
             onLauncherStale: () =>
@@ -317,7 +329,21 @@ internal static class Program
             health: new ShellHealthMonitor(BuildStamp.Current),
             onAlert: ShellHealthAlert.Show);
 
-        supervisor.StartAsync().GetAwaiter().GetResult();
+        // Stand down BEFORE anything is spawned or cleared (bevel-9790). The lock above and a live socket
+        // are independent detectors — an orphaned core can still serve core.sock (2026-10-12). The gate
+        // probes BOTH sockets, and only on "nobody home" clears the previous session's quit marker /
+        // heartbeats (they must not suppress crash-respawn or look like a live child) and starts the
+        // children, in that order. Everything above only builds objects and sets this process's env.
+        if (IncumbentProbe.Gate(controlSocket, coreSocket,
+                IncumbentProbe.RecoverScriptPath(AppContext.BaseDirectory),
+                log: msg => { Console.Error.WriteLine($"[launcher] {msg}"); RestartDiag.Log(msg); },
+                alert: ShellHealthAlert.ShowNativeThenKill,
+                clearQuitMarker: () => { QuitRequest.Clear(); RoleHeartbeatStore.ClearAll(); },
+                spawnChildren: () => supervisor.StartAsync().GetAwaiter().GetResult()) is { } standDownExit)
+        {
+            Environment.ExitCode = standDownExit;
+            return;
+        }
 
         // Filer supervision (bevel-t48y): a SIBLING of the role supervisor — the user opens N Filer
         // windows, so these children are keyed by instance, not by role. Close-vs-crash policy
@@ -409,8 +435,9 @@ internal static class Program
             // Note this is reachable even though the single-instance lock was acquired moments ago:
             // the lock (a file lease) and the socket probe (an authenticated handshake) are
             // INDEPENDENT detectors and can disagree — the incumbent launcher can be gone while its
-            // socket is still served. Detecting it this late is itself the design flaw; see the
-            // follow-up bead for moving the probe up beside the lock, before anything is spawned.
+            // socket is still served. The early IncumbentProbe (bevel-9790, right after
+            // CreateServerEndpoint) now catches this before anything is spawned; this catch remains
+            // as belt-and-braces for the race where the incumbent binds between that probe and here.
             var msg = $"another launcher is already serving {ex.SocketPath}; this launch is standing down";
             Console.Error.WriteLine($"[launcher] {msg}");
             RestartDiag.Log($"launcher: {msg}");

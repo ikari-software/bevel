@@ -585,42 +585,27 @@ public partial class FileManagerWindow : BevelWindow
         return item;
     }
 
-    private static TreeViewItem Placeholder() => new() { Header = "..." };
+    private static TreeViewItem Placeholder() => FolderTreeLoader.Placeholder();
 
     private async void OnTreeNodeExpanded(object? sender, RoutedEventArgs e)
     {
-        if (sender is not TreeViewItem node) return;
-        if (node.Tag is not VfsPath path) return;
+        if (sender is TreeViewItem node) await ExpandTreeNodeAsync(node);
+    }
 
-        // Remove placeholder
-        if (node.Items.Count == 1 && node.Items[0] is TreeViewItem ph && ph.Header is string s && s == "...")
-            node.Items.Clear();
-        else if (node.Items.Count > 0)
-            return; // already populated
-
-        if (_vfsRoot is null) return;
-        var ct = _treeCts?.Token ?? CancellationToken.None;
-
-        try
+    /// <summary>Lazily populates a tree node's folder children on first expand. The listing is read on
+    /// the pool (<see cref="VfsBatchReader"/> via <see cref="FolderTreeLoader"/>) and lands here one
+    /// batch at a time, so expanding a huge folder never stalls the UI thread (bevel-so27). Returns
+    /// the load so tests can wait on it; the <c>async void</c> handler above just awaits it.</summary>
+    internal Task ExpandTreeNodeAsync(TreeViewItem node)
+    {
+        if (_vfsRoot is null) return Task.CompletedTask;
+        var options = new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false };
+        return FolderTreeLoader.PopulateAsync(node, _vfsRoot, options, child =>
         {
-            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
-            {
-                if (child.Kind is not (VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot))
-                    continue;
-
-                var childNode = CreateTreeNode(child.DisplayName, child.Path);
-                childNode.Items.Add(Placeholder());
-                node.Items.Add(childNode);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Root changed or window closing — stop populating.
-        }
-        catch
-        {
-            // Silently ignore enumeration errors in tree
-        }
+            var childNode = CreateTreeNode(child.DisplayName, child.Path);
+            childNode.Items.Add(Placeholder());
+            return childNode;
+        }, _treeCts?.Token ?? CancellationToken.None);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -828,6 +813,12 @@ public partial class FileManagerWindow : BevelWindow
         if (_loadedPath is { } path) _ = LoadDirectory(path);
     }
 
+    /// <summary>Item-list listing batch size: the UI thread yields (Background) before painting each batch of this many rows (bevel-so27).</summary>
+    private const int ListBatchSize = 32;
+
+    private EnumerateOptions CurrentEnumerateOptions()
+        => new() { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false };
+
     private async System.Threading.Tasks.Task LoadDirectory(VfsPath path)
     {
         if (_vfsRoot is null) return;
@@ -855,28 +846,25 @@ public partial class FileManagerWindow : BevelWindow
             if (_directoryWatcher is not null)
                 _watcherSubscription = _directoryWatcher.Changes.Subscribe(OnDirectoryChanged);
 
-            // Stream items in chunks — paint as they arrive
-            var chunk = new List<IVfsNode>(32);
+            // Stream the listing in batches — read on the pool by VfsBatchReader, painted here as each
+            // batch arrives (bevel-so27). The loop body runs on the UI thread, but the await does NOT
+            // guarantee a dispatcher turn per batch: when the reader is ahead, buffered batches are
+            // handed over synchronously and would all be painted inside one job. So yield explicitly
+            // at Background priority before painting each batch — input and render run in between.
             try
             {
-                await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
+                await foreach (var batch in VfsBatchReader.ReadBatchesAsync(_vfsRoot, path, CurrentEnumerateOptions(), ListBatchSize, ct))
                 {
-                    chunk.Add(node);
-                    count++;
-                    if (node.Size.HasValue) totalSize += node.Size.Value;
-
-                    if (chunk.Count >= 32)
-                    {
-                        var batch = chunk.ToArray();
-                        chunk.Clear();
-                        var flushCount = count;
-                        await Dispatcher.UIThread.InvokeAsync(
-                            // Discard a stale chunk: a rapid re-navigation cancels ct and resets the
-                            // view, but an already-scheduled lambda would still paint THIS folder's
-                            // items into the NEW folder's list (ce-review: adversarial+frontend-races).
-                            () => { if (ct.IsCancellationRequested) return; ItemView.AddItems(batch); StatusBar.UpdateObjectCount(flushCount); },
-                            DispatcherPriority.Background);
-                    }
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                    // Discard a stale batch: a newer navigation cancelled ct and reset the view while
+                    // this one was in flight (or while we yielded) — painting it would put THIS folder's
+                    // items into the NEW folder's list (ce-review: adversarial+frontend-races).
+                    ct.ThrowIfCancellationRequested();
+                    ItemView.AddItems(batch);
+                    count += batch.Count;
+                    foreach (var node in batch)
+                        if (node.Size.HasValue) totalSize += node.Size.Value;
+                    StatusBar.UpdateObjectCount(count);
                 }
             }
             catch (KeyNotFoundException) { }
@@ -890,23 +878,17 @@ public partial class FileManagerWindow : BevelWindow
                 // A protected directory, a path typed into the address bar that no longer exists, or
                 // an I/O failure mid-enumeration. Surface it in the status bar instead of letting it
                 // escape LoadDirectory's async void caller and crash the process (bevel-y67f).
-                StatusBar.ShowMessage(ex switch
-                {
-                    System.UnauthorizedAccessException => "Access is denied.",
-                    System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
-                    _ => "This folder can't be opened.",
-                });
+                // Not for a superseded load, though: its message would land on the newer folder.
+                if (!ct.IsCancellationRequested)
+                    StatusBar.ShowMessage(ex switch
+                    {
+                        System.UnauthorizedAccessException => "Access is denied.",
+                        System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
+                        _ => "This folder can't be opened.",
+                    });
             }
 
-            // Final chunk
-            if (chunk.Count > 0)
-            {
-                var batch = chunk.ToArray();
-                await Dispatcher.UIThread.InvokeAsync(
-                    () => { if (ct.IsCancellationRequested) return; ItemView.AddItems(batch); StatusBar.UpdateObjectCount(count); },
-                    DispatcherPriority.Background);
-            }
-
+            ct.ThrowIfCancellationRequested();
             StatusBar.UpdateTotalSize(totalSize);
             _infoTotalSize = totalSize;
             UpdateInfoPane(path, count);
@@ -1421,14 +1403,19 @@ public partial class FileManagerWindow : BevelWindow
         _enumerateCts = new CancellationTokenSource();
         var ct = _enumerateCts.Token;
 
+        // A diff needs the complete new set, so buffer every batch; the read itself runs on the pool
+        // (bevel-so27) and only the cheap append resumes here.
         var nodes = new List<IVfsNode>();
         long totalSize = 0;
         try
         {
-            await foreach (var node in _vfsRoot.EnumerateAsync(path, new EnumerateOptions { IncludeHidden = _settings?.Current.ShowHiddenFiles ?? false }, ct))
+            await foreach (var batch in VfsBatchReader.ReadBatchesAsync(_vfsRoot, path, CurrentEnumerateOptions(), ListBatchSize, ct))
             {
-                nodes.Add(node);
-                if (node.Size.HasValue) totalSize += node.Size.Value;
+                foreach (var node in batch)
+                {
+                    nodes.Add(node);
+                    if (node.Size.HasValue) totalSize += node.Size.Value;
+                }
             }
         }
         catch (OperationCanceledException) { return; }
@@ -1442,15 +1429,20 @@ public partial class FileManagerWindow : BevelWindow
         {
             // Same guard LoadDirectory got in bevel-y67f, missing on this sibling path: a watcher
             // reload / F5 after the folder's volume is ejected would otherwise escape this async
-            // void and crash the process (ce-review: reliability, anchor 100).
-            StatusBar.ShowMessage(ex switch
-            {
-                System.UnauthorizedAccessException => "Access is denied.",
-                System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
-                _ => "This folder can't be opened.",
-            });
+            // void and crash the process (ce-review: reliability, anchor 100). A superseded reload
+            // stays silent — its message would land on the newer listing.
+            if (!ct.IsCancellationRequested)
+                StatusBar.ShowMessage(ex switch
+                {
+                    System.UnauthorizedAccessException => "Access is denied.",
+                    System.IO.DirectoryNotFoundException or System.IO.FileNotFoundException => "This folder no longer exists.",
+                    _ => "This folder can't be opened.",
+                });
             return;
         }
+
+        // A newer load/reload superseded this one while its listing was in flight.
+        if (ct.IsCancellationRequested) return;
 
         _loadedPath = path;
         ItemView.ReconcileItems(nodes);
@@ -1458,6 +1450,11 @@ public partial class FileManagerWindow : BevelWindow
         StatusBar.UpdateTotalSize(totalSize);
         _infoTotalSize = totalSize;
         UpdateInfoPane(path, nodes.Count);
+        // An F5 or watcher refresh can supersede a LoadDirectory still streaming this folder, which
+        // then exits before its tail applies the reveal (bevel-nwo) — so the reload applies it. Not
+        // discardIfStale: a refresh of the folder on screen says nothing about whether a pending
+        // navigation to the reveal target is still coming; only a fresh listing does.
+        ApplyPendingSelection(path);
     }
 
     /// <summary>

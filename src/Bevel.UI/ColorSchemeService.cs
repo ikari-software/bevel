@@ -45,9 +45,12 @@ public static class ColorSchemeService
     // The scheme dictionary we merged last, so a switch replaces rather than stacks.
     private static ResourceInclude? _applied;
     private static string _appliedId = DefaultScheme;
+    // The Application resources _applied was merged into. These statics outlive an Application (every headless
+    // test gets a fresh one); a guard that ignored WHICH resources would skip a fresh Application (bevel-yfkw).
+    private static IResourceDictionary? _owner;
 
     private static readonly Uri BaseUri = new("avares://Bevel.App/App.axaml");
-    private static bool _aliasesMerged;
+    private static IResourceDictionary? _aliasesMergedInto;
 
     /// <summary>Merges the Bevel semantic-brush alias layer once (bevel-9js). Tokens.axaml's
     /// <c>Bevel.Brush.*</c> are <c>StaticResource</c>-frozen and can't follow a scheme change; this
@@ -55,12 +58,12 @@ public static class ColorSchemeService
     /// Application level (outranks Tokens), so Bevel-owned chrome (Start menu, etc.) recolours too.</summary>
     private static void EnsureAliases(IResourceDictionary appResources)
     {
-        if (_aliasesMerged) return;
+        if (ReferenceEquals(_aliasesMergedInto, appResources)) return;
         appResources.MergedDictionaries.Add(new ResourceInclude(BaseUri)
         {
             Source = new Uri("avares://Bevel.Themes.Industrial1999/SchemeAliases.axaml"),
         });
-        _aliasesMerged = true;
+        _aliasesMergedInto = appResources;
     }
 
     /// <summary>True if <paramref name="id"/> is a known scheme.</summary>
@@ -77,10 +80,8 @@ public static class ColorSchemeService
     public static void Apply(string? id)
     {
         var scheme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultScheme : id!;
-        if (scheme == _appliedId && _applied is not null) return;
-        Glyphs.InvalidateThemeCache();   // scheme colours changed — drop cached icon brushes (bevel-lha4)
-
         if (Application.Current?.Resources is not { } appResources) return;
+        if (scheme == _appliedId && _applied is not null && ReferenceEquals(_owner, appResources)) return;
 
         EnsureAliases(appResources);
 
@@ -90,11 +91,13 @@ public static class ColorSchemeService
         };
 
         // Replace the previously-applied scheme (if any) so schemes don't stack in the merge list.
-        if (_applied is not null)
+        if (_applied is not null && ReferenceEquals(_owner, appResources))
             appResources.MergedDictionaries.Remove(_applied);
         appResources.MergedDictionaries.Add(dict);
         _applied = dict;
+        _owner = appResources;
         _appliedId = scheme;
+        Glyphs.InvalidateThemeCache();   // AFTER the swap: subscribers rebuild from the new scheme (bevel-yfkw)
     }
 
     /// <summary>Removes the merged Win2000 colour-scheme dictionary. Call when switching AWAY from the
@@ -107,8 +110,12 @@ public static class ColorSchemeService
         if (Application.Current?.Resources is not { } appResources) return;
         if (_applied is not null)
         {
-            appResources.MergedDictionaries.Remove(_applied);
+            // A dictionary merged into a previous Application is not in this one: forget it, announce nothing.
+            var owned = ReferenceEquals(_owner, appResources);
+            if (owned) appResources.MergedDictionaries.Remove(_applied);
             _applied = null;
+            _owner = null;
+            if (owned) Glyphs.InvalidateThemeCache();   // the scheme's colours just left (bevel-yfkw); a no-op Clear stays silent
         }
         // Leave _appliedId as-is: Apply's guard also checks `_applied is not null`, so a later
         // Apply(sameScheme) still re-merges after a Clear.

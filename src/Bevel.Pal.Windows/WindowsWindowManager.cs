@@ -74,6 +74,15 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
 
     // ── IWindowManager ──────────────────────────────────────────────────
 
+    /// <summary>Null when there is no window source to ask (not on Windows, or disposed) — the empty list
+    /// <see cref="EnumerateAsync"/> returns then is not an answer, and the core must not publish it as an
+    /// authoritative "no windows" snapshot (bevel-wheq). Otherwise the real enumeration.</summary>
+    public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows() || _disposed) return null;
+        return await EnumerateAsync(ct).ConfigureAwait(false);
+    }
+
     public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || _disposed)

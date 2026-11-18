@@ -114,13 +114,13 @@ public class DisconnectedIndicatorTests
 
         // Unsupervised: no launcher to respawn the core, so that repair must not be offered as if it
         // would work — silently doing nothing is worse than not offering it.
-        view.Initialize(new Core.BevelSettings(), restart: () => { }, restartCore: null);
+        view.Initialize(TestSettings.NoStacks(new Core.BevelSettings()), restart: () => { }, restartCore: null);
         Dispatcher.UIThread.RunJobs();
         Assert.False(view.RepairRestartCoreItem.IsEnabled);
         Assert.True(view.RepairRestartShellItem.IsEnabled);
 
         // Supervised: both repairs available.
-        view.Initialize(new Core.BevelSettings(), restart: () => { }, restartCore: () => { });
+        view.Initialize(TestSettings.NoStacks(new Core.BevelSettings()), restart: () => { }, restartCore: () => { });
         Dispatcher.UIThread.RunJobs();
         Assert.True(view.RepairRestartCoreItem.IsEnabled);
         Assert.True(view.RepairRestartShellItem.IsEnabled);
@@ -132,7 +132,7 @@ public class DisconnectedIndicatorTests
         var (view, _, _) = Build(connected: false);
         var core = 0;
         var all = 0;
-        view.Initialize(new Core.BevelSettings(), restart: () => all++, restartCore: () => core++);
+        view.Initialize(TestSettings.NoStacks(new Core.BevelSettings()), restart: () => all++, restartCore: () => core++);
         Dispatcher.UIThread.RunJobs();
 
         view.RepairRestartCoreItem.RaiseEvent(

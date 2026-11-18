@@ -81,14 +81,14 @@ public class RenderBigIconsTaskbarTest
 
             // Live tier change through the same entry point the 750 ms settings poll uses. No restart,
             // no strip rebuild — the DynamicResource token re-measures the existing Images.
-            view.ApplyLiveSettings(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Large });
+            view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Large }));
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(24, TaskbarTheme.TaskIconSize);
             var large = IconSlots(view);
             Assert.NotEmpty(large);
             Assert.All(large, w => Assert.Equal(24, w));
 
-            view.ApplyLiveSettings(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Big });
+            view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Big }));
             Dispatcher.UIThread.RunJobs();
             var big = IconSlots(view);
             Assert.NotEmpty(big);
@@ -98,7 +98,7 @@ public class RenderBigIconsTaskbarTest
             Assert.True(big[0] > 16 * 1.5);
 
             // Small must still be the classic 16px glyph (no regression at the other end).
-            view.ApplyLiveSettings(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Small });
+            view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Small }));
             Dispatcher.UIThread.RunJobs();
             Assert.All(IconSlots(view), w => Assert.Equal(16, w));
         }
@@ -117,7 +117,7 @@ public class RenderBigIconsTaskbarTest
             var normal2 = TaskbarTheme.HeightForRows(2);
 
             var (window, view, _) = BuildBar(rows: 2);
-            view.ApplyLiveSettings(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Big, TaskbarRows = 2 });
+            view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarButtonSize = TaskbarButtonSize.Big, TaskbarRows = 2 }));
             Dispatcher.UIThread.RunJobs();
 
             Assert.True(TaskbarTheme.HeightForRows(1) > normal1);
@@ -141,11 +141,11 @@ public class RenderBigIconsTaskbarTest
         {
             TaskbarTheme.Configure(TaskbarButtonSize.Big);
             var (window, view, _) = BuildBar();
-            view.ApplyLiveSettings(new BevelSettings
+            view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings
             {
                 TaskbarButtonSize = TaskbarButtonSize.Big,
                 TaskbarButtonLabels = TaskbarButtonLabels.IconOnly,
-            });
+            }));
             Dispatcher.UIThread.RunJobs();
 
             var frame = window.CaptureRenderedFrame();

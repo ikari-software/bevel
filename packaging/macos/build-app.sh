@@ -106,6 +106,10 @@ cp "$ROOT/native/helper-macos/.build/release/BevelHelper" "$APP/Contents/MacOS/B
 sed -e "s/__VERSION__/$VERSION/g" -e "s/__BUILD__/$BUILD/g" \
 	"$PKG/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ROOT/src/Bevel.App/Bevel.sdef" "$APP/Contents/Resources/Bevel.sdef"
+# The half-dead-shell recovery script ships IN the bundle so the launcher's stand-down dialog can name a
+# real path for installed users (bevel-9790). Resources are sealed by the bundle signature; keep it +x.
+cp "$PKG/bevel-recover.sh" "$APP/Contents/Resources/bevel-recover.sh"
+chmod +x "$APP/Contents/Resources/bevel-recover.sh"
 [ -f "$PKG/Bevel.icns" ] && cp "$PKG/Bevel.icns" "$APP/Contents/Resources/Bevel.icns" || true
 
 echo "==> Validating bundle"
@@ -113,6 +117,7 @@ plutil -lint "$APP/Contents/Info.plist"
 test -x "$APP/Contents/MacOS/Bevel"
 test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
+test -x "$APP/Contents/Resources/bevel-recover.sh"
 
 # Keep the repo's build output OUT of Spotlight/Launchpad so it doesn't shadow the canonical
 # /Applications/Bevel.app in the "Bevel" app list (bevel-5yx5). A .metadata_never_index marker in

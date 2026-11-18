@@ -11,6 +11,17 @@ public interface IWindowManager
     Capabilities Capabilities { get; }
 
     ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default);
+
+    /// <summary>Seed-grade variant of <see cref="EnumerateAsync"/> (bevel-wheq, the window twin of
+    /// <see cref="ISystemTrayHost.TrySeedItemsAsync"/>): returns <c>null</c> when the window source could NOT
+    /// be reached (e.g. the helper is down), and a list — possibly empty — only when the source actually
+    /// answered. <see cref="EnumerateAsync"/> may swallow an unreachable source into an empty list for its
+    /// UI callers; a snapshot publisher must not mistake that for "no windows are open". The default reports
+    /// every <see cref="EnumerateAsync"/> result as an answer, which is right for managers whose enumeration
+    /// cannot fail softly.</summary>
+    async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
+        => await EnumerateAsync(ct).ConfigureAwait(false);
+
     Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default);
     Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default);
     Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);
@@ -52,6 +63,16 @@ public interface ISystemTrayHost
     Capabilities Capabilities { get; }
 
     ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default);
+
+    /// <summary>Seed-grade variant of <see cref="GetItemsAsync"/> (bevel-ri8c): returns <c>null</c> when the
+    /// tray source could NOT be reached (e.g. the helper is down), and a list — possibly empty — only when
+    /// the source actually answered. <see cref="GetItemsAsync"/> swallows an unreachable source into an empty
+    /// list for its UI callers; a snapshot publisher must not mistake that for "the tray is empty". The
+    /// default reports every <see cref="GetItemsAsync"/> result as an answer, which is right for hosts whose
+    /// listing cannot fail softly.</summary>
+    async ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
+        => await GetItemsAsync(ct).ConfigureAwait(false);
+
     Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default);
 
     /// <summary>Forwards a click on a mirrored item to the real status item so its menu/popover opens
@@ -253,7 +274,20 @@ public interface ITabProvider
     ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default);
 
     /// <summary>Focuses <paramref name="tab"/>: selects it inside its window, raises the window,
-    /// activates the app. Best-effort — a tab closed since enumeration is a silent no-op.</summary>
+    /// activates the app. The row may be stale (tab closed/reordered since enumeration), so the tab
+    /// is re-resolved by identity first (bevel-6asm), per engine:
+    /// <list type="bullet">
+    /// <item>AppleScript browsers (Chromium family, Safari): identity is the URL (title only when the
+    /// row has no url). If the remembered window+position still carries it, that tab is selected
+    /// even when twins exist elsewhere; otherwise a match that is UNIQUE across ALL windows is
+    /// selected, and zero or several matches select nothing.</item>
+    /// <item>iTerm2: identity is <see cref="AppTab.SessionId"/> (session unique id); same position-
+    /// then-unique-across-all-windows rule; a row without a session id selects nothing.</item>
+    /// <item>Gecko (Zen/Firefox, accessibility): identity is the title, searched ONLY in the
+    /// remembered window — the remembered index if it still carries the title, else a unique title
+    /// match in that window, else nothing.</item>
+    /// </list>
+    /// "Selects nothing" is silent: the method completes normally and no tab is touched.</summary>
     Task ActivateAsync(AppTab tab, CancellationToken ct = default);
 }
 

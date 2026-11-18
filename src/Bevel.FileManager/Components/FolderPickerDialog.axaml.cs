@@ -82,43 +82,22 @@ public partial class FolderPickerDialog : BevelWindow
         return item;
     }
 
-    private static TreeViewItem Placeholder() => new() { Header = "..." };
+    private static TreeViewItem Placeholder() => FolderTreeLoader.Placeholder();
+
+    internal async void OnTreeNodeExpanded(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TreeViewItem node) await ExpandTreeNodeAsync(node);
+    }
 
     /// <summary>
     /// Lazily populates a node's folder children on first expand — only folders (and
-    /// volume/virtual-root nodes) are shown, files are excluded. Internal so tests can drive
-    /// expansion directly rather than relying on the visual Expanded event firing headlessly.
+    /// volume/virtual-root nodes) are shown, files are excluded. The listing is read on the pool and
+    /// lands one batch at a time (bevel-so27). Internal so tests can drive expansion directly and wait
+    /// on it, rather than relying on the visual Expanded event firing headlessly.
     /// </summary>
-    internal async void OnTreeNodeExpanded(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not TreeViewItem node) return;
-        if (node.Tag is not VfsPath path) return;
-
-        if (node.Items.Count == 1 && node.Items[0] is TreeViewItem ph && ph.Header is string s && s == "...")
-            node.Items.Clear();
-        else if (node.Items.Count > 0)
-            return; // already populated
-
-        try
-        {
-            await foreach (var child in _vfsRoot.EnumerateAsync(path, new EnumerateOptions(), _cts.Token))
-            {
-                if (child.Kind is not (VfsNodeKind.Folder or VfsNodeKind.Volume or VfsNodeKind.VirtualRoot))
-                    continue;
-
-                node.Items.Add(CreateTreeNode(child.DisplayName, child.Path, child.MightHaveChildren));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Dialog closing — stop populating.
-        }
-        catch
-        {
-            // Best-effort: skip folders we can't enumerate (permissions, races, etc.) rather
-            // than leaving the tree node stuck with its placeholder.
-        }
-    }
+    internal Task ExpandTreeNodeAsync(TreeViewItem node)
+        => FolderTreeLoader.PopulateAsync(node, _vfsRoot, new EnumerateOptions(),
+            child => CreateTreeNode(child.DisplayName, child.Path, child.MightHaveChildren), _cts.Token);
 
     /// <summary>
     /// The selection logic behind TreeView.SelectionChanged — internal so tests can drive it

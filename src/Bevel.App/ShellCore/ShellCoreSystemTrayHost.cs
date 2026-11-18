@@ -21,6 +21,16 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     /// <c>TrayNotifyWnd</c> toggle on Windows). Null on PALs with no native hide.</summary>
     private readonly Action<bool>? _applyLocalHide;
 
+    /// <summary>What this adapter has raised and not yet removed, by id (bevel-ri8c). A TraySnapshot is a
+    /// full reconcile: whatever is in here but absent from the snapshot vanished while the link was down and
+    /// must be removed. Also makes the <see cref="GetItemsAsync"/> pull order-safe (see
+    /// <see cref="ProjectionMirror{T}"/>); events arrive on the transport thread, so it is thread-safe.</summary>
+    private readonly ProjectionMirror<TrayItem> _known = new(t => t.Id.Value);
+
+    /// <summary>Test seam: awaited after the pull's reply arrives and before it is merged — lets a test land a
+    /// remove delta deterministically in that window.</summary>
+    internal Func<Task>? BeforePullMergeForTest;
+
     public ShellCoreSystemTrayHost(ShellCoreClient core, Action<bool>? applyLocalHide = null)
     {
         _core = core;
@@ -46,22 +56,32 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         : new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
             Notes: new[] { "tray: authoritative, via shell-core" }, SupportsReposition: false);
 
-    private void OnCoreEvent(CoreEvent e)
+    // internal = test seam: tests feed synthetic CoreEvents without a live server.
+    internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
         {
             case CoreEventKind.TraySnapshot when e.TrayItems is not null:
-                // Replay the snapshot as Added events — TrayViewModel upserts idempotently by id.
+            {
+                // A snapshot is authoritative (bevel-ri8c): remove what it omits, then (re)add what it
+                // lists. Adds alone left ghosts for icons that vanished while the link was down.
+                var gone = _known.ApplySnapshot(e.TrayItems);
+                foreach (var g in gone)
+                    ItemRemoved?.Invoke(this, g);
                 foreach (var t in e.TrayItems)
                     ItemAdded?.Invoke(this, t);
                 break;
+            }
             case CoreEventKind.TrayItemAdded when e.TrayItem is { } ta:
+                _known.Upsert(ta);
                 ItemAdded?.Invoke(this, ta);
                 break;
             case CoreEventKind.TrayItemUpdated when e.TrayItem is { } tu:
+                _known.Upsert(tu);
                 ItemUpdated?.Invoke(this, tu);
                 break;
             case CoreEventKind.TrayItemRemoved when e.TrayItem is { } tr:
+                _known.Remove(tr);
                 ItemRemoved?.Invoke(this, tr);
                 break;
             // Window/app events are handled by the other shell-core adapters on the same connection.
@@ -74,14 +94,24 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     /// stream (Hello snapshot + deltas) remains the primary feed; this is the reconcile path.</summary>
     public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
     {
+        var start = _known.BeginPull();
         try
         {
             var r = await _core.SendAsync(new CoreCommand(CoreCommandKind.GetTrayItems), ct).ConfigureAwait(false);
-            return r.TrayItems ?? Array.Empty<TrayItem>();
+            var items = r.TrayItems ?? Array.Empty<TrayItem>();
+            if (BeforePullMergeForTest is { } gate) await gate().ConfigureAwait(false);
+            // Record pulled items too (bevel-ri8c) so a later snapshot can reap them — except any removed
+            // since this pull began: the pull is older than that removal. They are dropped from the result
+            // as well, so the caller (TrayViewModel upserts it) cannot resurrect them either.
+            return _known.MergePull(start, items);
         }
         catch
         {
             return Array.Empty<TrayItem>(); // a pull during a dropped link is just empty — the stream re-syncs
+        }
+        finally
+        {
+            _known.EndPull();
         }
     }
 

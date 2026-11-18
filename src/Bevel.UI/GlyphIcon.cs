@@ -17,6 +17,14 @@ namespace Bevel.UI;
 /// dropped on every theme/scheme/variant switch, and an <c>x:Static</c> captures the object at parse
 /// time — the bound Path would keep the stale, evicted brush forever. So this hosts the built icon and
 /// REBUILDS it on <see cref="Glyphs.ThemeCacheInvalidated"/>, which every recolour engine raises.
+///
+/// <para>Also the ONE way to put a shared glyph in code (bevel-yfkw): <see cref="For"/>. A bare
+/// <c>Glyphs.Icon()</c> is a snapshot that keeps its build-time brushes forever, which is why a live theme
+/// switch left every Filer row, Start-menu item and Properties icon in the old palette.</para>
+///
+/// <para>Builds only while attached, and only when it has no child or the palette moved on since its build
+/// (<see cref="Glyphs.ThemeGeneration"/>) — setting Glyph and Size then attaching is one build, not three, and a
+/// host re-attached after the palette changed while it was detached (a recycled row, a closed menu) catches up.</para>
 /// </summary>
 public sealed class GlyphIcon : Decorator
 {
@@ -28,11 +36,20 @@ public sealed class GlyphIcon : Decorator
     public static readonly StyledProperty<int> SizeProperty =
         AvaloniaProperty.Register<GlyphIcon, int>(nameof(Size), 16);
 
+    // The Glyphs.ThemeGeneration the current Child was built at; -1 forces the next EnsureBuilt to build.
+    private int _builtGeneration = -1;
+    private bool _attached;
+
     static GlyphIcon()
     {
-        GlyphProperty.Changed.AddClassHandler<GlyphIcon>((c, _) => c.Rebuild());
-        SizeProperty.Changed.AddClassHandler<GlyphIcon>((c, _) => c.Rebuild());
+        GlyphProperty.Changed.AddClassHandler<GlyphIcon>((c, _) => c.Invalidate());
+        SizeProperty.Changed.AddClassHandler<GlyphIcon>((c, _) => c.Invalidate());
     }
+
+    /// <summary>A host for <paramref name="key"/>'s glyph at <paramref name="size"/> DIPs — the code-side twin
+    /// of <c>&lt;ui:GlyphIcon Glyph=".." Size=".."/&gt;</c>; same id mapping as <see cref="Glyphs.Icon"/>.</summary>
+    public static GlyphIcon For(IconKey key, int size)
+        => new() { Glyph = key.SemanticId ?? "doc.generic", Size = size };
 
     public string? Glyph
     {
@@ -49,22 +66,37 @@ public sealed class GlyphIcon : Decorator
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _attached = true;
         Glyphs.ThemeCacheInvalidated += OnThemeCacheInvalidated;
-        Rebuild();   // the tokens may have changed while detached
+        EnsureBuilt();   // the tokens may have changed while detached
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         Glyphs.ThemeCacheInvalidated -= OnThemeCacheInvalidated;
+        _attached = false;
         base.OnDetachedFromVisualTree(e);
     }
 
+    // Raised on the UI thread (Glyphs posts it); the guard only covers a direct invoke from elsewhere.
     private void OnThemeCacheInvalidated()
     {
-        if (Dispatcher.UIThread.CheckAccess()) Rebuild();
-        else Dispatcher.UIThread.Post(Rebuild);
+        if (Dispatcher.UIThread.CheckAccess()) EnsureBuilt();
+        else Dispatcher.UIThread.Post(EnsureBuilt);
     }
 
-    private void Rebuild()
-        => Child = Glyph is { Length: > 0 } id ? Glyphs.Icon(Size, new IconKey(id)) : null;
+    private void Invalidate()
+    {
+        _builtGeneration = -1;
+        EnsureBuilt();
+    }
+
+    private void EnsureBuilt()
+    {
+        if (!_attached) return;
+        var generation = Glyphs.ThemeGeneration;
+        if (Child is not null && _builtGeneration == generation) return;
+        Child = Glyph is { Length: > 0 } id ? Glyphs.Icon(Size, new IconKey(id)) : null;
+        _builtGeneration = generation;
+    }
 }
