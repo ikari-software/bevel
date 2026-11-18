@@ -14,7 +14,7 @@ namespace Bevel.App.ShellCore;
 /// during the gap isn't a dead click — it just applies a beat late. Queries (Enumerate) are NOT
 /// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.</para>
 /// </summary>
-public sealed class ShellCoreWindowManager : IWindowManager
+public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSource
 {
     // Small, best-effort replay buffer: keep the last few actions across a blip, drop the oldest past
     // the cap, and never replay an action so old the user has moved on.
@@ -67,6 +67,15 @@ public sealed class ShellCoreWindowManager : IWindowManager
 
     public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
         => (await _core.SendAsync(new CoreCommand(CoreCommandKind.EnumerateWindows), ct).ConfigureAwait(false)).Windows
+           ?? Array.Empty<ForeignWindow>();
+
+    /// <summary>The core's own projection, icons omitted (bevel-ougs) — no helper enumeration behind
+    /// it. See <see cref="IProjectedWindowSource"/> for why this is NOT a drop-in for
+    /// <see cref="EnumerateAsync"/>: a reconcile that polled this would only confirm the same delta
+    /// stream it exists to check.</summary>
+    public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateProjectedAsync(CancellationToken ct = default)
+        => (await _core.SendAsync(new CoreCommand(CoreCommandKind.EnumerateWindowsProjected), ct)
+                .ConfigureAwait(false)).Windows
            ?? Array.Empty<ForeignWindow>();
 
     public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Activate, id, ct);

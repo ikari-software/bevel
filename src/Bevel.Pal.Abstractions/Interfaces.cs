@@ -208,6 +208,31 @@ public interface IFileOpener
         => ValueTask.FromResult<IReadOnlyList<OpenWithHandler>>(System.Array.Empty<OpenWithHandler>());
 }
 
+/// <summary>
+/// An optional companion to <see cref="IWindowManager"/> for a manager that is a PROXY over
+/// something else's window list and keeps a local projection of it (bevel-ougs).
+///
+/// <para>In the split shell the taskbar's <c>IWindowManager</c> is a client of the shell core, so
+/// every <see cref="IWindowManager.EnumerateAsync"/> is a JSON round-trip to the core and from there
+/// a fresh CG + AX enumeration in the Swift helper — the same helper that has to answer the next
+/// Activate promptly. The core already maintains an authoritative window projection from the live
+/// delta stream, so a caller that only needs "where are the windows right now" can read that
+/// instead, with icons omitted (nobody who asks this question wants a base64 PNG per window).</para>
+///
+/// <para><b>This is not a faster EnumerateAsync.</b> A projection is built from the same events a
+/// reconcile exists to double-check, so a backstop that polls it would only ever confirm itself —
+/// <c>ShellModel</c>'s reconcile loop must keep using <see cref="IWindowManager.EnumerateAsync"/>.
+/// Implement this only where the projection is genuinely a cache of a remote source; a PAL that IS
+/// the source leaves it unimplemented, and callers then simply use the ordinary enumerate.</para>
+/// </summary>
+public interface IProjectedWindowSource
+{
+    /// <summary>The current window list from the local projection: no round trip to the real source,
+    /// and <see cref="ForeignWindow.IconPng"/> omitted. As fresh as the delta stream, which is what
+    /// makes it right for a consumer that is itself reacting to those deltas.</summary>
+    ValueTask<IReadOnlyList<ForeignWindow>> EnumerateProjectedAsync(CancellationToken ct = default);
+}
+
 /// <summary>Per-app tab enumeration and activation for tab-capable apps — browsers and terminals
 /// (bevel-a40b). Purely process-local (like <see cref="IFileOpener"/>): the macOS backend talks
 /// Apple Events to the target app, so no shell-core round-trip and no helper involvement. The

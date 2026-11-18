@@ -458,7 +458,38 @@ public partial class App : Application
         if (Role is ShellRole.Filer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(path);
         else
-            Program.SpawnFiler(path.Value);
+            SpawnFilerSupervised(services, path.Value);
+    }
+
+    /// <summary>Spawns a Filer through the SUPERVISED launcher path, off the UI thread (bevel-hsvx).
+    ///
+    /// <para>Why not <see cref="Program.SpawnFiler"/> directly, which is what this used to call: that is
+    /// the unsupervised dev fallback — a bare <c>Process.Start</c>. A Filer spawned that way is not
+    /// respawned if it crashes, not torn down on Quit, and not restarted by RestartAll, so it keeps
+    /// running the OLD binary after an update. It also never claims the pre-warmed <c>--park</c> window,
+    /// so the commonest "open a folder" click paid a full process cold start while the handoff
+    /// bevel-t48y built sat unused — the automation path (<see cref="SpawningShellSurface"/>) was the
+    /// only caller going through the launcher.</para>
+    ///
+    /// <para>Why <see cref="Task.Run"/> is NOT optional here. <c>LauncherControl.TrySendPayload</c> ends
+    /// in <c>.GetAwaiter().GetResult()</c> on a 3s-budgeted round trip; its own internal
+    /// <c>Task.Run</c> only detaches the SynchronizationContext to avoid a deadlock, it does not make the
+    /// call non-blocking for the CALLER. Every caller here is a Start-menu click handler on the UI
+    /// thread, so calling <c>Spawn</c> inline would trade a cold start for a UI freeze of up to three
+    /// seconds whenever the control socket is stale — a worse bug than the one being fixed.</para>
+    ///
+    /// <para>The chain never throws (<c>TrySendPayload</c> and <c>SpawnFiler</c> both swallow and
+    /// degrade), and <see cref="LauncherFilerSpawner"/> falls back to the in-process spawner on a NACK,
+    /// so an open can never silently die; the catch is belt-and-braces against an unobserved task
+    /// exception if that ever stops being true.</para></summary>
+    private static void SpawnFilerSupervised(IServiceProvider services, string path, bool search = false)
+    {
+        var spawner = services.GetService<IFilerSpawner>() ?? new ProcessFilerSpawner();
+        _ = Task.Run(() =>
+        {
+            try { spawner.Spawn(path, search: search); }
+            catch (Exception ex) { Console.Error.WriteLine($"[App] filer spawn failed: {ex.Message}"); }
+        });
     }
 
     /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Filer at Home already in Find
@@ -470,7 +501,7 @@ public partial class App : Application
         if (Role is ShellRole.Filer)
             services.GetRequiredService<FileManagerWindowFactory>().Create(new VfsPath("file", home)).BeginSearch();
         else
-            Program.SpawnFiler(home, search: true);
+            SpawnFilerSupervised(services, home, search: true);
     }
 
     private static void CreateFilerSurface(

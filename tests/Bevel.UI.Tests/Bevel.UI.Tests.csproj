@@ -19,4 +19,7 @@
     <ProjectReference Include="..\..\src\Bevel.App\Bevel.App.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\DispatcherFrameSupport.cs" Link="DispatcherFrameSupport.cs" />
+  </ItemGroup>
 </Project>

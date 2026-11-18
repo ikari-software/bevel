@@ -704,6 +704,10 @@ public partial class TaskbarView : UserControl
             TaskbarNative.RemoveMonitor(_startHotkeyMonitor);
             _startHotkeyMonitor = IntPtr.Zero;
         }
+        // Favicon bitmaps are Skia-backed unmanaged memory the GC cannot see (bevel-1fy8): the cache
+        // outlives individual menus on purpose, so the view is what has to free it.
+        _tabs?.Dispose();
+        _tabs = null;
         base.OnUnloaded(e);
     }
 
@@ -836,6 +840,13 @@ public partial class TaskbarView : UserControl
     {
         var anchor = (e.Source as Control)?.FindAncestorOfType<ToggleButton>()
                      ?? sender as ToggleButton;
+        // Warm the tab list for this app while the pointer sits on its button (bevel-1fy8). A
+        // right-click is always preceded by the pointer arriving here, so this is the only moment
+        // where the ~100-650ms of osascript can be spent off the critical path. Fire-and-forget: the
+        // result lands in _tabPrefetch and the context handler picks it up (or waits out the
+        // remainder). Apps with no tab dialect never start a fetch — EnsureTabPrefetch gates first.
+        _ = EnsureTabPrefetch(TabBundleIdOf(anchor?.DataContext));
+
         if (anchor?.DataContext is not TaskItemViewModel vm)
             return;
 
@@ -977,18 +988,25 @@ public partial class TaskbarView : UserControl
             // Tab prefetch (bevel-a40b): an open MenuFlyout never repaints, so tabs must exist BEFORE
             // TryShow. The await keeps the UI thread free; the budget caps how long the menu can lag
             // behind the right-click when the target app answers slowly (no tabs beats a stalled menu).
+            //
+            // The fetch normally started on POINTER-ENTER (bevel-1fy8) — a right-click is always
+            // preceded by the pointer arriving on the button, so by now it has usually finished and
+            // this handler runs to completion without ever yielding: the menu appears on the click
+            // rather than 100-300ms later (~0.65s on a 100-tab Arc). If it is still running we await
+            // the REMAINDER instead of a whole fresh enumeration, so the slow case is also shorter.
             var dc = c.DataContext;
-            var tabs = await PrefetchTabsAsync(dc);
+            var work = EnsureTabPrefetch(TabBundleIdOf(dc));
+            IReadOnlyList<TaskButtonMenu.TabMenuRow>? tabs =
+                work is null ? null
+                : work.IsCompletedSuccessfully ? work.Result
+                : await work;
 
             // The projector mutates the strip in place during the await (remove/move/insert on the
             // very events a right-click races with — target app quitting, windows re-ordering). A
             // rebound container would show app B's menu with app A's tabs; a detached one would
             // ShowAt a control with no visual root. Both invalidate this click — drop it.
             if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
-            {
-                DisposeTabRows(tabs);
                 return;
-            }
 
             // Dismiss any still-open prior menu BEFORE opening the new one, so its Closed handler
             // (which removes its global mouse monitor) runs first. The monitors are now per-token
@@ -1008,14 +1026,10 @@ public partial class TaskbarView : UserControl
                 {
                     if (ReferenceEquals(_openTaskMenu, menu)) _openTaskMenu = null;
                     ExitMenuScope();
-                    // Skia-backed favicon bitmaps are unmanaged memory the GC can't see — release
-                    // them with the menu (same pattern as the hover preview's bitmap swap).
-                    DisposeTabRows(tabs);
+                    // The favicon bitmaps are NOT disposed here any more (bevel-1fy8): TabPrefetch
+                    // owns them for the life of the view, so the next menu can reuse the same
+                    // prefetched rows. Disposing per-menu is what made a reusable prefetch impossible.
                 };
-            }
-            else
-            {
-                DisposeTabRows(tabs);
             }
         }
         catch (Exception ex)
@@ -1030,50 +1044,24 @@ public partial class TaskbarView : UserControl
         }
     }
 
-    private async Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>?> PrefetchTabsAsync(object? dc)
+    internal static string? TabBundleIdOf(object? dc) => dc switch
     {
-        var bundleId = dc switch
-        {
-            TaskGroupViewModel g => g.BundleId,
-            TaskItemViewModel t => t.BundleId,
-            _ => null,
-        };
-        if (_tabProvider is null || !_tabProvider.SupportsApp(bundleId)) return null;
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            using var cts = new System.Threading.CancellationTokenSource(TabPrefetchBudget);
-            var tabs = await _tabProvider.GetTabsAsync(bundleId!, cts.Token);
-            // Favicon PNGs decode into bitmaps OFF the UI thread (never-block rule) — Build then
-            // only composes ready Image sources. DecodeToWidth(16) keeps a 192px cache blob from
-            // decoding at full size for a 16px row. A blob that fails to decode is an icon-less row.
-            var rows = await Task.Run(() => tabs.Select(t =>
-            {
-                Avalonia.Media.Imaging.Bitmap? icon = null;
-                if (t.IconPng is { Length: > 0 } png)
-                {
-                    try { icon = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(new System.IO.MemoryStream(png), 16); }
-                    catch { /* malformed cache blob */ }
-                }
-                return new TaskButtonMenu.TabMenuRow(t, icon);
-            }).ToList());
-            // Enumeration over budget is killed in the provider (empty list); enrichment over
-            // budget is abandoned there (unenriched list). Neither throws — log every outcome so
-            // "0 tabs in ~budget ms" is readable as a timeout. Elapsed includes icon decode.
-            TaskbarLog.Debug($"TABS prefetch {bundleId}: {tabs.Count} in {sw.ElapsedMilliseconds}ms");
-            return rows;
-        }
-        catch (Exception ex)
-        {
-            TaskbarLog.Debug($"TABS prefetch failed for {bundleId}: {ex.GetType().Name} after {sw.ElapsedMilliseconds}ms");
-            return null;   // timeout / target app gone — the menu just opens without a Tabs section
-        }
-    }
+        TaskGroupViewModel g => g.BundleId,
+        TaskItemViewModel t => t.BundleId,
+        _ => null,
+    };
 
-    private static void DisposeTabRows(IReadOnlyList<TaskButtonMenu.TabMenuRow>? rows)
+    /// <summary>Tab lists warmed on hover so the context menu can open without waiting on osascript
+    /// (bevel-1fy8). Created lazily because the provider is injected after construction.</summary>
+    private TabPrefetch? _tabs;
+
+    /// <summary>Starts a tab enumeration for this app, or returns the one already running/just done.
+    /// Null when the app has no tab dialect. UI thread.</summary>
+    private Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>? EnsureTabPrefetch(string? bundleId)
     {
-        if (rows is null) return;
-        foreach (var row in rows) row.Icon?.Dispose();
+        if (_tabProvider is null) return null;
+        _tabs ??= new TabPrefetch(_tabProvider, TabPrefetchBudget, TabPrefetchFreshness);
+        return _tabs.Warm(bundleId);
     }
 
     /// <summary>How long a right-click may wait for the target app's tab list before the menu opens
@@ -1082,6 +1070,21 @@ public partial class TaskbarView : UserControl
     /// the menu permanently lost its Tabs section on big browsers. iTerm-sized apps answer in
     /// 100–300 ms regardless.</summary>
     private static readonly TimeSpan TabPrefetchBudget = TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>How old a prefetched tab list may be and still open a menu (bevel-1fy8).
+    ///
+    /// <para>This bound matters for CORRECTNESS, not just freshness: <see cref="AppTab"/>'s refs are
+    /// POSITIONAL — the Chromium/Safari/iTerm activation scripts do <c>set active tab index of
+    /// window N to K</c> — so a row whose tab has since closed does not no-op, it selects whatever
+    /// tab now sits at that index. Serving arbitrarily old rows would therefore risk activating the
+    /// WRONG page, which is worse than a slow menu. (bevel-6asm tracks making activation verify the
+    /// row before selecting it, which is what would allow a longer-lived cache.)</para>
+    ///
+    /// <para>Deliberately equal to <see cref="TabPrefetchBudget"/>, which is the staleness the menu
+    /// ALREADY tolerates: a fetch started at right-click may take the full budget, so the first rows
+    /// enumerated are already up to 1.5 s old by the time they are shown. Reusing a result up to
+    /// 1.5 s old introduces no staleness the current design did not already accept.</para></summary>
+    private static readonly TimeSpan TabPrefetchFreshness = TabPrefetchBudget;
 
     private void ApplyRowLayout()
     {

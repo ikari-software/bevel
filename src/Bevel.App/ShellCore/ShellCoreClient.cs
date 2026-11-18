@@ -45,7 +45,8 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     // re-issues Hello (rate-limited) instead of silently diverging. Reconnects re-Hello automatically: the
     // adapters are still subscribed, so the snapshot burst rebuilds everything.
     private readonly object _sessionGate = new();
-    private bool _sessionStarted;   // set by StartSessionAsync; auto-Hello applies from then on
+    private bool _sessionStarted;   // a session was REQUESTED (set before the connect attempt — see below)
+    private bool _helloForConnection; // a Hello has already been sent on the CURRENT link; cleared on (re)connect
     private int _epoch;             // 0 = no baseline yet (pre-Hello deltas apply but don't gap-check)
     private long _seq;
     private long _lastAutoHelloTick; // Environment.TickCount64 — rate-limits gap-triggered re-Hellos
@@ -112,9 +113,44 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     /// can never be eaten by a too-early connect. Idempotent; a reconnect re-Hellos on its own.</summary>
     public async Task StartSessionAsync(CancellationToken ct = default)
     {
-        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        // Mark the session BEFORE connecting, not after (bevel-pa3j). The caller at
+        // App.axaml.cs:423 is fire-and-forget, so a first connect that loses the race against the
+        // core's socket bind threw out of here with _sessionStarted still FALSE — and the reconnect
+        // supervisor, which is the only thing that then gets the link up, re-Hellos only for a
+        // started session. The result was a process that connected fine and NEVER sent Hello, so
+        // the core (which pushes nothing on connect) never pushed a snapshot to it: an empty tray
+        // and task strip for the whole session, repaired only by the window reconcile backstop,
+        // which has no tray equivalent. The flag means "a session was requested", so a later
+        // successful connect owes a Hello whatever happened to the first attempt.
         lock (_sessionGate) _sessionStarted = true;
-        await SendHelloAsync().ConfigureAwait(false);
+        await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        await SendHelloOnceAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Sends Hello unless this link already carried one. Both session-start paths — this
+    /// caller and <see cref="ConnectOnceAsync"/>'s on-connect re-Hello — now fire for a first
+    /// connect, and whichever gets there first is enough: the core answers a Hello with the full
+    /// stamped snapshot burst, so a second one is pure waste on every boot. Deliberate re-syncs
+    /// (<see cref="TrackSequence"/>'s gap recovery) bypass this and call
+    /// <see cref="SendHelloAsync"/> directly.</summary>
+    private async Task SendHelloOnceAsync()
+    {
+        lock (_sessionGate)
+        {
+            if (_helloForConnection) return;
+            _helloForConnection = true;
+        }
+        try
+        {
+            await SendHelloAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Release the claim on failure, or a Hello that was attempted-and-lost would block the
+            // other path from ever trying on this link — the exact shape of the bug above.
+            lock (_sessionGate) _helloForConnection = false;
+            throw;
+        }
     }
 
     private async Task SendHelloAsync()
@@ -202,8 +238,14 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             var rehello = false;
             lock (_sessionGate)
             {
-                if (_sessionStarted && _everConnected) rehello = true;
+                // No `&& _everConnected` (bevel-pa3j): that extra condition existed to avoid a
+                // duplicate Hello on the FIRST connect, where StartSessionAsync sends its own — but
+                // it also silenced the one case that actually needed a Hello here, the retry after a
+                // failed first connect, which is still "not ever connected". Duplicate suppression
+                // is now SendHelloOnceAsync's job, keyed on the link rather than on connect history.
+                if (_sessionStarted) rehello = true;
                 _epoch = 0; _seq = 0;   // the new connection's burst re-baselines
+                _helloForConnection = false;   // a fresh link owes its own Hello
             }
             // Log on the connected transition (not per path), so a reconnect via EITHER the lazy
             // command path or the supervisor reports once. First connect is silent.
@@ -214,8 +256,8 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             if (rehello)
                 _ = Task.Run(async () =>
                 {
-                    try { await SendHelloAsync().ConfigureAwait(false); }
-                    catch { /* the supervisor retries the whole link if this failed */ }
+                    try { await SendHelloOnceAsync().ConfigureAwait(false); }
+                    catch { /* claim released inside; the supervisor retries the whole link if it's gone */ }
                 });
         }
         finally

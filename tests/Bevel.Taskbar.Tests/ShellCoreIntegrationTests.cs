@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Bevel.App.ShellCore;
@@ -201,6 +202,71 @@ public sealed class ShellCoreIntegrationTests
 
         await WaitFor(() => core.IsConnected,
             "a client that failed its first connect should reconnect once the core comes up");
+    }
+
+    // 4c. ...and the recovered link must actually CARRY THE SESSION (bevel-pa3j). 4b proved the socket
+    //     comes back; it never checked that any data follows, and it didn't: StartSessionAsync set
+    //     _sessionStarted only AFTER its connect succeeded, so a first connect that lost the race left the
+    //     flag false — and the supervisor's on-connect re-Hello is gated on it. The core pushes nothing on
+    //     connect, so that process stayed connected-but-empty for its whole life: no tray, and a task strip
+    //     carried only by the window reconcile backstop, which the tray has no equivalent of.
+    [Fact]
+    public async Task A_session_requested_before_the_core_was_up_still_gets_its_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        pal.SeedWindows(Win("a", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+
+        // The real shape: the role wires its adapters and fires StartSessionAsync BEFORE the core has
+        // bound its socket (App.axaml.cs does this fire-and-forget, so the throw is swallowed there).
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        var hellos = 0;
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => core.StartSessionAsync(Ct));
+        Assert.False(core.IsConnected);
+        Assert.Equal(0, hellos);
+
+        // The core comes up. Nobody calls StartSessionAsync again — that call already happened and its
+        // caller is long gone. The reconnect must honour the session the client was asked for.
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await WaitFor(() => added.Contains("1:10"),
+            "a session requested before the core was up must be Hello'd on the recovered link, "
+            + "or the peer stays connected-but-empty forever");
+    }
+
+    // 4d. Exactly ONE Hello on a normal start. Both paths can now fire for a first connect (the
+    //     on-connect re-Hello no longer excludes it), and a Hello costs the core a full four-snapshot
+    //     burst, so the dedup is load-bearing rather than tidiness.
+    [Fact]
+    public async Task A_normal_session_start_sends_exactly_one_Hello()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var hellos = 0;
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "the snapshot should arrive on the Hello");
+        await Task.Delay(200);   // let a duplicate, if any, land
+        Assert.Equal(1, hellos);
     }
 
     // 5. The tray mirrors over the shell-core bridge (bevel-m3.1.1): the core replays its tray
@@ -639,6 +705,72 @@ public sealed class ShellCoreIntegrationTests
         Assert.Contains("a", opened);           // windows still seeded despite apps/tray failing
     }
 
+    // bevel-pa3j: the apps and tray seeds are independent reads of two different sources, but the commit
+    // — and so the snapshot burst every peer is waiting on — was gated on their SUM. Nothing ordered one
+    // before the other; they were simply written on consecutive lines. Asserted as an OVERLAP rather than
+    // a wall-clock total, because a timing bound would be the flaky way to say the same thing.
+    [Fact]
+    public async Task The_apps_and_tray_seeds_run_concurrently()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        pal.SeedInstalled(new InstalledApp("com.example.a", "Alpha", IconPath: null));
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        pal.AppsSeedDelay = TimeSpan.FromMilliseconds(250);
+        pal.TraySeedDelay = TimeSpan.FromMilliseconds(250);
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        Assert.True(pal.AppsEnter < pal.TrayExit && pal.TrayEnter < pal.AppsExit,
+            "both seeds should be in flight at once; one strictly after the other means the core still "
+            + "pays the sum of the two before it can broadcast");
+
+        // ...and the concurrency must not cost correctness: both snapshots still reach a client.
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        var apps = new ShellCoreAppEnvironment(core);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "the tray seed should still be in the projection");
+        Assert.Equal("Alpha", Assert.Single(await apps.EnumerateInstalledAppsAsync(Ct)).DisplayName);
+    }
+
+    // The ordering that must SURVIVE the concurrency: apps/tray still start only after the windows seed,
+    // because that call doubles as the helper-readiness probe — they share the helper's connection and
+    // have no retry budget of their own, so starting them early would degrade both to empty on a cold
+    // boot. (Here the "helper" faults the first window enumerate, as bevel-ejon's real one did.)
+    [Fact]
+    public async Task The_apps_and_tray_seeds_wait_for_the_window_seed_to_prove_the_helper_is_up()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        pal.EnumerateFaults.Enqueue(new TransportFault("gRPC call disposed."));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        Assert.Equal(2, pal.EnumerateCalls);     // the probe faulted once, then succeeded
+        Assert.True(pal.TrayEnter > pal.LastEnumerateEnter && pal.AppsEnter > pal.LastEnumerateEnter,
+            "both seeds must start AFTER the successful window enumerate — moving them alongside it "
+            + "would run them against a helper that has not answered yet");
+
+        // And the projection is intact, so the ordering isn't being bought with an empty seed.
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"),
+            "the tray seed must run after the window probe proved the helper up, not against a cold one");
+    }
+
     private sealed class ControllablePal : IWindowManager, IAppEnvironment, ISystemTrayHost
     {
         private readonly List<ForeignWindow> _windows = new();
@@ -670,8 +802,12 @@ public sealed class ShellCoreIntegrationTests
         /// succeeding — stands in for the helper's transport faulting mid-seed on a cold boot.</summary>
         public readonly Queue<Exception> EnumerateFaults = new();
         public int EnumerateCalls;
+        /// <summary>When the most recent window enumerate was entered (bevel-pa3j) — the apps/tray seeds
+        /// must start after it, since it is also the helper-readiness probe.</summary>
+        public long LastEnumerateEnter;
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
         {
+            LastEnumerateEnter = Stopwatch.GetTimestamp();
             EnumerateCalls++;
             if (EnumerateFaults.Count > 0) throw EnumerateFaults.Dequeue();
             return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
@@ -703,8 +839,22 @@ public sealed class ShellCoreIntegrationTests
 
         /// <summary>Test seam (bevel-ejon): thrown from the installed-apps seed.</summary>
         public Exception? InstalledAppsFault;
-        public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default) =>
-            InstalledAppsFault is { } ex ? throw ex : ValueTask.FromResult(_installed);
+
+        /// <summary>Test seams (bevel-pa3j): a seed that takes measurable time, and the window during
+        /// which it was inside the call. Two seeds that genuinely run concurrently have OVERLAPPING
+        /// windows; serial ones cannot. Needed because the other seams complete synchronously, which
+        /// makes serial and concurrent code indistinguishable.</summary>
+        public TimeSpan AppsSeedDelay, TraySeedDelay;
+        public long AppsEnter, AppsExit, TrayEnter, TrayExit;
+
+        public async ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
+        {
+            AppsEnter = Stopwatch.GetTimestamp();
+            if (InstalledAppsFault is { } ex) throw ex;
+            if (AppsSeedDelay > TimeSpan.Zero) await Task.Delay(AppsSeedDelay, ct);
+            AppsExit = Stopwatch.GetTimestamp();
+            return _installed;
+        }
 
         public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) { Launched.Add(appIdOrPath); return Task.CompletedTask; }
 
@@ -719,11 +869,14 @@ public sealed class ShellCoreIntegrationTests
         public Action? OnGetItems;
         /// <summary>Test seam (bevel-ejon): thrown from the tray seed.</summary>
         public Exception? TrayFault;
-        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
+        public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         {
+            TrayEnter = Stopwatch.GetTimestamp();
             if (TrayFault is { } ex) throw ex;
             OnGetItems?.Invoke();
-            return ValueTask.FromResult<IReadOnlyList<TrayItem>>(_trayItems.ToArray());
+            if (TraySeedDelay > TimeSpan.Zero) await Task.Delay(TraySeedDelay, ct);
+            TrayExit = Stopwatch.GetTimestamp();
+            return _trayItems.ToArray();
         }
 
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
