@@ -171,3 +171,4 @@ W8|bevel-oi77|AGENT|S|-|ShellHealthAlert: pass osascript values as argv, not han
 W2|bevel-70nw|AGENT|M|-|Core IPC: events between HandshakeOk and registration are lost (filed by bevel-j5mr review)
 W1|bevel-b79z|AGENT|M|-|Flaky ShellCoreIntegrationTests (tray-seed gate / sequence-gap Hello) (found during run)
 W2|bevel-35r9|AGENT|M|-|Core projection never removes on a helper-stream resubscribe (filed by bevel-wheq)
+W2|bevel-zcgd|AGENT|M|-|Socket-path reclaim can delete or be blocked by non-socket files (filed by bevel-9790)
