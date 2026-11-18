@@ -129,7 +129,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
         // successful connect owes a Hello whatever happened to the first attempt.
         lock (_sessionGate) _sessionStarted = true;
         await EnsureConnectedAsync(ct).ConfigureAwait(false);
-        await SendHelloOnceAsync().ConfigureAwait(false);
+        await SendHelloOnceAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Sends Hello unless this link already carried one, and in EITHER case completes only once
@@ -145,7 +145,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     /// right then could miss this client entirely. An ANSWERED Hello is the proof this client is
     /// registered (the core reads requests only after registering) and that the snapshot burst, queued
     /// ahead of the response on the same connection, has already been delivered.</para></summary>
-    private async Task SendHelloOnceAsync()
+    private async Task SendHelloOnceAsync(CancellationToken ct)
     {
         TaskCompletionSource? mine = null;
         Task hello;
@@ -158,17 +158,25 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             }
             hello = _linkHello;
         }
-        if (mine is null)
-        {
-            // Another path holds this link's claim: its outcome is ours. If it failed it already
-            // released the claim, so the next caller sends a fresh Hello.
-            await hello.ConfigureAwait(false);
-            return;
-        }
+        // The claimant RUNS the Hello detached from its own caller's token: the Hello is shared by every
+        // waiter on this link, so one caller giving up must not fail it for the rest. It is bounded by
+        // HelloTimeout instead, so a core that is up but wedged faults the claim and releases it.
+        if (mine is not null)
+            _ = RunLinkHelloAsync(mine);
+        // Every caller — claimant or not — waits on the shared outcome, abandoning only its OWN wait on
+        // cancellation (bevel-j5mr review). If the Hello failed, the claim is already released, so the
+        // next caller sends a fresh one.
+        await hello.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Sends the link's claimed Hello and settles <paramref name="claim"/> with the outcome. Never
+    /// throws: the outcome lives in the claim, which every waiter observes.</summary>
+    private async Task RunLinkHelloAsync(TaskCompletionSource claim)
+    {
         try
         {
             await SendHelloAsync().ConfigureAwait(false);
-            mine.SetResult();
+            claim.SetResult();
         }
         catch (Exception ex)
         {
@@ -176,18 +184,32 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             // other path from ever trying on this link (bevel-pa3j). Only OUR claim: a reconnect may
             // already have cleared it and a new link's Hello taken its place.
             lock (_sessionGate)
-                if (ReferenceEquals(_linkHello, mine.Task)) _linkHello = null;
-            mine.SetException(ex);
-            _ = mine.Task.Exception;   // observed here; a waiter, if any, rethrows it
-            throw;
+                if (ReferenceEquals(_linkHello, claim.Task)) _linkHello = null;
+            claim.SetException(ex);
+            _ = claim.Task.Exception;   // observed here; waiters, if any, rethrow it
         }
     }
+
+    /// <summary>How long the core gets to ANSWER a Hello. Matches <see cref="SendAsync"/>'s command
+    /// deadline (bevel-dem): the core answers a Hello synchronously (it only enqueues the snapshot
+    /// burst under its projection lock), so a Hello that takes longer means a wedged core, not a slow
+    /// one. Internal setter = test seam, so the wedged-core tests do not have to wait the full bound.</summary>
+    internal TimeSpan HelloTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     private async Task SendHelloAsync()
     {
         HelloSent?.Invoke();
-        await _client.RequestAsync(CoreProtocol.Serialize(new CoreCommand(CoreCommandKind.Hello)), _lifetime.Token)
-            .ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        cts.CancelAfter(HelloTimeout);
+        try
+        {
+            await _client.RequestAsync(CoreProtocol.Serialize(new CoreCommand(CoreCommandKind.Hello)), cts.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!_lifetime.IsCancellationRequested)
+        {
+            throw new TimeoutException($"the core did not answer Hello within {HelloTimeout.TotalSeconds:0.#}s");
+        }
     }
 
     /// <summary>Session-sequence tracking (bevel-4zfs). A stamped event from a NEW epoch re-baselines (it is
@@ -262,7 +284,6 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
         {
             if (_connected) return;
             await _client.ConnectAsync(ct).ConfigureAwait(false);
-            _connected = true;
             // Reconnects re-start the session themselves (bevel-4zfs): the core pushes nothing on
             // connect, and the adapters are still subscribed, so the Hello burst rebuilds everything.
             var rehello = false;
@@ -277,6 +298,9 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
                 _epoch = 0; _seq = 0;   // the new connection's burst re-baselines
                 _linkHello = null;   // a fresh link owes its own Hello
             }
+            // Only NOW publish the link as up: a session start that saw _connected first could otherwise
+            // find the PREVIOUS link's answered claim still in _linkHello and return on its strength.
+            _connected = true;
             // Log on the connected transition (not per path), so a reconnect via EITHER the lazy
             // command path or the supervisor reports once. First connect is silent.
             if (_everConnected)
@@ -286,7 +310,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
             if (rehello)
                 _ = Task.Run(async () =>
                 {
-                    try { await SendHelloOnceAsync().ConfigureAwait(false); }
+                    try { await SendHelloOnceAsync(_lifetime.Token).ConfigureAwait(false); }
                     catch { /* claim released inside; the supervisor retries the whole link if it's gone */ }
                 });
         }

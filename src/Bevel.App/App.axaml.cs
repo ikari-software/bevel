@@ -285,6 +285,19 @@ public partial class App : Application
 
     /// <summary>Persist the taskbar row count off a resize drag. async void, guarded — a SaveAsync
     /// fault must not surface as an unobserved task exception (ce-review: reliability).</summary>
+    /// <summary>Fire-and-forget session start, OBSERVED (bevel-j5mr). A start waits for its link's Hello to
+    /// be answered and rethrows that Hello's failure (the link dropped mid-Hello, or the core never answered
+    /// within the bound) where it used to return quietly. Not fatal: the reconnect supervisor re-Hellos on
+    /// the next link by itself. So log it rather than let it surface as an unobserved task exception.</summary>
+    private static async Task StartCoreSessionAsync(ShellCore.ShellCoreClient core)
+    {
+        try { await core.StartSessionAsync().ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            RestartDiag.Log($"StartSessionAsync failed ({ex.GetType().Name}: {ex.Message}); the reconnect re-Hello recovers");
+        }
+    }
+
     private static async void PersistRows(ISettingsService settings, int rows)
     {
         try { await settings.UpdateAsync(s => s.TaskbarRows = rows); }
@@ -420,7 +433,7 @@ public partial class App : Application
         // connected stub and this is a no-op.) Fire-and-forget: the burst arrives on the transport
         // thread and the adapters marshal onto their own dispatchers.
         if (connection is ShellCore.ShellCoreClient coreSession)
-            _ = coreSession.StartSessionAsync();
+            _ = StartCoreSessionAsync(coreSession);
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
         Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Taskbar, connection?.IsConnected ?? true);

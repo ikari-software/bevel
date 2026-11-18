@@ -44,14 +44,20 @@ public sealed class ShellCoreSessionStartTests
                 {
                     Interlocked.Increment(ref Hellos);
                     HelloSeen.TrySetResult();
-                    await Release.Task.WaitAsync(ct).ConfigureAwait(false);
+                    // NOT bound to the server's token: a core torn down mid-Hello must never answer it (the
+                    // server would otherwise reply to a cancelled handler with an empty response).
+                    await Release.Task.ConfigureAwait(false);
                 }
                 return CoreProtocol.Serialize(CoreResponse.Success());
             });
             Server.Start();
         }
 
-        public ValueTask DisposeAsync() => Server.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Server.DisposeAsync();
+            Release.TrySetResult();   // free any held handler; its reply goes nowhere
+        }
     }
 
     /// <summary>The deterministic form of the race: a second session start that finds the link's Hello
@@ -77,5 +83,80 @@ public sealed class ShellCoreSessionStartTests
         await Task.WhenAll(first, second).WaitAsync(Ct);
 
         Assert.Equal(1, Volatile.Read(ref gated.Hellos));   // still ONE Hello per link — the claim holds
+    }
+
+    /// <summary>A caller's token bounds only ITS wait (bevel-j5mr review): a start cancelled while the
+    /// link's Hello is unanswered returns promptly, and the Hello it was waiting on is not torn down —
+    /// the next start rides the same claim (still one Hello).</summary>
+    [Fact]
+    public async Task A_session_start_honours_cancellation_while_its_Hello_is_unanswered()
+    {
+        var path = NewSocketPath();
+        var nonce = RandomNumberGenerator.GetBytes(32);
+        await using var gated = new GatedCore(path, nonce);
+        await using var core = new ShellCoreClient(path, nonce);
+
+        using var cts = new CancellationTokenSource();
+        var cancelled = core.StartSessionAsync(cts.Token);
+        await gated.HelloSeen.Task.WaitAsync(Ct);
+        cts.Cancel();
+        // Bounded by a TimeSpan, whose expiry throws TimeoutException — so a start that ignored its token
+        // fails here instead of passing on the bound's own cancellation.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.WaitAsync(TimeSpan.FromSeconds(10)));
+
+        var next = core.StartSessionAsync(Ct);
+        Assert.False(next.IsCompleted, "the claimed Hello is still unanswered");
+        gated.Release.SetResult();
+        await next.WaitAsync(Ct);
+        Assert.Equal(1, Volatile.Read(ref gated.Hellos));
+    }
+
+    /// <summary>A core that is up but never answers: the WINNING Hello faults at the bound, every waiter
+    /// rethrows it, and the claim is released — the next start sends a fresh Hello of its own.</summary>
+    [Fact]
+    public async Task A_Hello_the_core_never_answers_faults_within_the_bound_and_releases_the_claim()
+    {
+        var path = NewSocketPath();
+        var nonce = RandomNumberGenerator.GetBytes(32);
+        await using var gated = new GatedCore(path, nonce);
+        await using var core = new ShellCoreClient(path, nonce) { HelloTimeout = TimeSpan.FromMilliseconds(300) };
+
+        var first = core.StartSessionAsync(Ct);
+        await gated.HelloSeen.Task.WaitAsync(Ct);
+        var second = core.StartSessionAsync(Ct);   // rides the same, doomed claim
+
+        // Exact type, under Ct (whose expiry is an OperationCanceledException): only the Hello bound passes.
+        await Assert.ThrowsAsync<TimeoutException>(() => first.WaitAsync(Ct));
+        await Assert.ThrowsAsync<TimeoutException>(() => second.WaitAsync(Ct));
+        Assert.Equal(1, Volatile.Read(ref gated.Hellos));
+
+        gated.Release.SetResult();                 // the core recovers
+        await core.StartSessionAsync(Ct).WaitAsync(Ct);
+        Assert.Equal(2, Volatile.Read(ref gated.Hellos));   // a FRESH Hello — the faulted claim was released
+    }
+
+    /// <summary>The link drops while its Hello is pending: that Hello fails (it can never be answered on a
+    /// dead link), and the NEW link sends its own Hello. The old link's claim neither satisfies a start on
+    /// the new link nor blocks it.</summary>
+    [Fact]
+    public async Task A_reconnect_while_a_Hello_is_pending_sends_the_new_links_own_Hello()
+    {
+        var path = NewSocketPath();
+        var nonce = RandomNumberGenerator.GetBytes(32);
+        var gated = new GatedCore(path, nonce);
+        await using var core = new ShellCoreClient(path, nonce);
+
+        var first = core.StartSessionAsync(Ct);
+        await gated.HelloSeen.Task.WaitAsync(Ct);
+        await gated.DisposeAsync();                // the core dies with the Hello unanswered
+        // Failed BY THE DROP — not by the Hello bound, nor by this test's own deadline.
+        await Assert.ThrowsAsync<System.IO.IOException>(() => first.WaitAsync(Ct));
+
+        await using var gated2 = new GatedCore(path, nonce);
+        gated2.Release.SetResult();
+        await gated2.HelloSeen.Task.WaitAsync(Ct); // the reconnect re-Hellos the new link by itself
+        await core.StartSessionAsync(Ct).WaitAsync(Ct);
+        Assert.Equal(1, Volatile.Read(ref gated2.Hellos));  // the start rode the new link's Hello
+        Assert.Equal(1, Volatile.Read(ref gated.Hellos));
     }
 }
