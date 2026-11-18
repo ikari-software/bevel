@@ -166,7 +166,7 @@ public partial class PropertiesDialog : BevelWindow
         Title = $"{node.DisplayName} Properties";
         NameBox.Text = node.DisplayName;
 
-        IconHost.Child = Glyphs.Icon(32, node.IconKey);   // the real per-type semantic glyph
+        IconHost.Child = GlyphIcon.For(node.IconKey, 32);   // the real per-type semantic glyph
 
         TypeText.Text = node.TypeDescription;
         LocationText.Text = DescribeLocation(node.Path);
@@ -211,7 +211,7 @@ public partial class PropertiesDialog : BevelWindow
         NameBox.Text = $"{items.Count} items selected";
         NameBox.IsReadOnly = true;
 
-        IconHost.Child = Glyphs.Icon(32, IconKey.Unknown);   // generic document for a mixed selection
+        IconHost.Child = GlyphIcon.For(IconKey.Unknown, 32);   // generic document for a mixed selection
 
         var allFolders = items.All(i => IsFolderKind(i.Kind));
         var allFiles = items.All(i => i.Kind == VfsNodeKind.File);

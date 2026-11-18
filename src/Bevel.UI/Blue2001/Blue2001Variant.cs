@@ -176,6 +176,9 @@ public static class Blue2001VariantService
     private static string _appliedGloss = DefaultGloss;
     // Keys can be strings (Bevel.Brush.*) or object keys (SystemColors.*), so track as object.
     private static readonly List<object> _injected = new();
+    // The Application resources _injected went into. These statics outlive an Application (every headless test
+    // gets a fresh one); a guard that ignored WHICH resources would skip a fresh Application (bevel-yfkw).
+    private static Avalonia.Controls.IResourceDictionary? _owner;
 
     /// <summary>Chrome bands whose gradient contrast is amplified per-variant (see
     /// <see cref="ColorXform.BandContrast"/>): the taskbar and the window caption (active + inactive).
@@ -196,17 +199,18 @@ public static class Blue2001VariantService
     {
         var color = string.IsNullOrWhiteSpace(colorId) || !IsKnownColor(colorId!) ? DefaultColor : colorId!;
         var gloss = string.IsNullOrWhiteSpace(glossId) || !IsKnownGloss(glossId!) ? DefaultGloss : glossId!;
-        if (color == _appliedColor && gloss == _appliedGloss && _injected.Count > 0) return;
-        Bevel.UI.Glyphs.InvalidateThemeCache();   // variant colours changed — drop cached icon brushes (bevel-lha4)
         if (Application.Current?.Resources is not { } res) return;
+        if (color == _appliedColor && gloss == _appliedGloss && _injected.Count > 0 && ReferenceEquals(_owner, res)) return;
 
         var variant = Enum.Parse<Blue2001ColorVariant>(color);
         var g = Enum.Parse<Blue2001Gloss>(gloss);
         var xform = Xform(variant);
 
-        // Drop the previous injection so looks don't stack.
-        foreach (var key in _injected) res.Remove(key);
+        // Drop the previous injection so looks don't stack (only if it went into THIS Application's resources).
+        if (ReferenceEquals(_owner, res))
+            foreach (var key in _injected) res.Remove(key);
         _injected.Clear();
+        _owner = res;
 
         foreach (var s in Surfaces)
         {
@@ -256,6 +260,7 @@ public static class Blue2001VariantService
 
         _appliedColor = color;
         _appliedGloss = gloss;
+        Bevel.UI.Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw)
         Changed?.Invoke();
     }
 
@@ -279,10 +284,16 @@ public static class Blue2001VariantService
     {
         if (_injected.Count == 0) return;
         if (Application.Current?.Resources is not { } res) return;
-        foreach (var key in _injected) res.Remove(key);
+        // Keys injected into a previous Application's resources are not in this one: forget them, announce nothing.
+        var owned = ReferenceEquals(_owner, res);
+        if (owned)
+            foreach (var key in _injected) res.Remove(key);
         _injected.Clear();
+        _owner = null;
         _appliedColor = DefaultColor;
         _appliedGloss = DefaultGloss;
+        if (!owned) return;
+        Bevel.UI.Glyphs.InvalidateThemeCache();   // the variant's colours just left (bevel-yfkw)
         Changed?.Invoke();
     }
 
