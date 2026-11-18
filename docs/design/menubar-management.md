@@ -163,6 +163,13 @@ Brainstorm + spikes for rendering menu-bar items *functionally* in Bevel's botto
     images of offscreen menu bar items."* On **macOS 26** `CGWindowListCreateImage` is `unavailable` and
     even Ice's protocol-conformance trick is now a hard compile error, so reach the C symbol via
     **`dlsym`** (`@convention(c)` typealias). **F3 must use this path for hidden items, not SCK.**
+  - **Caveat — not every item has pixels (bevel-sd6n).** The 4/4 above was a four-item sample. Per the bevel-sd6n investigation notes (not re-measured since), on a
+    fully populated macOS 26 (25G229) bar, the per-window path yields 61-63 live icons of 86-88 items; the
+    remainder return correctly sized, fully transparent images from both CG and SCK. Those items show the
+    limited-mode app icon by design (`TrayServiceImpl` keeps the app icon when a capture is blank). This is a
+    WindowServer limitation, not a Bevel defect; capturing the bar region and cropping is rejected (it bakes
+    the wallpaper into each glyph, so `TrayIconTint` cannot recolour, and under consolidation the items are
+    not on screen).
 - **Tahoe ownership gotcha:** on macOS 26 *every* status item (ours + third-party) reports owner
   "Control Centre". Cannot filter/identify by owner PID/name — track window IDs + positions instead.
   (Also: `NSWindow.windowNumber` can be negative for status items — `CGWindowID(Int)` traps; identify by
