@@ -163,3 +163,4 @@ H|bevel-tned|HUMAN|S|cards-G-tray-interop-windows.md|On-device QA: tray adaptive
 H|bevel-7qdi|A+H|S|cards-G-tray-interop-windows.md|Intermittent: tray icons render too small (not reproduced)
 H|bevel-injy|A+H|S|cards-G-tray-interop-windows.md|Quit leaves the Windows taskbar hidden (no restore / no crash-heal)
 H|bevel-h0sr|A+H|S|cards-G-tray-interop-windows.md|Windows taskbar sits too high and ignores display-size changes
+W2|bevel-2vls|AGENT|M|-|Filer: remaining UI-thread enumeration outside the four so27 consumers (filed by bevel-so27)
