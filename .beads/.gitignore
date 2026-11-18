@@ -74,3 +74,7 @@ bd.db
 # They would override fork protection in .git/info/exclude.
 # Config files (metadata.json, config.yaml) are tracked by git by default
 # since no pattern above ignores them.
+
+# Passive JSONL export (export.auto in config.yaml), local-only. Issues live in the Dolt DB and
+# sync through refs/dolt/data; nothing reads this file back, so tracking it only made noise.
+issues.jsonl

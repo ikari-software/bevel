@@ -48,10 +48,11 @@ public sealed partial class LocalFsProvider : IVfsProvider
         // stats per entry for data the directory read already returned. Measured on this machine:
         // /usr/bin, 924 entries, 113.7 ms -> 56.6 ms (123 us -> 61 us per entry).
         //
-        // STILL SYNCHRONOUS ON THE CALLER'S THREAD, deliberately. Moving the walk to the thread pool
-        // is the other half of bevel-so27 and is NOT done here: the tree-expansion and folder-picker
-        // callers drive this by PUMPING the dispatcher rather than awaiting it, so introducing a real
-        // await makes them observe an empty listing. That half needs those callers changed with it.
+        // SYNCHRONOUS ON THE CALLER'S THREAD, deliberately — the provider contract allows it and
+        // non-UI callers (file ops, search, automation) are already off the UI thread. A UI consumer
+        // must NOT iterate this directly: it reads through VfsBatchReader, which runs this walk (and
+        // each entry's stat) on the pool and hands back batches (bevel-so27). The Filer's item list,
+        // folder tree and Browse-For-Folder tree all do.
         foreach (var info in new DirectoryInfo(fullPath).EnumerateFileSystemInfos())
         {
             ct.ThrowIfCancellationRequested();

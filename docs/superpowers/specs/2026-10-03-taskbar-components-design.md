@@ -1,6 +1,6 @@
 # Taskbar as configurable, generalized components — design
 
-**Bead:** [bevel-aqr7](../../../.beads/issues.jsonl) · **Date:** 2026-10-03 · **Status:** design approved, awaiting implementation plan
+**Bead:** `bevel-aqr7` (`bd show bevel-aqr7`) · **Date:** 2026-10-03 · **Status:** design approved, awaiting implementation plan
 
 This spec covers **sub-project 1** of five. The later four are named in [Decomposition](#decomposition) but not specified here.
 

@@ -21,6 +21,28 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     /// <c>TrayNotifyWnd</c> toggle on Windows). Null on PALs with no native hide.</summary>
     private readonly Action<bool>? _applyLocalHide;
 
+    /// <summary>What this adapter has raised and not yet removed, by id (bevel-ri8c). A TraySnapshot is a
+    /// full reconcile: whatever is in here but absent from the snapshot vanished while the link was down
+    /// and must be removed. Guarded by <see cref="_knownGate"/> (events arrive on the transport thread).</summary>
+    private readonly Dictionary<string, TrayItem> _known = new(StringComparer.Ordinal);
+    private readonly object _knownGate = new();
+
+    // Order-safety for the GetItemsAsync pull (bevel-ri8c): a pull is a point-in-time read that can land
+    // AFTER a remove delta for one of its items. While any pull is in flight we remember ids removed
+    // (by delta or snapshot) and drop them from that pull's result, so a stale pull cannot resurrect them.
+    private int _pullsInFlight;
+    private long _removalSeq;
+    private readonly Dictionary<string, long> _removedDuringPull = new(StringComparer.Ordinal);
+
+    /// <summary>Test seam: awaited after the pull's reply arrives and before it is merged — lets a test land a
+    /// remove delta deterministically in that window.</summary>
+    internal Func<Task>? BeforePullMergeForTest;
+
+    private void NoteRemovedLocked(string id)
+    {
+        if (_pullsInFlight > 0) _removedDuringPull[id] = ++_removalSeq;
+    }
+
     public ShellCoreSystemTrayHost(ShellCoreClient core, Action<bool>? applyLocalHide = null)
     {
         _core = core;
@@ -46,22 +68,38 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         : new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
             Notes: new[] { "tray: authoritative, via shell-core" }, SupportsReposition: false);
 
-    private void OnCoreEvent(CoreEvent e)
+    // internal = test seam: tests feed synthetic CoreEvents without a live server.
+    internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
         {
             case CoreEventKind.TraySnapshot when e.TrayItems is not null:
-                // Replay the snapshot as Added events — TrayViewModel upserts idempotently by id.
+            {
+                // A snapshot is authoritative (bevel-ri8c): remove what it omits, then (re)add what it
+                // lists. Adds alone left ghosts for icons that vanished while the link was down.
+                IReadOnlyList<TrayItem> gone;
+                lock (_knownGate)
+                {
+                    gone = SnapshotReconcile.Absent(_known, e.TrayItems, t => t.Id.Value);
+                    foreach (var g in gone) { _known.Remove(g.Id.Value); NoteRemovedLocked(g.Id.Value); }
+                    foreach (var t in e.TrayItems) _known[t.Id.Value] = t;
+                }
+                foreach (var g in gone)
+                    ItemRemoved?.Invoke(this, g);
                 foreach (var t in e.TrayItems)
                     ItemAdded?.Invoke(this, t);
                 break;
+            }
             case CoreEventKind.TrayItemAdded when e.TrayItem is { } ta:
+                lock (_knownGate) { _known[ta.Id.Value] = ta; _removedDuringPull.Remove(ta.Id.Value); }
                 ItemAdded?.Invoke(this, ta);
                 break;
             case CoreEventKind.TrayItemUpdated when e.TrayItem is { } tu:
+                lock (_knownGate) { _known[tu.Id.Value] = tu; _removedDuringPull.Remove(tu.Id.Value); }
                 ItemUpdated?.Invoke(this, tu);
                 break;
             case CoreEventKind.TrayItemRemoved when e.TrayItem is { } tr:
+                lock (_knownGate) { _known.Remove(tr.Id.Value); NoteRemovedLocked(tr.Id.Value); }
                 ItemRemoved?.Invoke(this, tr);
                 break;
             // Window/app events are handled by the other shell-core adapters on the same connection.
@@ -74,14 +112,34 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     /// stream (Hello snapshot + deltas) remains the primary feed; this is the reconcile path.</summary>
     public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
     {
+        long startSeq;
+        lock (_knownGate) { _pullsInFlight++; startSeq = _removalSeq; }
         try
         {
             var r = await _core.SendAsync(new CoreCommand(CoreCommandKind.GetTrayItems), ct).ConfigureAwait(false);
-            return r.TrayItems ?? Array.Empty<TrayItem>();
+            var items = r.TrayItems ?? Array.Empty<TrayItem>();
+            if (BeforePullMergeForTest is { } gate) await gate().ConfigureAwait(false);
+            // Record pulled items too (bevel-ri8c) so a later snapshot can reap them — except any removed
+            // since this pull began: the pull is older than that removal. They are dropped from the result
+            // as well, so the caller (TrayViewModel upserts it) cannot resurrect them either.
+            var fresh = new List<TrayItem>(items.Count);
+            lock (_knownGate)
+                foreach (var t in items)
+                {
+                    if (_removedDuringPull.TryGetValue(t.Id.Value, out var at) && at > startSeq) continue;
+                    _known[t.Id.Value] = t;
+                    fresh.Add(t);
+                }
+            return fresh;
         }
         catch
         {
             return Array.Empty<TrayItem>(); // a pull during a dropped link is just empty — the stream re-syncs
+        }
+        finally
+        {
+            lock (_knownGate)
+                if (--_pullsInFlight == 0) _removedDuringPull.Clear();
         }
     }
 

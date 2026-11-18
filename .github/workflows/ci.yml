@@ -175,18 +175,6 @@ jobs:
             -p:BevelPackaging=true \
             --output .publish/${{ matrix.artifact-name }}
 
-      - name: Upload artifact
-        # Only on release tags. Every main push was parking ~180 MB × 3 RIDs + helper into Actions
-        # artifact storage (org quota is 2 GB shared); once full, every CI run went red on upload
-        # and then on the Actions minutes budget. PRs still gate on the publish step; release-macos.yml
-        # builds its own signed DMG and does not consume these artifacts.
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact-name }}
-          path: .publish/${{ matrix.artifact-name }}
-          retention-days: 3
-
   # ── Swift native helper build (macOS only) ──────────────────────────────────
 
   swift:
@@ -197,15 +185,6 @@ jobs:
 
       - name: Swift build
         run: swift build --package-path native/helper-macos --configuration release
-
-      - name: Upload BevelHelper binary
-        # Tags only — see publish job. Keeps Actions artifact storage from filling on every main push.
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: BevelHelper
-          path: native/helper-macos/.build/release/BevelHelper
-          retention-days: 3
 
   # ── Theme token codegen drift check (bevel-51t / MET-01) ────────────────────
   #
@@ -289,96 +268,3 @@ jobs:
             echo "::error::Generated Swift protobuf output drifted from proto/bevel.helper.v1.proto. Run native/helper-macos/generate-proto.sh and commit the result."
             exit 1
           fi
-
-  # ── macOS signing + notarization lane ───────────────────────────────────────
-  #
-  #  Prerequisites (set these in the repo / org secrets):
-  #    APPLE_DEVELOPER_ID       — Developer ID Installer cert (base64 .p12)
-  #    APPLE_DEVELOPER_ID_PASSWORD — .p12 password (empty if none)
-  #    APPLE_TEAM_ID            — 4TP7TPH2K6
-  #    APPLE_NOTARIZE_KC_PROFILE — "bevel" (see notarytool store-profile)
-  #
-  #  Auto-skips when secrets are absent (forks / early setup).
-
-  sign:
-    name: Sign + notarize (macOS)
-    runs-on: macos-latest
-    needs: [publish, swift]
-    # Signing + notarization is a RELEASE step, not a per-push one (notarytool submits to Apple and
-    # waits). Only run it for v* tags — the dedicated release-macos.yml lane owns real releases
-    # (bevel-9po). On ordinary pushes/PRs this job is skipped, so an incomplete/placeholder org-level
-    # signing secret can't turn every CI run red.
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check signing prerequisites
-        id: check
-        env:
-          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-        run: |
-          if [ -z "$APPLE_DEVELOPER_ID" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⚠️  APPLE_DEVELOPER_ID secret not set — skipping signing."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download macOS publish artifact
-        if: steps.check.outputs.skip == 'false'
-        uses: actions/download-artifact@v4
-        with:
-          name: bevel-macos-x64
-          path: .publish/Bevel.app
-
-      - name: Download BevelHelper
-        if: steps.check.outputs.skip == 'false'
-        uses: actions/download-artifact@v4
-        with:
-          name: BevelHelper
-          path: .publish/Bevel.app/Contents/MacOS/
-
-      - name: Import Developer ID certificate
-        if: steps.check.outputs.skip == 'false'
-        env:
-          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          APPLE_DEVELOPER_ID_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_PASSWORD }}
-        run: |
-          echo "$APPLE_DEVELOPER_ID" | base64 --decode > /tmp/dev-id.p12
-          security create-keychain -p ci build-ci.keychain
-          security default-keychain -s build-ci.keychain
-          security unlock-keychain -p ci build-ci.keychain
-          security import /tmp/dev-id.p12 \
-            -k build-ci.keychain \
-            -P "$APPLE_DEVELOPER_ID_PASSWORD" \
-            -T /usr/bin/codesign
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k ci build-ci.keychain
-
-      - name: Codesign
-        if: steps.check.outputs.skip == 'false'
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          codesign --force --options runtime \
-            --sign "$APPLE_TEAM_ID" \
-            --deep .publish/Bevel.app
-
-      - name: Notarize
-        if: steps.check.outputs.skip == 'false'
-        env:
-          APPLE_NOTARIZE_KC_PROFILE: ${{ secrets.APPLE_NOTARIZE_KC_PROFILE }}
-        run: |
-          ditto -c -k --keepParent .publish/Bevel.app /tmp/Bevel.zip
-          xcrun notarytool submit /tmp/Bevel.zip \
-            --keychain-profile "$APPLE_NOTARIZE_KC_PROFILE" \
-            --wait
-
-      - name: Upload signed bundle
-        if: steps.check.outputs.skip == 'false'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Bevel-signed
-          path: .publish/Bevel.app
-          retention-days: 7
