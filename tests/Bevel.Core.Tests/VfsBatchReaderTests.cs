@@ -89,6 +89,91 @@ public sealed class VfsBatchReaderTests
         }
     }
 
+    [Fact]
+    public async Task Abandoning_the_enumeration_early_stops_the_producer()
+    {
+        var provider = new EndlessProvider();
+        var root = new VfsRoot();
+        root.Register(provider);
+
+        // No token cancel at all: only the consumer walking away (break / dispose / a throw in its loop).
+        await foreach (var _ in VfsBatchReader.ReadBatchesAsync(
+            root, VfsPath.Root(EndlessProvider.SchemeName), new EnumerateOptions(), batchSize: 8, CancellationToken.None))
+        {
+            break;
+        }
+
+        // DisposeAsync awaits the producer, so it has already let go of the provider.
+        Assert.True(provider.Finished.IsCompleted);
+        var produced = provider.Produced;
+        await Task.Delay(100);
+        Assert.Equal(produced, provider.Produced);
+    }
+
+    [Fact]
+    public async Task A_failure_after_some_batches_delivers_them_then_rethrows_unchanged()
+    {
+        var root = new VfsRoot();
+        root.Register(new FailingAfterProvider(count: 40));
+        var received = new List<int>();
+
+        var ex = await Assert.ThrowsAsync<IOException>(async () =>
+        {
+            await foreach (var batch in VfsBatchReader.ReadBatchesAsync(
+                root, VfsPath.Root(FailingAfterProvider.SchemeName), new EnumerateOptions(), batchSize: 16, CancellationToken.None))
+                received.Add(batch.Count);
+        });
+
+        Assert.Equal(new[] { 16, 16 }, received);   // the full batches before the failure arrive first
+        Assert.Equal(FailingAfterProvider.Message, ex.Message);
+    }
+
+    [Fact]
+    public async Task An_empty_folder_yields_no_batches()
+    {
+        var root = new VfsRoot();
+        root.Register(new RecordingProvider(count: 0));
+        var batches = 0;
+
+        await foreach (var _ in VfsBatchReader.ReadBatchesAsync(
+            root, VfsPath.Root(RecordingProvider.SchemeName), new EnumerateOptions(), 32, CancellationToken.None))
+            batches++;
+
+        Assert.Equal(0, batches);
+    }
+
+    [Fact]
+    public async Task A_batch_size_below_one_is_rejected()
+    {
+        var root = new VfsRoot();
+        root.Register(new RecordingProvider(count: 3));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            await foreach (var _ in VfsBatchReader.ReadBatchesAsync(
+                root, VfsPath.Root(RecordingProvider.SchemeName), new EnumerateOptions(), batchSize: 0, CancellationToken.None))
+            {
+            }
+        });
+    }
+
+    /// <summary>Yields <c>count</c> entries, then fails the way a vanishing volume does.</summary>
+    private sealed class FailingAfterProvider(int count) : StubProvider
+    {
+        public const string SchemeName = "failing";
+        public const string Message = "Simulated: the volume went away mid-listing";
+        public override string Scheme => SchemeName;
+
+        public override async IAsyncEnumerable<IVfsNode> EnumerateAsync(
+            VfsPath folder, EnumerateOptions options, [EnumeratorCancellation] CancellationToken ct)
+        {
+            for (var i = 0; i < count; i++)
+                yield return new VirtualNode { Path = VfsPath.Combine(folder, $"f{i}"), DisplayName = $"f{i}", Kind = VfsNodeKind.File };
+            await Task.CompletedTask;
+            throw new IOException(Message);
+        }
+    }
+
     private static List<IReadOnlyList<IVfsNode>> DrainBlocking(IAsyncEnumerable<IReadOnlyList<IVfsNode>> source)
     {
         var result = new List<IReadOnlyList<IVfsNode>>();
