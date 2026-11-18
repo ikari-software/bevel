@@ -149,8 +149,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // of two different sources, and nothing between them orders one before the other — but the
         // commit below (and therefore the snapshot burst every peer is waiting on) was gated on their
         // SUM. They still start only after the windows seed, because that call is also the helper
-        // readiness probe: apps and tray share the helper's connection and have no retry budget of
-        // their own, so running them against a half-connected helper would just degrade both to empty.
+        // readiness probe: apps and tray share the helper's connection, and apps has no retry budget of
+        // its own, so running them against a half-connected helper would just degrade them to empty.
         var appsSeed = SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).AsTask();
         var traySeed = SeedTrayAsync(ct);
         var initialApps = await appsSeed.ConfigureAwait(false);
@@ -189,61 +189,61 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>The window seed — also the helper-readiness probe — tolerating the whole startup race window:
-    /// the helper connects asynchronously after <c>host.Start()</c> AND can bounce mid-connect on a cold boot,
-    /// so the first enumerate fails in more than one shape — <see cref="InvalidOperationException"/>("Helper not
-    /// connected") before the channel exists, and a transport fault (e.g. gRPC <c>Cancelled</c> / "gRPC call
-    /// disposed.") when the channel is torn down DURING the call. Seeding is best-effort by contract, so retry
-    /// on ANY non-cancellation failure for ~10s, then degrade to an empty projection (the live delta streams +
-    /// the window reconcile backstop repopulate). Never crashes the core — a throw here escapes to Main and
-    /// aborts the process, which the supervisor then crash-loops (bevel-ejon).
-    ///
-    /// <para>Reports whether the seed REACHED the window source (bevel-wheq). It uses
-    /// <see cref="IWindowManager.TrySeedWindowsAsync"/>, not <c>EnumerateAsync</c>: the macOS manager swallows
-    /// "helper unreachable" into an empty list, which would look like a successful seed of zero windows. That
-    /// null is not retried — it is a definite answer from a connected channel, unlike the throws above — and
-    /// is reported as a failed seed, exactly like an exhausted retry budget.</para></summary>
-    private async Task<(IReadOnlyList<ForeignWindow> Windows, bool Ok)> SeedWindowsAsync(CancellationToken ct)
+    /// <summary>How many times a window/tray seed is RE-tried before it degrades (bevel-ejon / bevel-wheq):
+    /// ~66 × 150ms ≈ 10s covers a cold helper exec + connect. Internal so tests of a source that never
+    /// answers need not wait the whole budget.</summary>
+    internal int SeedRetryAttempts { get; init; } = 66;
+    private static readonly TimeSpan SeedRetryDelay = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>The window seed — also the helper-readiness probe. See <see cref="SeedUntilAnsweredAsync{T}"/>.</summary>
+    private Task<(IReadOnlyList<ForeignWindow> Items, bool Ok)> SeedWindowsAsync(CancellationToken ct)
+        => SeedUntilAnsweredAsync(_windows.TrySeedWindowsAsync, ct);
+
+    /// <summary>The tray seed (bevel-ri8c). Same mechanism as the window seed: TrySeedItemsAsync, not
+    /// GetItemsAsync, because a real host swallows "helper unreachable" into an empty list.</summary>
+    private Task<(IReadOnlyList<TrayItem> Items, bool Ok)> SeedTrayAsync(CancellationToken ct)
+        => SeedUntilAnsweredAsync(_tray.TrySeedItemsAsync, ct);
+
+    /// <summary>
+    /// Runs a seed-grade read (<see cref="IWindowManager.TrySeedWindowsAsync"/> /
+    /// <see cref="ISystemTrayHost.TrySeedItemsAsync"/>) until the source ANSWERS, tolerating the whole startup
+    /// race window, and reports whether it did. The helper connects asynchronously after <c>host.Start()</c>
+    /// AND can bounce mid-connect on a cold boot, so a read fails in several shapes:
+    /// <see cref="InvalidOperationException"/>("Helper not connected") before the channel exists; a transport
+    /// fault (gRPC <c>Cancelled</c> / "gRPC call disposed.") when the channel is torn down DURING the call; and
+    /// a <c>null</c> answer — gRPC <c>Unavailable</c>, which the macOS PAL softens — because the helper host
+    /// opens the channel BEFORE its first Ping succeeds, so a channel can exist while the helper is not yet
+    /// serving (bevel-wheq review). All three mean "not yet", so all three are retried alike for
+    /// <see cref="SeedRetryAttempts"/> × 150ms, then the seed degrades to an empty projection reported as NOT
+    /// answered — which the caller must not publish as authoritative (_windowsSeeded / _traySeeded); the live
+    /// delta streams + the window reconcile backstop repopulate. Never crashes the core — a throw here escapes
+    /// to Main and aborts the process, which the supervisor then crash-loops (bevel-ejon). Real cancellation
+    /// (shutdown) still propagates.
+    /// </summary>
+    private async Task<(IReadOnlyList<T> Items, bool Ok)> SeedUntilAnsweredAsync<T>(
+        Func<CancellationToken, ValueTask<IReadOnlyList<T>?>> trySeed, CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
         {
             try
             {
-                var windows = await _windows.TrySeedWindowsAsync(ct).ConfigureAwait(false);
-                return windows is null ? (Array.Empty<ForeignWindow>(), false) : (windows, true);
+                if (await trySeed(ct).ConfigureAwait(false) is { } items)
+                    return (items, true);
             }
             // Scope the catch by INTENT (best-effort seed), not by exception type: typing it to
             // InvalidOperationException encoded an assumption about which transport error the helper
-            // produces, and the gRPC-disposed shape slipped straight through it. Real cancellation
-            // (shutdown) still propagates.
+            // produces, and the gRPC-disposed shape slipped straight through it.
             catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
             {
-                if (attempt >= 66)
-                    return (Array.Empty<ForeignWindow>(), false);   // ~66 × 150ms ≈ 10s — streams + reconcile fill it in
-                await Task.Delay(150, ct).ConfigureAwait(false);
             }
+            if (attempt >= SeedRetryAttempts)
+                return (Array.Empty<T>(), false);
+            await Task.Delay(SeedRetryDelay, ct).ConfigureAwait(false);
         }
     }
 
-    /// <summary>The tray seed, reporting whether it SUCCEEDED (bevel-ri8c): a failed seed degrades to empty
-    /// like <see cref="SeedOrEmptyAsync"/>, but the caller must not publish that empty set as authoritative.</summary>
-    private async Task<(IReadOnlyList<TrayItem> Items, bool Ok)> SeedTrayAsync(CancellationToken ct)
-    {
-        try
-        {
-            // TrySeedItemsAsync, not GetItemsAsync: a real host swallows "helper unreachable" into an empty
-            // list, which would look like a successful empty seed.
-            var items = await _tray.TrySeedItemsAsync(ct).ConfigureAwait(false);
-            return items is null ? (Array.Empty<TrayItem>(), false) : (items, true);
-        }
-        catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
-        {
-            return (Array.Empty<TrayItem>(), false);
-        }
-    }
-
-    /// <summary>Single-shot sibling of <see cref="SeedWindowsAsync"/> for the snapshots taken once
-    /// the helper is already up (apps/tray share its connection). Same contract — a failed seed degrades to
+    /// <summary>Single-shot sibling of <see cref="SeedUntilAnsweredAsync{T}"/> for the installed-apps snapshot,
+    /// taken once the helper is already up. Same contract — a failed seed degrades to
     /// empty and is repaired by the live streams; it must never abort the core — but no extra retry budget,
     /// so boot isn't lengthened by a genuinely unavailable source.</summary>
     private static async ValueTask<IReadOnlyList<T>> SeedOrEmptyAsync<T>(
@@ -296,8 +296,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Push a fresh stamped snapshot burst to ONE client (Hello/Resync, bevel-4zfs): the four
-    /// snapshots get that client's next four gapless seqs, under <see cref="_gate"/>, so the burst cannot
+    /// <summary>Push a fresh stamped snapshot burst to ONE client (Hello/Resync, bevel-4zfs): the snapshots
+    /// it carries (window/tray only once earned) get that client's next gapless seqs, under <see cref="_gate"/>, so the burst cannot
     /// interleave against a concurrent <see cref="BroadcastStamped"/>. A delta landing before the burst
     /// applies to state the burst then replaces wholesale; one after it applies normally. Both converge.</summary>
     private void PushSnapshotTo(Guid clientId)
@@ -348,7 +348,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
         ForeignWindow outbound;
         lock (_gate)
         {
-            if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
+            // A buffered open/change/foreground is just as live as one after seeding (bevel-wheq review): it
+            // unlocks the snapshot on replay, or a failed seed on a quiet desktop would withhold a complete
+            // projection until some later delta. A buffered CLOSE (OnWindowClosed) still does not.
+            if (_seedBuffer is not null)
+            {
+                _seedBuffer.Add(() => { _windowById[w.Id.Value] = w; _windowsSeeded = true; });
+                return;
+            }
             _windowById[w.Id.Value] = w;   // the PROJECTION always keeps the icon, so snapshots carry it
             // An open/change/foreground proves the window stream is live (bevel-wheq), so later snapshots are
             // trustworthy enough to publish. A close alone proves nothing (OnWindowClosed does not set it).
@@ -420,7 +427,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById[t.Id.Value] = t); return; }
+            // Buffered add/update unlocks on replay too (bevel-wheq review); a buffered remove still does not.
+            if (_seedBuffer is not null)
+            {
+                _seedBuffer.Add(() => { _trayById[t.Id.Value] = t; _traySeeded = true; });
+                return;
+            }
             _trayById[t.Id.Value] = t;
             // An add/update proves the tray stream is live (the helper is up and enumerating), so later
             // snapshots are trustworthy enough to publish; a remove alone proves nothing.

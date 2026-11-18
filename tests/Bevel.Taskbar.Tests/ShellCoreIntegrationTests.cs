@@ -609,7 +609,7 @@ public sealed class ShellCoreIntegrationTests
         await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
 
         var pal2 = new ControllablePal { TrayFault = new TransportFault("helper down") };
-        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
         await server2.StartAsync(Ct);
         await WaitFor(() => core.IsConnected, "client reconnects");
         await Task.Delay(500);   // let the Hello + seed-complete burst land
@@ -641,7 +641,7 @@ public sealed class ShellCoreIntegrationTests
         await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
 
         var pal2 = new ControllablePal { TrayUnreachable = true };   // returns EMPTY, does not throw
-        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
         await server2.StartAsync(Ct);
         await WaitFor(() => core.IsConnected, "client reconnects");
         await Task.Delay(500);
@@ -656,7 +656,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal { TrayUnreachable = true };
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -891,8 +891,10 @@ public sealed class ShellCoreIntegrationTests
         var pal2 = new ControllablePal { WindowsUnreachable = true };   // returns EMPTY, does not throw
         var snapshotsBefore = Volatile.Read(ref windowSnapshots);
         var settingsBefore = Volatile.Read(ref settingsSnapshots);
-        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce)
+            { SeedRetryAttempts = 2 };
         await server2.StartAsync(Ct);
+        Assert.Equal(3, pal2.WindowSeedCalls);   // the whole (shortened) retry budget, then degraded
         await WaitFor(() => Volatile.Read(ref settingsSnapshots) > settingsBefore,
             "the reconnect Hello burst landed (settings is always in it)");
         await Task.Delay(300);   // and any seed-complete burst after it
@@ -937,7 +939,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal { WindowsUnreachable = true };
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -1011,6 +1013,157 @@ public sealed class ShellCoreIntegrationTests
         Assert.Empty(await wm.EnumerateAsync(Ct));                  // not resurrected for the caller
         wm.OnCoreEvent(WindowSnapshot());
         Assert.Equal(new[] { "p" }, closed.ToArray());              // and not a ghost in the tracking (no 2nd close)
+    }
+
+
+    // ── bevel-wheq review, fix round 1: the seed retries "not yet", and a buffered live delta unlocks ──────
+
+    /// <summary>Hello and collect the burst's projection snapshots: (kind, ids).</summary>
+    private static async Task<ConcurrentBag<(CoreEventKind Kind, string[] Ids)>> HelloAndCollectAsync(
+        ShellCoreClient core)
+    {
+        var got = new ConcurrentBag<(CoreEventKind, string[])>();
+        var settings = 0;
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.WindowSnapshot)
+                got.Add((e.Kind, (e.Windows ?? []).Select(w => w.Id.Value).ToArray()));
+            if (e.Kind == CoreEventKind.TraySnapshot)
+                got.Add((e.Kind, (e.TrayItems ?? []).Select(t => t.Id.Value).ToArray()));
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref settings);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref settings) >= 1, "Hello burst (settings is always in it)");
+        return got;
+    }
+
+    // The helper host opens its channel BEFORE the first Ping succeeds, so on a cold boot the seed can get
+    // Unavailable (null) from a channel that exists. That is "not yet", like a throw: retried, and once the
+    // source answers the snapshot is published.
+    [Fact]
+    public async Task A_window_seed_that_is_unreachable_at_first_is_retried_and_then_published()
+    {
+        var pal = new ControllablePal { WindowSeedNullsRemaining = 3 };
+        pal.SeedWindows(Win("a", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+        Assert.Equal(4, pal.WindowSeedCalls);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        await WaitFor(() => got.Any(g => g.Kind == CoreEventKind.WindowSnapshot && g.Ids.SequenceEqual(["a"])),
+            "the retried seed answered, so the window snapshot is published");
+    }
+
+    [Fact]
+    public async Task A_tray_seed_that_is_unreachable_at_first_is_retried_and_then_published()
+    {
+        var pal = new ControllablePal { TraySeedNullsRemaining = 3 };
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+        Assert.Equal(4, pal.TraySeedCalls);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        await WaitFor(() => got.Any(g => g.Kind == CoreEventKind.TraySnapshot && g.Ids.SequenceEqual(["1:10"])),
+            "the retried seed answered, so the tray snapshot is published");
+    }
+
+    // A tray source unreachable for the whole budget: retried, then withheld — never published empty.
+    [Fact]
+    public async Task A_tray_seed_unreachable_for_the_whole_budget_is_withheld()
+    {
+        var pal = new ControllablePal { TrayUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
+            { SeedRetryAttempts = 2 };
+        await server.StartAsync(Ct);
+        Assert.Equal(3, pal.TraySeedCalls);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        await Task.Delay(150);
+        Assert.DoesNotContain(got, g => g.Kind == CoreEventKind.TraySnapshot);
+    }
+
+    // A live window delta that lands WHILE the core is seeding is buffered and replayed. After a failed seed
+    // an open/change/foreground still proves the stream is live, so it must unlock WindowSnapshot on replay —
+    // a quiet desktop may send no other delta. A close proves nothing and must not.
+    [Theory]
+    [InlineData(CoreEventKind.WindowOpened, true)]
+    [InlineData(CoreEventKind.WindowChanged, true)]
+    [InlineData(CoreEventKind.WindowForeground, true)]
+    [InlineData(CoreEventKind.WindowClosed, false)]
+    public async Task A_window_delta_buffered_during_a_failed_seed_unlocks_the_snapshot_unless_it_is_a_close(
+        CoreEventKind kind, bool unlocks)
+    {
+        var pal = new ControllablePal { WindowsUnreachable = true };
+        var raised = 0;
+        pal.OnTrySeedWindows = () =>
+        {
+            if (Interlocked.Exchange(ref raised, 1) != 0) return;
+            var w = Win("d", "During seed", focused: kind == CoreEventKind.WindowForeground);
+            switch (kind)
+            {
+                case CoreEventKind.WindowOpened: pal.RaiseWindowOpened(w); break;
+                case CoreEventKind.WindowChanged: pal.RaiseWindowChanged(w); break;
+                case CoreEventKind.WindowForeground: pal.RaiseForegroundChanged(w); break;
+                default: pal.RaiseWindowClosed(w); break;
+            }
+        };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
+            { SeedRetryAttempts = 2 };
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        if (unlocks)
+            await WaitFor(() => got.Any(g => g.Kind == CoreEventKind.WindowSnapshot && g.Ids.SequenceEqual(["d"])),
+                "the replayed live delta unlocks the window snapshot");
+        else
+        {
+            await Task.Delay(150);
+            Assert.DoesNotContain(got, g => g.Kind == CoreEventKind.WindowSnapshot);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_tray_add_buffered_during_a_failed_seed_unlocks_the_snapshot_but_a_remove_does_not(bool add)
+    {
+        var pal = new ControllablePal { TrayUnreachable = true };
+        var raised = 0;
+        pal.OnTrySeedItems = () =>
+        {
+            if (Interlocked.Exchange(ref raised, 1) != 0) return;
+            if (add) pal.RaiseTrayItemAdded(Tray("7:70", "During seed"));
+            else pal.RaiseTrayItemRemoved(Tray("7:70", "During seed"));
+        };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
+            { SeedRetryAttempts = 2 };
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        if (add)
+            await WaitFor(() => got.Any(g => g.Kind == CoreEventKind.TraySnapshot && g.Ids.SequenceEqual(["7:70"])),
+                "the replayed live add unlocks the tray snapshot");
+        else
+        {
+            await Task.Delay(150);
+            Assert.DoesNotContain(got, g => g.Kind == CoreEventKind.TraySnapshot);
+        }
     }
 
     /// <summary>
@@ -1218,7 +1371,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
 
         await server.StartAsync(Ct);            // must not throw
 
@@ -1344,9 +1497,18 @@ public sealed class ShellCoreIntegrationTests
         /// EnumerateAsync returns EMPTY when the helper is unreachable instead of throwing, and only
         /// TrySeedWindowsAsync can tell (null).</summary>
         public bool WindowsUnreachable;
+        /// <summary>Test seams (bevel-wheq review): the next N window seeds answer null (helper not serving yet)
+        /// before the source answers; a hook that runs inside each seed call (to land a delta mid-seed); and
+        /// how many seed calls were made.</summary>
+        public int WindowSeedNullsRemaining;
+        public Action? OnTrySeedWindows;
+        public int WindowSeedCalls;
         public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
         {
+            Interlocked.Increment(ref WindowSeedCalls);
+            OnTrySeedWindows?.Invoke();
             var windows = await EnumerateAsync(ct);
+            if (WindowSeedNullsRemaining > 0) { WindowSeedNullsRemaining--; return null; }
             return WindowsUnreachable ? null : windows;
         }
 
@@ -1410,10 +1572,18 @@ public sealed class ShellCoreIntegrationTests
         /// GetItemsAsync returns EMPTY when the helper is unreachable instead of throwing, and only
         /// TrySeedItemsAsync can tell (null).</summary>
         public bool TrayUnreachable;
-        public ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
-            => TrayUnreachable
-                ? ValueTask.FromResult<IReadOnlyList<TrayItem>?>(null)
-                : new ValueTask<IReadOnlyList<TrayItem>?>(GetItemsAsync(ct).AsTask().ContinueWith(t => (IReadOnlyList<TrayItem>?)t.Result, ct));
+        /// <summary>Tray twins of the window seed seams (bevel-wheq review).</summary>
+        public int TraySeedNullsRemaining;
+        public Action? OnTrySeedItems;
+        public int TraySeedCalls;
+        public async ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref TraySeedCalls);
+            OnTrySeedItems?.Invoke();
+            if (TrayUnreachable) return null;
+            if (TraySeedNullsRemaining > 0) { TraySeedNullsRemaining--; return null; }
+            return await GetItemsAsync(ct);
+        }
         public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         {
             TrayEnter = Stopwatch.GetTimestamp();
