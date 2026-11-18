@@ -52,6 +52,16 @@ public interface ISystemTrayHost
     Capabilities Capabilities { get; }
 
     ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default);
+
+    /// <summary>Seed-grade variant of <see cref="GetItemsAsync"/> (bevel-ri8c): returns <c>null</c> when the
+    /// tray source could NOT be reached (e.g. the helper is down), and a list — possibly empty — only when
+    /// the source actually answered. <see cref="GetItemsAsync"/> swallows an unreachable source into an empty
+    /// list for its UI callers; a snapshot publisher must not mistake that for "the tray is empty". The
+    /// default reports every <see cref="GetItemsAsync"/> result as an answer, which is right for hosts whose
+    /// listing cannot fail softly.</summary>
+    async ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
+        => await GetItemsAsync(ct).ConfigureAwait(false);
+
     Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default);
 
     /// <summary>Forwards a click on a mirrored item to the real status item so its menu/popover opens

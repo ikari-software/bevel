@@ -40,7 +40,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // goes null and handlers mutate the projection directly.
     private List<Action>? _seedBuffer = new();
 
-    /// <summary>True once the tray projection is trustworthy: the seed succeeded, or a live tray delta
+    /// <summary>True once the tray projection is trustworthy: the seed succeeded, or a live tray add/update
     /// arrived. Until then no TraySnapshot is sent — a degraded (failed-seed, empty) projection would make a
     /// surviving taskbar's reconcile remove every icon it holds (bevel-ri8c). Guarded by <see cref="_gate"/>.</summary>
     private bool _traySeeded;
@@ -210,7 +210,13 @@ public sealed class ShellCoreServer : IAsyncDisposable
     /// like <see cref="SeedOrEmptyAsync"/>, but the caller must not publish that empty set as authoritative.</summary>
     private async Task<(IReadOnlyList<TrayItem> Items, bool Ok)> SeedTrayAsync(CancellationToken ct)
     {
-        try { return (await _tray.GetItemsAsync(ct).ConfigureAwait(false), true); }
+        try
+        {
+            // TrySeedItemsAsync, not GetItemsAsync: a real host swallows "helper unreachable" into an empty
+            // list, which would look like a successful empty seed.
+            var items = await _tray.TrySeedItemsAsync(ct).ConfigureAwait(false);
+            return items is null ? (Array.Empty<TrayItem>(), false) : (items, true);
+        }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
         {
             return (Array.Empty<TrayItem>(), false);
@@ -379,7 +385,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById.Remove(t.Id.Value)); return; }
             _trayById.Remove(t.Id.Value);
-            _traySeeded = true;
+            // Deliberately NOT _traySeeded: a remove proves nothing about the projection being complete.
         }
         BroadcastStamped(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t));
     }
@@ -390,6 +396,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById[t.Id.Value] = t); return; }
             _trayById[t.Id.Value] = t;
+            // An add/update proves the tray stream is live (the helper is up and enumerating), so later
+            // snapshots are trustworthy enough to publish; a remove alone proves nothing.
             _traySeeded = true;
         }
         BroadcastStamped(new CoreEvent(kind, TrayItem: t));

@@ -616,6 +616,103 @@ public sealed class ShellCoreIntegrationTests
         Assert.Empty(removed);
     }
 
+    // bevel-ri8c: the REAL failure shape — the host swallows "helper unreachable" and returns empty
+    // (MacOSSystemTrayHost does), it does not throw. The core must still not publish that as authoritative.
+    [Fact]
+    public async Task A_swallowed_tray_seed_failure_does_not_clear_a_surviving_taskbars_tray()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal { TrayUnreachable = true };   // returns EMPTY, does not throw
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client reconnects");
+        await Task.Delay(500);
+        Assert.Empty(removed);
+    }
+
+    // bevel-ri8c: a tray REMOVE proves nothing about the projection being complete — after a failed seed it
+    // must not unlock the (empty) TraySnapshot.
+    [Fact]
+    public async Task A_tray_remove_delta_does_not_unlock_the_tray_snapshot_after_a_failed_seed()
+    {
+        var pal = new ControllablePal { TrayUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var traySnapshots = 0;
+        var resynced = 0;
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.TraySnapshot) Interlocked.Increment(ref traySnapshots);
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref resynced);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) >= 1, "Hello burst");
+
+        pal.RaiseTrayItemRemoved(Tray("5:50", "Gone"));
+        var before = Volatile.Read(ref resynced);
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) > before, "Resync burst");
+        Assert.Equal(0, Volatile.Read(ref traySnapshots));
+
+        pal.RaiseTrayItemAdded(Tray("6:60", "Live"));       // an add proves the stream is live
+        before = Volatile.Read(ref resynced);
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) > before, "second Resync burst");
+        Assert.Equal(1, Volatile.Read(ref traySnapshots));
+    }
+
+    // bevel-ri8c: a pull that was in flight when a remove delta arrived is older than the remove — it must
+    // not resurrect the item (neither in the returned list nor in the known set).
+    [Fact]
+    public async Task A_stale_pull_landing_after_a_remove_does_not_resurrect_the_item()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("9:90", "Pulled"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var removed = new List<string>();
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+
+        // The reply is "in flight": the remove delta lands after it arrived but before it is merged.
+        tray.BeforePullMergeForTest = () =>
+        {
+            tray.OnCoreEvent(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: Tray("9:90", "Pulled")));
+            return Task.CompletedTask;
+        };
+        var pull = tray.GetItemsAsync(Ct).AsTask();
+
+        Assert.Empty(await pull);                                           // not resurrected for the caller
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: Array.Empty<TrayItem>()));
+        Assert.Equal(new[] { "9:90" }, removed.ToArray());                  // and not a ghost in _known (no 2nd remove)
+    }
+
     // ...whereas a seed that SUCCEEDED with zero items is authoritative: the empty snapshot reaps everything.
     [Fact]
     public async Task A_successful_empty_tray_seed_is_authoritative()
@@ -1049,10 +1146,19 @@ public sealed class ShellCoreIntegrationTests
         public Action? OnGetItems;
         /// <summary>Test seam (bevel-ejon): thrown from the tray seed.</summary>
         public Exception? TrayFault;
+        /// <summary>Test seam (bevel-ri8c): the SWALLOWED-failure shape — like the real MacOSSystemTrayHost,
+        /// GetItemsAsync returns EMPTY when the helper is unreachable instead of throwing, and only
+        /// TrySeedItemsAsync can tell (null).</summary>
+        public bool TrayUnreachable;
+        public ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
+            => TrayUnreachable
+                ? ValueTask.FromResult<IReadOnlyList<TrayItem>?>(null)
+                : new ValueTask<IReadOnlyList<TrayItem>?>(GetItemsAsync(ct).AsTask().ContinueWith(t => (IReadOnlyList<TrayItem>?)t.Result, ct));
         public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         {
             TrayEnter = Stopwatch.GetTimestamp();
             if (TrayFault is { } ex) throw ex;
+            if (TrayUnreachable) return Array.Empty<TrayItem>();
             OnGetItems?.Invoke();
             if (TraySeedDelay > TimeSpan.Zero) await Task.Delay(TraySeedDelay, ct);
             TrayExit = Stopwatch.GetTimestamp();
