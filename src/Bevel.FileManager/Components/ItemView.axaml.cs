@@ -13,6 +13,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
@@ -110,6 +111,9 @@ public partial class ItemView : UserControl
 
     private Point _dragStart;
     private bool _dragArmed;
+    /// <summary>The selection's IStorageItems, resolved from the PRESS so the OS file list is ready
+    /// before the drag threshold is crossed (bevel-u2x6).</summary>
+    private System.Threading.Tasks.Task<IStorageItem[]>? _dragStorageTask;
 
     private TextBox? _renameBox;
     private readonly FuncDataTemplate<ItemViewModel> _detailsTpl;
@@ -383,7 +387,7 @@ public partial class ItemView : UserControl
     public void ResetItems()
     {
         _viewModels.Clear();
-        _selected.Clear(); _selectedOrder.Clear(); _anchor = null; _lastClickIdx = -1;
+        _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
         ItemsPresenter.ItemsSource = _viewModels;
     }
 
@@ -450,7 +454,7 @@ public partial class ItemView : UserControl
     void RebuildItems()
     {
         _viewModels.Clear();
-        _selected.Clear(); _selectedOrder.Clear(); _anchor = null; _lastClickIdx = -1;
+        _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
         if (Items != null)
             foreach (var n in Items) _viewModels.Add(new ItemViewModel(n));
         SortItems();
@@ -600,22 +604,62 @@ public partial class ItemView : UserControl
         RaiseSelection();
     }
 
-    void Marquee(Rect r)
+    /// <summary>Rows this marquee gesture has selected, so releasing the band over them again can
+    /// deselect them WITHOUT disturbing a selection that existed before the gesture started (a
+    /// ctrl/shift marquee adds to what was already there — the press handler only clears for a plain
+    /// one). An already-selected row is never entered here, so sweeping across it leaves it alone.</summary>
+    private readonly HashSet<ItemViewModel> _marqueeHits = new();
+
+    /// <summary>
+    /// Applies the band to the realized rows, flipping only the ones whose membership CHANGED
+    /// (bevel-oovi).
+    ///
+    /// <para>This used to run once, on release, so a sweep showed no highlight at all until you let go
+    /// — you could not see what you were about to select. Windows 2000 and Finder both highlight live,
+    /// and "feel" is half the fidelity bar here.</para>
+    ///
+    /// <para>Diffing rather than clear-and-re-add matters for more than speed: ClearSel + AddSel on
+    /// every pointer move would rewrite <c>IsSelected</c> on every row in view many times a second,
+    /// and each write is an observable property change driving template state. It also deselected a
+    /// pre-existing selection, which is why an additive marquee now behaves.</para>
+    ///
+    /// <para><b>Not throttled, deliberately.</b> One pass measured 0.15 ms — and that figure is the
+    /// whole pointer-move dispatch, so the pass itself is less — against a 16.7 ms frame, because it
+    /// walks the REALIZED containers only: 22 rows in a 2,000-entry folder. A per-frame throttle would
+    /// add a timer and a coalescing rule to save nothing. <c>MarqueeSelectionTests</c> pins the budget
+    /// so an implementation that became O(folder) fails instead of merely feeling bad.</para>
+    /// </summary>
+    void ApplyMarquee(Rect r)
     {
-        ClearSel();
         foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
             if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm) continue;
             var pos = ctl.TranslatePoint(default, ItemsPresenter) ?? default;
-            if (r.Intersects(new(pos.X, pos.Y, ctl.Bounds.Width, ctl.Bounds.Height))) AddSel(vm);
+            var hit = r.Intersects(new(pos.X, pos.Y, ctl.Bounds.Width, ctl.Bounds.Height));
+            if (hit)
+            {
+                if (!vm.IsSelected) { AddSel(vm); _marqueeHits.Add(vm); }
+            }
+            else if (_marqueeHits.Remove(vm))
+            {
+                RemSel(vm);
+            }
         }
+    }
+
+    /// <summary>Final pass for the release: the band's last position, then the one SelectionChanged
+    /// for the whole gesture. The live passes deliberately stay silent — the info pane re-reads the
+    /// whole selection on that event, which is not something to do per mouse move.</summary>
+    void Marquee(Rect r)
+    {
+        ApplyMarquee(r);
         if (_selected.Count > 0) SelectedItem = _selectedOrder[^1];
         RaiseSelection();
     }
 
     void AddSel(ItemViewModel vm) { vm.IsSelected = true; _selected.Add(vm); _selectedOrder.Add(vm); }
     void RemSel(ItemViewModel vm) { vm.IsSelected = false; _selected.Remove(vm); _selectedOrder.Remove(vm); }
-    void ClearSel() { foreach (var s in _selected) s.IsSelected = false; _selected.Clear(); _selectedOrder.Clear(); }
+    void ClearSel() { foreach (var s in _selected) s.IsSelected = false; _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); }
 
     /// <summary>Raised whenever the selection set changes (drives the info pane).</summary>
     public event Action? SelectionChanged;
@@ -656,6 +700,7 @@ public partial class ItemView : UserControl
         {
             if (!ctrl && !shift) { ClearSel(); RaiseSelection(); }
             _marqueeOrigin = pt; _marqueeDragging = true; MarqueeRect.IsVisible = false;
+            _marqueeHits.Clear();   // this gesture owns nothing yet
             e.Handled = true; return;
         }
         if (shift) RangeTo(vm);
@@ -664,6 +709,11 @@ public partial class ItemView : UserControl
         _lastClickIdx = Idx(vm);
         _dragArmed = !ctrl;                 // a plain/shift press on an item can begin a drag
         _dragStart = e.GetPosition(this);
+        // START resolving the selection's IStorageItems NOW, not at drag time (bevel-u2x6). DoDragDrop
+        // has to run synchronously inside the move handler — awaiting a resolve first loses the OS drag
+        // gesture — so the work has to be in flight before the pointer passes the threshold. Selection is
+        // already final at this point: SelectOne/RangeTo/Toggle all ran above.
+        _dragStorageTask = ResolveStorageItemsAsync(_selectedOrder.Select(v => (v.Path.Value, v.IsFolder)).ToList());
         e.Handled = true;
     }
 
@@ -687,7 +737,14 @@ public partial class ItemView : UserControl
         if (!_marqueeDragging) return;
         var pt = e.GetPosition(ItemsPresenter);
         var r = new Rect(Math.Min(_marqueeOrigin.X, pt.X), Math.Min(_marqueeOrigin.Y, pt.Y), Math.Abs(pt.X - _marqueeOrigin.X), Math.Abs(pt.Y - _marqueeOrigin.Y));
-        if (r.Width > 4 || r.Height > 4) { Canvas.SetLeft(MarqueeRect, r.X); Canvas.SetTop(MarqueeRect, r.Y); MarqueeRect.Width = r.Width; MarqueeRect.Height = r.Height; MarqueeRect.IsVisible = true; }
+        if (r.Width > 4 || r.Height > 4)
+        {
+            Canvas.SetLeft(MarqueeRect, r.X); Canvas.SetTop(MarqueeRect, r.Y);
+            MarqueeRect.Width = r.Width; MarqueeRect.Height = r.Height; MarqueeRect.IsVisible = true;
+            // Highlight as the band moves, not on release (bevel-oovi). Same 4px gate as the band
+            // itself, so a click's jitter never selects anything.
+            ApplyMarquee(r);
+        }
     }
 
     void OnBgPointerReleased(object? _, PointerReleasedEventArgs e)
@@ -703,14 +760,54 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>Begin a drag of the current selection. The payload is our internal
-    /// FileDropPayload, which the drop side (and other Bevel windows) already understand.</summary>
+    /// <summary>Resolves selected paths to <see cref="IStorageItem"/>s for the OS drag payload.
+    ///
+    /// <para>Folders need <c>TryGetFolderFromPathAsync</c> and files <c>TryGetFileFromPathAsync</c> —
+    /// asking for a file at a directory path yields null, which is how a mixed selection would silently
+    /// drag only half of itself. Nulls are dropped rather than failing the whole drag: a selection the
+    /// provider cannot resolve (a VFS-only node such as a <c>computer://</c> entry) should still drag
+    /// internally via <see cref="FileDropPayload"/>.</para></summary>
+    private async System.Threading.Tasks.Task<IStorageItem[]> ResolveStorageItemsAsync(
+        IReadOnlyList<(string Path, bool IsFolder)> items)
+    {
+        var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
+        if (provider is null || items.Count == 0) return System.Array.Empty<IStorageItem>();
+
+        var resolved = new List<IStorageItem>(items.Count);
+        foreach (var (path, isFolder) in items)
+        {
+            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
+            IStorageItem? item = isFolder
+                ? await provider.TryGetFolderFromPathAsync(uri).ConfigureAwait(true)
+                : await provider.TryGetFileFromPathAsync(uri).ConfigureAwait(true);
+            if (item is not null) resolved.Add(item);
+        }
+        return resolved.ToArray();
+    }
+
+    /// <summary>Begin a drag of the current selection, carrying BOTH the internal
+    /// <see cref="FileDropPayload"/> and the OS <see cref="DataFormats.Files"/> list (bevel-u2x6).
+    ///
+    /// <para>It used to set only the private format. The drop side accepts both (see
+    /// <see cref="OnDrop"/>) and the taskbar's stack flyout has always set Files correctly, so the gap
+    /// was here alone: dragging a file out of Filer onto Finder, the desktop, Mail or a browser did
+    /// NOTHING — silently, because a drag with no format the target understands is simply refused. It
+    /// also meant Filer-to-Filer drags relied on a managed object surviving a trip between two separate
+    /// <c>--role=filer</c> processes, which is not something to count on.</para>
+    ///
+    /// <para>Both formats are set, never one: Files is what every other app reads, while the internal
+    /// payload is what preserves Bevel's own move/copy semantics on an internal drop. The Files list is
+    /// only attached when the press-time resolve has already completed — awaiting it here would yield
+    /// inside the pointer gesture and lose the drag, which is the same reason StackFlyoutView
+    /// pre-resolves on press. If it is not ready the drag still happens, exactly as before.</para></summary>
     async System.Threading.Tasks.Task StartDragAsync(PointerEventArgs e)
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
+        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
+            data.Set(DataFormats.Files, ready.Result);
         try
         {
             await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);

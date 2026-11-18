@@ -146,6 +146,13 @@ public enum CoreCommandKind
     /// <summary>UI→core: pull the mirrored tray items (bevel-4zfs) — the tray's backstop; every other
     /// projection already had a pull (EnumerateWindows / EnumerateInstalledApps / GetSettings).</summary>
     GetTrayItems,
+    /// <summary>UI→core: the window list from the core's OWN projection, icons omitted (bevel-ougs).
+    /// <see cref="EnumerateWindows"/> re-enumerates the helper on every call — a full CG + AX pass in
+    /// the process that must also answer the next Activate — and base64s an app icon per window into
+    /// the reply. A consumer that only needs current geometry, and is itself driven by the delta
+    /// stream that built the projection, asks for this instead. NOT for a reconcile backstop: a
+    /// projection polled against itself can only ever agree (see IProjectedWindowSource).</summary>
+    EnumerateWindowsProjected,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a

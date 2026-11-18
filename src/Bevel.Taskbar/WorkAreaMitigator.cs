@@ -100,9 +100,35 @@ public sealed class WorkAreaMitigator : IDisposable
         Func<PalRect?> taskbarBand, TimeProvider? timeProvider = null)
     {
         _windowManager = windowManager;
+        // Read geometry from the core's projection where there IS one (bevel-ougs). This engine runs a
+        // 3s safety poll AND a pass 100ms after every window open/change/focus event AND a verify pass
+        // after every correction; in the split shell each of those was a JSON round-trip to the core
+        // and a fresh CG + AX enumeration in the Swift helper — the process that must also answer the
+        // next Activate. It only ever reads bounds and flags, never icons, and it is driven by the very
+        // deltas that build the projection, so the projection is the right source for it. A PAL that is
+        // itself the window source doesn't implement the interface and we use the ordinary enumerate.
+        _projected = windowManager as IProjectedWindowSource;
         _settings = settings;
         _taskbarBand = taskbarBand;
         _time = timeProvider ?? TimeProvider.System;
+    }
+
+    private readonly IProjectedWindowSource? _projected;
+
+    /// <summary>Count of window enumerations this engine has issued, split by source. Lets a test
+    /// assert that the mitigator stops driving helper passes without reaching into the transport.</summary>
+    internal int ProjectedEnumerations { get; private set; }
+    internal int DirectEnumerations { get; private set; }
+
+    private async ValueTask<IReadOnlyList<ForeignWindow>> ReadWindowsAsync(CancellationToken ct)
+    {
+        if (_projected is not null)
+        {
+            ProjectedEnumerations++;
+            return await _projected.EnumerateProjectedAsync(ct).ConfigureAwait(false);
+        }
+        DirectEnumerations++;
+        return await _windowManager.EnumerateAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Subscribes to window activity and starts the safety poll. Idempotent.</summary>
@@ -197,7 +223,7 @@ public sealed class WorkAreaMitigator : IDisposable
     {
         if (_taskbarBand() is not { } band) return 0;
 
-        var windows = await _windowManager.EnumerateAsync(ct);
+        var windows = await ReadWindowsAsync(ct);
         var live = new HashSet<string>(windows.Count);
         var repositioned = 0;
 

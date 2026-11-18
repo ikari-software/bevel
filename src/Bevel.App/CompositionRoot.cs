@@ -132,7 +132,24 @@ public static class CompositionRoot
         // is a container-owned singleton (disposed with the container); the decorator just borrows it.
         // The isWriter flag is now ALSO passed to the pool itself so a reader role opens the file
         // read-only and never creates/resizes/inits it (ce-review bevel-lha4).
-        var poolIsWriter = role is ShellRole.Core;
+        //
+        // THE WRITER IS THE TASKBAR, NOT THE CORE (bevel-3gad). The pool was designed with Core as the
+        // single writer, but RunShellCore resolves only IWindowManager/IAppEnvironment/ISystemTrayHost/
+        // ISettingsService (Program.cs) and never IIconProvider. DI singletons are lazy, so the core
+        // never constructed PooledIconProvider and never called TryAdd — meaning NOTHING ever wrote a
+        // slot. Every role was a reader, readers never create the file, and a reader with no file
+        // degrades to a detached always-misses pool (MmfBgraPool.OpenReadOnly). The shared icon cache
+        // was fully implemented, correct, and completely inert: no icons.pool existed on disk at all.
+        //
+        // The taskbar is the right owner on both counts: it is a supervised singleton, so the
+        // single-WRITER invariant still holds, and it is the process that actually renders icons. The
+        // core is headless and would have to render through NSWorkspace with no UI session to justify
+        // keeping it — a bigger change for no extra benefit here.
+        //
+        // This also survives a restart: the writer path only re-initialises when the file is new or the
+        // geometry mismatches, so a taskbar crash respawn or RestartAll re-attaches to a populated pool
+        // instead of re-rendering everything.
+        var poolIsWriter = role is ShellRole.Taskbar;
         services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
             IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
@@ -230,9 +247,11 @@ public static class CompositionRoot
         services.AddSingleton<IFileOperations, Pal.Windows.WindowsFileOperations>();
 
         // Shared memory-mapped BGRA icon pool (bevel-gww.6), identical to macOS: single-writer = the
-        // shell-core owner (Core); UI roles are readers (miss -> private render). The isWriter flag also
-        // gates whether the pool file is created/resized (reader opens read-only).
-        var poolIsWriter = role is ShellRole.Core;
+        // The TASKBAR owns the pool; other UI roles are readers (miss -> private render), and the
+        // isWriter flag also gates whether the pool file is created/resized. See the macOS branch above
+        // for why this is the taskbar and not the core (bevel-3gad): the core never resolves
+        // IIconProvider, so with Core as writer nothing ever wrote a slot and the cache was inert.
+        var poolIsWriter = role is ShellRole.Taskbar;
         services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
             IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(

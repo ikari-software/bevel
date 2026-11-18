@@ -131,8 +131,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
         // repopulate. (~10s covers a cold helper exec + connect.)
         var initialWindows = await SeedWhenHelperReadyAsync(_windows.EnumerateAsync, ct).ConfigureAwait(false);
-        var initialApps = await SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).ConfigureAwait(false);
-        var initialTray = await SeedOrEmptyAsync(_tray.GetItemsAsync, ct).ConfigureAwait(false);
+
+        // Apps and tray CONCURRENTLY, not one after the other (bevel-pa3j). They are independent reads
+        // of two different sources, and nothing between them orders one before the other — but the
+        // commit below (and therefore the snapshot burst every peer is waiting on) was gated on their
+        // SUM. They still start only after the windows seed, because that call is also the helper
+        // readiness probe: apps and tray share the helper's connection and have no retry budget of
+        // their own, so running them against a half-connected helper would just degrade both to empty.
+        var appsSeed = SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).AsTask();
+        var traySeed = SeedOrEmptyAsync(_tray.GetItemsAsync, ct).AsTask();
+        var initialApps = await appsSeed.ConfigureAwait(false);
+        var initialTray = await traySeed.ConfigureAwait(false);
         lock (_gate)
         {
             foreach (var w in initialWindows)
@@ -257,20 +266,59 @@ public sealed class ShellCoreServer : IAsyncDisposable
     {
         lock (_gate)
         {
-            if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById.Remove(w.Id.Value)); return; }
-            _windowById.Remove(w.Id.Value);
+            if (_seedBuffer is not null) { _seedBuffer.Add(() => Forget(w.Id.Value)); return; }
+            Forget(w.Id.Value);
         }
         BroadcastStamped(new CoreEvent(CoreEventKind.WindowClosed, Window: w));
     }
 
+    /// <summary>Drops a window from the projection AND forgets its last-sent icon, so an id that
+    /// comes back (macOS reuses window numbers) re-sends its icon instead of inheriting a stale
+    /// "already sent" claim. Caller holds <c>_gate</c>.</summary>
+    private void Forget(string id)
+    {
+        _windowById.Remove(id);
+        _sentIconHash.Remove(id);
+    }
+
     private void UpsertAndBroadcast(ForeignWindow w, CoreEventKind kind)
     {
+        ForeignWindow outbound;
         lock (_gate)
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
-            _windowById[w.Id.Value] = w;
+            _windowById[w.Id.Value] = w;   // the PROJECTION always keeps the icon, so snapshots carry it
+            outbound = WithoutUnchangedIcon(w);
         }
-        BroadcastStamped(new CoreEvent(kind, Window: w));
+        BroadcastStamped(new CoreEvent(kind, Window: outbound));
+    }
+
+    /// <summary>Last icon we actually sent for a window, by id. Guarded by <c>_gate</c>.</summary>
+    private readonly Dictionary<string, long> _sentIconHash = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Drops <see cref="ForeignWindow.IconPng"/> from an outbound delta when it is byte-identical to
+    /// the icon this window's last delta already carried (bevel-ougs).
+    ///
+    /// <para>WindowChanged fires on every title change — which for a browser or an editor is
+    /// essentially every keystroke — and each one base64'd the app's icon into the JSON frame again.
+    /// The icon is per-APP and practically never changes.</para>
+    ///
+    /// <para>Safe for the one consumer that reads it: <c>ShellModel.ApplyUpdate</c> re-attempts an icon
+    /// only while the button still has none, and its loader no-ops on a null PNG, so an omitted icon
+    /// never blanks a good one. The case that MUST keep working is the opposite one — a window first
+    /// seen before its app icon was ready arrives icon-less and depends on a later event to carry it.
+    /// Comparing hashes handles that: absent-then-present is a CHANGE and is sent. A client that
+    /// joins later is unaffected either way, since Hello replies with the full projection.</para>
+    /// </summary>
+    private ForeignWindow WithoutUnchangedIcon(ForeignWindow w)
+    {
+        var id = w.Id.Value;
+        var hash = w.IconPng is { Length: > 0 } png ? ContentHash.Fnv1a64(png) : 0L;
+        if (_sentIconHash.TryGetValue(id, out var last) && last == hash)
+            return hash == 0 ? w : w with { IconPng = null };
+        _sentIconHash[id] = hash;
+        return w;
     }
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps)
@@ -349,6 +397,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
                     return new CoreResponse(Ok: true, TrayItems: _trayById.Values.ToArray());
             case CoreCommandKind.EnumerateWindows:
                 return new CoreResponse(Ok: true, Windows: await _windows.EnumerateAsync(ct).ConfigureAwait(false));
+            case CoreCommandKind.EnumerateWindowsProjected:
+                // Straight off the projection the delta stream already maintains — no helper pass, and
+                // the icons dropped (bevel-ougs). Under _gate so it never observes a half-applied seed.
+                lock (_gate)
+                    return new CoreResponse(Ok: true,
+                        Windows: _windowById.Values.Select(w => w with { IconPng = null }).ToArray());
             case CoreCommandKind.Activate:
                 await _windows.ActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Minimize:
@@ -367,7 +421,15 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 return new CoreResponse(Ok: true, Png: await _windows.CaptureWindowAsync(
                     Id(cmd), cmd.MaxWidth ?? 0, cmd.MaxHeight ?? 0, ct).ConfigureAwait(false));
             case CoreCommandKind.EnumerateInstalledApps:
-                return new CoreResponse(Ok: true, InstalledApps: await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false));
+                // SERVE THE CACHE (bevel-5erm). _installed is seeded at startup and kept current by the
+                // InstalledAppsChanged subscription, which is the whole reason it exists — but this
+                // handler used to re-walk the filesystem on every call, and the taskbar issues one at
+                // startup. That put a full app scan on the boot path twice over, right where it delays
+                // the bar filling in. Falling back to a live scan only when the cache is genuinely empty
+                // keeps a pre-seed caller correct rather than handing it an empty list.
+                return new CoreResponse(Ok: true, InstalledApps: _installed.Count > 0
+                    ? _installed
+                    : await _apps.EnumerateInstalledAppsAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.GetRunningApps:
                 return new CoreResponse(Ok: true, RunningApps: await _apps.GetRunningAppsAsync(ct).ConfigureAwait(false));
             case CoreCommandKind.TerminateApp:

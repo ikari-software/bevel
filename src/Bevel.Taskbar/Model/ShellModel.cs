@@ -167,6 +167,14 @@ public sealed class ShellModel : IDisposable
     /// </summary>
     private async Task ReconcileLoopAsync(CancellationToken ct)
     {
+        // Backoff until the FIRST successful enumerate (bevel-pa3j). The steady-state 2s cadence is
+        // right for a backstop, but it was also the cost of a near-miss at boot: this loop starts
+        // before the core's Swift helper has finished connecting, so the first tick usually throws,
+        // and the strip then stayed empty for a full 2s even if the helper came up 20ms later. Once
+        // we have ANY successful enumerate the loop is purely a safety net again, so it drops to the
+        // flat interval rather than keeping a fast poll alive for the rest of the session.
+        var settled = false;
+        var backoff = FirstReconcileBackoff;
         while (!ct.IsCancellationRequested)
         {
             try
@@ -195,6 +203,7 @@ public sealed class ShellModel : IDisposable
                     Reconcile(live);
                     ApplyBadges(badgeIndex);
                 });
+                settled = true;   // the window source answered — back to the steady backstop cadence
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { TaskbarLog.Swallowed("ReconcileLoop", ex); } // helper not up yet — retry next tick
@@ -203,7 +212,13 @@ public sealed class ShellModel : IDisposable
             // on reconnect. A linked source keeps real shutdown (ct) distinct from a poke.
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
             Volatile.Write(ref _reconcileWait, wait);
-            try { await Task.Delay(ReconcileInterval, wait.Token).ConfigureAwait(false); }
+            var delay = settled ? ReconcileInterval : backoff;
+            if (!settled)
+            {
+                var doubled = backoff + backoff;
+                backoff = doubled < ReconcileInterval ? doubled : ReconcileInterval;
+            }
+            try { await Task.Delay(delay, wait.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (OperationCanceledException) { /* poked by a reconnect — reconcile now */ }
             finally { Volatile.Write(ref _reconcileWait, null); }
@@ -316,6 +331,11 @@ public sealed class ShellModel : IDisposable
             ApplyExclusiveFocus(w.Id.Value);
     });
     private static readonly TimeSpan ReconcileInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>First retry delay while the window source has never answered (bevel-pa3j); doubles
+    /// up to <see cref="ReconcileInterval"/>, then stops mattering once a tick succeeds. Internal so
+    /// the backoff test asserts against the real value instead of a copy of it.</summary>
+    internal static readonly TimeSpan FirstReconcileBackoff = TimeSpan.FromMilliseconds(150);
 
     /// <summary>UI thread. Exactly one taskbar button may appear pressed at a time. Also the
     /// optimistic-click entry point for <see cref="TaskItemViewModel"/> (bevel-c04q / bevel-yslj).</summary>
@@ -487,14 +507,9 @@ public sealed class ShellModel : IDisposable
         });
     }
 
-    /// <summary>FNV-1a 64-bit over the PNG bytes — a cheap, stable content key for the icon cache.</summary>
-    internal static long Fnv1a64(byte[] data)
-    {
-        const ulong offset = 14695981039346656037UL, prime = 1099511628211UL;
-        ulong h = offset;
-        foreach (var b in data) { h ^= b; h *= prime; }
-        return unchecked((long)h);
-    }
+    /// <summary>A cheap, stable content key for the icon cache. Shared with the favicon cache and the
+    /// core's icon de-duplication, so it lives in <see cref="Bevel.Core.ContentHash"/>.</summary>
+    internal static long Fnv1a64(byte[] data) => Bevel.Core.ContentHash.Fnv1a64(data);
 
     // ── Programs ────────────────────────────────────────────────────────
 

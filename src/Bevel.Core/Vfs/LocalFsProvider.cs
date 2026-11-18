@@ -42,26 +42,55 @@ public sealed partial class LocalFsProvider : IVfsProvider
 
         var remaining = options.Limit;
 
-        // Fast path: enumerate names only, defer stat to visible items
-        foreach (var entry in System.IO.Directory.EnumerateFileSystemEntries(fullPath))
+        // ONE PASS over the directory, carrying attributes and timestamps with it (bevel-so27).
+        // This used to be EnumerateFileSystemEntries (names) + File.GetAttributes per entry, after
+        // which LazyFsNode.Info paid Directory.Exists plus a fresh FileInfo on first touch — three
+        // stats per entry for data the directory read already returned. Measured on this machine:
+        // /usr/bin, 924 entries, 113.7 ms -> 56.6 ms (123 us -> 61 us per entry).
+        //
+        // STILL SYNCHRONOUS ON THE CALLER'S THREAD, deliberately. Moving the walk to the thread pool
+        // is the other half of bevel-so27 and is NOT done here: the tree-expansion and folder-picker
+        // callers drive this by PUMPING the dispatcher rather than awaiting it, so introducing a real
+        // await makes them observe an empty listing. That half needs those callers changed with it.
+        foreach (var info in new DirectoryInfo(fullPath).EnumerateFileSystemInfos())
         {
             ct.ThrowIfCancellationRequested();
 
-            var name = Path.GetFileName(entry);
-            var childPath = VfsPath.Combine(folder, name);
+            if (BuildNode(info, folder, options) is not { } node) continue;
 
-            // Quick attribute check for hidden/system filtering. The entry can vanish or
-            // become inaccessible between enumeration and this stat (TOCTOU) — skip that
-            // single entry rather than aborting the whole listing.
-            FileAttributes attrs;
-            try
-            {
-                attrs = File.GetAttributes(entry);
-            }
-            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
+            yield return node;
+            if (remaining > 0 && --remaining <= 0) yield break;
+        }
+    }
+
+    /// <summary>Builds a node from an already-stat'd entry, or null when it is filtered out or
+    /// unreadable. Pure CPU plus at most the attribute read, so it is safe to run on the pool.</summary>
+    private static IVfsNode? BuildNode(FileSystemInfo info, VfsPath folder, EnumerateOptions options)
+    {
+        var entry = info.FullName;
+        var name = info.Name;
+        var childPath = VfsPath.Combine(folder, name);
+
+        // The entry can vanish or become inaccessible between the directory read and here (TOCTOU) —
+        // skip that single entry rather than aborting the whole listing.
+        //
+        // DELIBERATELY File.GetAttributes AND NOT info.Attributes. FileSystemInfo caches its attributes
+        // from the directory read, and whether that cache is populated is PLATFORM-DEPENDENT: on
+        // Windows FindFirstFile returns them, so reading info.Attributes for an entry deleted mid-walk
+        // succeeds from cache and the entry is never skipped; on macOS/Linux the dirent lacks them, so
+        // the same read stats and still throws. Using the cached value therefore passed every local
+        // macOS run and failed only on windows-latest, where
+        // LocalFsProviderResilienceTests.Enumerate_skips_entries_that_vanish_between_listing_and_stat
+        // caught it. This call always stats, so the guard means the same thing everywhere.
+        FileAttributes attrs;
+        try
+        {
+            attrs = File.GetAttributes(entry);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
 
             // On macOS/Unix a leading-dot name is hidden by convention even without the Hidden
             // attribute (.git, .DS_Store, dotfiles) — honour that too, gated by the same flag.
@@ -69,30 +98,30 @@ public sealed partial class LocalFsProvider : IVfsProvider
             var isSystem = attrs.HasFlag(System.IO.FileAttributes.System);
             var isDir = attrs.HasFlag(System.IO.FileAttributes.Directory);
 
-            if (isHidden && !options.IncludeHidden) continue;
-            if (isSystem && !options.IncludeSystem) continue;
+        if (isHidden && !options.IncludeHidden) return null;
+        if (isSystem && !options.IncludeSystem) return null;
 
-            var kind = isDir ? VfsNodeKind.Folder : VfsNodeKind.File;
-            var caps = VfsCapabilities.CopySource | VfsCapabilities.Properties | VfsCapabilities.Rename | VfsCapabilities.Delete;
-            if (isDir) caps |= VfsCapabilities.CreateChild | VfsCapabilities.MoveTarget | VfsCapabilities.Watchable;
-            else caps |= VfsCapabilities.Trash;
+        var kind = isDir ? VfsNodeKind.Folder : VfsNodeKind.File;
+        var caps = VfsCapabilities.CopySource | VfsCapabilities.Properties | VfsCapabilities.Rename | VfsCapabilities.Delete;
+        if (isDir) caps |= VfsCapabilities.CreateChild | VfsCapabilities.MoveTarget | VfsCapabilities.Watchable;
+        else caps |= VfsCapabilities.Trash;
 
-            var iconKey = isDir ? IconKey.Folder() : IconKey.File(Path.GetExtension(name));
+        var iconKey = isDir ? IconKey.Folder() : IconKey.File(Path.GetExtension(name));
 
-            var node = new LazyFsNode
-            {
-                Path = childPath, FullPath = entry,
-                DisplayName = name, Kind = kind,
-                MightHaveChildren = isDir,
-                TypeDescription = isDir ? "File folder" : FileTypeDescription.ForExtension(Path.GetExtension(name)),
-                IconKey = iconKey, Caps = caps,
-            };
+        var node = new LazyFsNode
+        {
+            Path = childPath, FullPath = entry,
+            DisplayName = name, Kind = kind,
+            MightHaveChildren = isDir,
+            TypeDescription = isDir ? "File folder" : FileTypeDescription.ForExtension(Path.GetExtension(name)),
+            IconKey = iconKey, Caps = caps,
+            // Hand over the FileSystemInfo the directory read already produced, so Size/Modified/
+            // Created/Accessed/Attributes read from it instead of paying Directory.Exists + a fresh
+            // FileInfo on first touch. This is the other half of the three-stats-per-entry fix.
+            Info = info,
+        };
 
-            if (options.Filter is not null && !options.Filter(node)) continue;
-
-            yield return node;
-            if (remaining > 0 && --remaining <= 0) yield break;
-        }
+        return options.Filter is not null && !options.Filter(node) ? null : node;
     }
 
     public ValueTask<Stream> OpenReadAsync(VfsPath file, CancellationToken ct)
@@ -194,8 +223,13 @@ file sealed class LazyFsNode : IVfsNode
     public required IconKey IconKey { get; init; }
     public required VfsCapabilities Caps { get; init; }
 
-    FileSystemInfo? _info;
-    FileSystemInfo Info => _info ??= Directory.Exists(FullPath) ? new DirectoryInfo(FullPath) : new FileInfo(FullPath);
+    /// <summary>The entry's stat data. Normally handed in by the enumerator, which already has it from
+    /// the directory read (bevel-so27); the lazy fallback stays for nodes built outside enumeration,
+    /// and costs the old <c>Directory.Exists</c> + fresh-info pair only in that case.</summary>
+    internal FileSystemInfo? Info { private get; init; }
+
+    FileSystemInfo? _resolved;
+    FileSystemInfo Resolved => _resolved ??= Info ?? (Directory.Exists(FullPath) ? new DirectoryInfo(FullPath) : new FileInfo(FullPath));
 
     // fi.Length throws if the file vanished between the FileInfo snapshot and this read — routine
     // when browsing a live directory. Return null rather than let it escape enumeration (ce-review;
@@ -204,15 +238,15 @@ file sealed class LazyFsNode : IVfsNode
     {
         get
         {
-            if (Kind == VfsNodeKind.Folder || Info is not FileInfo fi) return null;
+            if (Kind == VfsNodeKind.Folder || Resolved is not FileInfo fi) return null;
             try { return fi.Length; }
             catch (Exception ex) when (ex is FileNotFoundException or IOException or UnauthorizedAccessException) { return null; }
         }
     }
-    public DateTimeOffset? Modified => Info.LastWriteTimeUtc > DateTime.MinValue ? Info.LastWriteTimeUtc : null;
-    public DateTimeOffset? Created => Info.CreationTimeUtc > DateTime.MinValue ? Info.CreationTimeUtc : null;
-    public DateTimeOffset? Accessed => Info.LastAccessTimeUtc > DateTime.MinValue ? Info.LastAccessTimeUtc : null;
-    public VfsNodeAttributes Attributes => FsAttr.Map(Info.Attributes);
+    public DateTimeOffset? Modified => Resolved.LastWriteTimeUtc > DateTime.MinValue ? Resolved.LastWriteTimeUtc : null;
+    public DateTimeOffset? Created => Resolved.CreationTimeUtc > DateTime.MinValue ? Resolved.CreationTimeUtc : null;
+    public DateTimeOffset? Accessed => Resolved.LastAccessTimeUtc > DateTime.MinValue ? Resolved.LastAccessTimeUtc : null;
+    public VfsNodeAttributes Attributes => FsAttr.Map(Resolved.Attributes);
 }
 
 /// <summary>Maps System.IO file attributes onto the VFS-level flag set.</summary>

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.UI;
@@ -36,7 +37,16 @@ public sealed class PooledIconProvider : IIconProvider
         _inner = inner;
         _pool = pool;
         _isWriter = isWriter;
-        _inner.IconInvalidated += (_, e) => IconInvalidated?.Invoke(this, e);
+        _inner.IconInvalidated += (_, e) =>
+        {
+            // Actually DROP the local cache, don't just relay the news (bevel-iwju). This handler used
+            // to forward the event and nothing else, so a provider announcing "icons changed" left both
+            // of this decorator's caches serving the old pixels — the subscriber re-asked and got the
+            // same stale image back. The shared pool can't be evicted (append-only, lock-free publish
+            // cursor), which is why the KEY carries a source stamp: a changed icon simply misses.
+            _local.Clear();
+            IconInvalidated?.Invoke(this, e);
+        };
     }
 
     public event EventHandler? IconInvalidated;
@@ -44,7 +54,7 @@ public sealed class PooledIconProvider : IIconProvider
     public async ValueTask<PalImage> GetIconAsync(string pathOrExtension, int size, CancellationToken ct = default)
     {
         if (size <= 0) size = 16;
-        var key = pathOrExtension + "|" + size;
+        var key = pathOrExtension + "|" + size + "|" + SourceStamp(pathOrExtension);
 
         // 1. Process-local hit — instant and thread-safe, no pool scan.
         if (_local.TryGetValue(key, out var hit))
@@ -64,9 +74,73 @@ public sealed class PooledIconProvider : IIconProvider
         {
             // Serialize pool writes: TryAdd is idempotent and O(published), so the lock is brief; it
             // only prevents two concurrent cold renders from racing the single-writer publish cursor.
+            bool published;
             lock (_writeGate)
-                _pool.TryAdd(key, image);
+                published = _pool.TryAdd(key, image);
+
+            // A FULL pool returns false and keeps doing so: the store is append-only with a fixed slot
+            // capacity, so from then on every process-start re-renders every icon at ~11.8ms each with
+            // nothing saying why. Report it once rather than degrading in silence (bevel-web5 tracks
+            // giving the pool a real eviction/compaction path; the slot budget is tight because stale
+            // keys are never reclaimed).
+            if (!published && !_poolFullReported)
+            {
+                _poolFullReported = true;
+                Console.Error.WriteLine(
+                    "[icons] shared icon pool is full — every later cold icon will be re-rendered per "
+                    + "process instead of shared. Delete the pool file to reclaim it (bevel-web5).");
+            }
         }
         return image;
+    }
+
+    private bool _poolFullReported;
+
+    /// <summary>What the File/Directory time APIs return for a path they cannot stat (1601-01-01) —
+    /// they report it instead of throwing, so it has to be recognised rather than caught.</summary>
+    private static readonly long MissingTicks = DateTime.FromFileTimeUtc(0).Ticks;
+
+    /// <summary>
+    /// A cheap stamp that CHANGES when the icon's source does, so a changed icon misses instead of
+    /// being served forever from a key that cannot express it (bevel-iwju).
+    ///
+    /// <para>The pool key was path+size. That was harmless while the pool was inert — every process
+    /// start re-rendered everything — but entries now survive a writer restart, which was the point of
+    /// giving the pool a writer and is also the new exposure: an app that updates and changes its icon
+    /// keeps the OLD bitmap until the file is recreated. Including the bundle's last-write time means
+    /// the old key is simply never asked for again.</para>
+    ///
+    /// <para>Returns 0 for anything that is not an existing filesystem entry — bare extensions like
+    /// ".txt" (the file-TYPE icons, which have no single source file) and paths that have gone. Those
+    /// keys behave exactly as before.</para>
+    ///
+    /// <para>Cost: one stat per lookup, including on local-cache hits, because the key is what the hit
+    /// is looked up by. Measured at 1.7µs on macOS and ~35µs on a windows-latest runner (two stats for a directory there), both ~3 orders of magnitude under the render,
+    /// against the ~11.8ms render it protects. <c>IconKeyStampTests</c> pins that budget.</para>
+    /// </summary>
+    internal static long SourceStamp(string pathOrExtension)
+    {
+        // Path.IsPathRooted, NOT a hand-rolled separator check. `pathOrExtension[0] != '/'` was the
+        // first version and it is Unix-only: a Windows path starts `D:\`, so EVERY key stamped 0 there
+        // and the staleness fix was inert on that whole platform while the local suite was green.
+        if (string.IsNullOrEmpty(pathOrExtension) || !Path.IsPathRooted(pathOrExtension))
+            return 0;   // an extension or a relative key — nothing to stat
+        try
+        {
+            // Two calls, because the File.* time APIs report an unstattable path as the 1601 sentinel
+            // rather than throwing, and I have NOT verified from here whether Windows treats a
+            // DIRECTORY path as unstattable through File.GetLastWriteTimeUtc (macOS and Linux do
+            // answer for one). The directory call backstops that uncertainty instead of resting on it:
+            // the file call answers first, since the common Windows source is an .exe, so the second
+            // stat is only ever paid for a path the first could not read. IconKeyStampTests asserts
+            // both shapes stamp, and windows-latest is what makes that assertion mean anything.
+            var ticks = File.GetLastWriteTimeUtc(pathOrExtension).Ticks;
+            if (ticks == MissingTicks) ticks = Directory.GetLastWriteTimeUtc(pathOrExtension).Ticks;
+            return ticks == MissingTicks ? 0 : ticks;
+        }
+        catch (Exception)
+        {
+            return 0;   // unreadable: behave as the un-stamped key did
+        }
     }
 }
