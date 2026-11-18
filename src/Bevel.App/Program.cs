@@ -245,6 +245,19 @@ internal static class Program
         var coreToken = Convert.ToHexString(coreNonce);
         var (controlSocket, controlNonce) = LauncherControl.CreateServerEndpoint();
 
+        // Stand down BEFORE anything exists to tear down (bevel-9790). The lock above and a live socket
+        // are independent detectors — an orphaned core can still serve core.sock (2026-10-12) — so
+        // probe BOTH sockets this launcher is about to own, ahead of QuitRequest.Clear, the env export
+        // and every spawn. IsServing is a local connect (no blocking wait); a stale file reads as dead.
+        if (IncumbentProbe.FirstLiveSocket(controlSocket, coreSocket) is { } liveSocket)
+        {
+            var msg = $"another Bevel is still serving {liveSocket}; run packaging/macos/bevel-recover.sh";
+            Console.Error.WriteLine($"[launcher] {msg}");
+            RestartDiag.Log($"launcher: {msg} — standing down before spawning anything");
+            Environment.ExitCode = 3;   // the exit code the core already uses for "stood down"
+            return;
+        }
+
         var childEnv = new Dictionary<string, string>
         {
             ["BEVEL_CORE_SOCKET"] = coreSocket,
@@ -409,8 +422,9 @@ internal static class Program
             // Note this is reachable even though the single-instance lock was acquired moments ago:
             // the lock (a file lease) and the socket probe (an authenticated handshake) are
             // INDEPENDENT detectors and can disagree — the incumbent launcher can be gone while its
-            // socket is still served. Detecting it this late is itself the design flaw; see the
-            // follow-up bead for moving the probe up beside the lock, before anything is spawned.
+            // socket is still served. The early IncumbentProbe (bevel-9790, right after
+            // CreateServerEndpoint) now catches this before anything is spawned; this catch remains
+            // as belt-and-braces for the race where the incumbent binds between that probe and here.
             var msg = $"another launcher is already serving {ex.SocketPath}; this launch is standing down";
             Console.Error.WriteLine($"[launcher] {msg}");
             RestartDiag.Log($"launcher: {msg}");
