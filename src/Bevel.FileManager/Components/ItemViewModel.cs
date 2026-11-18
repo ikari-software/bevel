@@ -26,16 +26,21 @@ public sealed class ItemViewModel : INotifyPropertyChanged
     /// Refresh the underlying node in place (same identity, new metadata) during a differential
     /// reload — keeps the row's object, selection, and virtualization slot, and just re-notifies
     /// the derived display properties. Part of the keyed reconcile that avoids list flicker.
+    /// Raises only what actually changed (bevel-so27): a reload hands EVERY row a fresh node, and
+    /// re-notifying unchanged cells re-measures the whole list for nothing. <see cref="Node"/> is
+    /// always raised — its identity did change. (Size/Modified were already read on the pool by
+    /// <see cref="VfsBatchReader"/>, so comparing them here costs no stat on the UI thread.)
     /// </summary>
     public void Update(IVfsNode node)
     {
         if (ReferenceEquals(_node, node)) return;
+        var old = _node;
         _node = node;
-        OnPropertyChanged(nameof(DisplayName));
-        OnPropertyChanged(nameof(SizeDisplay));
-        OnPropertyChanged(nameof(ModifiedDisplay));
-        OnPropertyChanged(nameof(TypeDescription));
-        OnPropertyChanged(nameof(IconKey));
+        if (old.DisplayName != node.DisplayName || old.Kind != node.Kind) OnPropertyChanged(nameof(DisplayName));
+        if (old.Size != node.Size) OnPropertyChanged(nameof(SizeDisplay));
+        if (old.Modified != node.Modified) OnPropertyChanged(nameof(ModifiedDisplay));
+        if (old.TypeDescription != node.TypeDescription) OnPropertyChanged(nameof(TypeDescription));
+        if (old.IconKey != node.IconKey) OnPropertyChanged(nameof(IconKey));
         OnPropertyChanged(nameof(Node));
     }
 

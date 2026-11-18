@@ -50,7 +50,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     // the last attempt failed. Cleared on (re)connect. A Task rather than a flag so the path that loses
     // the claim AWAITS the winner's Hello instead of returning before the core has answered it.
     private Task? _linkHello;
-    private int _epoch;             // 0 = no baseline yet (pre-Hello deltas apply but don't gap-check)
+    private int _epoch;             // 0 = no baseline yet; the first stamped event (a delta or a snapshot) adopts its epoch, without a gap check
     private long _seq;
     private long _lastAutoHelloTick; // Environment.TickCount64 — rate-limits gap-triggered re-Hellos
 
