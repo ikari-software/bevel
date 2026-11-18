@@ -269,7 +269,13 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             PruneStaleClients();
             foreach (var id in _server.ClientIds)
-                _server.SendToClient(id, CoreProtocol.Serialize(evt with { Seq = NextSeq(id) }));
+                // Stamp the CURRENT epoch too (bevel-b79z): the client's sequence tracker ignores any event
+                // without an epoch, so an epoch-less delta consumed a per-client seq the client never saw —
+                // and the next snapshot burst then looked like a lost frame and triggered a spurious
+                // re-Hello (an extra four-snapshot burst). Snapshots already carry their epoch; the
+                // seed-complete burst keeps its own (post-bump) epoch because _epoch is read under _gate.
+                _server.SendToClient(id, CoreProtocol.Serialize(
+                    evt with { Epoch = evt.Epoch ?? _epoch, Seq = NextSeq(id) }));
         }
     }
 

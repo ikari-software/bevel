@@ -438,6 +438,42 @@ public sealed class ShellCoreIntegrationTests
         Assert.True(core.IsConnected, "the gap healed over the same link");
     }
 
+    // bevel-b79z: deltas are epoch-stamped, so they are part of the client's sequence. A delta followed by a
+    // snapshot burst (Resync) is NOT a gap — before the fix the epoch-less delta consumed a seq the client
+    // never tracked, and the burst triggered a spurious re-Hello.
+    [Fact]
+    public async Task A_delta_followed_by_a_snapshot_burst_is_not_a_sequence_gap()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var hellos = 0;
+        var deltas = 0;
+        var bursts = 0;
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.TrayItemAdded) Interlocked.Increment(ref deltas);
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref bursts);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref bursts) >= 1, "Hello burst");
+
+        pal.RaiseTrayItemAdded(Tray("1:10", "Alpha"));
+        await WaitFor(() => Volatile.Read(ref deltas) == 1, "the delta reaches the client");
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref bursts) >= 2, "Resync burst");
+        // The tracker runs on the receive loop BEFORE the event is raised and fires any re-Hello off-thread;
+        // one more round trip lets it show up. Absence is the assertion.
+        await core.SendAsync(new CoreCommand(CoreCommandKind.GetTrayItems), Ct);
+        await Task.Delay(100);
+        Assert.Equal(1, Volatile.Read(ref hellos));
+    }
+
     // 9. Sharing one client is the whole point (the taskbar's settings peer and the tray adapters ride
     //    the SAME connection now): a settings pull before any Hello must not eat anyone's snapshot —
     //    the tray still gets its full snapshot when the session starts.
