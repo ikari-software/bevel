@@ -94,13 +94,22 @@ public sealed class LaunchGateTests
         var psi = Child(chatty: false);
         var completed = ShellHealthAlert.RunBounded(psi, TimeSpan.FromMilliseconds(300), killOnTimeout: true, out var pid);
         Assert.False(completed);
-        Assert.True(pid > 0);
-        var dead = SpinWait.SpinUntil(() =>
+        try
         {
-            try { return Process.GetProcessById(pid).HasExited; }
-            catch (ArgumentException) { return true; }
-        }, TimeSpan.FromSeconds(5));
-        Assert.True(dead, "the timed-out child must be killed");
+            Assert.True(pid > 0);
+            var dead = SpinWait.SpinUntil(() =>
+            {
+                try { return Process.GetProcessById(pid).HasExited; }
+                catch (ArgumentException) { return true; }
+            }, TimeSpan.FromSeconds(5));
+            Assert.True(dead, "the timed-out child must be killed");
+        }
+        finally
+        {
+            // Never leave the stand-in running if an assertion above failed.
+            try { Process.GetProcessById(pid).Kill(entireProcessTree: true); }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { }
+        }
     }
 
     [Fact]
@@ -110,7 +119,7 @@ public sealed class LaunchGateTests
         Assert.False(ShellHealthAlert.RunBounded(psi, TimeSpan.FromMilliseconds(200), killOnTimeout: false, out var pid));
         var proc = Process.GetProcessById(pid);
         try { Assert.False(proc.HasExited); }
-        finally { proc.Kill(); }
+        finally { try { proc.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
     }
 
     [Fact]

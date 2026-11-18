@@ -115,18 +115,78 @@ public sealed class UdsSocketClaimTests
     }
 
     [Fact]
-    public void A_plain_file_on_the_path_is_not_serving_and_is_reclaimed()
+    public void A_regular_file_is_never_deleted_by_BindListener()
     {
         var path = NewSocketPath();
-        File.WriteAllText(path, "not a socket");
+        File.WriteAllText(path, "precious user data");
         try
         {
             Assert.False(UdsSocketClaim.IsServing(path), "a non-socket file must not read as a live incumbent");
-            using var l = UdsSocketClaim.BindListener(path, backlog: 4); // reclaims instead of throwing Busy
-            Assert.True(UdsSocketClaim.IsServing(path));
-            UdsSocketClaim.ReleaseListener(l, path);
+            var ex = Assert.Throws<IOException>(() => UdsSocketClaim.BindListener(path, backlog: 4));
+            Assert.Contains(path, ex.Message);
+            Assert.Contains("not a socket", ex.Message);
+            Assert.True(File.Exists(path), "BindListener deleted a file it did not create");
+            Assert.Equal("precious user data", File.ReadAllText(path));
         }
         finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_symlink_at_the_path_is_neither_followed_nor_deleted()
+    {
+        var path = NewSocketPath();
+        var target = NewSocketPath();
+        File.WriteAllText(target, "target data");
+        try { File.CreateSymbolicLink(path, target); }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            File.Delete(target);
+            return; // xunit 2.x has no dynamic skip; symlink creation needs privilege on some Windows setups
+        }
+        try
+        {
+            var ex = Assert.Throws<IOException>(() => UdsSocketClaim.BindListener(path, backlog: 4));
+            Assert.Contains(path, ex.Message);
+            Assert.NotNull(new FileInfo(path).LinkTarget);          // the link itself is still there
+            Assert.Equal("target data", File.ReadAllText(target));   // and so is what it points at
+        }
+        finally { File.Delete(path); File.Delete(target); }
+    }
+
+    [Fact]
+    public void A_directory_at_the_path_is_left_alone()
+    {
+        var path = NewSocketPath();
+        Directory.CreateDirectory(path);
+        try
+        {
+            var ex = Assert.Throws<IOException>(() => UdsSocketClaim.BindListener(path, backlog: 4));
+            Assert.Contains(path, ex.Message);
+            Assert.True(Directory.Exists(path));
+        }
+        finally { Directory.Delete(path); }
+    }
+
+    [Fact]
+    public void A_live_socket_path_classifies_as_a_socket_on_every_os()
+    {
+        var path = NewSocketPath();
+        using var l = RawListener(path);
+        try { Assert.Equal(UdsSocketClaim.PathKind.Socket, UdsSocketClaim.Classify(path)); }
+        finally { UdsSocketClaim.ReleaseListener(l, path); }
+    }
+
+    [Fact]
+    public void Classify_tells_absent_regular_and_directory_apart()
+    {
+        var path = NewSocketPath();
+        Assert.Equal(UdsSocketClaim.PathKind.Absent, UdsSocketClaim.Classify(path));
+        File.WriteAllText(path, "x");
+        try { Assert.Equal(UdsSocketClaim.PathKind.Other, UdsSocketClaim.Classify(path)); }
+        finally { File.Delete(path); }
+        Directory.CreateDirectory(path);
+        try { Assert.Equal(UdsSocketClaim.PathKind.Other, UdsSocketClaim.Classify(path)); }
+        finally { Directory.Delete(path); }
     }
 
     [Fact]

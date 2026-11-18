@@ -47,6 +47,50 @@ public static class UdsSocketClaim
     /// (backlog full, permission, reset …) is reported as serving: mis-reading a live socket as dead
     /// is the hijack this type exists to prevent, so the safe default is "busy".
     /// </summary>
+    /// <summary>What sits at a would-be socket path (bevel-9790). Only a <see cref="Socket"/> inode is ever
+    /// reclaimable; <see cref="Other"/> (regular file, directory, symlink, FIFO, or anything this cannot
+    /// positively identify) must be left untouched — socket paths can come from environment variables
+    /// (<c>BEVEL_CORE_SOCKET</c> …), so a mistyped value may point at a user's file.</summary>
+    public enum PathKind { Absent, Socket, Other }
+
+    /// <summary>Classifies <paramref name="path"/> WITHOUT following symlinks. Unix: <c>lstat(2)</c> and
+    /// <c>S_IFMT == S_IFSOCK</c> (.NET's FileInfo cannot tell a socket from a regular file — both read
+    /// <c>Normal</c>). The <c>st_mode</c> offset is per platform (macOS 4, Linux x64 24, Linux arm64 16);
+    /// an unknown platform or a failed lstat reads as <see cref="PathKind.Other"/> — fail CLOSED, never
+    /// delete on doubt. Windows: an AF_UNIX socket is a reparse point that is not a symlink/junction
+    /// (<c>LinkTarget</c> null); a plain file has no reparse attribute.</summary>
+    public static PathKind Classify(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var info = new FileInfo(path);
+            if (Directory.Exists(path)) return PathKind.Other;
+            if (!info.Exists && info.LinkTarget is null) return PathKind.Absent;
+            if (info.LinkTarget is not null) return PathKind.Other;
+            return info.Attributes.HasFlag(FileAttributes.ReparsePoint) ? PathKind.Socket : PathKind.Other;
+        }
+
+        var buf = new byte[512];
+        int rc;
+        try { rc = lstat(path, buf); }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)
+        {
+            return PathKind.Other;
+        }
+        if (rc != 0)
+            return Marshal.GetLastPInvokeError() == 2 /* ENOENT */ ? PathKind.Absent : PathKind.Other;
+
+        uint mode;
+        if (OperatingSystem.IsMacOS()) mode = BitConverter.ToUInt16(buf, 4);
+        else if (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64) mode = BitConverter.ToUInt32(buf, 24);
+        else if (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64) mode = BitConverter.ToUInt32(buf, 16);
+        else return PathKind.Other;
+        return (mode & 0xF000) == 0xC000 ? PathKind.Socket : PathKind.Other; // S_IFMT / S_IFSOCK
+    }
+
+    [DllImport("libc", SetLastError = true, EntryPoint = "lstat")]
+    private static extern int lstat([MarshalAs(UnmanagedType.LPUTF8Str)] string path, byte[] buf);
+
     public static bool IsServing(string socketPath)
     {
         if (!File.Exists(socketPath))
@@ -79,8 +123,16 @@ public static class UdsSocketClaim
         if (IsServing(socketPath))
             throw new UdsSocketBusyException(socketPath);
 
-        if (File.Exists(socketPath))
-            File.Delete(socketPath); // owner is gone — reclaim the path
+        switch (Classify(socketPath))
+        {
+            case PathKind.Socket:
+                File.Delete(socketPath); // a socket inode whose owner is gone — reclaim the path
+                break;
+            case PathKind.Other:
+                throw new IOException(
+                    $"'{socketPath}' exists but is not a socket (a regular file, directory or symlink), so it was left untouched. " +
+                    "Check the BEVEL_*_SOCKET / BEVEL_FILER_DIR environment, or remove it yourself.");
+        }
 
         if (OperatingSystem.IsWindows())
         {
@@ -161,7 +213,7 @@ public static class UdsSocketClaim
         listener.Dispose();
         try
         {
-            if (!IsServing(socketPath) && File.Exists(socketPath))
+            if (!IsServing(socketPath) && Classify(socketPath) == PathKind.Socket)
                 File.Delete(socketPath);
         }
         catch
