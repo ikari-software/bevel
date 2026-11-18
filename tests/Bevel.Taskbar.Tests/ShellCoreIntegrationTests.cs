@@ -359,9 +359,9 @@ public sealed class ShellCoreIntegrationTests
         Assert.Equal(new[] { "1:10", "2:20" }, items.Select(i => i.Id.Value).OrderBy(v => v).ToArray());
     }
 
-    // 7. Seed completion = epoch bump. A client that Hello'd while the core was still seeding got the
-    //    empty epoch-1 snapshot; when the seed lands, the core bumps the epoch and re-pushes the fresh
-    //    snapshots WITHOUT the client reconnecting. This is the principled version of the old
+    // 7. Seed completion = epoch bump. A client that Hello'd while the core was still seeding got only the
+    //    apps+settings snapshots (window/tray are withheld mid-seed, bevel-ri8c); when the seed lands, the
+    //    core bumps the epoch and pushes the real window/tray snapshots WITHOUT the client reconnecting. This is the principled version of the old
     //    BroadcastSnapshot band-aid — and the reason the tray no longer strands on an empty snapshot.
     [Fact]
     public async Task Seed_completion_bumps_the_epoch_and_repushes_without_a_reconnect()
@@ -380,16 +380,20 @@ public sealed class ShellCoreIntegrationTests
 
         await using var core = new ShellCoreClient(path, nonce);
         var snapshots = new ConcurrentBag<(int Epoch, int Windows)>();
+        var midSeedBaseline = 0;
         core.EventReceived += e =>
         {
             if (e.Kind == CoreEventKind.WindowSnapshot)
                 snapshots.Add((e.Epoch ?? 0, (e.Windows ?? Array.Empty<ForeignWindow>()).Count));
+            if (e.Kind == CoreEventKind.SettingsSnapshot && e.Epoch == 1)
+                Volatile.Write(ref midSeedBaseline, 1);
         };
 
-        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED: empty projection, epoch 1
-        await WaitFor(() => snapshots.Any(s => s.Epoch == 1),
-            "the mid-seed Hello should deliver an epoch-1 snapshot");
-        Assert.True(snapshots.All(s => s.Windows == 0), "the projection is still empty while the seed is stalled");
+        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED: epoch 1
+        await WaitFor(() => Volatile.Read(ref midSeedBaseline) == 1,
+            "the mid-seed Hello should deliver an epoch-1 baseline (settings)");
+        // bevel-ri8c: the still-empty window projection is withheld mid-seed (it would wipe a reconciling client).
+        Assert.Empty(snapshots);
 
         await startTask;                    // seed completes -> epoch bump + re-push to everyone
 
@@ -485,6 +489,279 @@ public sealed class ShellCoreIntegrationTests
         // Give any erroneous "1:10" a chance to arrive, then assert it never did (removed-in-gap wins).
         await Task.Delay(150);
         Assert.DoesNotContain("1:10", added);
+    }
+
+    // bevel-ri8c: a TraySnapshot is a full reconcile — an item the adapter raised earlier but the snapshot
+    // omits vanished while the link was down, and must be removed (it used to linger as a ghost).
+    [Fact]
+    public async Task A_resent_tray_snapshot_removes_items_that_vanished_while_the_link_was_down()
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var tray = new ShellCoreSystemTrayHost(core);
+        var removed = new List<string>();
+        var added = new List<string>();
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot,
+            TrayItems: new[] { Tray("1:10", "Alpha"), Tray("2:20", "Beta") }));
+        Assert.Empty(removed);
+
+        // The link dropped; "1:10" vanished meanwhile; the reconnect Hello resends the projection.
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: new[] { Tray("2:20", "Beta") }));
+
+        Assert.Equal(new[] { "1:10" }, removed.ToArray());
+        Assert.Equal(3, added.Count);   // 1:10, 2:20, then 2:20 re-added (idempotent upsert downstream)
+
+        // A delta-removed item is forgotten too: it must not be reported removed a second time.
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: Tray("2:20", "Beta")));
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: Array.Empty<TrayItem>()));
+        Assert.Equal(new[] { "1:10", "2:20" }, removed.ToArray());
+    }
+
+    // bevel-ri8c: a Hello answered while the core is still seeding must not carry an empty tray (or
+    // window) snapshot — a reconciling client would wipe its tray on it. The epoch-bump burst at seed
+    // completion is the authoritative one.
+    [Fact]
+    public async Task A_Hello_during_seeding_does_not_send_an_empty_tray_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        for (var i = 0; i < 25; i++)
+            pal.EnumerateFaults.Enqueue(new TransportFault("gRPC call disposed."));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        var startTask = server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var kinds = new ConcurrentBag<(CoreEventKind Kind, int Epoch, int Tray)>();
+        core.EventReceived += e => kinds.Add((e.Kind, e.Epoch ?? 0, e.TrayItems?.Count ?? 0));
+
+        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED
+        await WaitFor(() => kinds.Any(k => k.Kind == CoreEventKind.SettingsSnapshot && k.Epoch == 1),
+            "the mid-seed Hello still answers the non-projection snapshots");
+        Assert.DoesNotContain(kinds, k => k.Kind == CoreEventKind.TraySnapshot);
+        Assert.DoesNotContain(kinds, k => k.Kind == CoreEventKind.WindowSnapshot);
+
+        await startTask;
+        await WaitFor(() => kinds.Any(k => k.Kind == CoreEventKind.TraySnapshot && k.Epoch == 2 && k.Tray == 1),
+            "the seed-complete burst delivers the real tray");
+    }
+
+    // bevel-ri8c: the full path — reconnect -> Hello -> TraySnapshot -> adapter reconcile. A core restarts
+    // without an item the taskbar held; the taskbar must raise ItemRemoved for exactly that id.
+    [Fact]
+    public async Task A_core_restart_without_an_item_removes_it_from_a_surviving_taskbar()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"), Tray("2:20", "Beta"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10") && added.Contains("2:20"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal();           // the restarted core's world: "1:10" is gone
+        pal2.SeedTray(Tray("2:20", "Beta"));
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+
+        await WaitFor(() => removed.Contains("1:10"), "the reconnect Hello's snapshot must reap the vanished item");
+        await Task.Delay(150);
+        Assert.Equal(new[] { "1:10" }, removed.ToArray());
+    }
+
+    // bevel-ri8c: a FAILED tray seed is not an authoritative empty tray — it must not clear a taskbar that
+    // survived the core restart.
+    [Fact]
+    public async Task A_failed_tray_seed_does_not_clear_a_surviving_taskbars_tray()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal { TrayFault = new TransportFault("helper down") };
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client reconnects");
+        await Task.Delay(500);   // let the Hello + seed-complete burst land
+        Assert.Empty(removed);
+    }
+
+    // bevel-ri8c: the REAL failure shape — the host swallows "helper unreachable" and returns empty
+    // (MacOSSystemTrayHost does), it does not throw. The core must still not publish that as authoritative.
+    [Fact]
+    public async Task A_swallowed_tray_seed_failure_does_not_clear_a_surviving_taskbars_tray()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal { TrayUnreachable = true };   // returns EMPTY, does not throw
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client reconnects");
+        await Task.Delay(500);
+        Assert.Empty(removed);
+    }
+
+    // bevel-ri8c: a tray REMOVE proves nothing about the projection being complete — after a failed seed it
+    // must not unlock the (empty) TraySnapshot.
+    [Fact]
+    public async Task A_tray_remove_delta_does_not_unlock_the_tray_snapshot_after_a_failed_seed()
+    {
+        var pal = new ControllablePal { TrayUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var traySnapshots = 0;
+        var resynced = 0;
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.TraySnapshot) Interlocked.Increment(ref traySnapshots);
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref resynced);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) >= 1, "Hello burst");
+
+        pal.RaiseTrayItemRemoved(Tray("5:50", "Gone"));
+        var before = Volatile.Read(ref resynced);
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) > before, "Resync burst");
+        Assert.Equal(0, Volatile.Read(ref traySnapshots));
+
+        pal.RaiseTrayItemAdded(Tray("6:60", "Live"));       // an add proves the stream is live
+        before = Volatile.Read(ref resynced);
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) > before, "second Resync burst");
+        Assert.Equal(1, Volatile.Read(ref traySnapshots));
+    }
+
+    // bevel-ri8c: a pull that was in flight when a remove delta arrived is older than the remove — it must
+    // not resurrect the item (neither in the returned list nor in the known set).
+    [Fact]
+    public async Task A_stale_pull_landing_after_a_remove_does_not_resurrect_the_item()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("9:90", "Pulled"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var removed = new List<string>();
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+
+        // The reply is "in flight": the remove delta lands after it arrived but before it is merged.
+        tray.BeforePullMergeForTest = () =>
+        {
+            tray.OnCoreEvent(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: Tray("9:90", "Pulled")));
+            return Task.CompletedTask;
+        };
+        var pull = tray.GetItemsAsync(Ct).AsTask();
+
+        Assert.Empty(await pull);                                           // not resurrected for the caller
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: Array.Empty<TrayItem>()));
+        Assert.Equal(new[] { "9:90" }, removed.ToArray());                  // and not a ghost in _known (no 2nd remove)
+    }
+
+    // ...whereas a seed that SUCCEEDED with zero items is authoritative: the empty snapshot reaps everything.
+    [Fact]
+    public async Task A_successful_empty_tray_seed_is_authoritative()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var added = new ConcurrentBag<string>();
+        var removed = new ConcurrentBag<string>();
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => added.Contains("1:10"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal();   // seed succeeds, zero items
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => removed.Contains("1:10"), "an authoritative empty tray removes what the taskbar held");
+    }
+
+    // bevel-ri8c: items that arrive via the GetItemsAsync pull are tracked too, so a later snapshot can reap them.
+    [Fact]
+    public async Task Items_from_the_pull_are_reaped_by_a_later_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("9:90", "Pulled"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var tray = new ShellCoreSystemTrayHost(core);
+        var removed = new List<string>();
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+
+        var pulled = await tray.GetItemsAsync(Ct);
+        Assert.Single(pulled);
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: Array.Empty<TrayItem>()));
+        Assert.Equal(new[] { "9:90" }, removed.ToArray());
     }
 
     /// <summary>
@@ -869,10 +1146,19 @@ public sealed class ShellCoreIntegrationTests
         public Action? OnGetItems;
         /// <summary>Test seam (bevel-ejon): thrown from the tray seed.</summary>
         public Exception? TrayFault;
+        /// <summary>Test seam (bevel-ri8c): the SWALLOWED-failure shape — like the real MacOSSystemTrayHost,
+        /// GetItemsAsync returns EMPTY when the helper is unreachable instead of throwing, and only
+        /// TrySeedItemsAsync can tell (null).</summary>
+        public bool TrayUnreachable;
+        public ValueTask<IReadOnlyList<TrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
+            => TrayUnreachable
+                ? ValueTask.FromResult<IReadOnlyList<TrayItem>?>(null)
+                : new ValueTask<IReadOnlyList<TrayItem>?>(GetItemsAsync(ct).AsTask().ContinueWith(t => (IReadOnlyList<TrayItem>?)t.Result, ct));
         public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
         {
             TrayEnter = Stopwatch.GetTimestamp();
             if (TrayFault is { } ex) throw ex;
+            if (TrayUnreachable) return Array.Empty<TrayItem>();
             OnGetItems?.Invoke();
             if (TraySeedDelay > TimeSpan.Zero) await Task.Delay(TraySeedDelay, ct);
             TrayExit = Stopwatch.GetTimestamp();
