@@ -22,19 +22,23 @@ Repeat until `./progress.sh` prints `Next: none`.
 2. Open the card: the card file is named on that line; find the heading `### <bead-id>`.
 3. Run `bd show <bead-id>`. If the bead is already closed, go to step 1.
 4. **Check the premise.** Read the card's **State today** line and open the files it cites. If the code no longer matches (file missing, symbol renamed, behaviour already different), do not improvise: run `bd comments add <bead-id> "plan premise stale: <what you found>"`, park the card (see below), and go to step 1.
-5. Check **Depends on**. If a listed bead is not closed, park this card with the reason `waits on <bead-id>` and go to step 1.
+5. Check **Depends on**. If a listed bead is not closed, mark the wait with `bd label add <bead-id> plan-waits:<blocking-bead-id>` and go to step 1. `progress.sh` skips the card until the blocking bead is closed, then offers it again by itself.
 6. If the card's Meta says `HUMAN`, skip it. It belongs to the owner (see [Owner work](#owner-work)).
 7. Claim it: `bd update <bead-id> --claim`. Create a branch off `main`: `git checkout main && git pull && git checkout -b <type>/<bead-id>-<short-name>`.
 8. Do the card's steps in order. Write the test first and see it fail before writing the fix. Tick each `- [ ]` in the card file as you finish it and include the card file in your commits, so a later session can resume mid-card.
 9. Run the card's **Verify** command. Then run the full suite: `dotnet build Bevel.sln -clp:ErrorsOnly && dotnet test Bevel.sln` (and `cd native/helper-macos && swift test` if you touched Swift).
 10. If the card says to file new beads, file them with `bd create` and write the new ids under the card.
 11. Commit (conventional-commit message, bead id in the subject). Open a PR only when the owner has asked for PRs in this session. Merge only when every CI check is green.
-12. Close: use the exact `bd close` line from the card's **Done when**. For `AGENT+HUMAN-VERIFY` cards, do NOT close: run `bd comments add <bead-id> "agent work done on <branch>; owner check pending: <the manual check from the card>"` and park the card with the reason `owner check pending`.
+12. Close: use the exact `bd close` line from the card's **Done when**. For `AGENT+HUMAN-VERIFY` cards, do NOT close: run `bd comments add <bead-id> "agent work done on <branch>; owner check pending: <the manual check from the card>"` and park the card.
 13. Go to step 1.
 
-If a step fails twice, stop work on that card: comment on the bead with the command and the full error, park the card with the reason `failed: <step>`, and go to step 1.
+If a step fails twice, stop work on that card: comment on the bead with the command and the full error, park the card, and go to step 1.
 
-**Parking a card** means appending one line `<bead-id>|<reason>` to `parked.txt` in this folder and committing it. `progress.sh` skips parked cards, so the loop never offers the same card twice. To un-park, delete the line. Closing the bead in `bd` is still what counts as done.
+**Parking a card** means `bd label add <bead-id> plan-parked`, after the `bd comments add` that says why. Park state lives in the tracker, not in a file, so it is the same on every branch and in every worktree. `progress.sh` skips parked cards, so the loop never offers the same card twice. To un-park: `bd label remove <bead-id> plan-parked`. Closing the bead in `bd` is still what counts as done.
+
+**What this loop may do without asking.** Local work only: create a branch or worktree, commit on it, write to the tracker. Pushing, opening a PR, merging and deleting branches happen only when the owner has opted in for the session (for the run that started 2026-11-18 the owner did: PR per card, `/ce-code-review` on each PR, merge when every check is green, then worktree and branch cleanup and `bd dolt push`). Without that opt-in, stop after the local commit and report.
+
+**New beads.** When a card files a new bead, append a row to `waves.txt` in the wave of the card that filed it: `wave|bead|who|size|-|title`. A `-` in the card-file column means there is no card; the bead's own description (`bd show`) is the brief. `progress.sh` lists any open bead that is missing from `waves.txt`.
 
 ## Global constraints
 
@@ -103,7 +107,7 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 1. **Snapshot reconcile has one helper and no proto change.** `bevel-ri8c` creates `Bevel.Pal.Abstractions.SnapshotReconcile.Absent` and fixes the taskbar-side tray hop. `bevel-wheq` fixes the taskbar-side window hop. `bevel-voqo` fixes only the core-side tray hop (`MacOSSystemTrayHost`). The core-side window hop is the follow-up bead `bevel-wheq` files. The `SNAPSHOT_END` proto marker proposed in cards-A is withdrawn. The affected cards carry an override line.
 2. **The icon pool writer stays the taskbar.** Do not move it to the core.
 3. **`bevel-ayhn` owns the CI token drift gate fix** (`ci.yml:187`). The matching "new bead" in cards-A is not to be filed.
-4. **`AppTab` field additions land in this order:** `bevel-6asm`, `bevel-l17f`, `bevel-y3cl`, `bevel-9w0h`. One at a time; each rebases on the previous.
+4. **`AppTab` field additions land in this order:** `bevel-6asm`, `bevel-l17f`, `bevel-y3cl`, `bevel-9w0h`. One at a time; each branches from `main` after the previous one has merged.
 5. **Files several cards edit are edited one card at a time,** never in parallel branches: `ShellCoreSystemTrayHost.cs`, `StartMenu.axaml(.cs)`, `TaskbarView.axaml.cs` (`ApplyLiveSettings`), `ItemView.axaml(.cs)`, `SettingsService.cs`, `.github/workflows/ci.yml`.
 6. **`bevel-ioxx` (real file icons) waits for `bevel-rzz` (virtualized panel) and `bevel-yfkw` (theme signal).**
 7. **Anything that changes a wire format or a persisted name** (`CoreCommand`/`CoreResponse` in `bevel-alb`, the enum rename in `bevel-zvo0`, new settings keys) must read the old form too, and adds a test that an old value still loads.
@@ -243,8 +247,8 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 | # | Bead | Title | Pri | Size | Who | State found | Card file |
 |---|---|---|---|---|---|---|---|
 | 1 | `bevel-rqcp` | Author Flat watercolor SVG spec and align runtime | P1 | S | agent, owner verifies | likely done | [D](cards-D-theming.md) |
-| 2 | `bevel-q455` | Implement the Flat (Whistler watercolor) theme from the design spec | P2 | S | agent, owner verifies | likely done | [D](cards-D-theming.md) |
-| 3 | `bevel-lqot` | Promote Luna.Brush.StartMenu*/TaskButton*/CaptionButton* to Bevel.Brush.* | P2 | M | agent | open | [D](cards-D-theming.md) |
+| 2 | `bevel-lqot` | Promote Luna.Brush.StartMenu*/TaskButton*/CaptionButton* to Bevel.Brush.* | P2 | M | agent | open | [D](cards-D-theming.md) |
+| 3 | `bevel-q455` | Implement the Flat (Whistler watercolor) theme from the design spec | P2 | S | agent, owner verifies | likely done | [D](cards-D-theming.md) |
 | 4 | `bevel-quif` | Luna ControlThemes have hardcoded hex that ignores the colour variant | P3 | S | agent | open | [D](cards-D-theming.md) |
 | 5 | `bevel-dob` | Theme engine: per-theme control-template sets (unlocks XP/Luna/Aero chrome) | P2 | L | agent | partly done | [D](cards-D-theming.md) |
 | 6 | `bevel-7cq` | Luna theme: remaining ControlThemes (caption, scrollbar, progress, tabs, checkbox/radio, m | P2 | M | agent | partly done | [D](cards-D-theming.md) |
@@ -294,8 +298,7 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 | 4 | `bevel-e5vz` | Explore: tab-level previews (CDP opt-in / extension) + window hover thumbnails beside tab  | P3 | M | agent | open | [E2](cards-E2-taskbar-customization.md) |
 | 5 | `bevel-c11a` | Address bar is a plain textbox — no breadcrumbs/autocomplete/history | P3 | L | agent | open | [F](cards-F-filer.md) |
 | 6 | `bevel-o6cc` | EPIC: Filer Bar system (Folders/Search/History/Favorites) | P2 | L | agent | partly done | [F](cards-F-filer.md) |
-| 7 | `bevel-tjr2` | EPIC: per-Space / multi-monitor taskbars | P3 | L | owner | open | [E2](cards-E2-taskbar-customization.md) |
-| 8 | `bevel-lkw1` | EPIC: Theme lineage — Win10 flat, KDE Breeze, Aero, Win11 | P2 | L | agent, owner verifies | open | [D](cards-D-theming.md) |
+| 7 | 8 | `bevel-lkw1` | EPIC: Theme lineage — Win10 flat, KDE Breeze, Aero, Win11 | P2 | L | agent, owner verifies | open | [D](cards-D-theming.md) |
 | 9 | `bevel-te20` | Git-repo theme install (.beveltheme from user-supplied git URL) | P2 | M | owner | open | [D](cards-D-theming.md) |
 | 10 | `bevel-2t7u` | Windows: mirror third-party notification-area icons into the tray | P2 | L | owner | open | [G](cards-G-tray-interop-windows.md) |
 | 11 | `bevel-m3.3.1` | Tray click-forwarding: custom status items unresponsive on macOS 26 (bevel-m3.3) | P3 | L | agent, owner verifies | open | [G](cards-G-tray-interop-windows.md) |
@@ -416,5 +419,4 @@ Failure modes no single card's tests cover, most likely first.
 - `README.md` — this file.
 - `waves.txt` — the order as data: `wave|bead|who|size|card file|title`.
 - `progress.sh` — prints progress per wave and the next card, reading status from `bd`.
-- `parked.txt` — cards the loop should skip for now: `bead|reason`. Starts empty.
 - `cards-*.md` — one card per bead, grouped by area. Each area file opens with a summary of that area's architecture and its own order.

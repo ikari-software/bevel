@@ -15,6 +15,7 @@ W1|bevel-2nn2|AGENT|S|cards-A-test-reliability.md|PushFrame PlatformNotSupported
 W1|bevel-i145|AGENT|M|cards-A-test-reliability.md|Luna render tests flake on shared headless Application state
 W1|bevel-ayhn|AGENT|M|cards-D-theming.md|Luna tokens are hand-mirrored and not drift-checked (ThemeGen only covers Win2000)
 W1|bevel-tv19|AGENT|S|cards-A-test-reliability.md|RenderFlatAndPastelComparisonTest dirties 5 checked-in PNGs on every run
+W1|bevel-b4a5|AGENT|S|-|CI: build benchmarks/Bevel.Benchmarks (filed by bevel-zhmr)
 W2|bevel-so27|AGENT|L|cards-B-core-ipc-startup.md|Filer enumeration still runs ON THE UI THREAD (syscall count fixed; threading blocked on callers)
 W2|bevel-ri8c|AGENT|M|cards-B-core-ipc-startup.md|Tray reconnect snapshot only upserts -- ghost icons survive a core restart
 W2|bevel-wheq|AGENT|S|cards-B-core-ipc-startup.md|Window-list reconnect snapshot only upserts -- possible stale taskbar buttons after core restart
@@ -42,6 +43,7 @@ W3|bevel-ct7|AGENT|S|cards-C-packaging-security.md|M5: Settings app — full v1 
 W3|bevel-gsz|A+H|S|cards-C-packaging-security.md|M5: Homebrew cask (brew install --cask bevel)
 W3|bevel-cp2|AGENT|M|cards-C-packaging-security.md|M5: user guide + known-issues docs
 W3|bevel-l3o|AGENT|S|cards-C-packaging-security.md|M1: per-capability RPC auth scoping for helper services (ScriptingService/InputService)
+W3|bevel-ij3n|AGENT|M|-|Update-availability UI (filed by bevel-rkxb)
 W4|bevel-rzz|A+H|L|cards-F-filer.md|File manager: type-to-select smooth-scroll + virtualized list with up/down buffer
 W4|bevel-onyp|AGENT|L|cards-F-filer.md|Filer: virtualize wrap-panel + O(n^2) InsertSorted + watcher-vs-search + Open-With wire-up + reconcile re-sort
 W4|bevel-ujx8|AGENT|M|cards-B-core-ipc-startup.md|Taskbar: tray seed/stream ordering + StartMenu O(n^2) startup + All-Programs flyout rebuild
@@ -57,6 +59,7 @@ W4|bevel-f4g5|A+H|M|cards-B-core-ipc-startup.md|Version-skew message needs to be
 W4|bevel-mhvu|AGENT|S|cards-B-core-ipc-startup.md|ShellCoreSystemTrayHost duplicates tray capabilities instead of forwarding the core's
 W4|bevel-b8t|A+H|M|cards-F-filer.md|M5: 100k-entry file-manager perf validation (06 perf)
 W4|bevel-yd2n|AGENT|M|cards-D-theming.md|PROFILE FIRST: colourway switch does ~140 individual resource writes
+W4|bevel-vw90|AGENT|S|-|Theme-apply perf budget (filed by bevel-zhmr)
 W5|bevel-6sk6|AGENT|L|cards-E1-start-menu-search.md|Start-menu inline search: results panel (apps, files, tabs) — the search foundation
 W5|bevel-vtc6|A+H|M|cards-E1-start-menu-search.md|Start-menu search over tabs: type-to-jump across every ITabProvider app
 W5|bevel-pr4l|AGENT|M|cards-E1-start-menu-search.md|StartMenu.axaml.cs grew 38% absorbing the search UI — extract the search strip
@@ -90,8 +93,8 @@ W6|bevel-vs10|A+H|M|cards-G-tray-interop-windows.md|Apple Events: add a 'launch'
 W6|bevel-aogp|AGENT|S|cards-G-tray-interop-windows.md|Remove dead trayGlyphLayout sizing code + its test (native-size rendering replaced it)
 W6|bevel-tzx|AGENT|S|cards-G-tray-interop-windows.md|Share one ScreenCaptureKit capture helper (tray vs window)
 W7|bevel-rqcp|A+H|S|cards-D-theming.md|Author Flat watercolor SVG spec and align runtime
-W7|bevel-q455|A+H|S|cards-D-theming.md|Implement the Flat (Whistler watercolor) theme from the design spec
 W7|bevel-lqot|AGENT|M|cards-D-theming.md|Promote Luna.Brush.StartMenu*/TaskButton*/CaptionButton* to Bevel.Brush.*
+W7|bevel-q455|A+H|S|cards-D-theming.md|Implement the Flat (Whistler watercolor) theme from the design spec
 W7|bevel-quif|AGENT|S|cards-D-theming.md|Luna ControlThemes have hardcoded hex that ignores the colour variant
 W7|bevel-dob|AGENT|L|cards-D-theming.md|Theme engine: per-theme control-template sets (unlocks XP/Luna/Aero chrome)
 W7|bevel-7cq|AGENT|M|cards-D-theming.md|Luna theme: remaining ControlThemes (caption, scrollbar, progress, tabs, checkbox/radio, menu, taskbar, start menu)
@@ -131,7 +134,7 @@ W9|bevel-hail|A+H|L|cards-E2-taskbar-customization.md|Taskbar menu: true live Qu
 W9|bevel-e5vz|AGENT|M|cards-E2-taskbar-customization.md|Explore: tab-level previews (CDP opt-in / extension) + window hover thumbnails beside tab list
 W9|bevel-c11a|AGENT|L|cards-F-filer.md|Address bar is a plain textbox — no breadcrumbs/autocomplete/history
 W9|bevel-o6cc|AGENT|L|cards-F-filer.md|EPIC: Filer Bar system (Folders/Search/History/Favorites)
-W9|bevel-tjr2|HUMAN|L|cards-E2-taskbar-customization.md|EPIC: per-Space / multi-monitor taskbars
+W9|bevel-tjr2|AGENT|L|cards-E2-taskbar-customization.md|EPIC: per-Space / multi-monitor taskbars
 W9|bevel-lkw1|A+H|L|cards-D-theming.md|EPIC: Theme lineage — Win10 flat, KDE Breeze, Aero, Win11
 W9|bevel-te20|HUMAN|M|cards-D-theming.md|Git-repo theme install (.beveltheme from user-supplied git URL)
 W9|bevel-2t7u|HUMAN|L|cards-G-tray-interop-windows.md|Windows: mirror third-party notification-area icons into the tray
@@ -145,6 +148,7 @@ W9|bevel-legal-branding|HUMAN|S|cards-C-packaging-security.md|Parked counsel ask
 W9|bevel-7c6m|HUMAN|S|cards-C-packaging-security.md|Mac App Store is blocked by entitlements, not licence — pick real channels
 W9|bevel-m3.6|HUMAN|S|cards-G-tray-interop-windows.md|M3-F: Menu-bar reclaim (consent-gated, feature-flagged) (bevel-m3)
 W9|bevel-spike-shadow|HUMAN|S|cards-G-tray-interop-windows.md|SPIKE: bundle-id shadowing of com.apple.finder (documents failure mode; never ships)
+W9|bevel-wpd6|HUMAN|S|-|dotnet-trace the live shell (filed by bevel-zhmr)
 H|bevel-cezo|HUMAN|S|cards-E1-start-menu-search.md|Start menu: type-to-search while open
 H|bevel-ijln|HUMAN|S|cards-E1-start-menu-search.md|Taskbar: app unread/badge counts (Slack-style)
 H|bevel-yv2m|HUMAN|S|cards-E1-start-menu-search.md|macOS Zoom ignores Bevel taskbar height

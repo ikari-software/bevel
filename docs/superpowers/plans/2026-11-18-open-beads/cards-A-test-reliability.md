@@ -64,7 +64,7 @@ and CI actually executes every gate it claims (three gaps found, listed under "N
   - [ ] Apply the three guard changes; tests pass.
   - [ ] In `RenderFileMenuBarTest`, replace each `for (...) { RunJobs(); await Task.Delay(10); frame = CaptureRenderedFrame(); }` capture loop with `SiteShot.CaptureSettled(window)`; where no other `await` remains, make the test `void`.
   - [ ] Run `Bevel.Taskbar.Tests` 12 times in a loop; record failures.
-- **Verify:** `for i in $(seq 12); do dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --no-build -v q || break; done` → 12 green runs.
+- **Verify:** `dotnet build tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj -clp:ErrorsOnly && for i in $(seq 12); do dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --no-build -v q || break; done` → 12 green runs.
 - **Done when:** 12/12 local runs green and the three new tests pass; then `bd close bevel-i145 --reason "theme engines verify membership in the current Application; render test settles on frames, not sleeps"`.
 
 ### bevel-tv19 — RenderFlatAndPastelComparisonTest dirties 5 checked-in PNGs on every run
@@ -153,7 +153,7 @@ and CI actually executes every gate it claims (three gaps found, listed under "N
   - [ ] Implement the event-based assertion in `Live_close_removes_window`.
   - [ ] Remove `testCloseRemovesWindowFromEnumeration` from the Swift file; leave a one-line comment naming the C# test.
   - [ ] HUMAN: run the hs1j command 10 times in a loop; record pass count.
-- **Verify:** `for i in $(seq 10); do BEVEL_LIVE_HELPER_TESTS=1 BEVEL_LIVE_HELPER_AX=1 dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --no-build --filter "FullyQualifiedName~Live_close_removes_window" || break; done` → 10 passes.
+- **Verify:** `dotnet build tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj -clp:ErrorsOnly && for i in $(seq 10); do BEVEL_LIVE_HELPER_TESTS=1 BEVEL_LIVE_HELPER_AX=1 dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --no-build --filter "FullyQualifiedName~Live_close_removes_window" || break; done` → 10 passes.
 - **Done when:** 10/10 on the granted machine; if it still flakes, the failure is a real helper bug (missing Closed delta) — reopen with the `BEVEL_DEBUG_WINDOWS=1` log; else `bd close bevel-79r --reason "close asserted via the Closed delta against the granted helper; polled 12s wait removed"`.
 
 ### bevel-2tlp — MacOSTabProvider: seam + tests for the osascript runner
