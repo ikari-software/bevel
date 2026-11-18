@@ -258,40 +258,137 @@ public class StackTests : IDisposable
         Assert.Equal(0, changes);
     }
 
+    private static async Task<bool> WaitUntil(Func<bool> cond)
+    {
+        for (var i = 0; i < 400 && !cond(); i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+        return cond();
+    }
+
     [AvaloniaFact]
-    public void Reconcile_disposes_removed_stacks()
+    public async Task Reconcile_disposes_removed_stacks_and_releases_their_watchers()
     {
         var a = Folder("a"); var b = Folder("b");
         using var vm = new StacksViewModel(new[] { a, b }, appEnv: null, icons: null);
+        var kept = vm.Stacks[0];
         var gone = vm.Stacks[1];
-        var watcherField = typeof(StackViewModel).GetField("_disposed",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.True(await WaitUntil(() => kept.IsWatching && gone.IsWatching), "watchers should arm off-thread");
 
         vm.Reconcile(new[] { a });
 
-        Assert.True((bool)watcherField.GetValue(gone)!, "a removed stack must be disposed (watcher released)");
+        Assert.False(gone.IsWatching, "a removed stack must release its watcher");
+        Assert.True(kept.IsWatching, "a surviving stack keeps its watcher");
     }
+
+    private static (TaskbarView View, TaskbarViewModel Vm, TaskbarWindow Window) Bar(bool show = true)
+    {
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
+        if (show)
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+        }
+        return (view, vm, window);
+    }
+
+    private static Bevel.Core.BevelSettings Stacks(params string[] folders) =>
+        new() { TaskbarStacks = folders };
 
     [AvaloniaFact]
     public void ApplyLiveSettings_reconciles_the_stacks_and_leaves_survivors_alone()
     {
         var a = Folder("a"); var b = Folder("b");
-        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
-        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
-        var view = new TaskbarView { DataContext = vm };
-        var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
 
-        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = new[] { a } });
+        view.ApplyLiveSettings(Stacks(a));
         Assert.Equal(new[] { a }, Paths(vm.Stacks));
         var survivor = vm.Stacks.Stacks[0];
 
-        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = new[] { b, a } });
+        view.ApplyLiveSettings(Stacks(b, a));
         Assert.Equal(new[] { b, a }, Paths(vm.Stacks));
         Assert.Same(survivor, vm.Stacks.Stacks[1]);
 
-        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = Array.Empty<string>() });
+        view.ApplyLiveSettings(Stacks());
         Assert.Empty(vm.Stacks.Stacks);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_unchanged_stacks_list_leaves_the_strip_untouched()
+    {
+        var a = Folder("a"); var b = Folder("b");
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
+        view.ApplyLiveSettings(Stacks(a, b));
+        var before = vm.Stacks.Stacks.ToArray();
+        var changes = 0;
+        vm.Stacks.Stacks.CollectionChanged += (_, _) => changes++;
+
+        // Same list again (a fresh array), and an unrelated setting changing alongside it.
+        var next = Stacks(a, b);
+        next.TaskbarStartLabel = "Go";
+        view.ApplyLiveSettings(next);
+
+        Assert.Equal(0, changes);
+        Assert.Equal(before, vm.Stacks.Stacks.ToArray());   // element-wise reference equality
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_stacks_change_that_arrives_before_the_bar_loads_is_applied_on_load()
+    {
+        var a = Folder("a"); var b = Folder("b");
+        var (view, vm, window) = Bar(show: false);
+        using var _ = vm.Stacks;
+
+        view.ApplyLiveSettings(Stacks(a, b));   // _vm is not wired yet: nothing to reconcile into
+        Assert.Empty(vm.Stacks.Stacks);
+
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(new[] { a, b }, Paths(vm.Stacks));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_duplicate_path_in_the_setting_yields_one_stack()
+    {
+        var a = Folder("a"); var b = Folder("b");
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
+
+        view.ApplyLiveSettings(Stacks(a, a, b));
+
+        Assert.Equal(new[] { a, b }, Paths(vm.Stacks));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task A_stack_removed_and_re_added_comes_back_as_a_fresh_working_stack()
+    {
+        var a = Folder("a");
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
+        view.ApplyLiveSettings(Stacks(a));
+        var first = vm.Stacks.Stacks[0];
+        Assert.True(await WaitUntil(() => first.IsWatching));
+
+        view.ApplyLiveSettings(Stacks());
+        Assert.False(first.IsWatching);
+        view.ApplyLiveSettings(Stacks(a));
+
+        var second = Assert.Single(vm.Stacks.Stacks);
+        Assert.NotSame(first, second);
+        Assert.True(await WaitUntil(() => second.IsWatching), "the re-added stack must arm its own watcher");
+        Assert.False(first.IsWatching, "the old instance stays disposed");
+        window.Close();
     }
 }

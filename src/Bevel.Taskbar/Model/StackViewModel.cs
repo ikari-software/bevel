@@ -53,6 +53,11 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     }
 
     public string FolderPath { get; }
+
+    /// <summary>True while this stack holds a live folder watcher. The watcher is armed off-thread, so it
+    /// reads false briefly after construction, and false for good once disposed (bevel-2ip7: removed
+    /// stacks must release it).</summary>
+    internal bool IsWatching { get { lock (_watcherGate) return _watcher is not null; } }
     public string Name { get; }
     public ObservableCollection<StackFileViewModel> Items { get; } = new();
 

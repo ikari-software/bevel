@@ -366,6 +366,19 @@ public partial class TaskbarView : UserControl
     /// The stored percentage is clamped to 20–100 so the bar never vanishes entirely.</summary>
     internal static double FillOpacity(int opacity) => Math.Clamp(opacity, 20, 100) / 100.0;
 
+    /// <summary>Pushes the configured stack folders into the view-model (bevel-2ip7). Diff-guarded so an
+    /// unrelated settings change never touches the strip; the view-model reconciles incrementally (keeps
+    /// survivors, disposes the removed). A no-op until <c>_vm</c> exists — <c>OnLoaded</c> calls it again
+    /// with the latest snapshot, so a change that landed before load is not lost.</summary>
+    private void ApplyStacks(Bevel.Core.BevelSettings s)
+    {
+        if (_vm is null) return;
+        var wanted = s.TaskbarStacks;
+        if (_appliedStacks is not null && _appliedStacks.SequenceEqual(wanted)) return;
+        _appliedStacks = (string[])wanted.Clone();
+        _vm.Stacks.Reconcile(_appliedStacks);
+    }
+
     /// <summary>Pushes every live-applicable setting onto the running taskbar in one shot (clock, Start,
     /// grouping, label mode). Called by the Properties dialog's ApplyLive hook — same process, so the
     /// change is visible immediately without a restart.</summary>
@@ -396,13 +409,7 @@ public partial class TaskbarView : UserControl
         ApplyAppearance(_fontSize, _bgColor, _opacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
-        // Stacks (bevel-2ip7): diff-guarded so an unrelated settings change never touches the strip;
-        // the view-model reconciles incrementally (keeps survivors, disposes the removed).
-        if (_vm is not null && (_appliedStacks is null || !_appliedStacks.SequenceEqual(s.TaskbarStacks)))
-        {
-            _appliedStacks = (string[])s.TaskbarStacks.Clone();
-            _vm.Stacks.Reconcile(_appliedStacks);
-        }
+        ApplyStacks(s);   // bevel-2ip7
         ApplyComponentRegion(s);   // bevel-aqr7 Task 14: re-apply the component list, off the UI thread
 
         _locked = s.TaskbarLocked;
@@ -569,6 +576,7 @@ public partial class TaskbarView : UserControl
 
         _vm = DataContext as TaskbarViewModel;
         _window = TopLevel.GetTopLevel(this) as TaskbarWindow;
+        if (_initialSettings is not null) ApplyStacks(_initialSettings);   // a stacks change that beat OnLoaded (bevel-2ip7)
 
         // Apply the grouping mode before the first layout so Items is already in its final shape
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
