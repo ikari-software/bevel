@@ -40,6 +40,11 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // goes null and handlers mutate the projection directly.
     private List<Action>? _seedBuffer = new();
 
+    /// <summary>True once the tray projection is trustworthy: the seed succeeded, or a live tray add/update
+    /// arrived. Until then no TraySnapshot is sent — a degraded (failed-seed, empty) projection would make a
+    /// surviving taskbar's reconcile remove every icon it holds (bevel-ri8c). Guarded by <see cref="_gate"/>.</summary>
+    private bool _traySeeded;
+
     // Session stamps (bevel-4zfs), guarded by _gate. Every event is stamped (epoch, seq). The EPOCH is
     // global: it bumps when the projection is rebuilt discontinuously (the startup seed), which also
     // re-pushes fresh snapshots to every client. The SEQ is PER-CLIENT and gapless: a global seq would let
@@ -139,11 +144,15 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // readiness probe: apps and tray share the helper's connection and have no retry budget of
         // their own, so running them against a half-connected helper would just degrade both to empty.
         var appsSeed = SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).AsTask();
-        var traySeed = SeedOrEmptyAsync(_tray.GetItemsAsync, ct).AsTask();
+        var traySeed = SeedTrayAsync(ct);
         var initialApps = await appsSeed.ConfigureAwait(false);
-        var initialTray = await traySeed.ConfigureAwait(false);
+        var (initialTray, traySeedOk) = await traySeed.ConfigureAwait(false);
         lock (_gate)
         {
+            // A FAILED seed is not an authoritative empty tray (bevel-ri8c): withhold TraySnapshot until a
+            // seed has succeeded or a live tray delta proves the stream is up. A successful seed that
+            // returned zero items IS authoritative.
+            if (traySeedOk) _traySeeded = true;
             foreach (var w in initialWindows)
                 _windowById[w.Id.Value] = w;
             _installed = initialApps;
@@ -159,7 +168,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
 
             // Seed complete = the projection was just rebuilt discontinuously: bump the epoch (bevel-4zfs)
             // and push fresh stamped snapshots to EVERY client. This replaces the old un-stamped
-            // BroadcastSnapshot band-aid: a client that Hello'd during seeding got empty windows/tray,
+            // BroadcastSnapshot band-aid: a client that Hello'd during seeding got only apps+settings
+            // (window/tray are withheld mid-seed, bevel-ri8c) and its windows/tray arrive in THIS burst,
             // and the deltas that fired during seeding were buffered — never broadcast. The epoch bump
             // tells clients the new burst is their authoritative baseline, and the snapshots self-heal
             // every projection (idempotent replaces; settings dedups by version).
@@ -196,6 +206,23 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
+    /// <summary>The tray seed, reporting whether it SUCCEEDED (bevel-ri8c): a failed seed degrades to empty
+    /// like <see cref="SeedOrEmptyAsync"/>, but the caller must not publish that empty set as authoritative.</summary>
+    private async Task<(IReadOnlyList<TrayItem> Items, bool Ok)> SeedTrayAsync(CancellationToken ct)
+    {
+        try
+        {
+            // TrySeedItemsAsync, not GetItemsAsync: a real host swallows "helper unreachable" into an empty
+            // list, which would look like a successful empty seed.
+            var items = await _tray.TrySeedItemsAsync(ct).ConfigureAwait(false);
+            return items is null ? (Array.Empty<TrayItem>(), false) : (items, true);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
+        {
+            return (Array.Empty<TrayItem>(), false);
+        }
+    }
+
     /// <summary>Single-shot sibling of <see cref="SeedWhenHelperReadyAsync"/> for the snapshots taken once
     /// the helper is already up (apps/tray share its connection). Same contract — a failed seed degrades to
     /// empty and is repaired by the live streams; it must never abort the core — but no extra retry budget,
@@ -226,7 +253,30 @@ public sealed class ShellCoreServer : IAsyncDisposable
         var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
             SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version,
             Epoch: _epoch);
-        return [windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot];
+        // No tray snapshot until the tray projection is real (bevel-ri8c): see _traySeeded.
+        return _traySeeded
+            ? [windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot]
+            : [windowSnapshot, appSnapshot, settingsSnapshot];
+    }
+
+    /// <summary>Test seam (bevel-b79z): the next N broadcast frames are stamped (consuming their per-client
+    /// seq) but never sent — a genuinely lost delta, so a test can prove the client re-Hellos on a REAL gap.</summary>
+    internal int DropNextBroadcastFramesForTest;
+
+    /// <summary>The ONE place a server→client frame is stamped and sent (caller holds <see cref="_gate"/>):
+    /// the CURRENT epoch (an event that already carries one, i.e. a snapshot, keeps it) plus the client's next
+    /// seq. The client's sequence tracker ignores any event lacking an epoch, so an epoch-less frame would
+    /// consume a seq the client never records and make the next frame look like a lost one — a phantom gap
+    /// and a spurious re-Hello (bevel-b79z). Every send path goes through here so that rule cannot diverge.</summary>
+    private void SendStampedLocked(Guid clientId, CoreEvent evt)
+    {
+        var stamped = evt with { Epoch = evt.Epoch ?? _epoch, Seq = NextSeq(clientId) };
+        if (DropNextBroadcastFramesForTest > 0 && evt.Epoch is null)
+        {
+            DropNextBroadcastFramesForTest--;   // delta lost in transit: seq consumed, frame never sent
+            return;
+        }
+        _server.SendToClient(clientId, CoreProtocol.Serialize(stamped));
     }
 
     /// <summary>Stamp + broadcast one event to EVERY client (bevel-4zfs). Under <see cref="_gate"/>, so
@@ -239,7 +289,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             PruneStaleClients();
             foreach (var id in _server.ClientIds)
-                _server.SendToClient(id, CoreProtocol.Serialize(evt with { Seq = NextSeq(id) }));
+                SendStampedLocked(id, evt);
         }
     }
 
@@ -253,7 +303,16 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             PruneStaleClients();
             foreach (var evt in BuildSnapshotEvents())
-                _server.SendToClient(clientId, CoreProtocol.Serialize(evt with { Seq = NextSeq(clientId) }));
+            {
+                // A Hello answered while the core is still seeding would carry an EMPTY window/tray
+                // projection, and a reconciling client would wipe its state on it (bevel-ri8c). Omit
+                // those two: the epoch-bump burst at seed completion follows and is authoritative.
+                // Skipped events take no seq, so the client's sequence stays gapless.
+                if (_seedBuffer is not null
+                    && evt.Kind is CoreEventKind.WindowSnapshot or CoreEventKind.TraySnapshot)
+                    continue;
+                SendStampedLocked(clientId, evt);
+            }
         }
     }
 
@@ -346,6 +405,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById.Remove(t.Id.Value)); return; }
             _trayById.Remove(t.Id.Value);
+            // Deliberately NOT _traySeeded: a remove proves nothing about the projection being complete.
         }
         BroadcastStamped(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: t));
     }
@@ -356,6 +416,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _trayById[t.Id.Value] = t); return; }
             _trayById[t.Id.Value] = t;
+            // An add/update proves the tray stream is live (the helper is up and enumerating), so later
+            // snapshots are trustworthy enough to publish; a remove alone proves nothing.
+            _traySeeded = true;
         }
         BroadcastStamped(new CoreEvent(kind, TrayItem: t));
     }
