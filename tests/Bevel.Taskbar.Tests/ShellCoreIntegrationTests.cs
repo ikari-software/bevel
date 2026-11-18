@@ -438,6 +438,67 @@ public sealed class ShellCoreIntegrationTests
         Assert.True(core.IsConnected, "the gap healed over the same link");
     }
 
+    // bevel-b79z: deltas carry the epoch, so they are part of the client's sequence. Asserted by
+    // construction on the stamps themselves: the delta has an epoch, and the first frame of the following
+    // Resync burst has the SAME epoch and exactly delta.Seq + 1 — the client sees no gap. (Before the fix the
+    // delta had no epoch, so the tracker never recorded its seq and the burst looked like a lost frame.)
+    [Fact]
+    public async Task A_delta_followed_by_a_snapshot_burst_is_not_a_sequence_gap()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var hellos = 0;
+        var seen = new ConcurrentQueue<CoreEvent>();
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+        core.EventReceived += e => seen.Enqueue(e);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => seen.Any(e => e.Kind == CoreEventKind.SettingsSnapshot), "Hello burst");
+
+        pal.RaiseTrayItemAdded(Tray("1:10", "Alpha"));
+        await WaitFor(() => seen.Any(e => e.Kind == CoreEventKind.TrayItemAdded), "the delta reaches the client");
+        var delta = seen.First(e => e.Kind == CoreEventKind.TrayItemAdded);
+        Assert.NotNull(delta.Epoch);
+
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => seen.Count(e => e.Kind == CoreEventKind.SettingsSnapshot) >= 2, "Resync burst");
+        var burstHead = seen.SkipWhile(e => !ReferenceEquals(e, delta)).Skip(1).First(e => e.Seq is not null);
+        Assert.Equal(delta.Epoch, burstHead.Epoch);
+        Assert.Equal(delta.Seq + 1, burstHead.Seq);   // contiguous: the client's tracker would see no gap
+        Assert.Equal(1, Volatile.Read(ref hellos));   // secondary: and no spurious re-Hello fired
+    }
+
+    // bevel-b79z: a REAL lost delta (the core stamps it, the frame never arrives) is still detected: the next
+    // delta jumps the seq within the epoch and the client re-issues Hello. End to end, no test hook on the client.
+    [Fact]
+    public async Task A_genuinely_lost_delta_makes_the_client_re_Hello()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var hellos = 0;
+        var deltas = 0;
+        core.HelloSent += () => Interlocked.Increment(ref hellos);
+        core.EventReceived += e => { if (e.Kind == CoreEventKind.TrayItemAdded) Interlocked.Increment(ref deltas); };
+        await core.StartSessionAsync(Ct);
+        pal.RaiseTrayItemAdded(Tray("1:10", "Alpha"));
+        await WaitFor(() => Volatile.Read(ref deltas) == 1, "the first delta baselines the tracker");
+        Assert.Equal(1, Volatile.Read(ref hellos));
+
+        server.DropNextBroadcastFramesForTest = 1;
+        pal.RaiseTrayItemAdded(Tray("2:20", "Lost"));      // stamped, never sent
+        pal.RaiseTrayItemAdded(Tray("3:30", "After"));     // seq jumps by 2 -> gap
+        await WaitFor(() => Volatile.Read(ref hellos) == 2, "a real lost delta must trigger a re-Hello");
+    }
+
     // 9. Sharing one client is the whole point (the taskbar's settings peer and the tray adapters ride
     //    the SAME connection now): a settings pull before any Hello must not eat anyone's snapshot —
     //    the tray still gets its full snapshot when the session starts.
