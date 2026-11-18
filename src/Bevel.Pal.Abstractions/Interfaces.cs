@@ -253,9 +253,20 @@ public interface ITabProvider
     ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default);
 
     /// <summary>Focuses <paramref name="tab"/>: selects it inside its window, raises the window,
-    /// activates the app. Verified by identity (bevel-6asm): the tab is re-resolved by title/url
-    /// first, so a stale row (tab closed or reordered since enumeration) selects the intended tab
-    /// when it can still be found uniquely; an ambiguous or vanished tab is a no-op.</summary>
+    /// activates the app. The row may be stale (tab closed/reordered since enumeration), so the tab
+    /// is re-resolved by identity first (bevel-6asm), per engine:
+    /// <list type="bullet">
+    /// <item>AppleScript browsers (Chromium family, Safari): identity is the URL (title only when the
+    /// row has no url). If the remembered window+position still carries it, that tab is selected
+    /// even when twins exist elsewhere; otherwise a match that is UNIQUE across ALL windows is
+    /// selected, and zero or several matches select nothing.</item>
+    /// <item>iTerm2: identity is <see cref="AppTab.SessionId"/> (session unique id); same position-
+    /// then-unique-across-all-windows rule; a row without a session id selects nothing.</item>
+    /// <item>Gecko (Zen/Firefox, accessibility): identity is the title, searched ONLY in the
+    /// remembered window — the remembered index if it still carries the title, else a unique title
+    /// match in that window, else nothing.</item>
+    /// </list>
+    /// "Selects nothing" is silent: the method completes normally and no tab is touched.</summary>
     Task ActivateAsync(AppTab tab, CancellationToken ct = default);
 }
 

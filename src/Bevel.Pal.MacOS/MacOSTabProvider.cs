@@ -37,7 +37,9 @@ public sealed class MacOSTabProvider : ITabProvider
         TrayMode: TrayCapability.Mirrored,
         Notes: new[] { "tabs: apple-events (iTerm2, Chromium family, Safari) + ax (Zen, Firefox)" });
 
-    public bool SupportsApp(string? bundleId) =>
+    public bool SupportsApp(string? bundleId) => IsSupported(bundleId);
+
+    private static bool IsSupported(string? bundleId) =>
         bundleId is not null && IsSafeBundleId(bundleId)
         && (ScriptDialectFor(bundleId) is not null || GeckoTabEngine.Supports(bundleId));
 
@@ -57,7 +59,7 @@ public sealed class MacOSTabProvider : ITabProvider
         if (ScriptDialectFor(bundleId) is { } dialect)
         {
             var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
-            var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm);
+            var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm, hasSessionId: dialect == Dialect.ITerm);
             return await EnrichAsync(bundleId, tabs, ct).ConfigureAwait(false);
         }
         return Array.Empty<AppTab>();
@@ -65,23 +67,40 @@ public sealed class MacOSTabProvider : ITabProvider
 
     public async Task ActivateAsync(AppTab tab, CancellationToken ct = default)
     {
-        // WindowRef/TabIndex round-trip from our own enumeration, but they cross a process boundary
-        // as strings — re-validate as integers so nothing non-numeric can reach a script body.
-        // Both refs are 1-based indexes (Chromium/Safari/Gecko AX windows) or positive AppleScript
-        // ids (iTerm2 — verified live: `id of window` is an integer), so anything < 1 is refused too.
-        if (!SupportsApp(tab.BundleId)
-            || !int.TryParse(tab.WindowRef, NumberStyles.Integer, CultureInfo.InvariantCulture, out var windowRef)
-            || windowRef < 1 || tab.TabIndex < 1)
-            return;
+        if (!TryWindowRef(tab, out var windowRef)) return;
 
         if (GeckoTabEngine.Supports(tab.BundleId))
         {
             await GeckoTabEngine.ActivateAsync(tab, windowRef, ct).ConfigureAwait(false);
             return;
         }
-        if (ScriptDialectFor(tab.BundleId) is { } dialect)
-            await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex),
-                ActivationArguments(tab), ct).ConfigureAwait(false);
+        if (ActivationStartInfo(tab) is { } psi)
+            await RunOsaScriptAsync(psi, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Validates the row's refs. WindowRef/TabIndex round-trip from our own enumeration, but
+    /// they cross a process boundary as strings — re-validate as integers so nothing non-numeric can
+    /// reach a script body. Both refs are 1-based indexes (Chromium/Safari/Gecko AX windows) or
+    /// positive AppleScript ids (iTerm2 — verified live: `id of window` is an integer), so anything
+    /// &lt; 1 is refused too.</summary>
+    private static bool TryWindowRef(AppTab tab, out int windowRef)
+    {
+        windowRef = 0;
+        return IsSupported(tab.BundleId)
+            && int.TryParse(tab.WindowRef, NumberStyles.Integer, CultureInfo.InvariantCulture, out windowRef)
+            && windowRef >= 1 && tab.TabIndex >= 1;
+    }
+
+    /// <summary>The exact osascript invocation that activates <paramref name="tab"/> (internal for
+    /// tests), or null when no script should run: invalid refs, unsupported or Gecko app, or an
+    /// iTerm2 row without a session id (cannot be identified — never guessed).</summary>
+    internal static ProcessStartInfo? ActivationStartInfo(AppTab tab)
+    {
+        if (!TryWindowRef(tab, out var windowRef)) return null;
+        if (GeckoTabEngine.Supports(tab.BundleId)) return null;
+        if (ScriptDialectFor(tab.BundleId) is not { } dialect) return null;
+        if (dialect == Dialect.ITerm && string.IsNullOrEmpty(tab.SessionId)) return null;
+        return BuildOsaStartInfo(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex), ActivationArguments(tab));
     }
 
     /// <summary>Post-enumeration enrichment (bevel-l17f): Gecko tabs first get their url by exact
@@ -150,7 +169,7 @@ public sealed class MacOSTabProvider : ITabProvider
                     repeat with t in tabs of w
                         set ti to ti + 1
                         try
-                            set end of rows to (wid as text) & us & ti & us & (name of current session of t)
+                            set end of rows to (wid as text) & us & ti & us & (name of current session of t) & us & (unique id of current session of t)
                         end try
                     end repeat
                 end repeat
@@ -172,7 +191,11 @@ public sealed class MacOSTabProvider : ITabProvider
                         set ls to URL of every tab of window wi
                         repeat with ti from 1 to (count ts)
                             try
-                                set end of rows to (wi as text) & us & ti & us & (item ti of ts) & us & (item ti of ls)
+                                set tt to item ti of ts
+                                if tt is missing value then set tt to ""
+                                set u to item ti of ls
+                                if u is missing value then set u to ""
+                                set end of rows to (wi as text) & us & ti & us & tt & us & u
                             end try
                         end repeat
                     end try
@@ -190,7 +213,11 @@ public sealed class MacOSTabProvider : ITabProvider
                         set ls to URL of every tab of window wi
                         repeat with ti from 1 to (count ts)
                             try
-                                set end of rows to (wi as text) & us & ti & us & (item ti of ts) & us & (item ti of ls)
+                                set tt to item ti of ts
+                                if tt is missing value then set tt to ""
+                                set u to item ti of ls
+                                if u is missing value then set u to ""
+                                set end of rows to (wi as text) & us & ti & us & tt & us & u
                             end try
                         end repeat
                     end try
@@ -220,19 +247,52 @@ public sealed class MacOSTabProvider : ITabProvider
         return rows as text
         """;
 
-    /// <summary>The wanted title and url, in the order the activation script reads them from
-    /// <c>argv</c> (item 1, item 2; "" when the tab has no url). Foreign text — it travels as
-    /// osascript arguments and never enters script source.</summary>
-    internal static IReadOnlyList<string> ActivationArguments(AppTab tab) => new[] { tab.Title, tab.Url ?? "" };
+    /// <summary>Marks every foreign osascript argument. osascript parses options with getopt, so a
+    /// title like <c>-e&lt;payload&gt;</c> or <c>-zsh</c> would otherwise be read as an OPTION (extra
+    /// script source / "illegal option"). Defence in depth: <see cref="BuildOsaStartInfo"/> also
+    /// ends option parsing with <c>--</c>, and the script strips this one character (<c>unwrap</c>).</summary>
+    internal const string ArgSentinel = "=";
 
-    /// <summary>Shared AppleScript handlers for the activation scripts. <c>isMatch</c> mirrors
-    /// <see cref="Parse"/>: the title and url are trimmed and a blank title falls back to the url,
-    /// and the comparison is case-SENSITIVE (AppleScript's default `is` ignores case).</summary>
-    private const string MatchHandlers = """
+    /// <summary>The wanted title, url and session id, sentinel-prefixed, in the order the activation
+    /// script reads them from <c>argv</c> (items 1, 2, 3; just the sentinel when absent). Foreign
+    /// text — it travels as osascript arguments and never enters script source.</summary>
+    internal static IReadOnlyList<string> ActivationArguments(AppTab tab) =>
+        new[] { ArgSentinel + tab.Title, ArgSentinel + (tab.Url ?? ""), ArgSentinel + (tab.SessionId ?? "") };
+
+    /// <summary>The osascript command line (internal for tests): <c>-e script</c>, then — only when
+    /// there are foreign args — <c>--</c> and the args, so none can be parsed as an option.</summary>
+    internal static ProcessStartInfo BuildOsaStartInfo(string script, IReadOnlyList<string> args)
+    {
+        var psi = new ProcessStartInfo("/usr/bin/osascript")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,   // swallowed: -1743 consent denials etc. are non-errors here
+            UseShellExecute = false,
+        };
+        psi.ArgumentList.Add("-e");
+        psi.ArgumentList.Add(script);
+        if (args.Count > 0)
+        {
+            psi.ArgumentList.Add("--");
+            foreach (var a in args) psi.ArgumentList.Add(a);
+        }
+        return psi;
+    }
+
+    /// <summary>Shared AppleScript handlers for the activation scripts — the in-app twin of
+    /// <see cref="TabIdentity"/>: <c>trimmed</c> strips exactly <see cref="TabIdentity.TrimChars"/>,
+    /// and <c>isMatch</c> is url-first (title only when the wanted url is empty), case-SENSITIVE
+    /// (AppleScript's default `is` ignores case).</summary>
+    private static readonly string MatchHandlers = $$"""
+        on unwrap(s)
+            if (count of s) < 2 then return ""
+            return text 2 thru -1 of s
+        end unwrap
+
         on trimmed(s)
             if s is missing value then return ""
             set t to s as text
-            set ws to {" ", tab, return, linefeed}
+            set ws to {{TabIdentity.TrimCharsAppleScriptList()}}
             repeat while (count of t) > 0 and ws contains (character 1 of t)
                 if (count of t) is 1 then
                     set t to ""
@@ -251,41 +311,54 @@ public sealed class MacOSTabProvider : ITabProvider
         end trimmed
 
         on isMatch(rawTitle, rawUrl, wantTitle, wantUrl)
-            set t to my trimmed(rawTitle)
             set u to my trimmed(rawUrl)
+            if wantUrl is not "" then
+                considering case
+                    return u is wantUrl
+                end considering
+            end if
+            set t to my trimmed(rawTitle)
             if t is "" then set t to u
             considering case
-                if t is not wantTitle then return false
-                if wantUrl is not "" and u is not wantUrl then return false
+                return t is wantTitle
             end considering
-            return true
         end isMatch
 
         """;
 
+    private const string ArgvHead = """
+        on run argv
+            set wantTitle to my unwrap(item 1 of argv)
+            set wantUrl to my unwrap(item 2 of argv)
+            set wantSession to my unwrap(item 3 of argv)
+        """;
+
     /// <summary>Activation by IDENTITY, not position (bevel-6asm). Row indexes go stale the moment a
-    /// tab closes or reorders, so the script receives the wanted title and url as argv and: if tab
-    /// <paramref name="tabIndex"/> of window <paramref name="windowRef"/> still matches, selects it;
-    /// else searches EVERY window (window indexes are z-order and go stale too); exactly one match
-    /// is selected, zero or 2+ do nothing. `activate` runs last and only after a successful select.
-    /// Returns "ok" / "none" / "gone" (informational; the caller ignores it).</summary>
+    /// tab closes or reorders, so the script receives the wanted identity as (sentinel-prefixed) argv
+    /// and: if tab <paramref name="tabIndex"/> of window <paramref name="windowRef"/> still matches,
+    /// selects it; else searches EVERY window (window indexes are z-order and go stale too); exactly
+    /// one match is selected, zero or 2+ do nothing. Browsers match by url (title when the url is
+    /// empty); iTerm2 by session unique id. `activate` runs last, only after a successful select.
+    /// Returns "ok" / "none" / "gone" (informational; the caller ignores it). The decision is mirrored
+    /// by <see cref="TabIdentity.Resolve"/>.</summary>
     internal static string ActivationScript(string bundleId, Dialect dialect, int windowRef, int tabIndex) => dialect switch
     {
-        // iTerm2 has no url; its tab text is the current session's name.
         Dialect.ITerm => $$"""
             {{MatchHandlers}}
-            on run argv
-                set wantTitle to item 1 of argv
-                set wantUrl to item 2 of argv
+            {{ArgvHead}}
+                if wantSession is "" then return "none"
                 if application id "{{bundleId}}" is not running then return "gone"
                 set hitW to 0
                 set hitT to 0
                 tell application id "{{bundleId}}"
                     try
-                        if my isMatch(name of current session of tab {{tabIndex}} of window id {{windowRef}}, "", wantTitle, "") then
-                            set hitW to {{windowRef}}
-                            set hitT to {{tabIndex}}
-                        end if
+                        repeat with s in (sessions of tab {{tabIndex}} of window id {{windowRef}})
+                            if (unique id of s) is wantSession then
+                                set hitW to {{windowRef}}
+                                set hitT to {{tabIndex}}
+                                exit repeat
+                            end if
+                        end repeat
                     end try
                     if hitW is 0 then
                         set n to 0
@@ -295,11 +368,14 @@ public sealed class MacOSTabProvider : ITabProvider
                             repeat with t in tabs of w
                                 set ti to ti + 1
                                 try
-                                    if my isMatch(name of current session of t, "", wantTitle, "") then
-                                        set n to n + 1
-                                        set hitW to wid
-                                        set hitT to ti
-                                    end if
+                                    repeat with s in (sessions of t)
+                                        if (unique id of s) is wantSession then
+                                            set n to n + 1
+                                            set hitW to wid
+                                            set hitT to ti
+                                            exit repeat
+                                        end if
+                                    end repeat
                                 end try
                             end repeat
                         end repeat
@@ -314,9 +390,7 @@ public sealed class MacOSTabProvider : ITabProvider
 
         Dialect.Chromium => $$"""
             {{MatchHandlers}}
-            on run argv
-                set wantTitle to item 1 of argv
-                set wantUrl to item 2 of argv
+            {{ArgvHead}}
                 if application id "{{bundleId}}" is not running then return "gone"
                 set hitW to 0
                 set hitT to 0
@@ -354,9 +428,7 @@ public sealed class MacOSTabProvider : ITabProvider
 
         Dialect.Safari => $$"""
             {{MatchHandlers}}
-            on run argv
-                set wantTitle to item 1 of argv
-                set wantUrl to item 2 of argv
+            {{ArgvHead}}
                 if application id "{{bundleId}}" is not running then return "gone"
                 set hitW to 0
                 set hitT to 0
@@ -397,7 +469,7 @@ public sealed class MacOSTabProvider : ITabProvider
 
     // ── Output parsing (internal for tests) ──────────────────────────────────
 
-    internal static IReadOnlyList<AppTab> Parse(string raw, string bundleId, bool hasUrl)
+    internal static IReadOnlyList<AppTab> Parse(string raw, string bundleId, bool hasUrl, bool hasSessionId = false)
     {
         if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<AppTab>();
         var tabs = new List<AppTab>();
@@ -405,11 +477,13 @@ public sealed class MacOSTabProvider : ITabProvider
         {
             var f = row.Split(Us);
             if (f.Length < 3 || !int.TryParse(f[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var tabIndex)) continue;
-            var title = f[2].Trim();
-            var url = hasUrl && f.Length >= 4 ? f[3].Trim() : null;
+            var title = TabIdentity.Normalize(f[2]);
+            var url = hasUrl && f.Length >= 4 ? TabIdentity.Normalize(f[3]) : null;
+            var sessionId = hasSessionId && f.Length >= 4 ? f[3].Trim() : null;
             // A tab with no title at all falls back to its URL (browsers mid-load), else app name-less "".
             if (title.Length == 0 && !string.IsNullOrEmpty(url)) title = url;
-            tabs.Add(new AppTab(bundleId, f[0].Trim(), tabIndex, title, string.IsNullOrEmpty(url) ? null : url));
+            tabs.Add(new AppTab(bundleId, f[0].Trim(), tabIndex, title, string.IsNullOrEmpty(url) ? null : url,
+                SessionId: string.IsNullOrEmpty(sessionId) ? null : sessionId));
         }
         return tabs;
     }
@@ -417,23 +491,11 @@ public sealed class MacOSTabProvider : ITabProvider
     // ── osascript runner ─────────────────────────────────────────────────────
 
     private static Task<string> RunOsaScriptAsync(string script, CancellationToken ct) =>
-        RunOsaScriptAsync(script, Array.Empty<string>(), ct);
+        RunOsaScriptAsync(BuildOsaStartInfo(script, Array.Empty<string>()), ct);
 
-    /// <summary>Runs <paramref name="script"/> with <paramref name="args"/> delivered to its
-    /// <c>on run argv</c> handler. Each arg is its own <c>ArgumentList</c> entry after
-    /// <c>-e script</c>, so foreign text can never be re-parsed as script source or shell.</summary>
-    private static async Task<string> RunOsaScriptAsync(string script, IReadOnlyList<string> args, CancellationToken ct)
+    private static async Task<string> RunOsaScriptAsync(ProcessStartInfo psi, CancellationToken ct)
     {
         if (!OperatingSystem.IsMacOS()) return "";
-        var psi = new ProcessStartInfo("/usr/bin/osascript")
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,   // swallowed: -1743 consent denials etc. are non-errors here
-            UseShellExecute = false,
-        };
-        psi.ArgumentList.Add("-e");
-        psi.ArgumentList.Add(script);
-        foreach (var a in args) psi.ArgumentList.Add(a);
 
         try
         {
