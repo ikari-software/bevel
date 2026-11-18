@@ -1,0 +1,161 @@
+W0|bevel-zhmr|AGENT|S|cards-A-test-reliability.md|Perf benchmark harness for frequent taskbar/shell operations
+W0|bevel-3gad|AGENT|S|cards-B-core-ipc-startup.md|Shared icon pool has no writer — the cross-process cache is inert
+W0|bevel-lej1|AGENT|S|cards-B-core-ipc-startup.md|[bug] Shell starts unskinned (Win2000) and the theme changes under it mid-session
+W0|bevel-5no9|AGENT|S|cards-B-core-ipc-startup.md|Version switch relaunches the whole shell 2-3 times instead of once
+W0|bevel-nsk|AGENT|S|cards-C-packaging-security.md|Configure CI secrets for signing + notarization
+W0|bevel-ayf|AGENT|S|cards-C-packaging-security.md|M5: publish DMG hosting + first GitHub release (v0.1.0 tech preview)
+W0|bevel-rkxb|AGENT|S|cards-C-packaging-security.md|Online updates for Bevel (check, download, apply new versions)
+W0|bevel-i9iu|AGENT|S|cards-D-theming.md|AddressBar's folder icon uses hardcoded hex, not theme tokens
+W0|bevel-8lb|AGENT|S|cards-D-theming.md|Luna theme: port vector style guide into Bevel.Themes.Luna ControlThemes
+W0|bevel-ww71|AGENT|S|cards-E1-start-menu-search.md|SPIKE: represent running-but-windowless apps in the taskbar
+W0|bevel-m3.1|AGENT|S|cards-G-tray-interop-windows.md|M3-A: Tray discovery + limited-mode rendering (bevel-m3)
+W0|bevel-m2.6|AGENT|S|cards-G-tray-interop-windows.md|M3: mirror macOS menu-bar NSStatusItems into tray + autohide LRU + iStat denylist
+W0|bevel-sd6n|AGENT|S|cards-G-tray-interop-windows.md|macOS 26: ~25 status items expose no capturable pixels in ANY window (limited-mode fallback is correct)
+W1|bevel-2nn2|AGENT|S|cards-A-test-reliability.md|PushFrame PlatformNotSupportedException in headless tests
+W1|bevel-i145|AGENT|M|cards-A-test-reliability.md|Luna render tests flake on shared headless Application state
+W1|bevel-ayhn|AGENT|M|cards-D-theming.md|Luna tokens are hand-mirrored and not drift-checked (ThemeGen only covers Win2000)
+W1|bevel-tv19|AGENT|S|cards-A-test-reliability.md|RenderFlatAndPastelComparisonTest dirties 5 checked-in PNGs on every run
+W2|bevel-so27|AGENT|L|cards-B-core-ipc-startup.md|Filer enumeration still runs ON THE UI THREAD (syscall count fixed; threading blocked on callers)
+W2|bevel-ri8c|AGENT|M|cards-B-core-ipc-startup.md|Tray reconnect snapshot only upserts -- ghost icons survive a core restart
+W2|bevel-wheq|AGENT|S|cards-B-core-ipc-startup.md|Window-list reconnect snapshot only upserts -- possible stale taskbar buttons after core restart
+W2|bevel-voqo|A+H|M|cards-G-tray-interop-windows.md|Tray live-mirror icons go stale / don't rebuild
+W2|bevel-tnii|AGENT|M|cards-B-core-ipc-startup.md|Redundant 2s full-ListWindows poll re-ships every window icon on top of the delta stream
+W2|bevel-9790|AGENT|S|cards-B-core-ipc-startup.md|Probe the launcher control socket BESIDE the instance lock, before spawning anything
+W2|bevel-u2x6|A+H|S|cards-B-core-ipc-startup.md|Drags out of Filer carry no files — dropping on Finder/Mail/browser does nothing
+W2|bevel-hsvx|AGENT|S|cards-B-core-ipc-startup.md|Start-menu folder opens bypass the parked Filer and spawn unsupervised
+W2|bevel-yfkw|AGENT|M|cards-D-theming.md|Glyphs.Icon() direct consumers never rebuild on live theme switch
+W2|bevel-5rel|AGENT|S|cards-D-theming.md|ItemView static selection brushes resolved once at type-init, never invalidated
+W2|bevel-yf7c|AGENT|S|cards-D-theming.md|Filer Toolbar.ApplyIcons() rasterized once in the ctor, never re-applied on live theme switch
+W2|bevel-6asm|A+H|M|cards-E2-taskbar-customization.md|Tab activation is positional, so a stale row activates the wrong tab
+W2|bevel-2ip7|AGENT|S|cards-E2-taskbar-customization.md|StacksViewModel reads TaskbarStacks once at construction, never subscribes to settings.Changed
+W2|bevel-5dn|AGENT|M|cards-E2-taskbar-customization.md|Taskbar live-apply: separate cheap preview from debounced persist
+W2|bevel-glnc|AGENT|S|cards-B-core-ipc-startup.md|ShellInstanceLock: IOException can escape, and RecordPid leaks the lock stream
+W2|bevel-soon|AGENT|S|cards-G-tray-interop-windows.md|CFNumberCreate declares CFNumberType as int, but it is CFIndex (pointer-sized)
+W3|bevel-9po|HUMAN|S|cards-C-packaging-security.md|M5: activate release-macos.yml — configure the 6 GitHub 'release' environment secrets
+W3|bevel-m5|A+H|L|cards-C-packaging-security.md|M5 — Polish + packaging = mac v1
+W3|bevel-ka6c|A+H|S|cards-C-packaging-security.md|Apphost links /opt/homebrew brotli — breaks portability of signed builds
+W3|bevel-wcqr|AGENT|M|cards-C-packaging-security.md|Automation control socket has file-perm-only auth (no nonce), unlike helper/shell-core
+W3|bevel-ym0|A+H|L|cards-C-packaging-security.md|M5: Velopack auto-update integration (UPD-01)
+W3|bevel-q3l|A+H|M|cards-C-packaging-security.md|M5: uninstaller / --uninstall (ENG-040)
+W3|bevel-tak|AGENT|M|cards-C-packaging-security.md|M5: local crash logging + export (offline, ENG s7)
+W3|bevel-ct7|AGENT|S|cards-C-packaging-security.md|M5: Settings app — full v1 surface
+W3|bevel-gsz|A+H|S|cards-C-packaging-security.md|M5: Homebrew cask (brew install --cask bevel)
+W3|bevel-cp2|AGENT|M|cards-C-packaging-security.md|M5: user guide + known-issues docs
+W3|bevel-l3o|AGENT|S|cards-C-packaging-security.md|M1: per-capability RPC auth scoping for helper services (ScriptingService/InputService)
+W4|bevel-rzz|A+H|L|cards-F-filer.md|File manager: type-to-select smooth-scroll + virtualized list with up/down buffer
+W4|bevel-onyp|AGENT|L|cards-F-filer.md|Filer: virtualize wrap-panel + O(n^2) InsertSorted + watcher-vs-search + Open-With wire-up + reconcile re-sort
+W4|bevel-ujx8|AGENT|M|cards-B-core-ipc-startup.md|Taskbar: tray seed/stream ordering + StartMenu O(n^2) startup + All-Programs flyout rebuild
+W4|bevel-qf95|A+H|M|cards-B-core-ipc-startup.md|Startup: stagger the taskbar post-paint installed-app enumeration + icon rendering
+W4|bevel-web5|AGENT|M|cards-B-core-ipc-startup.md|Shared icon pool has no eviction; a full pool silently stops sharing
+W4|bevel-yg7h|A+H|M|cards-B-core-ipc-startup.md|Startup: defer the helper ScreenCaptureKit/AX tray self-test off the first-paint window
+W4|bevel-ioxx|A+H|L|cards-F-filer.md|No real thumbnails or OS file icons (IconResolver is a stub)
+W4|bevel-m3.2.1|A+H|M|cards-G-tray-interop-windows.md|M3-B.1: throttled live-capture refresh cadence (Req 5.4) (bevel-m3.2)
+W4|bevel-umgr|AGENT|M|cards-A-test-reliability.md|Stream-resubscribe test seams for MacOSWindowManager + MacOSSystemTrayHost
+W4|bevel-gww.9|AGENT|M|cards-B-core-ipc-startup.md|AOT: convert 3 code-behind reflection Bindings to compiled/manual (StartMenu icon, ItemView selection colors)
+W4|bevel-hprc|AGENT|M|cards-B-core-ipc-startup.md|[design] Launcher self-update on RestartAll (version-stamped handshake, re-exec)
+W4|bevel-f4g5|A+H|M|cards-B-core-ipc-startup.md|Version-skew message needs to be readable and offer actions
+W4|bevel-mhvu|AGENT|S|cards-B-core-ipc-startup.md|ShellCoreSystemTrayHost duplicates tray capabilities instead of forwarding the core's
+W4|bevel-b8t|A+H|M|cards-F-filer.md|M5: 100k-entry file-manager perf validation (06 perf)
+W4|bevel-yd2n|AGENT|M|cards-D-theming.md|PROFILE FIRST: colourway switch does ~140 individual resource writes
+W5|bevel-6sk6|AGENT|L|cards-E1-start-menu-search.md|Start-menu inline search: results panel (apps, files, tabs) — the search foundation
+W5|bevel-vtc6|A+H|M|cards-E1-start-menu-search.md|Start-menu search over tabs: type-to-jump across every ITabProvider app
+W5|bevel-pr4l|AGENT|M|cards-E1-start-menu-search.md|StartMenu.axaml.cs grew 38% absorbing the search UI — extract the search strip
+W5|bevel-qb19|A+H|M|cards-E1-start-menu-search.md|Taskbar buttons need an attention state
+W5|bevel-4vce|A+H|M|cards-E1-start-menu-search.md|Start menu: unify shell-management actions + fix Luna 'Log Off' mislabel
+W5|bevel-xrx6|A+H|L|cards-E1-start-menu-search.md|Frequency-based app suggestions: exclude-open filter + OS usage seeding
+W5|bevel-jt30|AGENT|S|cards-E1-start-menu-search.md|Setting: list windows on other Spaces (default on)
+W5|bevel-psro|AGENT|M|cards-E1-start-menu-search.md|Reuse TypeToFind in tree / Start menu / FolderPicker / taskbar / desktop grid
+W5|bevel-jlbs|A+H|L|cards-E2-taskbar-customization.md|Downloads stack UX: context menus, richer flyout, responsiveness + motion
+W5|bevel-dw5|AGENT|M|cards-E2-taskbar-customization.md|Taskbar cust: stacks manager (add/remove/reorder folders)
+W5|bevel-apm|A+H|L|cards-E2-taskbar-customization.md|Context menus: cross-OS superset (Cascade/Tile + window verbs)
+W5|bevel-ze3o|AGENT|M|cards-F-filer.md|Sort order and view mode are not persisted per-folder
+W5|bevel-4pgk|AGENT|M|cards-F-filer.md|Wire Favorites end-to-end
+W5|bevel-cq7g|AGENT|S|cards-F-filer.md|Folders browsed INSIDE the Trash switch to file:// and regain normal caps
+W5|bevel-j905|A+H|M|cards-F-filer.md|Empty Trash + Restore/Put Back UI for the Trash view
+W5|bevel-lkib|AGENT|S|cards-F-filer.md|net:// Network tree node is a dead stub (silent no-op)
+W5|bevel-l17f|A+H|S|cards-E2-taskbar-customization.md|Tabs menu favicons: Chromium Favicons DB + iTerm session colors as row icons
+W5|bevel-y3cl|A+H|M|cards-E2-taskbar-customization.md|Gecko tab engine: stable window identity, pid carry, URL enrichment
+W5|bevel-9w0h|A+H|M|cards-E2-taskbar-customization.md|Arc tabs menu: prefer live/recent tabs over raw sidebar order (Space-aware)
+W5|bevel-s5x|AGENT|S|cards-E2-taskbar-customization.md|Taskbar grouped-button jump-list: per-app custom actions (New window, etc.)
+W6|bevel-7hf4|A+H|M|cards-G-tray-interop-windows.md|Hide mirrored icons from the macOS menu bar when Bevel owns them (Bartender-style)
+W6|bevel-m3|A+H|L|cards-G-tray-interop-windows.md|M3 — Systray mirroring (Ice technique)
+W6|bevel-whz|A+H|M|cards-G-tray-interop-windows.md|Wire AppleScript 'open'/odoc folder-open through IShellAutomation (INT-6)
+W6|bevel-odf|A+H|L|cards-G-tray-interop-windows.md|Synchronous AE get/count can freeze the UI thread on huge enumeration
+W6|bevel-4qr|A+H|M|cards-G-tray-interop-windows.md|M4-E: AppleScript compat corpus harness (~40 snippets, exit criteria)
+W6|bevel-m4|A+H|L|cards-G-tray-interop-windows.md|M4 — Apple Events tier 1
+W6|bevel-ye27|A+H|M|cards-G-tray-interop-windows.md|macOS 26: resolve real names for Control-Center-owned tray items (most show as generic 'Item')
+W6|bevel-sdss|AGENT|M|cards-G-tray-interop-windows.md|IPermissionBroker.PermissionChanged is declared but never raised anywhere -- dead live-update contract
+W6|bevel-h32|A+H|L|cards-E2-taskbar-customization.md|Taskbar cust: tray denylist editor + live-capture toggle
+W6|bevel-vs10|A+H|M|cards-G-tray-interop-windows.md|Apple Events: add a 'launch' verb (INT-3 parity with bevelctl/bevel://)
+W6|bevel-aogp|AGENT|S|cards-G-tray-interop-windows.md|Remove dead trayGlyphLayout sizing code + its test (native-size rendering replaced it)
+W6|bevel-tzx|AGENT|S|cards-G-tray-interop-windows.md|Share one ScreenCaptureKit capture helper (tray vs window)
+W7|bevel-rqcp|A+H|S|cards-D-theming.md|Author Flat watercolor SVG spec and align runtime
+W7|bevel-q455|A+H|S|cards-D-theming.md|Implement the Flat (Whistler watercolor) theme from the design spec
+W7|bevel-lqot|AGENT|M|cards-D-theming.md|Promote Luna.Brush.StartMenu*/TaskButton*/CaptionButton* to Bevel.Brush.*
+W7|bevel-quif|AGENT|S|cards-D-theming.md|Luna ControlThemes have hardcoded hex that ignores the colour variant
+W7|bevel-dob|AGENT|L|cards-D-theming.md|Theme engine: per-theme control-template sets (unlocks XP/Luna/Aero chrome)
+W7|bevel-7cq|AGENT|M|cards-D-theming.md|Luna theme: remaining ControlThemes (caption, scrollbar, progress, tabs, checkbox/radio, menu, taskbar, start menu)
+W7|bevel-ii93|A+H|M|cards-D-theming.md|EPIC: Watercolor Flat theme (Whistler Watercolor)
+W7|bevel-safz|AGENT|S|cards-D-theming.md|Dead AXAML class: Classes="taskbar-start" matches no selector
+W7|bevel-zvo0|A+H|S|cards-D-theming.md|InfoPaneStyle enum still carries vendor names (Win2000/WinXP/Win9x)
+W7|bevel-50hs|AGENT|M|cards-D-theming.md|Tokenize straggler hardcoded colours/sizes
+W7|bevel-q91m|AGENT|M|cards-D-theming.md|Arbitrary accent-colour derivation (free picker)
+W7|bevel-fdo5|A+H|L|cards-D-theming.md|EPIC: Derivation engine → derived dark mode
+W7|bevel-tknt|A+H|L|cards-D-theming.md|The .beveltheme package pipeline / third-party themes are unimplemented
+W7|bevel-ti3|A+H|L|cards-D-theming.md|M5: Win2000 theme completion across every control (pixel-golden)
+W7|bevel-ztdt|AGENT|M|cards-D-theming.md|Theme Studio: fold caption colour/height into Save
+W7|bevel-ekcv|AGENT|S|cards-D-theming.md|Luna menus: render mac ⌘-glyph accelerators (not "Cmd+X")
+W8|bevel-osp|A+H|S|cards-C-packaging-security.md|Verify helper code signature / team-id before launch (defense-in-depth)
+W8|bevel-kyf|AGENT|S|cards-C-packaging-security.md|Helper: verify peer UID/credentials on the UDS connection (defense-in-depth)
+W8|bevel-9ucj|AGENT|S|cards-C-packaging-security.md|Automation channel: harden composite WindowRef bit-budget + pid-reuse edge
+W8|bevel-4x0|AGENT|S|cards-C-packaging-security.md|bevel:// implements only 2 of 8 automation verbs; 'set' unreachable from CLI/URL
+W8|bevel-2kdu|AGENT|L|cards-G-tray-interop-windows.md|Migrate macOS P/Invoke to source-generated [LibraryImport]
+W8|bevel-p5bx|A+H|L|cards-G-tray-interop-windows.md|Windows P/Invoke has the same silo duplication macOS had
+W8|bevel-gw2|AGENT|S|cards-B-core-ipc-startup.md|Factor shared gRPC helper-client base (WindowManager + SystemTrayHost)
+W8|bevel-alb|AGENT|L|cards-B-core-ipc-startup.md|ShellCore CoreCommand/CoreResponse: replace optional-field grab-bag with typed payloads
+W8|bevel-1nxe|A+H|M|cards-B-core-ipc-startup.md|Migrate drag-drop to Avalonia DataTransfer API (retire IDataObject)
+W8|bevel-1jvr|AGENT|S|cards-B-core-ipc-startup.md|Startup: replace ShellCoreEndpoint.ReadNonce 5s Thread.Sleep poll with async wait (latent hang)
+W8|bevel-6tpi|AGENT|M|cards-A-test-reliability.md|Nothing asserts popup PLACEMENT
+W8|bevel-hr5k|A+H|M|cards-A-test-reliability.md|Debug traces are lost when the shell is launched the way users launch it
+W8|bevel-hs1j|A+H|M|cards-A-test-reliability.md|Spawner tests need an AX-granted host to actually run
+W8|bevel-79r|A+H|S|cards-A-test-reliability.md|Harden flaky WindowSpawner close enumeration test
+W8|bevel-2tlp|AGENT|S|cards-A-test-reliability.md|MacOSTabProvider: seam + tests for the osascript runner
+W8|bevel-adbo|AGENT|M|cards-A-test-reliability.md|Landing-page shots are all 1x — harvest them at 2x for HiDPI
+W8|bevel-lgpn|A+H|S|cards-A-test-reliability.md|Prove why hero-blue2001.png is not byte-reproducible across machines
+W8|bevel-gww.7|HUMAN|L|cards-B-core-ipc-startup.md|P7: NativeAOT publish (the per-process memory payoff)
+W8|bevel-gww|AGENT|L|cards-B-core-ipc-startup.md|Multi-process shell: --role split + shell-core owner + shared caches + AOT
+W8|bevel-0ai|AGENT|M|cards-E1-start-menu-search.md|Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame cap, clickViaCGEvent usleep
+W9|bevel-9ue|A+H|L|cards-E2-taskbar-customization.md|Taskbar cust: edge position (top/bottom + vertical L/R) + auto-hide + centered alignment
+W9|bevel-gcd|A+H|M|cards-E2-taskbar-customization.md|Taskbar cust: dock magnification, hover thumbnails, Task View/Search/Widgets buttons
+W9|bevel-hail|A+H|L|cards-E2-taskbar-customization.md|Taskbar menu: true live Quit⇄Force-Quit swap via in-tree Popup
+W9|bevel-e5vz|AGENT|M|cards-E2-taskbar-customization.md|Explore: tab-level previews (CDP opt-in / extension) + window hover thumbnails beside tab list
+W9|bevel-c11a|AGENT|L|cards-F-filer.md|Address bar is a plain textbox — no breadcrumbs/autocomplete/history
+W9|bevel-o6cc|AGENT|L|cards-F-filer.md|EPIC: Filer Bar system (Folders/Search/History/Favorites)
+W9|bevel-tjr2|HUMAN|L|cards-E2-taskbar-customization.md|EPIC: per-Space / multi-monitor taskbars
+W9|bevel-lkw1|A+H|L|cards-D-theming.md|EPIC: Theme lineage — Win10 flat, KDE Breeze, Aero, Win11
+W9|bevel-te20|HUMAN|M|cards-D-theming.md|Git-repo theme install (.beveltheme from user-supplied git URL)
+W9|bevel-2t7u|HUMAN|L|cards-G-tray-interop-windows.md|Windows: mirror third-party notification-area icons into the tray
+W9|bevel-m3.3.1|A+H|L|cards-G-tray-interop-windows.md|Tray click-forwarding: custom status items unresponsive on macOS 26 (bevel-m3.3)
+W9|bevel-spike-tier3|HUMAN|L|cards-G-tray-interop-windows.md|SPIKE: tier-3 headless-Finder mirroring (measure window-escape rate)
+W9|bevel-3qc|HUMAN|L|cards-E2-taskbar-customization.md|Work-area reservation (Dock-shim strict mode) + R9.4/R15 measurement
+W9|bevel-assets|HUMAN|L|cards-D-theming.md|Self-produce Win2000 core asset set ($0; AI-assisted + open/CC/OFL)
+W9|bevel-gye|A+H|M|cards-D-theming.md|RTL: set FlowDirection from OS locale at startup + verify bevel light source vs RTL Win2000 references
+W9|bevel-zr4|HUMAN|M|cards-D-theming.md|Second-source the WinDaisy-derived named color schemes (Brick, Desert, Eggplant, etc.) in schemes.json
+W9|bevel-legal-branding|HUMAN|S|cards-C-packaging-security.md|Parked counsel asks: trade-dress + .beveltheme licensing (Bevel Desktop decided)
+W9|bevel-7c6m|HUMAN|S|cards-C-packaging-security.md|Mac App Store is blocked by entitlements, not licence — pick real channels
+W9|bevel-m3.6|HUMAN|S|cards-G-tray-interop-windows.md|M3-F: Menu-bar reclaim (consent-gated, feature-flagged) (bevel-m3)
+W9|bevel-spike-shadow|HUMAN|S|cards-G-tray-interop-windows.md|SPIKE: bundle-id shadowing of com.apple.finder (documents failure mode; never ships)
+H|bevel-cezo|HUMAN|S|cards-E1-start-menu-search.md|Start menu: type-to-search while open
+H|bevel-ijln|HUMAN|S|cards-E1-start-menu-search.md|Taskbar: app unread/badge counts (Slack-style)
+H|bevel-yv2m|HUMAN|S|cards-E1-start-menu-search.md|macOS Zoom ignores Bevel taskbar height
+H|bevel-au94|HUMAN|S|cards-E1-start-menu-search.md|Disable or remappable click-again-to-minimize on task buttons
+H|bevel-c54t|A+H|S|cards-E1-start-menu-search.md|Taskbar: Win10/11-style big icons mode
+H|bevel-xpfl|HUMAN|S|cards-E1-start-menu-search.md|Two-row taskbar: tray icons taller than available row height
+H|bevel-9elh|A+H|S|cards-E2-taskbar-customization.md|Downloads stack: macOS-like grid with content previews
+H|bevel-szw4|HUMAN|S|cards-E1-start-menu-search.md|Space switch: first taskbar click visibly flips other-display Spaces
+H|bevel-yduf|A+H|S|cards-G-tray-interop-windows.md|[bug] Tray mirrors the right items but fails to render their icons
+H|bevel-qcd9|A+H|S|cards-G-tray-interop-windows.md|Tray self-test never re-verifies live capture once Screen Recording is granted mid-session
+H|bevel-tned|HUMAN|S|cards-G-tray-interop-windows.md|On-device QA: tray adaptive tinting + multi-row/stacked-date
+H|bevel-7qdi|A+H|S|cards-G-tray-interop-windows.md|Intermittent: tray icons render too small (not reproduced)
+H|bevel-injy|A+H|S|cards-G-tray-interop-windows.md|Quit leaves the Windows taskbar hidden (no restore / no crash-heal)
+H|bevel-h0sr|A+H|S|cards-G-tray-interop-windows.md|Windows taskbar sits too high and ignores display-size changes
