@@ -18,17 +18,30 @@ public static class FlatVariantService
 
     public const string Default = "Blue";
     private static readonly List<object> Injected = new();
+    // What is applied, and INTO WHICH resource dictionary. The id alone is not enough: these statics outlive an
+    // Application (every headless test gets a fresh one), and a guard keyed on the id alone would skip applying to
+    // a fresh Application that has none of it (bevel-yfkw review; the stale-static class behind bevel-i145).
+    private static string? _appliedId;
+    private static Avalonia.Controls.IResourceDictionary? _owner;
 
     public static bool IsKnown(string? id) => Variants.Any(v => string.Equals(v.Id, id, StringComparison.OrdinalIgnoreCase));
 
     public static void Apply(BevelSettings settings)
     {
         if (Application.Current?.Resources is not { } resources) return;
-        Clear();
         var id = IsKnown(settings.FlatVariant) ? settings.FlatVariant : Default;
+        // ThemeVariants.Apply re-runs on EVERY settings change; re-applying the variation already in place must
+        // not churn the resources or make every glyph in the shell rebuild.
+        if (ReferenceEquals(_owner, resources) && string.Equals(id, _appliedId, StringComparison.OrdinalIgnoreCase))
+            return;
+        Clear();
+        _owner = resources;
+        _appliedId = id;
         // "Blue" is the theme-native look: FlatTheme.axaml already defines every token injected
         // below with the correct source-led pigments, so re-injecting them here would only shadow
         // the theme with stale values (and the 2-stop Gradient() cannot express the 3-stop caption ramp).
+        // The palette change of this exit is Clear()'s removal, which raises the invalidation itself (and stays
+        // silent when nothing was injected, so re-applying Blue on every settings change rebuilds nothing).
         if (string.Equals(id, Default, StringComparison.OrdinalIgnoreCase))
             return;
         var (caption, captionEnd, taskbar, taskbarEnd, select, selectEnd, places, start, startEnd, placeText, toneDark, frame, btn, btnBorder, btnHover, btnPress, progress) = id switch
@@ -60,13 +73,21 @@ public static class FlatVariantService
         Put(resources, "Blue2001.Brush.StartMenuFooter", Gradient(start, startEnd));
         Put(resources, "Blue2001.Brush.StartMenuPlaceText", new SolidColorBrush(Color.Parse(placeText)));
         Put(resources, "Flat.Brush.TitleToneDark", new SolidColorBrush(Color.Parse(toneDark)));
+        Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw); coalesces with Clear()'s above
     }
 
     public static void Clear()
     {
         if (Application.Current?.Resources is not { } resources) return;
-        foreach (var key in Injected) resources.Remove(key);
+        var owned = ReferenceEquals(_owner, resources);
+        _owner = null;
+        _appliedId = null;
+        if (Injected.Count == 0) return;   // nothing of ours in the resources — no palette change to announce
+        // Keys injected into a previous Application's resources are not in this one: forget them, touch nothing.
+        if (owned)
+            foreach (var key in Injected) resources.Remove(key);
         Injected.Clear();
+        if (owned) Glyphs.InvalidateThemeCache();   // the variation's colours just left (bevel-yfkw)
     }
 
     private static void Put(Avalonia.Controls.IResourceDictionary resources, object key, object value)

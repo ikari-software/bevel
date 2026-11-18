@@ -54,11 +54,11 @@ public class TaskbarAccessibilityTests
         // exactly when there is no visible label to borrow.
         Assert.Equal(BevelSettings.DefaultStartLabel, AutomationProperties.GetName(start));
 
-        view.ApplyLiveSettings(new BevelSettings { TaskbarStartLabel = "Go!" });
+        view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarStartLabel = "Go!" }));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal("Go!", AutomationProperties.GetName(start));
 
-        view.ApplyLiveSettings(new BevelSettings { TaskbarStartLabel = "" });
+        view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarStartLabel = "" }));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal("Start menu", AutomationProperties.GetName(start));
     }

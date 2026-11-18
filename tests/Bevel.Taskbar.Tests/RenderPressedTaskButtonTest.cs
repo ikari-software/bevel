@@ -185,11 +185,11 @@ public class RenderPressedTaskButtonTest
         var model = new ShellModel(wm, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(new BevelSettings
+        view.Initialize(TestSettings.NoStacks(new BevelSettings
         {
             TaskbarButtonWidth = 150,
             TaskbarGrouping = grouping ? TaskbarGroupingMode.Always : TaskbarGroupingMode.Never,
-        });
+        }));
         var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
         window.Show();
         Dispatcher.UIThread.RunJobs();

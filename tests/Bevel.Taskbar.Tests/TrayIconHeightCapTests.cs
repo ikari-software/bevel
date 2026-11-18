@@ -134,7 +134,7 @@ public class TrayIconHeightCapTests
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), tray: tray);
 
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(new BevelSettings { TaskbarRows = 2 });
+        view.Initialize(TestSettings.NoStacks(new BevelSettings { TaskbarRows = 2 }));
         var window = new TaskbarWindow(null, rows: 2) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
