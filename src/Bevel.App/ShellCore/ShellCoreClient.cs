@@ -46,7 +46,10 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     // adapters are still subscribed, so the snapshot burst rebuilds everything.
     private readonly object _sessionGate = new();
     private bool _sessionStarted;   // a session was REQUESTED (set before the connect attempt — see below)
-    private bool _helloForConnection; // a Hello has already been sent on the CURRENT link; cleared on (re)connect
+    // The first Hello on the CURRENT link — in flight or answered (bevel-j5mr). Null = none claimed yet, or
+    // the last attempt failed. Cleared on (re)connect. A Task rather than a flag so the path that loses
+    // the claim AWAITS the winner's Hello instead of returning before the core has answered it.
+    private Task? _linkHello;
     private int _epoch;             // 0 = no baseline yet (pre-Hello deltas apply but don't gap-check)
     private long _seq;
     private long _lastAutoHelloTick; // Environment.TickCount64 — rate-limits gap-triggered re-Hellos
@@ -110,7 +113,9 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     /// <summary>Starts the session (bevel-4zfs): Hello → the core pushes the four stamped snapshots to
     /// THIS client. Call ONCE, after every adapter (windows/apps/tray/settings) is constructed and
     /// subscribed — that ordering is the whole point: the client owns when state arrives, so the snapshot
-    /// can never be eaten by a too-early connect. Idempotent; a reconnect re-Hellos on its own.</summary>
+    /// can never be eaten by a too-early connect. Idempotent; a reconnect re-Hellos on its own.
+    /// Completes only once the core has ANSWERED the Hello (bevel-j5mr): from then on this client is
+    /// registered for every delta and has already received the snapshot burst.</summary>
     public async Task StartSessionAsync(CancellationToken ct = default)
     {
         // Mark the session BEFORE connecting, not after (bevel-pa3j). The caller at
@@ -127,28 +132,53 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
         await SendHelloOnceAsync().ConfigureAwait(false);
     }
 
-    /// <summary>Sends Hello unless this link already carried one. Both session-start paths — this
-    /// caller and <see cref="ConnectOnceAsync"/>'s on-connect re-Hello — now fire for a first
-    /// connect, and whichever gets there first is enough: the core answers a Hello with the full
-    /// stamped snapshot burst, so a second one is pure waste on every boot. Deliberate re-syncs
-    /// (<see cref="TrackSequence"/>'s gap recovery) bypass this and call
-    /// <see cref="SendHelloAsync"/> directly.</summary>
+    /// <summary>Sends Hello unless this link already carried one, and in EITHER case completes only once
+    /// the link's Hello has been answered. Both session-start paths — this caller and
+    /// <see cref="ConnectOnceAsync"/>'s on-connect re-Hello — fire for a first connect, and whichever
+    /// gets there first is enough: the core answers a Hello with the full stamped snapshot burst, so a
+    /// second one is pure waste on every boot. Deliberate re-syncs (<see cref="TrackSequence"/>'s gap
+    /// recovery) bypass this and call <see cref="SendHelloAsync"/> directly.
+    ///
+    /// <para>The loser WAITS for the winner (bevel-j5mr). It used to return at once, so
+    /// <see cref="StartSessionAsync"/> could complete while the Hello was still in flight — and the core
+    /// registers a connection for broadcasts only after its handshake reply, so deltas a caller raised
+    /// right then could miss this client entirely. An ANSWERED Hello is the proof this client is
+    /// registered (the core reads requests only after registering) and that the snapshot burst, queued
+    /// ahead of the response on the same connection, has already been delivered.</para></summary>
     private async Task SendHelloOnceAsync()
     {
+        TaskCompletionSource? mine = null;
+        Task hello;
         lock (_sessionGate)
         {
-            if (_helloForConnection) return;
-            _helloForConnection = true;
+            if (_linkHello is null)
+            {
+                mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _linkHello = mine.Task;
+            }
+            hello = _linkHello;
+        }
+        if (mine is null)
+        {
+            // Another path holds this link's claim: its outcome is ours. If it failed it already
+            // released the claim, so the next caller sends a fresh Hello.
+            await hello.ConfigureAwait(false);
+            return;
         }
         try
         {
             await SendHelloAsync().ConfigureAwait(false);
+            mine.SetResult();
         }
-        catch
+        catch (Exception ex)
         {
             // Release the claim on failure, or a Hello that was attempted-and-lost would block the
-            // other path from ever trying on this link — the exact shape of the bug above.
-            lock (_sessionGate) _helloForConnection = false;
+            // other path from ever trying on this link (bevel-pa3j). Only OUR claim: a reconnect may
+            // already have cleared it and a new link's Hello taken its place.
+            lock (_sessionGate)
+                if (ReferenceEquals(_linkHello, mine.Task)) _linkHello = null;
+            mine.SetException(ex);
+            _ = mine.Task.Exception;   // observed here; a waiter, if any, rethrows it
             throw;
         }
     }
@@ -245,7 +275,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
                 // is now SendHelloOnceAsync's job, keyed on the link rather than on connect history.
                 if (_sessionStarted) rehello = true;
                 _epoch = 0; _seq = 0;   // the new connection's burst re-baselines
-                _helloForConnection = false;   // a fresh link owes its own Hello
+                _linkHello = null;   // a fresh link owes its own Hello
             }
             // Log on the connected transition (not per path), so a reconnect via EITHER the lazy
             // command path or the supervisor reports once. First connect is silent.
