@@ -47,7 +47,7 @@ public sealed class TabPrefetchWiringTests
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
         var tabs = new RecordingTabs();
-        view.Initialize(new Bevel.Core.BevelSettings(), tabProvider: tabs);
+        view.Initialize(TestSettings.NoStacks(new Bevel.Core.BevelSettings()), tabProvider: tabs);
         var window = new TaskbarWindow(null) { Content = view, Width = 800, Height = 40 };
 
         // AppId is the FRIENDLY NAME; BundleId is the machine key the tab provider is gated on.

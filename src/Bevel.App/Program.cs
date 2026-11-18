@@ -300,9 +300,6 @@ internal static class Program
 
         // A leftover quit marker / heartbeat from a previous session must not suppress crash-respawn
         // or look like a live child this boot.
-        QuitRequest.Clear();
-        RoleHeartbeatStore.ClearAll();
-
         // The stop latch exists BEFORE the supervisor so the skew hook can close over it: a
         // VersionSkew verdict means the RUNNING launcher predates the on-disk bundle (children
         // always respawn from the current bundle, so only the launcher side can be stale). One
@@ -332,7 +329,21 @@ internal static class Program
             health: new ShellHealthMonitor(BuildStamp.Current),
             onAlert: ShellHealthAlert.Show);
 
-        supervisor.StartAsync().GetAwaiter().GetResult();
+        // Stand down BEFORE anything is spawned or cleared (bevel-9790). The lock above and a live socket
+        // are independent detectors — an orphaned core can still serve core.sock (2026-10-12). The gate
+        // probes BOTH sockets, and only on "nobody home" clears the previous session's quit marker /
+        // heartbeats (they must not suppress crash-respawn or look like a live child) and starts the
+        // children, in that order. Everything above only builds objects and sets this process's env.
+        if (IncumbentProbe.Gate(controlSocket, coreSocket,
+                IncumbentProbe.RecoverScriptPath(AppContext.BaseDirectory),
+                log: msg => { Console.Error.WriteLine($"[launcher] {msg}"); RestartDiag.Log(msg); },
+                alert: ShellHealthAlert.ShowNativeThenKill,
+                clearQuitMarker: () => { QuitRequest.Clear(); RoleHeartbeatStore.ClearAll(); },
+                spawnChildren: () => supervisor.StartAsync().GetAwaiter().GetResult()) is { } standDownExit)
+        {
+            Environment.ExitCode = standDownExit;
+            return;
+        }
 
         // Filer supervision (bevel-t48y): a SIBLING of the role supervisor — the user opens N Filer
         // windows, so these children are keyed by instance, not by role. Close-vs-crash policy
@@ -424,8 +435,9 @@ internal static class Program
             // Note this is reachable even though the single-instance lock was acquired moments ago:
             // the lock (a file lease) and the socket probe (an authenticated handshake) are
             // INDEPENDENT detectors and can disagree — the incumbent launcher can be gone while its
-            // socket is still served. Detecting it this late is itself the design flaw; see the
-            // follow-up bead for moving the probe up beside the lock, before anything is spawned.
+            // socket is still served. The early IncumbentProbe (bevel-9790, right after
+            // CreateServerEndpoint) now catches this before anything is spawned; this catch remains
+            // as belt-and-braces for the race where the incumbent binds between that probe and here.
             var msg = $"another launcher is already serving {ex.SocketPath}; this launch is standing down";
             Console.Error.WriteLine($"[launcher] {msg}");
             RestartDiag.Log($"launcher: {msg}");

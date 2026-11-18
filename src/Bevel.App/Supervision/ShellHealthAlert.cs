@@ -46,7 +46,9 @@ internal static class ShellHealthAlert
         });
     }
 
-    internal static void ShowNative(string title, string body)
+    internal static void ShowNative(string title, string body) => ShowNative(title, body, killOnTimeout: false);
+
+    private static void ShowNative(string title, string body, bool killOnTimeout)
     {
         if (OperatingSystem.IsMacOS())
         {
@@ -61,8 +63,7 @@ internal static class ShellHealthAlert
                 "display dialog " + QuoteAppleScript(body)
                 + " with title " + QuoteAppleScript(title)
                 + " buttons {\"OK\"} default button 1");
-            using var p = Process.Start(psi);
-            p?.WaitForExit(15_000);
+            RunBounded(psi, TimeSpan.FromSeconds(15), killOnTimeout, out _);
             return;
         }
 
@@ -74,6 +75,35 @@ internal static class ShellHealthAlert
 
         Console.Error.WriteLine($"{title}: {body}");
     }
+
+    /// <summary>Runs <paramref name="psi"/> and waits at most <paramref name="timeout"/>; true when it
+    /// exited in time. stdout/stderr are always redirected AND drained (an unread pipe fills at ~64 KB
+    /// and stalls the child). On timeout with <paramref name="killOnTimeout"/> the whole process tree is
+    /// killed (guarded) so the caller can exit without orphaning a dialog; the Hold path passes false —
+    /// its launcher lives on and the dialog should stay until the user answers.</summary>
+    internal static bool RunBounded(ProcessStartInfo psi, TimeSpan timeout, bool killOnTimeout, out int pid)
+    {
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        using var p = Process.Start(psi);
+        if (p is null) { pid = 0; return true; }
+        pid = p.Id;
+        p.OutputDataReceived += static (_, _) => { };
+        p.ErrorDataReceived += static (_, _) => { };
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
+        if (p.WaitForExit(timeout)) return true;
+        if (killOnTimeout)
+        {
+            try { p.Kill(entireProcessTree: true); }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
+        }
+        return false;
+    }
+
+    /// <summary>Stand-down variant: same dialog, but the process is killed on timeout because the
+    /// launcher is about to exit and must not leave the dialog orphaned.</summary>
+    internal static void ShowNativeThenKill(string title, string body) => ShowNative(title, body, killOnTimeout: true);
 
     private static string QuoteAppleScript(string s) =>
         "\"" + s.Replace("\\", "\\\\", StringComparison.Ordinal)

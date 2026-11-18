@@ -37,7 +37,7 @@ public class ComponentRegionFilterTests
 
         // Initialize with an empty component list; OnLoaded's InitComponentRegion builds the real
         // host and runs one (empty) ApplyComponentRegion pass, exactly as the live app does.
-        view.Initialize(new BevelSettings());
+        view.Initialize(TestSettings.NoStacks(new BevelSettings()));
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();

@@ -515,9 +515,10 @@ public partial class StartMenu : UserControl
 
     // Fixed-item glyphs are the shared code-drawn vectors (Glyphs, Bevel.UI) — crisp at any DPI and
     // theme-token colored. Previously loaded non-embedded PNGs by URI, which silently failed and left the
-    // whole icon column empty; vectors also satisfy the vector-only asset rule.
+    // whole icon column empty; vectors also satisfy the vector-only asset rule. Hosted in a GlyphIcon so a
+    // live theme/scheme/colourway switch recolours them (a bare Glyphs.Icon is a snapshot — bevel-yfkw).
     private static void SetItemIcon(MenuItem item, string key)
-        => item.Icon = Glyphs.Icon(16, new IconKey(key));
+        => item.Icon = new GlyphIcon { Glyph = key, Size = 16 };
 
     // ── Cascading groups ───────────────────────────────────────────────
 

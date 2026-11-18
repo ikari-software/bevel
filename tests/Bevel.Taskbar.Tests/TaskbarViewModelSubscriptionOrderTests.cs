@@ -28,7 +28,7 @@ public class TaskbarViewModelSubscriptionOrderTests
     private sealed class OrderTrackingSettings : ISettingsService
     {
         public readonly List<string> CallOrder = new();
-        private readonly BevelSettings _current = new();
+        private readonly BevelSettings _current = TestSettings.NoStacks(new BevelSettings());   // never watch the real ~/Downloads
 
         public event Action? Changed
         {
@@ -66,14 +66,15 @@ public class TaskbarViewModelSubscriptionOrderTests
         var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var settings = new OrderTrackingSettings();
 
-        _ = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
+        using var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
 
         // The FIRST read is StacksViewModel's one-shot folder seed (settings?.Current.TaskbarStacks) —
         // whole-branch review Fix 1 restored the stacks region to its pre-component-list hand-built
         // ItemsControl (TaskbarView.axaml bound to Stacks.Stacks), since no component type has a
         // renderer yet and ComponentBarHost's generic Button regressed the shipped feature. That read
-        // is a one-shot startup seed, not a live subscription, so there is nothing to race: Stacks
-        // never changes again from this value.
+        // is only the startup seed, not a live subscription: later TaskbarStacks changes arrive
+        // through TaskbarView.ApplyLiveSettings -> StacksViewModel.Reconcile (bevel-2ip7), so there is
+        // no per-view-model Changed subscription to race.
         //
         // The guarded property is about the PAIR that follows: "subscribe" must land before the
         // SECOND read — the one that feeds ApplyConsolidation. If that read came first instead, a
