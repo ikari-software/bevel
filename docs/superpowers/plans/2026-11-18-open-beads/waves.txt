@@ -168,3 +168,4 @@ W2|bevel-2vls|AGENT|M|-|Filer: remaining UI-thread enumeration outside the four 
 W5|bevel-bw1v|AGENT|M|-|Tabs menu: ActivateAsync reports its outcome; failed activation refreshes the list (filed by bevel-6asm)
 W5|bevel-8zx2|AGENT|S|-|Widen TabPrefetch freshness (filed by bevel-6asm)
 W8|bevel-oi77|AGENT|S|-|ShellHealthAlert: pass osascript values as argv, not hand-escaped source (filed by bevel-6asm)
+W2|bevel-70nw|AGENT|M|-|Core IPC: events between HandshakeOk and registration are lost (filed by bevel-j5mr review)
