@@ -44,9 +44,20 @@ internal sealed class ShellHealthMonitor
     private readonly int _commTimeoutTicks;
     private readonly Dictionary<ShellRole, State> _states = new();
 
+    /// <summary>The launcher's supervision poll — one health tick (Program.RunLauncher passes this).</summary>
+    internal static readonly TimeSpan SupervisorTick = TimeSpan.FromSeconds(1);
+
+    /// <summary>Ticks a role may stay un-ready before it is restarted (3 such restarts → Hold).</summary>
+    internal const int DefaultReadyTimeoutTicks = 15;
+
+    /// <summary>Wall-clock form of the ready timeout (15 s). Startup work a role does before
+    /// <c>ReportReady</c> must finish well inside it — e.g. the core's helper-dependent seed
+    /// (<c>ShellCoreServer.DefaultSeedDeadline</c>, bevel-wheq).</summary>
+    internal static TimeSpan DefaultReadyTimeout => SupervisorTick * DefaultReadyTimeoutTicks;
+
     public ShellHealthMonitor(
         Func<string> expectedStamp,
-        int readyTimeoutTicks = 15,
+        int readyTimeoutTicks = DefaultReadyTimeoutTicks,
         int crashLoopLimit = 3,
         int skewRestartBudget = 2,
         int commTimeoutTicks = 8)

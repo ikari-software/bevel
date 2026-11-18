@@ -11,11 +11,11 @@ namespace Bevel.App.ShellCore;
 /// bookkeeping and RETURNS what to raise; the adapter raises its events after the call, so no event handler
 /// ever runs under this lock.</para>
 ///
-/// <para>Pull order-safety: a pull is a point-in-time read that can land AFTER a removal of one of its
-/// items. While any pull is in flight, removals (by delta or snapshot) are recorded, and
-/// <see cref="MergePull"/> drops those ids from the pull's result — so a stale pull cannot resurrect them,
-/// neither here nor in the caller that upserts the returned list. An upsert clears the record (the item
-/// is back for real).</para>
+/// <para>Pull order-safety: a pull is a point-in-time read that can land AFTER a newer change to one of its
+/// items. While any pull is in flight, every change (removal, upsert, snapshot) is recorded with a sequence
+/// number, and <see cref="MergePull"/> lets the newer change win for any id changed since the pull began: an
+/// id removed since is dropped from the pull's result (a stale pull cannot resurrect it), and an id upserted
+/// since keeps its newer value — here AND in the returned list, which the caller upserts.</para>
 /// </summary>
 internal sealed class ProjectionMirror<T>
 {
@@ -23,8 +23,8 @@ internal sealed class ProjectionMirror<T>
     private readonly object _gate = new();
     private readonly Dictionary<string, T> _known = new(StringComparer.Ordinal);
     private int _pullsInFlight;
-    private long _removalSeq;
-    private readonly Dictionary<string, long> _removedDuringPull = new(StringComparer.Ordinal);
+    private long _changeSeq;
+    private readonly Dictionary<string, (long Seq, bool Removed)> _changedDuringPull = new(StringComparer.Ordinal);
 
     public ProjectionMirror(Func<T, string> keyOf) => _keyOf = keyOf;
 
@@ -36,7 +36,7 @@ internal sealed class ProjectionMirror<T>
         {
             var gone = SnapshotReconcile.Absent(_known, snapshot, _keyOf);
             foreach (var g in gone) RemoveLocked(_keyOf(g));
-            foreach (var item in snapshot) _known[_keyOf(item)] = item;
+            foreach (var item in snapshot) UpsertLocked(item);
             return gone;
         }
     }
@@ -44,12 +44,14 @@ internal sealed class ProjectionMirror<T>
     /// <summary>An add/update/foreground delta: the item exists (again).</summary>
     public void Upsert(T item)
     {
-        lock (_gate)
-        {
-            var key = _keyOf(item);
-            _known[key] = item;
-            _removedDuringPull.Remove(key);
-        }
+        lock (_gate) UpsertLocked(item);
+    }
+
+    private void UpsertLocked(T item)
+    {
+        var key = _keyOf(item);
+        _known[key] = item;
+        if (_pullsInFlight > 0) _changedDuringPull[key] = (++_changeSeq, Removed: false);
     }
 
     /// <summary>A remove delta: forget the item, so a later snapshot does not report it removed again.</summary>
@@ -61,7 +63,7 @@ internal sealed class ProjectionMirror<T>
     private void RemoveLocked(string key)
     {
         _known.Remove(key);
-        if (_pullsInFlight > 0) _removedDuringPull[key] = ++_removalSeq;
+        if (_pullsInFlight > 0) _changedDuringPull[key] = (++_changeSeq, Removed: true);
     }
 
     /// <summary>Start a pull. Returns the token to pass to <see cref="MergePull"/>; every call must be
@@ -71,12 +73,13 @@ internal sealed class ProjectionMirror<T>
         lock (_gate)
         {
             _pullsInFlight++;
-            return _removalSeq;
+            return _changeSeq;
         }
     }
 
-    /// <summary>Record a pull's result so a later snapshot can reap it, minus anything removed since the
-    /// pull began (that removal is newer than the pull). Returns the filtered list for the caller.</summary>
+    /// <summary>Record a pull's result so a later snapshot can reap it — except where a change since the pull
+    /// began is newer: a removed id is dropped, an upserted one keeps (and returns) its newer value. Returns the
+    /// list for the caller.</summary>
     public IReadOnlyList<T> MergePull(long startToken, IReadOnlyList<T> items)
     {
         var fresh = new List<T>(items.Count);
@@ -84,7 +87,11 @@ internal sealed class ProjectionMirror<T>
             foreach (var item in items)
             {
                 var key = _keyOf(item);
-                if (_removedDuringPull.TryGetValue(key, out var at) && at > startToken) continue;
+                if (_changedDuringPull.TryGetValue(key, out var change) && change.Seq > startToken)
+                {
+                    if (!change.Removed && _known.TryGetValue(key, out var newer)) fresh.Add(newer);
+                    continue;
+                }
                 _known[key] = item;
                 fresh.Add(item);
             }
@@ -94,6 +101,6 @@ internal sealed class ProjectionMirror<T>
     public void EndPull()
     {
         lock (_gate)
-            if (--_pullsInFlight == 0) _removedDuringPull.Clear();
+            if (--_pullsInFlight == 0) _changedDuringPull.Clear();
     }
 }

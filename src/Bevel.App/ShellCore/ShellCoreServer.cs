@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Bevel.App.Supervision;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.ShellCore.Ipc;
@@ -140,10 +142,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // (the design is graceful degradation) — otherwise the supervisor crash-loops the core forever in
         // split mode. Probe with the window enumerate, retrying briefly while the helper is still
         // connecting; once it's up, apps/tray share the same helper connection and enumerate cleanly.
-        // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
-        // repopulate. (~10s covers a cold helper exec + connect.) A degraded window seed is not published
-        // as a WindowSnapshot (bevel-wheq): see _windowsSeeded.
-        var (initialWindows, windowsSeedOk) = await SeedWindowsAsync(ct).ConfigureAwait(false);
+        // Degrade to empty snapshots at the seed deadline — the live streams + the window reconcile backstop
+        // then repopulate. A degraded seed is not published as a snapshot (bevel-wheq): see _windowsSeeded.
+        // ONE deadline covers the window AND tray seeds (bevel-wheq review): the core only reports ready after
+        // this method returns, so two back-to-back full budgets would outlast the launcher's ready timeout and
+        // get a degraded-but-working core restarted, then Held. See DefaultSeedDeadline.
+        var seedDeadline = Stopwatch.GetTimestamp() + (long)(SeedDeadline.TotalSeconds * Stopwatch.Frequency);
+        var (initialWindows, windowsSeedOk) =
+            await SeedUntilAnsweredAsync(_windows.TrySeedWindowsAsync, seedDeadline, ct).ConfigureAwait(false);
 
         // Apps and tray CONCURRENTLY, not one after the other (bevel-pa3j). They are independent reads
         // of two different sources, and nothing between them orders one before the other — but the
@@ -152,7 +158,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // readiness probe: apps and tray share the helper's connection, and apps has no retry budget of
         // its own, so running them against a half-connected helper would just degrade them to empty.
         var appsSeed = SeedOrEmptyAsync(_apps.EnumerateInstalledAppsAsync, ct).AsTask();
-        var traySeed = SeedTrayAsync(ct);
+        // The tray retries "not yet" too, but only inside what is left of the SAME deadline — and not at all
+        // when the window probe never got an answer: the helper is unreachable, and asking its tray service
+        // would only spend more of the core's ready budget on the same verdict (withheld either way).
+        var traySeed = windowsSeedOk
+            ? SeedUntilAnsweredAsync(_tray.TrySeedItemsAsync, seedDeadline, ct)
+            : Task.FromResult<(IReadOnlyList<TrayItem>, bool)>((Array.Empty<TrayItem>(), false));
         var initialApps = await appsSeed.ConfigureAwait(false);
         var (initialTray, traySeedOk) = await traySeed.ConfigureAwait(false);
         lock (_gate)
@@ -189,56 +200,61 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>How many times a window/tray seed is RE-tried before it degrades (bevel-ejon / bevel-wheq):
-    /// ~66 × 150ms ≈ 10s covers a cold helper exec + connect. Internal so tests of a source that never
-    /// answers need not wait the whole budget.</summary>
-    internal int SeedRetryAttempts { get; init; } = 66;
+    /// <summary>The shared window+tray seed deadline (bevel-wheq review). The core calls
+    /// <c>RoleHeartbeatStore.ReportReady</c> only after <see cref="StartAsync"/> returns, and the launcher restarts
+    /// a role that is not ready within <see cref="ShellHealthMonitor.DefaultReadyTimeout"/> (15 ticks × 1 s = 15 s;
+    /// three such restarts → Hold). Half of it (7.5 s) still covers a cold helper exec + connect, and leaves the
+    /// other half for host start, settings load, the apps seed and the snapshot commit. Pinned by
+    /// <c>The_seed_deadline_ends_well_inside_the_launchers_ready_timeout</c>.</summary>
+    internal static TimeSpan DefaultSeedDeadline => ShellHealthMonitor.DefaultReadyTimeout / 2;
+
+    /// <summary>Overridable for tests whose source never answers, so they need not wait the real deadline.</summary>
+    internal TimeSpan SeedDeadline { get; init; } = DefaultSeedDeadline;
+
     private static readonly TimeSpan SeedRetryDelay = TimeSpan.FromMilliseconds(150);
-
-    /// <summary>The window seed — also the helper-readiness probe. See <see cref="SeedUntilAnsweredAsync{T}"/>.</summary>
-    private Task<(IReadOnlyList<ForeignWindow> Items, bool Ok)> SeedWindowsAsync(CancellationToken ct)
-        => SeedUntilAnsweredAsync(_windows.TrySeedWindowsAsync, ct);
-
-    /// <summary>The tray seed (bevel-ri8c). Same mechanism as the window seed: TrySeedItemsAsync, not
-    /// GetItemsAsync, because a real host swallows "helper unreachable" into an empty list.</summary>
-    private Task<(IReadOnlyList<TrayItem> Items, bool Ok)> SeedTrayAsync(CancellationToken ct)
-        => SeedUntilAnsweredAsync(_tray.TrySeedItemsAsync, ct);
 
     /// <summary>
     /// Runs a seed-grade read (<see cref="IWindowManager.TrySeedWindowsAsync"/> /
-    /// <see cref="ISystemTrayHost.TrySeedItemsAsync"/>) until the source ANSWERS, tolerating the whole startup
-    /// race window, and reports whether it did. The helper connects asynchronously after <c>host.Start()</c>
-    /// AND can bounce mid-connect on a cold boot, so a read fails in several shapes:
-    /// <see cref="InvalidOperationException"/>("Helper not connected") before the channel exists; a transport
-    /// fault (gRPC <c>Cancelled</c> / "gRPC call disposed.") when the channel is torn down DURING the call; and
-    /// a <c>null</c> answer — gRPC <c>Unavailable</c>, which the macOS PAL softens — because the helper host
-    /// opens the channel BEFORE its first Ping succeeds, so a channel can exist while the helper is not yet
-    /// serving (bevel-wheq review). All three mean "not yet", so all three are retried alike for
-    /// <see cref="SeedRetryAttempts"/> × 150ms, then the seed degrades to an empty projection reported as NOT
-    /// answered — which the caller must not publish as authoritative (_windowsSeeded / _traySeeded); the live
-    /// delta streams + the window reconcile backstop repopulate. Never crashes the core — a throw here escapes
-    /// to Main and aborts the process, which the supervisor then crash-loops (bevel-ejon). Real cancellation
-    /// (shutdown) still propagates.
+    /// <see cref="ISystemTrayHost.TrySeedItemsAsync"/>) until the source ANSWERS or <paramref name="deadline"/>
+    /// (a <see cref="Stopwatch"/> timestamp) passes, and reports whether it answered. The helper connects
+    /// asynchronously after <c>host.Start()</c> AND can bounce mid-connect on a cold boot, so a read fails in
+    /// several shapes: <see cref="InvalidOperationException"/>("Helper not connected") before the channel exists;
+    /// a transport fault (gRPC <c>Cancelled</c> / "gRPC call disposed.") when the channel is torn down DURING the
+    /// call; and a <c>null</c> answer — gRPC <c>Unavailable</c>, which the macOS PAL softens — because the helper
+    /// host opens the channel BEFORE its first Ping succeeds, so a channel can exist while the helper is not yet
+    /// serving. All three mean "not yet" and are retried alike. Each attempt is also bounded by the deadline, so
+    /// a wedged call cannot hold startup past it. At the deadline the seed degrades to an empty projection
+    /// reported as NOT answered — which the caller must not publish as authoritative (_windowsSeeded /
+    /// _traySeeded); the live delta streams + the window reconcile backstop repopulate. Never crashes the core —
+    /// a throw here escapes to Main and aborts the process, which the supervisor then crash-loops (bevel-ejon).
+    /// Real cancellation (<paramref name="ct"/>, shutdown) still propagates.
     /// </summary>
-    private async Task<(IReadOnlyList<T> Items, bool Ok)> SeedUntilAnsweredAsync<T>(
-        Func<CancellationToken, ValueTask<IReadOnlyList<T>?>> trySeed, CancellationToken ct)
+    private static async Task<(IReadOnlyList<T> Items, bool Ok)> SeedUntilAnsweredAsync<T>(
+        Func<CancellationToken, ValueTask<IReadOnlyList<T>?>> trySeed, long deadline, CancellationToken ct)
     {
-        for (var attempt = 0; ; attempt++)
+        while (true)
         {
+            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+            if (remaining <= TimeSpan.Zero)
+                return (Array.Empty<T>(), false);
             try
             {
-                if (await trySeed(ct).ConfigureAwait(false) is { } items)
+                using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                attempt.CancelAfter(remaining);
+                if (await trySeed(attempt.Token).ConfigureAwait(false) is { } items)
                     return (items, true);
             }
             // Scope the catch by INTENT (best-effort seed), not by exception type: typing it to
             // InvalidOperationException encoded an assumption about which transport error the helper
-            // produces, and the gRPC-disposed shape slipped straight through it.
-            catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
+            // produces, and the gRPC-disposed shape slipped straight through it. An attempt cut off by the
+            // deadline lands here too (its own token, not ct); only a real shutdown escapes.
+            catch (Exception) when (!ct.IsCancellationRequested)
             {
             }
-            if (attempt >= SeedRetryAttempts)
+            remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+            if (remaining <= TimeSpan.Zero)
                 return (Array.Empty<T>(), false);
-            await Task.Delay(SeedRetryDelay, ct).ConfigureAwait(false);
+            await Task.Delay(remaining < SeedRetryDelay ? remaining : SeedRetryDelay, ct).ConfigureAwait(false);
         }
     }
 

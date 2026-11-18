@@ -92,7 +92,34 @@ public sealed class ProjectionMirrorTests
         var merged = m.MergePull(pull, [new("a", "pulled")]);
         m.EndPull();
 
-        Assert.Equal(["a"], Ids(merged));
-        Assert.Equal(["a"], Ids(m.ApplySnapshot([])));             // tracked, so a snapshot can reap it
+        // The newer upsert wins over the stale pull's value — for the caller AND in the mirror.
+        Assert.Equal([new Item("a", "back")], merged);
+        Assert.Equal([new Item("a", "back")], m.ApplySnapshot([]));
+    }
+
+    [Fact]
+    public void An_upsert_during_a_pull_keeps_its_value_over_the_stale_pull()
+    {
+        var m = NewMirror();
+        var pull = m.BeginPull();
+        m.Upsert(new("a", "newer"));                               // a delta lands while the pull is in flight
+        var merged = m.MergePull(pull, [new("a", "pulled"), new("b", "pulled")]);
+        m.EndPull();
+
+        Assert.Equal([new Item("a", "newer"), new Item("b", "pulled")], merged);
+        Assert.Equal([new Item("a", "newer"), new Item("b", "pulled")], m.ApplySnapshot([]));
+    }
+
+    // A pull that ended BEFORE a newer upsert must not overwrite that upsert's value: the newer delta wins.
+    [Fact]
+    public void A_newer_upsert_value_survives_an_earlier_pull()
+    {
+        var m = NewMirror();
+        var pull = m.BeginPull();
+        m.MergePull(pull, [new("a", "pulled")]);
+        m.EndPull();
+        m.Upsert(new("a", "newer"));
+
+        Assert.Equal([new Item("a", "newer")], m.ApplySnapshot([]));
     }
 }

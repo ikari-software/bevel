@@ -609,7 +609,7 @@ public sealed class ShellCoreIntegrationTests
         await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
 
         var pal2 = new ControllablePal { TrayFault = new TransportFault("helper down") };
-        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedDeadline = ShortSeedDeadline };
         await server2.StartAsync(Ct);
         await WaitFor(() => core.IsConnected, "client reconnects");
         await Task.Delay(500);   // let the Hello + seed-complete burst land
@@ -641,7 +641,7 @@ public sealed class ShellCoreIntegrationTests
         await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
 
         var pal2 = new ControllablePal { TrayUnreachable = true };   // returns EMPTY, does not throw
-        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce) { SeedDeadline = ShortSeedDeadline };
         await server2.StartAsync(Ct);
         await WaitFor(() => core.IsConnected, "client reconnects");
         await Task.Delay(500);
@@ -656,7 +656,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal { TrayUnreachable = true };
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedDeadline = ShortSeedDeadline };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -892,9 +892,9 @@ public sealed class ShellCoreIntegrationTests
         var snapshotsBefore = Volatile.Read(ref windowSnapshots);
         var settingsBefore = Volatile.Read(ref settingsSnapshots);
         await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce)
-            { SeedRetryAttempts = 2 };
+            { SeedDeadline = ShortSeedDeadline };
         await server2.StartAsync(Ct);
-        Assert.Equal(3, pal2.WindowSeedCalls);   // the whole (shortened) retry budget, then degraded
+        Assert.True(pal2.WindowSeedCalls > 1, "a null answer is retried until the (shortened) deadline");
         await WaitFor(() => Volatile.Read(ref settingsSnapshots) > settingsBefore,
             "the reconnect Hello burst landed (settings is always in it)");
         await Task.Delay(300);   // and any seed-complete burst after it
@@ -939,7 +939,7 @@ public sealed class ShellCoreIntegrationTests
         var pal = new ControllablePal { WindowsUnreachable = true };
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedDeadline = ShortSeedDeadline };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -1016,6 +1016,61 @@ public sealed class ShellCoreIntegrationTests
     }
 
 
+    /// <summary>A seed deadline for sources that never answer — long enough for several retries.</summary>
+    private static readonly TimeSpan ShortSeedDeadline = TimeSpan.FromMilliseconds(500);
+
+    // bevel-wheq review, fix round 2: the core reports ready only after StartAsync, and the launcher restarts a
+    // core that is not ready within ShellHealthMonitor.DefaultReadyTimeout (then Holds after 3). The whole
+    // helper-dependent seed must end well inside it — with room left for host start, settings and apps.
+    [Fact]
+    public void The_seed_deadline_ends_well_inside_the_launchers_ready_timeout()
+    {
+        Assert.True(ShellCoreServer.DefaultSeedDeadline <= Bevel.App.Supervision.ShellHealthMonitor.DefaultReadyTimeout / 2,
+            $"seed deadline {ShellCoreServer.DefaultSeedDeadline} vs ready timeout "
+            + $"{Bevel.App.Supervision.ShellHealthMonitor.DefaultReadyTimeout}");
+    }
+
+    // ...and behaviourally, with the REAL deadline: a helper that never serves (window AND tray seeds answer
+    // null forever) must still let StartAsync return — i.e. ReportReady — within that bound, with both
+    // snapshots withheld. Window and tray must not each spend a full budget back to back.
+    [Fact]
+    public async Task A_helper_that_never_serves_still_lets_the_core_get_ready_in_time_with_both_snapshots_withheld()
+    {
+        var pal = new ControllablePal { WindowsUnreachable = true, TrayUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+
+        var sw = Stopwatch.StartNew();
+        await server.StartAsync(Ct);
+        sw.Stop();
+        Assert.True(sw.Elapsed < ShellCoreServer.DefaultSeedDeadline + TimeSpan.FromSeconds(2),
+            $"StartAsync took {sw.Elapsed}; the ready timeout is {Bevel.App.Supervision.ShellHealthMonitor.DefaultReadyTimeout}");
+        Assert.True(pal.WindowSeedCalls > 1, "the window seed retried until the deadline");
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var got = await HelloAndCollectAsync(core);
+        await Task.Delay(150);
+        Assert.DoesNotContain(got, g => g.Kind == CoreEventKind.WindowSnapshot);
+        Assert.DoesNotContain(got, g => g.Kind == CoreEventKind.TraySnapshot);
+    }
+
+    // A shutdown during the seed cancels it promptly instead of running out the deadline (Program passes the
+    // role's shutdown token into StartAsync).
+    [Fact]
+    public async Task A_shutdown_during_the_seed_cancels_it()
+    {
+        var pal = new ControllablePal { WindowsUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        using var shutdown = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+
+        var sw = Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.StartAsync(shutdown.Token));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3), $"cancellation took {sw.Elapsed}");
+    }
+
     // ── bevel-wheq review, fix round 1: the seed retries "not yet", and a buffered live delta unlocks ──────
 
     /// <summary>Hello and collect the burst's projection snapshots: (kind, ids).</summary>
@@ -1082,9 +1137,9 @@ public sealed class ShellCoreIntegrationTests
         var path = NewSocketPath();
         var nonce = NewNonce();
         await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
-            { SeedRetryAttempts = 2 };
+            { SeedDeadline = ShortSeedDeadline };
         await server.StartAsync(Ct);
-        Assert.Equal(3, pal.TraySeedCalls);
+        Assert.True(pal.TraySeedCalls > 1, "a null answer is retried until the (shortened) deadline");
 
         await using var core = new ShellCoreClient(path, nonce);
         var got = await HelloAndCollectAsync(core);
@@ -1120,7 +1175,7 @@ public sealed class ShellCoreIntegrationTests
         var path = NewSocketPath();
         var nonce = NewNonce();
         await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
-            { SeedRetryAttempts = 2 };
+            { SeedDeadline = ShortSeedDeadline };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -1151,7 +1206,7 @@ public sealed class ShellCoreIntegrationTests
         var path = NewSocketPath();
         var nonce = NewNonce();
         await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce)
-            { SeedRetryAttempts = 2 };
+            { SeedDeadline = ShortSeedDeadline };
         await server.StartAsync(Ct);
 
         await using var core = new ShellCoreClient(path, nonce);
@@ -1371,7 +1426,7 @@ public sealed class ShellCoreIntegrationTests
 
         var path = NewSocketPath();
         var nonce = NewNonce();
-        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedRetryAttempts = 2 };
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce) { SeedDeadline = ShortSeedDeadline };
 
         await server.StartAsync(Ct);            // must not throw
 

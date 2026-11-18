@@ -179,9 +179,28 @@ internal static class Program
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
         var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
+
+        // Signal handling is armed BEFORE the (helper-dependent, up to ~7.5 s) seed in StartAsync (bevel-wheq
+        // review): a SIGTERM/SIGINT during the seed cancels it and still reaches the ordered teardown below,
+        // instead of the default action killing the process mid-seed (which orphans the helper). Cancel the
+        // default action so .NET does NOT terminate the process before that teardown runs.
+        using var stop = new ManualResetEventSlim(false);
+        using var shutdown = new CancellationTokenSource();
+        void RequestStop()
+        {
+            try { shutdown.Cancel(); } catch (ObjectDisposedException) { /* already tearing down */ }
+            stop.Set();
+        }
+        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; RequestStop(); });
+        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; RequestStop(); });
+        using var winStop = Supervision.WindowsShutdownSignal.Register(RequestStop); // Windows graceful-stop (bevel-ncfp.2)
         try
         {
-            server.StartAsync().GetAwaiter().GetResult();
+            server.StartAsync(shutdown.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+        {
+            // Shut down while seeding: skip ReportReady and go straight to the ordered teardown.
         }
         catch (UdsSocketBusyException ex)
         {
@@ -199,15 +218,11 @@ internal static class Program
             Environment.ExitCode = 3;
             return;
         }
-        RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
+        if (!shutdown.IsCancellationRequested)
+            RoleHeartbeatStore.ReportReady(ShellRole.Core, coreConnected: true);
 
-        // Park until SIGTERM/SIGINT. The supervisor (bevel-gww.4) signals this to swap the core to a
-        // newer binary; a bare shell sends it on quit. Cancel the default action so .NET does NOT
-        // terminate the process before the ordered teardown below runs (else the helper orphans).
-        using var stop = new ManualResetEventSlim(false);
-        using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx => { ctx.Cancel = true; stop.Set(); });
-        using var winStop = Supervision.WindowsShutdownSignal.Register(stop.Set); // Windows graceful-stop (bevel-ncfp.2)
+        // Park until SIGTERM/SIGINT (handlers armed above). The supervisor (bevel-gww.4) signals this to swap
+        // the core to a newer binary; a bare shell sends it on quit.
         stop.Wait();
 
         // Ordered teardown: stop serving + drop PAL subscriptions first, then stop the helper. Both
@@ -298,7 +313,7 @@ internal static class Program
         RoleProcessSupervisor supervisor = null!;
         supervisor = new RoleProcessSupervisor(
             processes,
-            pollInterval: TimeSpan.FromSeconds(1),
+            pollInterval: ShellHealthMonitor.SupervisorTick,   // the tick the ready timeout counts in
             coreReadyProbe: ct => CoreSocketProbe.WaitUntilServingAsync(coreSocket, coreNonce, TimeSpan.FromSeconds(5), ct),
             log: msg => Console.Error.WriteLine($"[launcher] {msg}"),
             onLauncherStale: () =>
