@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Bevel.Core.Vfs;
 
 namespace Bevel.FileManager.Components;
@@ -13,7 +14,7 @@ namespace Bevel.FileManager.Components;
 /// swaps it for the node's folder children (folders, volumes and virtual roots — never files).
 ///
 /// <para>The listing is read on the pool by <see cref="VfsBatchReader"/> and added here, on the UI
-/// thread, one batch per dispatcher job. Because the work is now genuinely asynchronous, a node can be
+/// thread, one batch per dispatcher turn (an explicit Background-priority yield before each batch). Because the work is now genuinely asynchronous, a node can be
 /// expanded again (collapse + re-expand) while its first load is still in flight; that second call
 /// joins the first load rather than starting a second enumeration that would append duplicates.</para>
 /// </summary>
@@ -63,7 +64,10 @@ internal static class FolderTreeLoader
         {
             await foreach (var batch in VfsBatchReader.ReadBatchesAsync(root, path, options, BatchSize, ct))
             {
-                // Resumed on the UI thread; the tree may have been torn down meanwhile.
+                // A real dispatcher turn per batch: when the reader is ahead, buffered batches are handed
+                // over synchronously and would otherwise all be added inside one job.
+                await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
+                // The tree may have been torn down (or the token cancelled) while this batch waited.
                 if (ct.IsCancellationRequested) return;
                 foreach (var child in batch)
                 {

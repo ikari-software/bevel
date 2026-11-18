@@ -23,9 +23,11 @@ namespace Bevel.Core.Vfs;
 ///
 /// <para>Threading: this type knows nothing about any UI framework (Bevel.Core must not reference
 /// Avalonia). It never resumes on a captured context itself; a consumer that iterates with a plain
-/// <c>await foreach</c> on the UI thread therefore gets each batch delivered back on the UI thread,
-/// one dispatcher job per batch. Such a consumer must re-check its token after every await — a batch
-/// can already be in flight when a newer navigation cancels.</para>
+/// <c>await foreach</c> on the UI thread gets each batch on the UI thread. It does NOT get a
+/// dispatcher turn per batch: when batches are already buffered, the next one is handed over
+/// synchronously and the loop continues inline. A UI consumer that paints must therefore yield to its
+/// dispatcher itself before each batch, and re-check its token after every await — a batch can
+/// already be in flight when a newer navigation cancels.</para>
 /// </summary>
 public static class VfsBatchReader
 {

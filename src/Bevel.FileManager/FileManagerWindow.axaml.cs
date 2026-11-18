@@ -813,7 +813,7 @@ public partial class FileManagerWindow : BevelWindow
         if (_loadedPath is { } path) _ = LoadDirectory(path);
     }
 
-    /// <summary>Item-list listing batch size: one dispatcher job per this many rows (bevel-so27).</summary>
+    /// <summary>Item-list listing batch size: the UI thread yields (Background) before painting each batch of this many rows (bevel-so27).</summary>
     private const int ListBatchSize = 32;
 
     private EnumerateOptions CurrentEnumerateOptions()
@@ -847,15 +847,18 @@ public partial class FileManagerWindow : BevelWindow
                 _watcherSubscription = _directoryWatcher.Changes.Subscribe(OnDirectoryChanged);
 
             // Stream the listing in batches — read on the pool by VfsBatchReader, painted here as each
-            // batch arrives (bevel-so27). This loop body runs on the UI thread: the await resumes on
-            // the dispatcher, one job per batch, so there is no extra InvokeAsync hop to make.
+            // batch arrives (bevel-so27). The loop body runs on the UI thread, but the await does NOT
+            // guarantee a dispatcher turn per batch: when the reader is ahead, buffered batches are
+            // handed over synchronously and would all be painted inside one job. So yield explicitly
+            // at Background priority before painting each batch — input and render run in between.
             try
             {
                 await foreach (var batch in VfsBatchReader.ReadBatchesAsync(_vfsRoot, path, CurrentEnumerateOptions(), ListBatchSize, ct))
                 {
+                    await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background);
                     // Discard a stale batch: a newer navigation cancelled ct and reset the view while
-                    // this one was in flight — painting it would put THIS folder's items into the NEW
-                    // folder's list (ce-review: adversarial+frontend-races).
+                    // this one was in flight (or while we yielded) — painting it would put THIS folder's
+                    // items into the NEW folder's list (ce-review: adversarial+frontend-races).
                     ct.ThrowIfCancellationRequested();
                     ItemView.AddItems(batch);
                     count += batch.Count;
