@@ -21,5 +21,6 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\DispatcherFrameSupport.cs" Link="DispatcherFrameSupport.cs" />
+    <Compile Include="..\Shared\HeadlessDispatcherRoot.cs" Link="HeadlessDispatcherRoot.cs" />
   </ItemGroup>
 </Project>

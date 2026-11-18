@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Bevel.Taskbar.Tests;
+using Bevel.Tests.Shared;
 
 [assembly: AvaloniaTestApplication(typeof(TestAppBuilder))]
 
@@ -15,7 +16,14 @@ namespace Bevel.Taskbar.Tests;
 public static class TestAppBuilder
 {
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<Bevel.App.App>()
+    {
+        // Runs once, ON the headless session thread, before any per-test locator scope exists — the
+        // only place a root-scope dispatcher impl gets the right loop thread (bevel-2nn2).
+        HeadlessDispatcherRoot.Install();
+
+        return AppBuilder.Configure<Bevel.App.App>()
             .UseSkia()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .AfterSetup(_ => HeadlessDispatcherRoot.OnTestSetupCompleted());
+    }
 }
