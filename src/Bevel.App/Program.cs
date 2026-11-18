@@ -249,12 +249,12 @@ internal static class Program
         // are independent detectors — an orphaned core can still serve core.sock (2026-10-12) — so
         // probe BOTH sockets this launcher is about to own, ahead of QuitRequest.Clear, the env export
         // and every spawn. IsServing is a local connect (no blocking wait); a stale file reads as dead.
-        if (IncumbentProbe.FirstLiveSocket(controlSocket, coreSocket) is { } liveSocket)
+        if (IncumbentProbe.Decide(controlSocket, coreSocket, IncumbentProbe.RecoverScriptPath(AppContext.BaseDirectory)) is { } standDown)
         {
-            var msg = $"another Bevel is still serving {liveSocket}; run packaging/macos/bevel-recover.sh";
-            Console.Error.WriteLine($"[launcher] {msg}");
-            RestartDiag.Log($"launcher: {msg} — standing down before spawning anything");
-            Environment.ExitCode = 3;   // the exit code the core already uses for "stood down"
+            IncumbentProbe.Announce($"launcher: {standDown} — standing down before spawning anything",
+                msg => { Console.Error.WriteLine($"[launcher] {msg}"); RestartDiag.Log(msg); },
+                ShellHealthAlert.ShowNative);
+            Environment.ExitCode = IncumbentProbe.StandDownExitCode;
             return;
         }
 
