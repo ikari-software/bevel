@@ -380,16 +380,20 @@ public sealed class ShellCoreIntegrationTests
 
         await using var core = new ShellCoreClient(path, nonce);
         var snapshots = new ConcurrentBag<(int Epoch, int Windows)>();
+        var midSeedBaseline = 0;
         core.EventReceived += e =>
         {
             if (e.Kind == CoreEventKind.WindowSnapshot)
                 snapshots.Add((e.Epoch ?? 0, (e.Windows ?? Array.Empty<ForeignWindow>()).Count));
+            if (e.Kind == CoreEventKind.SettingsSnapshot && e.Epoch == 1)
+                Volatile.Write(ref midSeedBaseline, 1);
         };
 
-        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED: empty projection, epoch 1
-        await WaitFor(() => snapshots.Any(s => s.Epoch == 1),
-            "the mid-seed Hello should deliver an epoch-1 snapshot");
-        Assert.True(snapshots.All(s => s.Windows == 0), "the projection is still empty while the seed is stalled");
+        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED: epoch 1
+        await WaitFor(() => Volatile.Read(ref midSeedBaseline) == 1,
+            "the mid-seed Hello should deliver an epoch-1 baseline (settings)");
+        // bevel-ri8c: the still-empty window projection is withheld mid-seed (it would wipe a reconciling client).
+        Assert.Empty(snapshots);
 
         await startTask;                    // seed completes -> epoch bump + re-push to everyone
 
@@ -485,6 +489,65 @@ public sealed class ShellCoreIntegrationTests
         // Give any erroneous "1:10" a chance to arrive, then assert it never did (removed-in-gap wins).
         await Task.Delay(150);
         Assert.DoesNotContain("1:10", added);
+    }
+
+    // bevel-ri8c: a TraySnapshot is a full reconcile — an item the adapter raised earlier but the snapshot
+    // omits vanished while the link was down, and must be removed (it used to linger as a ghost).
+    [Fact]
+    public async Task A_resent_tray_snapshot_removes_items_that_vanished_while_the_link_was_down()
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var tray = new ShellCoreSystemTrayHost(core);
+        var removed = new List<string>();
+        var added = new List<string>();
+        tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
+        tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot,
+            TrayItems: new[] { Tray("1:10", "Alpha"), Tray("2:20", "Beta") }));
+        Assert.Empty(removed);
+
+        // The link dropped; "1:10" vanished meanwhile; the reconnect Hello resends the projection.
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: new[] { Tray("2:20", "Beta") }));
+
+        Assert.Equal(new[] { "1:10" }, removed.ToArray());
+        Assert.Equal(3, added.Count);   // 1:10, 2:20, then 2:20 re-added (idempotent upsert downstream)
+
+        // A delta-removed item is forgotten too: it must not be reported removed a second time.
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: Tray("2:20", "Beta")));
+        tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: Array.Empty<TrayItem>()));
+        Assert.Equal(new[] { "1:10", "2:20" }, removed.ToArray());
+    }
+
+    // bevel-ri8c: a Hello answered while the core is still seeding must not carry an empty tray (or
+    // window) snapshot — a reconciling client would wipe its tray on it. The epoch-bump burst at seed
+    // completion is the authoritative one.
+    [Fact]
+    public async Task A_Hello_during_seeding_does_not_send_an_empty_tray_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedTray(Tray("1:10", "Alpha"));
+        for (var i = 0; i < 25; i++)
+            pal.EnumerateFaults.Enqueue(new TransportFault("gRPC call disposed."));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        var startTask = server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var kinds = new ConcurrentBag<(CoreEventKind Kind, int Epoch, int Tray)>();
+        core.EventReceived += e => kinds.Add((e.Kind, e.Epoch ?? 0, e.TrayItems?.Count ?? 0));
+
+        await core.StartSessionAsync(Ct);   // Hello lands MID-SEED
+        await WaitFor(() => kinds.Any(k => k.Kind == CoreEventKind.SettingsSnapshot && k.Epoch == 1),
+            "the mid-seed Hello still answers the non-projection snapshots");
+        Assert.DoesNotContain(kinds, k => k.Kind == CoreEventKind.TraySnapshot);
+        Assert.DoesNotContain(kinds, k => k.Kind == CoreEventKind.WindowSnapshot);
+
+        await startTask;
+        await WaitFor(() => kinds.Any(k => k.Kind == CoreEventKind.TraySnapshot && k.Epoch == 2 && k.Tray == 1),
+            "the seed-complete burst delivers the real tray");
     }
 
     /// <summary>

@@ -253,7 +253,16 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             PruneStaleClients();
             foreach (var evt in BuildSnapshotEvents())
+            {
+                // A Hello answered while the core is still seeding would carry an EMPTY window/tray
+                // projection, and a reconciling client would wipe its state on it (bevel-ri8c). Omit
+                // those two: the epoch-bump burst at seed completion follows and is authoritative.
+                // Skipped events take no seq, so the client's sequence stays gapless.
+                if (_seedBuffer is not null
+                    && evt.Kind is CoreEventKind.WindowSnapshot or CoreEventKind.TraySnapshot)
+                    continue;
                 _server.SendToClient(clientId, CoreProtocol.Serialize(evt with { Seq = NextSeq(clientId) }));
+            }
         }
     }
 

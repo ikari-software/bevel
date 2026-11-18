@@ -21,6 +21,12 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
     /// <c>TrayNotifyWnd</c> toggle on Windows). Null on PALs with no native hide.</summary>
     private readonly Action<bool>? _applyLocalHide;
 
+    /// <summary>What this adapter has raised and not yet removed, by id (bevel-ri8c). A TraySnapshot is a
+    /// full reconcile: whatever is in here but absent from the snapshot vanished while the link was down
+    /// and must be removed. Guarded by <see cref="_knownGate"/> (events arrive on the transport thread).</summary>
+    private readonly Dictionary<string, TrayItem> _known = new(StringComparer.Ordinal);
+    private readonly object _knownGate = new();
+
     public ShellCoreSystemTrayHost(ShellCoreClient core, Action<bool>? applyLocalHide = null)
     {
         _core = core;
@@ -46,22 +52,37 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         : new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
             Notes: new[] { "tray: authoritative, via shell-core" }, SupportsReposition: false);
 
-    private void OnCoreEvent(CoreEvent e)
+    internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
         {
             case CoreEventKind.TraySnapshot when e.TrayItems is not null:
-                // Replay the snapshot as Added events — TrayViewModel upserts idempotently by id.
+            {
+                // A snapshot is authoritative (bevel-ri8c): remove what it omits, then (re)add what it
+                // lists. Adds alone left ghosts for icons that vanished while the link was down.
+                IReadOnlyList<TrayItem> gone;
+                lock (_knownGate)
+                {
+                    gone = SnapshotReconcile.Absent(_known, e.TrayItems, t => t.Id.Value);
+                    foreach (var g in gone) _known.Remove(g.Id.Value);
+                    foreach (var t in e.TrayItems) _known[t.Id.Value] = t;
+                }
+                foreach (var g in gone)
+                    ItemRemoved?.Invoke(this, g);
                 foreach (var t in e.TrayItems)
                     ItemAdded?.Invoke(this, t);
                 break;
+            }
             case CoreEventKind.TrayItemAdded when e.TrayItem is { } ta:
+                lock (_knownGate) _known[ta.Id.Value] = ta;
                 ItemAdded?.Invoke(this, ta);
                 break;
             case CoreEventKind.TrayItemUpdated when e.TrayItem is { } tu:
+                lock (_knownGate) _known[tu.Id.Value] = tu;
                 ItemUpdated?.Invoke(this, tu);
                 break;
             case CoreEventKind.TrayItemRemoved when e.TrayItem is { } tr:
+                lock (_knownGate) _known.Remove(tr.Id.Value);
                 ItemRemoved?.Invoke(this, tr);
                 break;
             // Window/app events are handled by the other shell-core adapters on the same connection.
