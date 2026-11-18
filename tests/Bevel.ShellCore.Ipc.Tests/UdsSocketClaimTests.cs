@@ -115,6 +115,21 @@ public sealed class UdsSocketClaimTests
     }
 
     [Fact]
+    public void A_plain_file_on_the_path_is_not_serving_and_is_reclaimed()
+    {
+        var path = NewSocketPath();
+        File.WriteAllText(path, "not a socket");
+        try
+        {
+            Assert.False(UdsSocketClaim.IsServing(path), "a non-socket file must not read as a live incumbent");
+            using var l = UdsSocketClaim.BindListener(path, backlog: 4); // reclaims instead of throwing Busy
+            Assert.True(UdsSocketClaim.IsServing(path));
+            UdsSocketClaim.ReleaseListener(l, path);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
     public void IsServing_distinguishes_absent_stale_and_live()
     {
         var path = NewSocketPath();

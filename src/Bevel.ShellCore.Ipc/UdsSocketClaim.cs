@@ -42,7 +42,8 @@ public static class UdsSocketClaim
 {
     /// <summary>
     /// True when a live listener answers on <paramref name="socketPath"/>. False when the path is
-    /// absent or its owner is gone (<c>ENOENT</c> / <c>ECONNREFUSED</c>). Any OTHER connect failure
+    /// absent, its owner is gone (<c>ENOENT</c> / <c>ECONNREFUSED</c>) or it is not a socket at all (<c>ENOTSOCK</c>, a plain file
+    /// squatting on the path). Any OTHER connect failure
     /// (backlog full, permission, reset …) is reported as serving: mis-reading a live socket as dead
     /// is the hijack this type exists to prevent, so the safe default is "busy".
     /// </summary>
@@ -171,5 +172,6 @@ public static class UdsSocketClaim
 
     private static bool IsOwnerGone(SocketException ex) =>
         ex.SocketErrorCode is SocketError.ConnectionRefused // socket file present, no listener behind it
-            or SocketError.AddressNotAvailable;              // ENOENT: unlinked between Exists and connect
+            or SocketError.AddressNotAvailable               // ENOENT: unlinked between Exists and connect
+            or SocketError.NotSocket;                        // ENOTSOCK / WSAENOTSOCK: a plain file squatting on the path (bevel-9790)
 }

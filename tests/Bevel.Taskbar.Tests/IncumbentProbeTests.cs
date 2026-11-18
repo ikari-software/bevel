@@ -26,16 +26,52 @@ public sealed class IncumbentProbeTests
         finally { UdsSocketClaim.ReleaseListener(listener, path); }
     }
 
+    /// <summary>What a raw connect to <paramref name="path"/> reports, for failure messages: the next CI
+    /// run says WHICH SocketError an OS returned instead of a bare "expected True".</summary>
+    private static string ConnectOutcome(string path)
+    {
+        if (!File.Exists(path)) return "path does not exist";
+        try
+        {
+            using var s = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix,
+                System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+            s.Connect(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
+            return "connect succeeded";
+        }
+        catch (System.Net.Sockets.SocketException ex)
+        {
+            return $"connect failed: {ex.SocketErrorCode} (native {ex.NativeErrorCode})";
+        }
+    }
+
     [Fact]
-    public void A_stale_socket_file_is_not_reported()
+    public void A_stale_socket_is_not_reported()
     {
         var path = NewSocketPath();
-        // Disposing a raw bound listener leaves the file behind: what a crashed owner leaves.
         UdsSocketClaim.BindListener(path, backlog: 4).Dispose();
         try
         {
-            Assert.True(File.Exists(path));
-            Assert.Null(IncumbentProbe.FirstLiveSocket(path));
+            // Unix: disposing the raw listener leaves the file (a crashed owner's leftover). Windows: the
+            // managed Dispose deletes it, so "stale" there is the absent path — same pattern as
+            // UdsSocketClaimTests.IsServing_distinguishes_absent_stale_and_live. Assert the precondition
+            // per OS instead of assuming Unix.
+            Assert.Equal(!OperatingSystem.IsWindows(), File.Exists(path));
+            Assert.True(IncumbentProbe.FirstLiveSocket(path) is null,
+                $"stale/absent socket was reported live; {ConnectOutcome(path)}");
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void A_plain_file_at_the_socket_path_is_not_reported()
+    {
+        // "Not a socket" on every OS: only a connect that SUCCEEDS may prove a live incumbent.
+        var path = NewSocketPath();
+        File.WriteAllText(path, "not a socket");
+        try
+        {
+            Assert.True(IncumbentProbe.FirstLiveSocket(path) is null,
+                $"a plain file was reported as a live incumbent; {ConnectOutcome(path)}");
         }
         finally { File.Delete(path); }
     }
