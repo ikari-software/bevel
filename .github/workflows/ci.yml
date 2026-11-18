@@ -56,7 +56,16 @@ jobs:
       - name: Report stray dispatcher touches (bevel-2nn2)
         if: always()
         shell: bash
-        run: cat "$RUNNER_TEMP/bevel-2nn2-stray.log" 2>/dev/null || echo "no stray dispatcher touches"
+        # One log per test process (parallel processes must not share a file). An empty result means
+        # no log was WRITTEN; the detector itself is covered by DispatcherFrameSupport's tests.
+        run: |
+          shopt -s nullglob
+          logs=("$RUNNER_TEMP"/bevel-2nn2-stray*.log)
+          if (( ${#logs[@]} )); then
+            cat "${logs[@]}"
+          else
+            echo "no stray log written (detector found no rescued Dispatcher.UIThread touch)"
+          fi
 
   # ── Windows runtime smoke: the split core actually boots + binds UDS (bevel-ncfp.12) ──────────
   # The matrix above only builds/tests. This proves the Windows PAL core role starts headless on real

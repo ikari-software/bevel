@@ -24,6 +24,6 @@ public static class TestAppBuilder
         return AppBuilder.Configure<Bevel.App.App>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .AfterSetup(_ => HeadlessDispatcherRoot.ReportIfStray());
+            .AfterSetup(_ => HeadlessDispatcherRoot.OnTestSetupCompleted());
     }
 }
