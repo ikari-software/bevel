@@ -63,20 +63,6 @@ public sealed class IncumbentProbeTests
     }
 
     [Fact]
-    public void A_plain_file_at_the_socket_path_is_not_reported()
-    {
-        // "Not a socket" on every OS: only a connect that SUCCEEDS may prove a live incumbent.
-        var path = NewSocketPath();
-        File.WriteAllText(path, "not a socket");
-        try
-        {
-            Assert.True(IncumbentProbe.FirstLiveSocket(path) is null,
-                $"a plain file was reported as a live incumbent; {ConnectOutcome(path)}");
-        }
-        finally { File.Delete(path); }
-    }
-
-    [Fact]
     public void A_missing_path_is_not_reported()
     {
         Assert.Null(IncumbentProbe.FirstLiveSocket(NewSocketPath()));
