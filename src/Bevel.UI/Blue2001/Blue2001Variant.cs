@@ -197,7 +197,6 @@ public static class Blue2001VariantService
         var color = string.IsNullOrWhiteSpace(colorId) || !IsKnownColor(colorId!) ? DefaultColor : colorId!;
         var gloss = string.IsNullOrWhiteSpace(glossId) || !IsKnownGloss(glossId!) ? DefaultGloss : glossId!;
         if (color == _appliedColor && gloss == _appliedGloss && _injected.Count > 0) return;
-        Bevel.UI.Glyphs.InvalidateThemeCache();   // variant colours changed — drop cached icon brushes (bevel-lha4)
         if (Application.Current?.Resources is not { } res) return;
 
         var variant = Enum.Parse<Blue2001ColorVariant>(color);
@@ -256,6 +255,7 @@ public static class Blue2001VariantService
 
         _appliedColor = color;
         _appliedGloss = gloss;
+        Bevel.UI.Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw)
         Changed?.Invoke();
     }
 
@@ -283,6 +283,7 @@ public static class Blue2001VariantService
         _injected.Clear();
         _appliedColor = DefaultColor;
         _appliedGloss = DefaultGloss;
+        Bevel.UI.Glyphs.InvalidateThemeCache();   // the variant's colours just left (bevel-yfkw)
         Changed?.Invoke();
     }
 

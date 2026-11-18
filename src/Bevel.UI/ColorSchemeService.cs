@@ -78,8 +78,6 @@ public static class ColorSchemeService
     {
         var scheme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultScheme : id!;
         if (scheme == _appliedId && _applied is not null) return;
-        Glyphs.InvalidateThemeCache();   // scheme colours changed — drop cached icon brushes (bevel-lha4)
-
         if (Application.Current?.Resources is not { } appResources) return;
 
         EnsureAliases(appResources);
@@ -95,6 +93,7 @@ public static class ColorSchemeService
         appResources.MergedDictionaries.Add(dict);
         _applied = dict;
         _appliedId = scheme;
+        Glyphs.InvalidateThemeCache();   // AFTER the swap: subscribers rebuild from the new scheme (bevel-yfkw)
     }
 
     /// <summary>Removes the merged Win2000 colour-scheme dictionary. Call when switching AWAY from the
@@ -109,6 +108,7 @@ public static class ColorSchemeService
         {
             appResources.MergedDictionaries.Remove(_applied);
             _applied = null;
+            Glyphs.InvalidateThemeCache();   // the scheme's colours just left (bevel-yfkw); a no-op Clear stays silent
         }
         // Leave _appliedId as-is: Apply's guard also checks `_applied is not null`, so a later
         // Apply(sameScheme) still re-merges after a Clear.

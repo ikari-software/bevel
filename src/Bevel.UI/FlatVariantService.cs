@@ -29,6 +29,8 @@ public static class FlatVariantService
         // "Blue" is the theme-native look: FlatTheme.axaml already defines every token injected
         // below with the correct source-led pigments, so re-injecting them here would only shadow
         // the theme with stale values (and the 2-stop Gradient() cannot express the 3-stop caption ramp).
+        // The palette change of this exit is Clear()'s removal, which raises the invalidation itself (and stays
+        // silent when nothing was injected, so re-applying Blue on every settings change rebuilds nothing).
         if (string.Equals(id, Default, StringComparison.OrdinalIgnoreCase))
             return;
         var (caption, captionEnd, taskbar, taskbarEnd, select, selectEnd, places, start, startEnd, placeText, toneDark, frame, btn, btnBorder, btnHover, btnPress, progress) = id switch
@@ -60,13 +62,16 @@ public static class FlatVariantService
         Put(resources, "Blue2001.Brush.StartMenuFooter", Gradient(start, startEnd));
         Put(resources, "Blue2001.Brush.StartMenuPlaceText", new SolidColorBrush(Color.Parse(placeText)));
         Put(resources, "Flat.Brush.TitleToneDark", new SolidColorBrush(Color.Parse(toneDark)));
+        Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw); coalesces with Clear()'s above
     }
 
     public static void Clear()
     {
         if (Application.Current?.Resources is not { } resources) return;
+        if (Injected.Count == 0) return;   // nothing of ours in the resources — no palette change to announce
         foreach (var key in Injected) resources.Remove(key);
         Injected.Clear();
+        Glyphs.InvalidateThemeCache();   // the variation's colours just left (bevel-yfkw)
     }
 
     private static void Put(Avalonia.Controls.IResourceDictionary resources, object key, object value)
