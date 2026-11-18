@@ -28,7 +28,7 @@ public class StartButtonSizingTests
 
     private static double WidthFor(TaskbarView view, Button start, string caption)
     {
-        view.ApplyLiveSettings(new BevelSettings { TaskbarStartLabel = caption });
+        view.ApplyLiveSettings(TestSettings.NoStacks(new BevelSettings { TaskbarStartLabel = caption }));
         Dispatcher.UIThread.RunJobs();
         start.Measure(Avalonia.Size.Infinity);
         start.Arrange(new Avalonia.Rect(start.DesiredSize));

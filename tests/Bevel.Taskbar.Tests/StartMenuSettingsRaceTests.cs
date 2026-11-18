@@ -84,6 +84,7 @@ public sealed class StartMenuSettingsRaceTests : IAsyncLifetime
         // Build the real taskbar surface from that stale snapshot — mirrors App.CreateTaskbarSurfaceCore:
         // TaskbarTheme.Configure, TaskbarView.Initialize(settings.Current, ..., settingsService: settings),
         // then a TaskbarWindow sized from settings.Current.TaskbarRows, shown.
+        TestSettings.NoStacks(remote.Current);   // never watch the real ~/Downloads from a test
         var view = new TaskbarView();
         view.Initialize(remote.Current, settingsService: remote);
         var window = new TaskbarWindow(null, rows: remote.Current.TaskbarRows) { Content = view, Width = 1200 };
@@ -102,7 +103,7 @@ public sealed class StartMenuSettingsRaceTests : IAsyncLifetime
         // on its own and the on-connect SettingsSnapshot corrects the peer live.
         var core = new SettingsService(_coreDir);
         await core.LoadAsync(Ct);
-        await core.UpdateAsync(s => s.TaskbarRows = 2, Ct);
+        await core.UpdateAsync(s => { s.TaskbarRows = 2; TestSettings.NoStacks(s); }, Ct);
         await using var server = new ShellCoreServer(
             new Bevel.Pal.Fake.FakeWindowManager(), new Bevel.Pal.Fake.FakeAppEnvironment(),
             new Bevel.Pal.Fake.FakeSystemTrayHost(), core, _socket, _nonce);

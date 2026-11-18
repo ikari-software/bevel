@@ -256,11 +256,11 @@ public class TaskBadgeViewTests
         var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
         var view = new TaskbarView { DataContext = vm };
-        view.Initialize(new BevelSettings
+        view.Initialize(TestSettings.NoStacks(new BevelSettings
         {
             TaskbarButtonWidth = 160,
             TaskbarGrouping = TaskbarGroupingMode.Never,
-        });
+        }));
         var window = new TaskbarWindow(null, rows: 1) { Content = view };
         window.Show();
         Dispatcher.UIThread.RunJobs();
