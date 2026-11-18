@@ -65,21 +65,15 @@ public sealed class FeatureInteractionTests : IDisposable
         win.SetController(controller);
         win.SetSearchService(new SearchService(vfs));
         controller.NavigateTo(new VfsPath("file", dir));
-        Pump();
+        // NavigateTo starts the listing through an async void handler; it reads on the pool and
+        // lands in batches (bevel-so27), so wait for the rows rather than a fixed pump count.
+        DispatcherPump.PumpUntil(() => Rows(win).Length > 0);
         return (win, controller, vfs);
     }
 
-    private static void Pump(int cycles = 10)
-    {
-        for (var i = 0; i < cycles; i++) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
-    }
-
-    private static void WaitUntil(Func<bool> cond, int ms = 3000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < ms && !cond()) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(10); }
-        Dispatcher.UIThread.RunJobs();
-    }
+    // Search results and refreshes arrive asynchronously; DispatcherPump fails the test on its deadline
+    // instead of letting it assert against a half-populated list.
+    private static void WaitUntil(Func<bool> cond) => DispatcherPump.PumpUntil(cond);
 
     private static string[] Rows(FileManagerWindow win)
     {
@@ -129,7 +123,7 @@ public sealed class FeatureInteractionTests : IDisposable
     {
         var (win, controller, _) = BuildWindow(_dir);
         controller.NavigateTo(new VfsPath("file", _sub));         // history now includes _dir then _sub
-        Pump();
+        DispatcherPump.PumpUntil(() => Rows(win).SequenceEqual(new[] { "deep-apple.txt" }));
 
         var flyout = (MenuFlyout)Call(win, "BuildHistoryFlyout")!;
         var items = flyout.Items.Cast<MenuItem>().ToList();
@@ -175,8 +169,7 @@ public sealed class FeatureInteractionTests : IDisposable
 
         var dialog = new FolderPickerDialog(vfs, new VfsPath("file", _dir), "Move Items");
         var root = (TreeViewItem)dialog.Tree.Items.Single()!;
-        dialog.OnTreeNodeExpanded(root, new RoutedEventArgs());
-        WaitUntil(() => root.Items.OfType<TreeViewItem>().Any(t => (t.Header as string) == "sub"));
+        DispatcherPump.PumpUntil(dialog.ExpandTreeNodeAsync(root));
 
         var subNode = root.Items.OfType<TreeViewItem>().Single(t => (t.Header as string) == "sub");
         dialog.SelectNode(subNode);

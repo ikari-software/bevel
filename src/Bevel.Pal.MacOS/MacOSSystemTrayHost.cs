@@ -55,8 +55,14 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     // ── ISystemTrayHost ─────────────────────────────────────────────────
 
     public async ValueTask<IReadOnlyList<AbstractionsTrayItem>> GetItemsAsync(CancellationToken ct = default)
+        => await TrySeedItemsAsync(ct).ConfigureAwait(false) ?? Array.Empty<AbstractionsTrayItem>();
+
+    /// <summary>Null = the helper could not be reached (disposed / TrayService Unavailable); a list (maybe
+    /// empty) = the helper answered. <see cref="GetItemsAsync"/> folds the null into empty for UI callers;
+    /// the core's seed uses this so a down helper is not published as an authoritative empty tray (bevel-ri8c).</summary>
+    public async ValueTask<IReadOnlyList<AbstractionsTrayItem>?> TrySeedItemsAsync(CancellationToken ct = default)
     {
-        if (_disposed) return Array.Empty<AbstractionsTrayItem>();
+        if (_disposed) return null;
         try
         {
             var tray = GetTrayClient();
@@ -67,7 +73,7 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
         {
             _logger.LogWarning("TrayService unavailable: {Message}", ex.Message);
-            return Array.Empty<AbstractionsTrayItem>();
+            return null;
         }
     }
 

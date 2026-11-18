@@ -166,16 +166,23 @@ public sealed record PalImage(
 /// window token (an AppleScript window id or index on macOS) — it is NOT a
 /// <see cref="ForeignWindowId"/>; scripting window identity and the window server's never align,
 /// so tabs attach to the app, not to a specific taskbar button's window. Refs are only guaranteed
-/// valid short-term (menu-open to click), not across enumerations.</summary>
+/// valid short-term (menu-open to click), not across enumerations — which is why activation
+/// re-resolves the tab by identity before acting (bevel-6asm): browsers by url (title only when the
+/// url is empty), iTerm2 by <see cref="SessionId"/>. See <see cref="ITabProvider.ActivateAsync"/> for
+/// the exact per-engine outcome.</summary>
 /// <param name="IconPng">The tab's favicon as an encoded PNG, when the platform can source one
 /// (browser on-disk favicon caches; bevel-l17f) — raster because favicons ARE raster sources,
 /// like app icons. Null when the app has no favicon store or the page has no cached icon.
 /// Note: as a byte[] this field gives the record REFERENCE semantics for equality/hashing —
 /// don't compare AppTabs by value.</param>
+/// <param name="SessionId">The terminal session's stable identity (iTerm2's <c>unique id of session</c>,
+/// captured at enumeration) — the only thing that identifies a terminal tab across re-fetches, since
+/// its title is a volatile job name. Null for browsers (their identity is the url, else the title).</param>
 public sealed record AppTab(
     string BundleId,
     string WindowRef,
     int TabIndex,
     string Title,
     string? Url = null,
-    byte[]? IconPng = null);
+    byte[]? IconPng = null,
+    string? SessionId = null);
