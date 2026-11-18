@@ -1,12 +1,8 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
-using Avalonia.Interactivity;
-using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
 using Xunit;
@@ -43,22 +39,11 @@ public sealed class FolderPickerDialogTests : IDisposable
         return root;
     }
 
-    /// <summary>Drives lazy expansion of a node the same way FileManagerWindowTreeTests does:
-    /// invoke the handler, then pump the dispatcher until the placeholder resolves.</summary>
+    /// <summary>Drives lazy expansion of a node the same way FileManagerWindowTreeTests does: start
+    /// (or join) the node's load, then pump the dispatcher until that load completes. The listing is
+    /// read on the pool and lands in batches (bevel-so27), so "placeholder gone" no longer means done.</summary>
     private static void Expand(FolderPickerDialog dialog, TreeViewItem node)
-    {
-        dialog.OnTreeNodeExpanded(node, new RoutedEventArgs());
-
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000
-               && node.Items.Count == 1
-               && node.Items[0] is TreeViewItem p && (p.Header as string) == "...")
-        {
-            Dispatcher.UIThread.RunJobs();
-            Thread.Sleep(10);
-        }
-        Dispatcher.UIThread.RunJobs();
-    }
+        => DispatcherPump.PumpUntil(dialog.ExpandTreeNodeAsync(node));
 
     [AvaloniaFact]
     public void Root_node_is_created_expanded_and_tagged_with_the_starting_path()
