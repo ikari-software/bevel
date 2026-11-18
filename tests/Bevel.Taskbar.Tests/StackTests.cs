@@ -391,4 +391,37 @@ public class StackTests : IDisposable
         Assert.False(first.IsWatching, "the old instance stays disposed");
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void One_update_that_reorders_keeps_every_instance_and_follows_the_new_order()
+    {
+        var a = Folder("a"); var b = Folder("b"); var c = Folder("c");
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
+        view.ApplyLiveSettings(Stacks(a, b, c));
+        var byPath = vm.Stacks.Stacks.ToDictionary(s => s.FolderPath);
+
+        view.ApplyLiveSettings(Stacks(c, a, b));
+
+        Assert.Equal(new[] { c, a, b }, Paths(vm.Stacks));
+        foreach (var s in vm.Stacks.Stacks) Assert.Same(byPath[s.FolderPath], s);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void One_update_that_removes_one_and_adds_another_keeps_the_survivors_in_order()
+    {
+        var a = Folder("a"); var b = Folder("b"); var c = Folder("c"); var d = Folder("d");
+        var (view, vm, window) = Bar();
+        using var _ = vm.Stacks;
+        view.ApplyLiveSettings(Stacks(a, b, c));
+        var sa = vm.Stacks.Stacks[0]; var sc = vm.Stacks.Stacks[2];
+
+        view.ApplyLiveSettings(Stacks(a, d, c));   // b out, d in, in the same update
+
+        Assert.Equal(new[] { a, d, c }, Paths(vm.Stacks));
+        Assert.Same(sa, vm.Stacks.Stacks[0]);
+        Assert.Same(sc, vm.Stacks.Stacks[2]);
+        window.Close();
+    }
 }

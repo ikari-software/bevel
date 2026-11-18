@@ -28,7 +28,7 @@ public class TaskbarViewModelSubscriptionOrderTests
     private sealed class OrderTrackingSettings : ISettingsService
     {
         public readonly List<string> CallOrder = new();
-        private readonly BevelSettings _current = new();
+        private readonly BevelSettings _current = TestSettings.NoStacks(new BevelSettings());   // never watch the real ~/Downloads
 
         public event Action? Changed
         {
@@ -66,7 +66,7 @@ public class TaskbarViewModelSubscriptionOrderTests
         var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         var settings = new OrderTrackingSettings();
 
-        _ = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
+        using var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
 
         // The FIRST read is StacksViewModel's one-shot folder seed (settings?.Current.TaskbarStacks) —
         // whole-branch review Fix 1 restored the stacks region to its pre-component-list hand-built
