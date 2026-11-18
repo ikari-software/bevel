@@ -1,13 +1,19 @@
 using System.Linq;
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
+using Bevel.UI;
 using Xunit;
+using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Bevel.FileManager.Tests;
 
+[Collection("TaskbarTheme")]   // one test overrides an Application-level icon token
 public class ItemViewTests
 {
     private static IVfsNode Node(string name, VfsNodeKind kind = VfsNodeKind.File, long? size = null)
@@ -238,6 +244,57 @@ public class ItemViewTests
         Assert.Single(view.SelectedItems);
         Assert.Equal("b.txt", view.SelectedItems[0].DisplayName);
         Assert.True(view.SelectedItems[0].IsSelected);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ViewMode.LargeIcons)]
+    [InlineData(ViewMode.SmallIcons)]
+    [InlineData(ViewMode.List)]
+    [InlineData(ViewMode.Details)]
+    [InlineData(ViewMode.Thumbnails)]
+    public void Row_icons_are_GlyphIcon_hosts_and_rebuild_on_invalidation(ViewMode mode)
+    {
+        // A row icon is a GlyphIcon (bevel-yfkw), not a one-shot Glyphs.Icon() snapshot: a snapshot holds
+        // the brushes it was built with forever, so a live theme/scheme/colourway switch never recoloured
+        // the listing until it was re-listed.
+        var view = new ItemView { ViewMode = mode };
+        PumpAndShow(view);
+        view.Items = new IVfsNode[]
+        {
+            new TestNode { Path = new VfsPath("test", "dir"), DisplayName = "dir", Kind = VfsNodeKind.Folder,
+                           MightHaveChildren = true, TypeDescription = "File Folder", IconKey = IconKey.Folder() },
+        };
+        Dispatcher.UIThread.RunJobs();
+
+        var icon = Assert.Single(view.GetVisualDescendants().OfType<GlyphIcon>());
+        Assert.Equal("folder", icon.Glyph);
+        var before = icon.Child;
+        var original = BackTop(icon);
+        Assert.NotEqual(Colors.Red, original);
+
+        var resources = Application.Current!.Resources;
+        resources[ThemeTokens.ColorIconFolderBackTop] = Colors.Red;
+        try
+        {
+            Glyphs.InvalidateThemeCache();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.NotSame(before, icon.Child);   // rebuilt, not the stale snapshot with the evicted brush
+            Assert.Equal(Colors.Red, BackTop(icon));
+        }
+        finally
+        {
+            resources.Remove(ThemeTokens.ColorIconFolderBackTop);
+            Glyphs.InvalidateThemeCache();
+            Dispatcher.UIThread.RunJobs();
+        }
+        Assert.Equal(original, BackTop(icon));
+    }
+
+    private static Color BackTop(GlyphIcon icon)
+    {
+        var back = icon.GetVisualDescendants().OfType<Path>().First();
+        return Assert.IsType<LinearGradientBrush>(back.Fill).GradientStops[0].Color;
     }
 }
 
