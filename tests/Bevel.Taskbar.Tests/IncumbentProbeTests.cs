@@ -74,10 +74,10 @@ public sealed class IncumbentStandDownTests
         using var listener = UdsSocketClaim.BindListener(core, backlog: 4);
         try
         {
-            var msg = IncumbentProbe.Decide(NewSocketPath(), core, "/x/bevel-recover.sh");
+            var msg = IncumbentProbe.Decide(NewSocketPath(), core, Path.Combine(Path.GetTempPath(), "x", "bevel-recover.sh"));
             Assert.NotNull(msg);
             Assert.Contains(core, msg);
-            Assert.Contains("/x/bevel-recover.sh", msg);
+            Assert.Contains(Path.Combine(Path.GetTempPath(), "x", "bevel-recover.sh"), msg);
             Assert.Equal(3, IncumbentProbe.StandDownExitCode);
         }
         finally { UdsSocketClaim.ReleaseListener(listener, core); }
@@ -121,7 +121,7 @@ public sealed class IncumbentStandDownTests
         File.WriteAllText(script, "#!/bin/sh\n");
         try
         {
-            Assert.Equal(script, IncumbentProbe.RecoverScriptPath(Path.Combine(root, "Contents", "MacOS") + "/"));
+            Assert.Equal(script, IncumbentProbe.RecoverScriptPath(Path.Combine(root, "Contents", "MacOS") + Path.DirectorySeparatorChar));
         }
         finally { Directory.Delete(root, true); }
     }

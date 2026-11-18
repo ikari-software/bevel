@@ -12,6 +12,33 @@ public sealed class LaunchGateTests
     private static string NewSocketPath()
         => Path.Combine(Path.GetTempPath(), $"bvlgt-{Guid.NewGuid():N}"[..14] + ".sock");
 
+    /// <summary>Stand-in children that exist on every runner (no hard-coded /bin paths): per-OS, one place.
+    /// Sleep = a long-lived process; Chatty = ~2 MB on stdout AND stderr, then exit.</summary>
+    private static ProcessStartInfo Child(bool chatty)
+    {
+        ProcessStartInfo psi;
+        if (OperatingSystem.IsWindows())
+        {
+            psi = new ProcessStartInfo("powershell.exe");
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-NonInteractive");
+            psi.ArgumentList.Add("-Command");
+            psi.ArgumentList.Add(chatty
+                ? "$l='x'*1000; 1..2000 | ForEach-Object { [Console]::Out.WriteLine($l); [Console]::Error.WriteLine($l) }"
+                : "Start-Sleep -Seconds 30");
+        }
+        else
+        {
+            psi = new ProcessStartInfo("sh");
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add(chatty
+                ? "head -c 1000000 /dev/zero | tr '\\0' x; head -c 1000000 /dev/zero | tr '\\0' y 1>&2"
+                : "sleep 30");
+        }
+        psi.UseShellExecute = false;
+        return psi;
+    }
+
     [Fact]
     public void A_live_socket_returns_3_and_calls_neither_clear_nor_spawn()
     {
@@ -64,8 +91,7 @@ public sealed class LaunchGateTests
     [Fact]
     public void A_timed_out_dialog_process_is_killed_not_orphaned()
     {
-        var psi = new ProcessStartInfo("/bin/sleep") { UseShellExecute = false };
-        psi.ArgumentList.Add("30");
+        var psi = Child(chatty: false);
         var completed = ShellHealthAlert.RunBounded(psi, TimeSpan.FromMilliseconds(300), killOnTimeout: true, out var pid);
         Assert.False(completed);
         Assert.True(pid > 0);
@@ -80,8 +106,7 @@ public sealed class LaunchGateTests
     [Fact]
     public void The_hold_path_leaves_a_timed_out_dialog_up()
     {
-        var psi = new ProcessStartInfo("/bin/sleep") { UseShellExecute = false };
-        psi.ArgumentList.Add("30");
+        var psi = Child(chatty: false);
         Assert.False(ShellHealthAlert.RunBounded(psi, TimeSpan.FromMilliseconds(200), killOnTimeout: false, out var pid));
         var proc = Process.GetProcessById(pid);
         try { Assert.False(proc.HasExited); }
@@ -92,10 +117,10 @@ public sealed class LaunchGateTests
     public void A_chatty_dialog_process_does_not_stall_on_a_full_pipe()
     {
         // Redirected like the osascript caller: an undrained pipe fills at ~64 KB and stalls the child.
-        var psi = new ProcessStartInfo("/bin/sh") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("head -c 1000000 /dev/zero | tr '\\0' x; head -c 1000000 /dev/zero | tr '\\0' y 1>&2");
-        Assert.True(ShellHealthAlert.RunBounded(psi, TimeSpan.FromSeconds(10), killOnTimeout: true, out _));
+        var psi = Child(chatty: true);
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        Assert.True(ShellHealthAlert.RunBounded(psi, TimeSpan.FromSeconds(30), killOnTimeout: true, out _));
     }
 
     [Fact]
