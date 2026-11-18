@@ -66,6 +66,6 @@ hidden AX-less apps appear after ~4s. Details in the Swift files' doc comments +
 
 ## Housekeeping
 
-- `.beads/issues.jsonl` is modified by `bd` — normal; commit it with the related work if the owner wants.
+- `.beads/issues.jsonl` is a local, git-ignored export (`export.auto`); never commit it. Issues sync via `refs/dolt/data` (`bd dolt push`).
 - Untracked, NOT ours to commit: `pi-session-*.html` (repo root), `.context/`, `tools/eval/__pycache__/`.
 - Scratch renders/sketches from today's design work live in the session scratchpad (`.../scratchpad/badge/`), not in the repo.
