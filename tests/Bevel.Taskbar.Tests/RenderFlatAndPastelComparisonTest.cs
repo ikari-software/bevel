@@ -1,5 +1,6 @@
 using Bevel.Core;
 using System;
+using System.Threading;
 using System.IO;
 using System.Linq;
 using Avalonia;
@@ -55,16 +56,10 @@ public class RenderFlatAndPastelComparisonTest
     /// </summary>
     private static void SaveCrop(Window window, string fileName)
     {
-        var path = Path.Combine(OutDir, fileName);
-        if (ForSite)
-        {
-            Bevel.TestSupport.SiteShot.Save(window, path);
-            return;
-        }
-
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
-        frame!.Save(path);
+        // Both paths settle the frame first. The docs path used to save ONE CaptureRenderedFrame(),
+        // which can still be the previous frame: the committed renders came out run-dependent —
+        // task buttons and the pinned clock present in one variant, missing in the next.
+        Bevel.TestSupport.SiteShot.Save(window, Path.Combine(OutDir, fileName), ForSite ? Bevel.TestSupport.SiteShot.Scale : 1);
     }
 
     private sealed class ComparisonPinnedClock : TimeProvider
@@ -243,6 +238,17 @@ public class RenderFlatAndPastelComparisonTest
         foreach (var clock in window.GetVisualDescendants().OfType<ClockWidget>())
             clock.Time = new ComparisonPinnedClock();
         Dispatcher.UIThread.RunJobs();
+
+        // Task buttons carry a 250 ms Width transition from the seeded 150 px to their laid-out
+        // width. Headless animations only advance on render-timer ticks, so two identical frames can
+        // still be mid-transition — tick past it, or the widths jitter by a pixel or two per run.
+        var settleUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(400);
+        while (DateTime.UtcNow < settleUntil)
+        {
+            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(15);
+        }
 
         SaveCrop(window, fileName);
         window.Close();
