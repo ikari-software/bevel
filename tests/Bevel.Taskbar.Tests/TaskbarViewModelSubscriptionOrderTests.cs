@@ -72,8 +72,9 @@ public class TaskbarViewModelSubscriptionOrderTests
         // whole-branch review Fix 1 restored the stacks region to its pre-component-list hand-built
         // ItemsControl (TaskbarView.axaml bound to Stacks.Stacks), since no component type has a
         // renderer yet and ComponentBarHost's generic Button regressed the shipped feature. That read
-        // is a one-shot startup seed, not a live subscription, so there is nothing to race: Stacks
-        // never changes again from this value.
+        // is only the startup seed, not a live subscription: later TaskbarStacks changes arrive
+        // through TaskbarView.ApplyLiveSettings -> StacksViewModel.Reconcile (bevel-2ip7), so there is
+        // no per-view-model Changed subscription to race.
         //
         // The guarded property is about the PAIR that follows: "subscribe" must land before the
         // SECOND read — the one that feeds ApplyConsolidation. If that read came first instead, a

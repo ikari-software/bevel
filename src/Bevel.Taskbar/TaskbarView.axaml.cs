@@ -56,6 +56,7 @@ public partial class TaskbarView : UserControl
     private int _opacity = 100;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
+    private string[]? _appliedStacks;   // last TaskbarStacks pushed through ApplyLiveSettings (bevel-2ip7 diff guard)
     /// <summary>Composes the stacks region from <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7
     /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
     private ComponentBarHost? _componentHost;
@@ -395,6 +396,13 @@ public partial class TaskbarView : UserControl
         ApplyAppearance(_fontSize, _bgColor, _opacity);
         _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
         _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
+        // Stacks (bevel-2ip7): diff-guarded so an unrelated settings change never touches the strip;
+        // the view-model reconciles incrementally (keeps survivors, disposes the removed).
+        if (_vm is not null && (_appliedStacks is null || !_appliedStacks.SequenceEqual(s.TaskbarStacks)))
+        {
+            _appliedStacks = (string[])s.TaskbarStacks.Clone();
+            _vm.Stacks.Reconcile(_appliedStacks);
+        }
         ApplyComponentRegion(s);   // bevel-aqr7 Task 14: re-apply the component list, off the UI thread
 
         _locked = s.TaskbarLocked;

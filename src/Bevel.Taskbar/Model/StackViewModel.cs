@@ -271,15 +271,33 @@ public sealed class StackFileViewModel : ObservableObject
 /// <summary>The set of configured taskbar stacks (bevel-12g), built from the folder paths in settings.</summary>
 public sealed class StacksViewModel : IDisposable
 {
+    private readonly IAppEnvironment? _appEnv;
+    private readonly IconLoader _loader;
+    private readonly IThumbnailProvider? _thumbnails;
+
     public StacksViewModel(IEnumerable<string> folders, IAppEnvironment? appEnv, IIconProvider? icons,
         IThumbnailProvider? thumbnails = null)
     {
-        var loader = new IconLoader(icons);
-        foreach (var folder in folders)
+        _appEnv = appEnv;
+        _loader = new IconLoader(icons);
+        _thumbnails = thumbnails;
+        Reconcile(folders.ToList());
+    }
+
+    /// <summary>Brings <see cref="Stacks"/> in line with <paramref name="folders"/> (bevel-2ip7), keeping
+    /// every stack whose folder is still configured (same instance, flyout and new-item cue intact),
+    /// creating the new ones, disposing the gone ones (releasing their watchers) and following the
+    /// configured order. Never clears. UI thread only; creating a stack does no blocking work there
+    /// (its watcher is armed off-thread). Driven from <c>TaskbarView.ApplyLiveSettings</c>.</summary>
+    public void Reconcile(IReadOnlyList<string> folders) =>
+        ObservableReconciler.Reconcile(
+            Stacks, folders,
+            keyOf: s => s.FolderPath,
+            sourceKeyOf: f => f,
             // One PreviewLoader per stack: its cache is trimmed to that folder's live entries, so
             // stacks never evict each other's cell images.
-            Stacks.Add(new StackViewModel(folder, appEnv, loader, new PreviewLoader(loader, thumbnails)));
-    }
+            create: f => new StackViewModel(f, _appEnv, _loader, new PreviewLoader(_loader, _thumbnails)),
+            onRemove: (item, commit) => { item.Dispose(); commit(); });
 
     public ObservableCollection<StackViewModel> Stacks { get; } = new();
 

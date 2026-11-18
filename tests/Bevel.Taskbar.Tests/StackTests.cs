@@ -12,6 +12,7 @@ namespace Bevel.Taskbar.Tests;
 /// <summary>
 /// The taskbar folder stack (bevel-12g): the recent-contents discovery that feeds the flyout.
 /// </summary>
+[Collection("TaskbarTheme")]   // ApplyLiveSettings mutates the shared TaskbarTheme metrics
 public class StackTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bevel-stack-" + Guid.NewGuid().ToString("N")[..10]);
@@ -228,5 +229,69 @@ public class StackTests : IDisposable
             await Task.Delay(5);
         }
         Dispatcher.UIThread.RunJobs();
+    }
+
+    private string Folder(string name)
+    {
+        var path = Path.Combine(_dir, name);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private static string[] Paths(StacksViewModel vm) => vm.Stacks.Select(s => s.FolderPath).ToArray();
+
+    [AvaloniaFact]
+    public void Reconcile_keeps_survivors_adds_new_removes_gone_and_follows_order()
+    {
+        var a = Folder("a"); var b = Folder("b"); var c = Folder("c");
+        using var vm = new StacksViewModel(new[] { a, b }, appEnv: null, icons: null);
+        var survivor = vm.Stacks[0];
+
+        vm.Reconcile(new[] { c, a });
+
+        Assert.Equal(new[] { c, a }, Paths(vm));
+        Assert.Same(survivor, vm.Stacks[1]);
+
+        var changes = 0;
+        vm.Stacks.CollectionChanged += (_, _) => changes++;
+        vm.Reconcile(new[] { c, a });
+        Assert.Equal(0, changes);
+    }
+
+    [AvaloniaFact]
+    public void Reconcile_disposes_removed_stacks()
+    {
+        var a = Folder("a"); var b = Folder("b");
+        using var vm = new StacksViewModel(new[] { a, b }, appEnv: null, icons: null);
+        var gone = vm.Stacks[1];
+        var watcherField = typeof(StackViewModel).GetField("_disposed",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        vm.Reconcile(new[] { a });
+
+        Assert.True((bool)watcherField.GetValue(gone)!, "a removed stack must be disposed (watcher released)");
+    }
+
+    [AvaloniaFact]
+    public void ApplyLiveSettings_reconciles_the_stacks_and_leaves_survivors_alone()
+    {
+        var a = Folder("a"); var b = Folder("b");
+        var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var view = new TaskbarView { DataContext = vm };
+        var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = new[] { a } });
+        Assert.Equal(new[] { a }, Paths(vm.Stacks));
+        var survivor = vm.Stacks.Stacks[0];
+
+        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = new[] { b, a } });
+        Assert.Equal(new[] { b, a }, Paths(vm.Stacks));
+        Assert.Same(survivor, vm.Stacks.Stacks[1]);
+
+        view.ApplyLiveSettings(new Bevel.Core.BevelSettings { TaskbarStacks = Array.Empty<string>() });
+        Assert.Empty(vm.Stacks.Stacks);
     }
 }
