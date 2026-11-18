@@ -166,7 +166,8 @@ public sealed record PalImage(
 /// window token (an AppleScript window id or index on macOS) — it is NOT a
 /// <see cref="ForeignWindowId"/>; scripting window identity and the window server's never align,
 /// so tabs attach to the app, not to a specific taskbar button's window. Refs are only guaranteed
-/// valid short-term (menu-open to click), not across enumerations.</summary>
+/// valid short-term (menu-open to click), not across enumerations — which is why activation
+/// re-resolves the tab by title/url before acting (bevel-6asm); an ambiguous or vanished tab is a no-op.</summary>
 /// <param name="IconPng">The tab's favicon as an encoded PNG, when the platform can source one
 /// (browser on-disk favicon caches; bevel-l17f) — raster because favicons ARE raster sources,
 /// like app icons. Null when the app has no favicon store or the page has no cached icon.

@@ -80,8 +80,8 @@ public sealed class MacOSTabProvider : ITabProvider
             return;
         }
         if (ScriptDialectFor(tab.BundleId) is { } dialect)
-            await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex), ct)
-                .ConfigureAwait(false);
+            await RunOsaScriptAsync(ActivationScript(tab.BundleId, dialect, windowRef, tab.TabIndex),
+                ActivationArguments(tab), ct).ConfigureAwait(false);
     }
 
     /// <summary>Post-enumeration enrichment (bevel-l17f): Gecko tabs first get their url by exact
@@ -220,29 +220,176 @@ public sealed class MacOSTabProvider : ITabProvider
         return rows as text
         """;
 
+    /// <summary>The wanted title and url, in the order the activation script reads them from
+    /// <c>argv</c> (item 1, item 2; "" when the tab has no url). Foreign text — it travels as
+    /// osascript arguments and never enters script source.</summary>
+    internal static IReadOnlyList<string> ActivationArguments(AppTab tab) => new[] { tab.Title, tab.Url ?? "" };
+
+    /// <summary>Shared AppleScript handlers for the activation scripts. <c>isMatch</c> mirrors
+    /// <see cref="Parse"/>: the title and url are trimmed and a blank title falls back to the url,
+    /// and the comparison is case-SENSITIVE (AppleScript's default `is` ignores case).</summary>
+    private const string MatchHandlers = """
+        on trimmed(s)
+            if s is missing value then return ""
+            set t to s as text
+            set ws to {" ", tab, return, linefeed}
+            repeat while (count of t) > 0 and ws contains (character 1 of t)
+                if (count of t) is 1 then
+                    set t to ""
+                else
+                    set t to text 2 thru -1 of t
+                end if
+            end repeat
+            repeat while (count of t) > 0 and ws contains (character -1 of t)
+                if (count of t) is 1 then
+                    set t to ""
+                else
+                    set t to text 1 thru -2 of t
+                end if
+            end repeat
+            return t
+        end trimmed
+
+        on isMatch(rawTitle, rawUrl, wantTitle, wantUrl)
+            set t to my trimmed(rawTitle)
+            set u to my trimmed(rawUrl)
+            if t is "" then set t to u
+            considering case
+                if t is not wantTitle then return false
+                if wantUrl is not "" and u is not wantUrl then return false
+            end considering
+            return true
+        end isMatch
+
+        """;
+
+    /// <summary>Activation by IDENTITY, not position (bevel-6asm). Row indexes go stale the moment a
+    /// tab closes or reorders, so the script receives the wanted title and url as argv and: if tab
+    /// <paramref name="tabIndex"/> of window <paramref name="windowRef"/> still matches, selects it;
+    /// else searches EVERY window (window indexes are z-order and go stale too); exactly one match
+    /// is selected, zero or 2+ do nothing. `activate` runs last and only after a successful select.
+    /// Returns "ok" / "none" / "gone" (informational; the caller ignores it).</summary>
     internal static string ActivationScript(string bundleId, Dialect dialect, int windowRef, int tabIndex) => dialect switch
     {
-        Dialect.ITerm => $"""
-            tell application id "{bundleId}"
-                select tab {tabIndex} of window id {windowRef}
-                activate
-            end tell
+        // iTerm2 has no url; its tab text is the current session's name.
+        Dialect.ITerm => $$"""
+            {{MatchHandlers}}
+            on run argv
+                set wantTitle to item 1 of argv
+                set wantUrl to item 2 of argv
+                if application id "{{bundleId}}" is not running then return "gone"
+                set hitW to 0
+                set hitT to 0
+                tell application id "{{bundleId}}"
+                    try
+                        if my isMatch(name of current session of tab {{tabIndex}} of window id {{windowRef}}, "", wantTitle, "") then
+                            set hitW to {{windowRef}}
+                            set hitT to {{tabIndex}}
+                        end if
+                    end try
+                    if hitW is 0 then
+                        set n to 0
+                        repeat with w in windows
+                            set wid to id of w
+                            set ti to 0
+                            repeat with t in tabs of w
+                                set ti to ti + 1
+                                try
+                                    if my isMatch(name of current session of t, "", wantTitle, "") then
+                                        set n to n + 1
+                                        set hitW to wid
+                                        set hitT to ti
+                                    end if
+                                end try
+                            end repeat
+                        end repeat
+                        if n is not 1 then return "none"
+                    end if
+                    select tab hitT of window id hitW
+                    activate
+                end tell
+                return "ok"
+            end run
             """,
 
-        Dialect.Chromium => $"""
-            tell application id "{bundleId}"
-                set active tab index of window {windowRef} to {tabIndex}
-                set index of window {windowRef} to 1
-                activate
-            end tell
+        Dialect.Chromium => $$"""
+            {{MatchHandlers}}
+            on run argv
+                set wantTitle to item 1 of argv
+                set wantUrl to item 2 of argv
+                if application id "{{bundleId}}" is not running then return "gone"
+                set hitW to 0
+                set hitT to 0
+                tell application id "{{bundleId}}"
+                    try
+                        if my isMatch(title of tab {{tabIndex}} of window {{windowRef}}, URL of tab {{tabIndex}} of window {{windowRef}}, wantTitle, wantUrl) then
+                            set hitW to {{windowRef}}
+                            set hitT to {{tabIndex}}
+                        end if
+                    end try
+                    if hitW is 0 then
+                        set n to 0
+                        repeat with wi from 1 to (count of windows)
+                            try
+                                set ts to title of every tab of window wi
+                                set ls to URL of every tab of window wi
+                                repeat with ti from 1 to (count ts)
+                                    if my isMatch(item ti of ts, item ti of ls, wantTitle, wantUrl) then
+                                        set n to n + 1
+                                        set hitW to wi
+                                        set hitT to ti
+                                    end if
+                                end repeat
+                            end try
+                        end repeat
+                        if n is not 1 then return "none"
+                    end if
+                    set active tab index of window hitW to hitT
+                    set index of window hitW to 1
+                    activate
+                end tell
+                return "ok"
+            end run
             """,
 
-        Dialect.Safari => $"""
-            tell application id "{bundleId}"
-                tell window {windowRef} to set current tab to tab {tabIndex}
-                set index of window {windowRef} to 1
-                activate
-            end tell
+        Dialect.Safari => $$"""
+            {{MatchHandlers}}
+            on run argv
+                set wantTitle to item 1 of argv
+                set wantUrl to item 2 of argv
+                if application id "{{bundleId}}" is not running then return "gone"
+                set hitW to 0
+                set hitT to 0
+                tell application id "{{bundleId}}"
+                    try
+                        if my isMatch(name of tab {{tabIndex}} of window {{windowRef}}, URL of tab {{tabIndex}} of window {{windowRef}}, wantTitle, wantUrl) then
+                            set hitW to {{windowRef}}
+                            set hitT to {{tabIndex}}
+                        end if
+                    end try
+                    if hitW is 0 then
+                        set n to 0
+                        repeat with wi from 1 to (count of windows)
+                            try
+                                set ts to name of every tab of window wi
+                                set ls to URL of every tab of window wi
+                                repeat with ti from 1 to (count ts)
+                                    if my isMatch(item ti of ts, item ti of ls, wantTitle, wantUrl) then
+                                        set n to n + 1
+                                        set hitW to wi
+                                        set hitT to ti
+                                    end if
+                                end repeat
+                            end try
+                        end repeat
+                        if n is not 1 then return "none"
+                    end if
+                    tell window hitW to set current tab to tab hitT
+                    set index of window hitW to 1
+                    activate
+                end tell
+                return "ok"
+            end run
             """,
 
         _ => throw new ArgumentOutOfRangeException(nameof(dialect)),
@@ -269,7 +416,13 @@ public sealed class MacOSTabProvider : ITabProvider
 
     // ── osascript runner ─────────────────────────────────────────────────────
 
-    private static async Task<string> RunOsaScriptAsync(string script, CancellationToken ct)
+    private static Task<string> RunOsaScriptAsync(string script, CancellationToken ct) =>
+        RunOsaScriptAsync(script, Array.Empty<string>(), ct);
+
+    /// <summary>Runs <paramref name="script"/> with <paramref name="args"/> delivered to its
+    /// <c>on run argv</c> handler. Each arg is its own <c>ArgumentList</c> entry after
+    /// <c>-e script</c>, so foreign text can never be re-parsed as script source or shell.</summary>
+    private static async Task<string> RunOsaScriptAsync(string script, IReadOnlyList<string> args, CancellationToken ct)
     {
         if (!OperatingSystem.IsMacOS()) return "";
         var psi = new ProcessStartInfo("/usr/bin/osascript")
@@ -280,6 +433,7 @@ public sealed class MacOSTabProvider : ITabProvider
         };
         psi.ArgumentList.Add("-e");
         psi.ArgumentList.Add(script);
+        foreach (var a in args) psi.ArgumentList.Add(a);
 
         try
         {

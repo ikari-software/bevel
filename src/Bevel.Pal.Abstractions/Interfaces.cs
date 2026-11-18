@@ -253,7 +253,9 @@ public interface ITabProvider
     ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default);
 
     /// <summary>Focuses <paramref name="tab"/>: selects it inside its window, raises the window,
-    /// activates the app. Best-effort — a tab closed since enumeration is a silent no-op.</summary>
+    /// activates the app. Verified by identity (bevel-6asm): the tab is re-resolved by title/url
+    /// first, so a stale row (tab closed or reordered since enumeration) selects the intended tab
+    /// when it can still be found uniquely; an ambiguous or vanished tab is a no-op.</summary>
     Task ActivateAsync(AppTab tab, CancellationToken ct = default);
 }
 

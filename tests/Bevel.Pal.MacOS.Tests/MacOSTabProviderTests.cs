@@ -84,15 +84,44 @@ public class MacOSTabProviderTests
         Assert.Contains("URL of every tab of window wi", safari);
     }
 
-    [Fact]
-    public void Safari_activation_sets_current_tab_chromium_sets_active_index()
+    [Theory]
+    [InlineData("com.apple.Safari", "Safari")]
+    [InlineData("com.google.Chrome", "Chromium")]
+    [InlineData("com.googlecode.iterm2", "ITerm")]
+    public void Activation_scripts_take_title_and_url_as_arguments_never_inline(string bundleId, string dialectName)
     {
-        Assert.Contains("set current tab to tab 3",
-            MacOSTabProvider.ActivationScript("com.apple.Safari", MacOSTabProvider.Dialect.Safari, 2, 3));
-        Assert.Contains("set active tab index of window 2 to 3",
-            MacOSTabProvider.ActivationScript("com.google.Chrome", MacOSTabProvider.Dialect.Chromium, 2, 3));
-        Assert.Contains("select tab 3 of window id 77",
-            MacOSTabProvider.ActivationScript("com.googlecode.iterm2", MacOSTabProvider.Dialect.ITerm, 77, 3));
+        var dialect = Enum.Parse<MacOSTabProvider.Dialect>(dialectName);
+        var script = MacOSTabProvider.ActivationScript(bundleId, dialect, 2, 3);
+        Assert.Contains("on run argv", script);
+        Assert.Contains("item 1 of argv", script);
+        Assert.Contains("item 2 of argv", script);
+
+        // Foreign text rides in argv; it can never be part of the script source.
+        const string hostile = "x\" & (do shell script \"id\") & \"";
+        var tab = new Abstractions.AppTab(bundleId, "2", 3, hostile, "https://e.test/\"q");
+        Assert.DoesNotContain(hostile, script);
+        Assert.Equal(new[] { hostile, "https://e.test/\"q" }, MacOSTabProvider.ActivationArguments(tab));
+        Assert.Equal(new[] { "t", "" }, MacOSTabProvider.ActivationArguments(new Abstractions.AppTab(bundleId, "2", 3, "t")));
+    }
+
+    [Theory]
+    [InlineData("com.apple.Safari", "Safari", "set current tab to tab hitT", "set index of window hitW to 1")]
+    [InlineData("com.google.Chrome", "Chromium", "set active tab index of window hitW to hitT", "set index of window hitW to 1")]
+    [InlineData("com.googlecode.iterm2", "ITerm", "select tab hitT of window id hitW", "name of current session")]
+    public void Activation_verifies_then_selects_and_activates_last(string bundleId, string dialectName, string select, string extra)
+    {
+        var dialect = Enum.Parse<MacOSTabProvider.Dialect>(dialectName);
+        var script = MacOSTabProvider.ActivationScript(bundleId, dialect, 2, 3);
+        Assert.Contains(select, script);
+        Assert.Contains(extra, script);
+        Assert.Contains("considering case", script);          // AppleScript `is` ignores case by default
+        Assert.True(script.Contains("count of windows") || script.Contains("in windows"), "every window is searched");
+        // Ambiguous or vanished = bail out before any select/activate.
+        Assert.True(script.IndexOf("n is not 1", StringComparison.Ordinal) < script.IndexOf(select, StringComparison.Ordinal));
+        Assert.True(script.LastIndexOf("activate", StringComparison.Ordinal) > script.IndexOf(select, StringComparison.Ordinal));
+        // The stale fast path starts from the tab the row remembered.
+        Assert.Contains("2", script);
+        Assert.Contains("3", script);
     }
 
     // ── Output parsing ───────────────────────────────────────────────────────
