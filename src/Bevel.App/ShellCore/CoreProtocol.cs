@@ -101,8 +101,9 @@ public sealed record CoreEvent(
     string? SettingsJson = null,
     /// <summary>SettingsSnapshot / SettingsChanged: the settings store version the blob was read at.</summary>
     int? SettingsVersion = null,
-    /// <summary>Session stamp (bevel-4zfs): which projection generation this event belongs to. The epoch
-    /// bumps on every discontinuous rebuild (startup seed completion); a client seeing a new epoch adopts
+    /// <summary>Session stamp (bevel-4zfs): which projection generation this event belongs to. EVERY
+    /// server push carries it — deltas included (bevel-b79z), because the client's sequence tracker ignores
+    /// events without an epoch. The epoch bumps on every discontinuous rebuild (startup seed completion); a client seeing a new epoch adopts
     /// the accompanying snapshot burst as its fresh baseline.</summary>
     int? Epoch = null,
     /// <summary>Session stamp (bevel-4zfs): gapless within an epoch. A gap means a lost frame — the client
