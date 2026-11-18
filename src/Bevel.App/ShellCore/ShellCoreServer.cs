@@ -259,6 +259,26 @@ public sealed class ShellCoreServer : IAsyncDisposable
             : [windowSnapshot, appSnapshot, settingsSnapshot];
     }
 
+    /// <summary>Test seam (bevel-b79z): the next N broadcast frames are stamped (consuming their per-client
+    /// seq) but never sent — a genuinely lost delta, so a test can prove the client re-Hellos on a REAL gap.</summary>
+    internal int DropNextBroadcastFramesForTest;
+
+    /// <summary>The ONE place a server→client frame is stamped and sent (caller holds <see cref="_gate"/>):
+    /// the CURRENT epoch (an event that already carries one, i.e. a snapshot, keeps it) plus the client's next
+    /// seq. The client's sequence tracker ignores any event lacking an epoch, so an epoch-less frame would
+    /// consume a seq the client never records and make the next frame look like a lost one — a phantom gap
+    /// and a spurious re-Hello (bevel-b79z). Every send path goes through here so that rule cannot diverge.</summary>
+    private void SendStampedLocked(Guid clientId, CoreEvent evt)
+    {
+        var stamped = evt with { Epoch = evt.Epoch ?? _epoch, Seq = NextSeq(clientId) };
+        if (DropNextBroadcastFramesForTest > 0 && evt.Epoch is null)
+        {
+            DropNextBroadcastFramesForTest--;   // delta lost in transit: seq consumed, frame never sent
+            return;
+        }
+        _server.SendToClient(clientId, CoreProtocol.Serialize(stamped));
+    }
+
     /// <summary>Stamp + broadcast one event to EVERY client (bevel-4zfs). Under <see cref="_gate"/>, so
     /// per-client seq assignment and enqueue order can never invert — frame order on every client equals
     /// its own seq order. Every server→client event goes through here or <see cref="PushSnapshotTo"/>.
@@ -269,13 +289,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             PruneStaleClients();
             foreach (var id in _server.ClientIds)
-                // Stamp the CURRENT epoch too (bevel-b79z): the client's sequence tracker ignores any event
-                // without an epoch, so an epoch-less delta consumed a per-client seq the client never saw —
-                // and the next snapshot burst then looked like a lost frame and triggered a spurious
-                // re-Hello (an extra four-snapshot burst). Snapshots already carry their epoch; the
-                // seed-complete burst keeps its own (post-bump) epoch because _epoch is read under _gate.
-                _server.SendToClient(id, CoreProtocol.Serialize(
-                    evt with { Epoch = evt.Epoch ?? _epoch, Seq = NextSeq(id) }));
+                SendStampedLocked(id, evt);
         }
     }
 
@@ -297,7 +311,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 if (_seedBuffer is not null
                     && evt.Kind is CoreEventKind.WindowSnapshot or CoreEventKind.TraySnapshot)
                     continue;
-                _server.SendToClient(clientId, CoreProtocol.Serialize(evt with { Seq = NextSeq(clientId) }));
+                SendStampedLocked(clientId, evt);
             }
         }
     }

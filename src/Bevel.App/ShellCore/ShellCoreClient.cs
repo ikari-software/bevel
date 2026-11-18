@@ -47,7 +47,7 @@ public sealed class ShellCoreClient : IShellConnectionStatus, IAsyncDisposable
     private readonly object _sessionGate = new();
     private bool _sessionStarted;   // a session was REQUESTED (set before the connect attempt — see below)
     private bool _helloForConnection; // a Hello has already been sent on the CURRENT link; cleared on (re)connect
-    private int _epoch;             // 0 = no baseline yet (pre-Hello deltas apply but don't gap-check)
+    private int _epoch;             // 0 = no baseline yet; the first stamped event (a delta or a snapshot) adopts its epoch, without a gap check
     private long _seq;
     private long _lastAutoHelloTick; // Environment.TickCount64 — rate-limits gap-triggered re-Hellos
 
