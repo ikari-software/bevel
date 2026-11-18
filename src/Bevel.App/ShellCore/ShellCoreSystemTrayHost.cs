@@ -52,6 +52,7 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         : new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
             Notes: new[] { "tray: authoritative, via shell-core" }, SupportsReposition: false);
 
+    // internal = test seam: tests feed synthetic CoreEvents without a live server.
     internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
@@ -98,7 +99,11 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         try
         {
             var r = await _core.SendAsync(new CoreCommand(CoreCommandKind.GetTrayItems), ct).ConfigureAwait(false);
-            return r.TrayItems ?? Array.Empty<TrayItem>();
+            var items = r.TrayItems ?? Array.Empty<TrayItem>();
+            // Record pulled items too (bevel-ri8c): otherwise a later snapshot can never reap them.
+            lock (_knownGate)
+                foreach (var t in items) _known[t.Id.Value] = t;
+            return items;
         }
         catch
         {
