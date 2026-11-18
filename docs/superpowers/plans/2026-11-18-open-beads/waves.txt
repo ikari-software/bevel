@@ -16,6 +16,7 @@ W1|bevel-i145|AGENT|M|cards-A-test-reliability.md|Luna render tests flake on sha
 W1|bevel-ayhn|AGENT|M|cards-D-theming.md|Luna tokens are hand-mirrored and not drift-checked (ThemeGen only covers Win2000)
 W1|bevel-tv19|AGENT|S|cards-A-test-reliability.md|RenderFlatAndPastelComparisonTest dirties 5 checked-in PNGs on every run
 W1|bevel-b4a5|AGENT|S|-|CI: build benchmarks/Bevel.Benchmarks (filed by bevel-zhmr)
+W1|bevel-j5mr|AGENT|M|-|Flaky test: CoreWindowTrafficTests title-change burst times out (found in CI)
 W2|bevel-so27|AGENT|L|cards-B-core-ipc-startup.md|Filer enumeration still runs ON THE UI THREAD (syscall count fixed; threading blocked on callers)
 W2|bevel-ri8c|AGENT|M|cards-B-core-ipc-startup.md|Tray reconnect snapshot only upserts -- ghost icons survive a core restart
 W2|bevel-wheq|AGENT|S|cards-B-core-ipc-startup.md|Window-list reconnect snapshot only upserts -- possible stale taskbar buttons after core restart
