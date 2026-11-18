@@ -1,9 +1,6 @@
-using System.Diagnostics;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
-using Avalonia.Interactivity;
-using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager;
 using Xunit;
@@ -41,19 +38,9 @@ public sealed class FileManagerWindowTreeTests : IDisposable
         var item = new TreeViewItem { Tag = new VfsPath("file", dir) };
         item.Items.Add(new TreeViewItem { Header = "..." });
 
-        var handler = typeof(FileManagerWindow).GetMethod("OnTreeNodeExpanded", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        handler.Invoke(win, new object?[] { item, new RoutedEventArgs() });
-
-        // The enumeration streams into item.Items; pump until the placeholder is gone.
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 3000
-               && item.Items.Count == 1
-               && item.Items[0] is TreeViewItem p && (p.Header as string) == "...")
-        {
-            Dispatcher.UIThread.RunJobs();
-            Thread.Sleep(10);
-        }
-        Dispatcher.UIThread.RunJobs();
+        // The listing is read on the pool and lands in batches (bevel-so27): pump until the expansion
+        // itself reports done, not until the placeholder is merely gone.
+        DispatcherPump.PumpUntil(win.ExpandTreeNodeAsync(item));
 
         return item.Items.OfType<TreeViewItem>().Select(t => t.Header as string ?? "").ToList();
     }
