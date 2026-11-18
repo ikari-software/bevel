@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Bevel.App.ShellCore;
 using Bevel.Pal.Abstractions;
 using Xunit;
 
@@ -93,6 +94,32 @@ public sealed class ShellModelTests
         await Task.Delay(220);
         Dispatcher.UIThread.RunJobs();
         Assert.Empty(model.Windows);
+    }
+
+    // bevel-wheq: a reconnect WindowSnapshot that omits the FOREGROUND window closes it through the ordinary
+    // WindowClosed path, and ShellModel.OnWindowClosed drops its focus claim — so no button stays pressed for a
+    // window that is gone, and the stale id cannot keep a pressed state alive.
+    [AvaloniaFact]
+    public async Task A_window_snapshot_that_closes_the_focused_window_leaves_no_button_pressed()
+    {
+        var socket = Path.Combine(Path.GetTempPath(), $"bvlfg-{Guid.NewGuid():N}"[..12] + ".sock");
+        await using var core = new ShellCoreClient(socket, System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var wm = new ShellCoreWindowManager(core);
+        using var model = new ShellModel(wm, null, null, usage: TestUsage.Scratch());
+        model.Start();
+
+        wm.OnCoreEvent(new CoreEvent(CoreEventKind.WindowSnapshot,
+            Windows: [Window("w1", "First", focused: true), Window("w2", "Second")]));
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(model.Windows.Single(vm => vm.Id.Value == "w1").IsFocused);
+
+        // The link dropped; w1 closed meanwhile; the reconnect snapshot lists only the (unfocused) w2.
+        wm.OnCoreEvent(new CoreEvent(CoreEventKind.WindowSnapshot, Windows: [Window("w2", "Second")]));
+        Dispatcher.UIThread.RunJobs();
+
+        var first = model.Windows.Single(vm => vm.Id.Value == "w1");   // still animating out
+        Assert.True(first.IsClosing);
+        Assert.DoesNotContain(model.Windows, vm => vm.IsFocused);
     }
 
     [AvaloniaFact]

@@ -11,6 +11,17 @@ public interface IWindowManager
     Capabilities Capabilities { get; }
 
     ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default);
+
+    /// <summary>Seed-grade variant of <see cref="EnumerateAsync"/> (bevel-wheq, the window twin of
+    /// <see cref="ISystemTrayHost.TrySeedItemsAsync"/>): returns <c>null</c> when the window source could NOT
+    /// be reached (e.g. the helper is down), and a list — possibly empty — only when the source actually
+    /// answered. <see cref="EnumerateAsync"/> may swallow an unreachable source into an empty list for its
+    /// UI callers; a snapshot publisher must not mistake that for "no windows are open". The default reports
+    /// every <see cref="EnumerateAsync"/> result as an answer, which is right for managers whose enumeration
+    /// cannot fail softly.</summary>
+    async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
+        => await EnumerateAsync(ct).ConfigureAwait(false);
+
     Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default);
     Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default);
     Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);

@@ -26,6 +26,10 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     private readonly Queue<QueuedCommand> _replayQueue = new();
     private int _draining;
 
+    /// <summary>Every window this adapter has raised and not yet closed (bevel-wheq), so a WindowSnapshot can
+    /// close what it omits. Shared bookkeeping with the tray adapter; it never raises events itself.</summary>
+    private readonly ProjectionMirror<ForeignWindow> _known = new(w => w.Id.Value);
+
     private readonly record struct QueuedCommand(CoreCommand Command, DateTime EnqueuedUtc);
 
     public ShellCoreWindowManager(ShellCoreClient core)
@@ -40,34 +44,69 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Capabilities Capabilities { get; } =
         new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
 
-    private void OnCoreEvent(CoreEvent e)
+    /// <summary>Test seam: awaited after the pull's reply arrives and before it is merged — lets a test land a
+    /// close delta deterministically in that window.</summary>
+    internal Func<Task>? BeforePullMergeForTest;
+
+    // internal = test seam: tests feed synthetic CoreEvents without a live server.
+    internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
         {
             case CoreEventKind.WindowSnapshot when e.Windows is not null:
-                // Replay the snapshot as Opened events — ShellModel upserts idempotently by id.
+            {
+                // A snapshot is authoritative (bevel-wheq): close what it omits, then (re)open what it lists.
+                // Opens alone left stale buttons for windows that closed while the link was down. ShellModel
+                // drops its foreground claim on a WindowClosed for the focused id, so a closed foreground
+                // window leaves nothing pressed; a focused window in the snapshot re-claims it on its Opened.
+                var gone = _known.ApplySnapshot(e.Windows);
+                foreach (var g in gone)
+                    WindowClosed?.Invoke(this, g);
                 foreach (var w in e.Windows)
                     WindowOpened?.Invoke(this, w);
                 break;
+            }
+            // Every non-close kind makes ShellModel show a button for the window (it upserts), even for an id it
+            // has never seen — so every one of them is tracked, or a later snapshot could not close it.
             case CoreEventKind.WindowOpened when e.Window is { } wo:
+                _known.Upsert(wo);
                 WindowOpened?.Invoke(this, wo);
                 break;
             case CoreEventKind.WindowClosed when e.Window is { } wc:
+                _known.Remove(wc);
                 WindowClosed?.Invoke(this, wc);
                 break;
             case CoreEventKind.WindowChanged when e.Window is { } wch:
+                _known.Upsert(wch);
                 WindowChanged?.Invoke(this, wch);
                 break;
             case CoreEventKind.WindowForeground when e.Window is { } wf:
+                _known.Upsert(wf);
                 ForegroundChanged?.Invoke(this, wf);
                 break;
             // App-environment events are handled by ShellCoreAppEnvironment (same connection).
         }
     }
 
+    /// <summary>The live window list (ShellModel's reconcile pull). Its result is tracked like a delta so a
+    /// later snapshot can close those windows too, minus any window closed while the pull was in flight — the
+    /// pull is older than that close, and ShellModel reconciles to the returned list (bevel-wheq). Transport
+    /// failures still propagate: the caller treats them as "try again next tick".</summary>
     public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-        => (await _core.SendAsync(new CoreCommand(CoreCommandKind.EnumerateWindows), ct).ConfigureAwait(false)).Windows
-           ?? Array.Empty<ForeignWindow>();
+    {
+        var start = _known.BeginPull();
+        try
+        {
+            var windows = (await _core.SendAsync(new CoreCommand(CoreCommandKind.EnumerateWindows), ct)
+                .ConfigureAwait(false)).Windows ?? Array.Empty<ForeignWindow>();
+            if (BeforePullMergeForTest is { } gate) await gate().ConfigureAwait(false);
+            return _known.MergePull(start, windows);
+        }
+        finally
+        {
+            _known.EndPull();
+        }
+    }
 
     /// <summary>The core's own projection, icons omitted (bevel-ougs) — no helper enumeration behind
     /// it. See <see cref="IProjectedWindowSource"/> for why this is NOT a drop-in for

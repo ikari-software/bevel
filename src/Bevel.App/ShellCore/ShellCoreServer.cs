@@ -45,6 +45,13 @@ public sealed class ShellCoreServer : IAsyncDisposable
     /// surviving taskbar's reconcile remove every icon it holds (bevel-ri8c). Guarded by <see cref="_gate"/>.</summary>
     private bool _traySeeded;
 
+    /// <summary>The window twin of <see cref="_traySeeded"/> (bevel-wheq): true once the window projection is
+    /// trustworthy — the seed reached the window source, or a live open/change/foreground delta arrived. Until
+    /// then no WindowSnapshot is sent, because a surviving taskbar now closes every button a snapshot omits,
+    /// and a seed that could not reach the helper is an empty projection, not "no windows are open".
+    /// Guarded by <see cref="_gate"/>.</summary>
+    private bool _windowsSeeded;
+
     // Session stamps (bevel-4zfs), guarded by _gate. Every event is stamped (epoch, seq). The EPOCH is
     // global: it bumps when the projection is rebuilt discontinuously (the startup seed), which also
     // re-pushes fresh snapshots to every client. The SEQ is PER-CLIENT and gapless: a global seq would let
@@ -134,8 +141,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         // split mode. Probe with the window enumerate, retrying briefly while the helper is still
         // connecting; once it's up, apps/tray share the same helper connection and enumerate cleanly.
         // Degrade to empty snapshots on timeout — the live streams + the window reconcile backstop then
-        // repopulate. (~10s covers a cold helper exec + connect.)
-        var initialWindows = await SeedWhenHelperReadyAsync(_windows.EnumerateAsync, ct).ConfigureAwait(false);
+        // repopulate. (~10s covers a cold helper exec + connect.) A degraded window seed is not published
+        // as a WindowSnapshot (bevel-wheq): see _windowsSeeded.
+        var (initialWindows, windowsSeedOk) = await SeedWindowsAsync(ct).ConfigureAwait(false);
 
         // Apps and tray CONCURRENTLY, not one after the other (bevel-pa3j). They are independent reads
         // of two different sources, and nothing between them orders one before the other — but the
@@ -153,6 +161,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
             // seed has succeeded or a live tray delta proves the stream is up. A successful seed that
             // returned zero items IS authoritative.
             if (traySeedOk) _traySeeded = true;
+            // Same for windows (bevel-wheq): a seed that never reached the helper withholds WindowSnapshot.
+            if (windowsSeedOk) _windowsSeeded = true;
             foreach (var w in initialWindows)
                 _windowById[w.Id.Value] = w;
             _installed = initialApps;
@@ -179,20 +189,29 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Runs <paramref name="enumerate"/>, tolerating the whole startup race window: the helper
-    /// connects asynchronously after <c>host.Start()</c> AND can bounce mid-connect on a cold boot, so the
-    /// first enumerate fails in more than one shape — <see cref="InvalidOperationException"/>("Helper not
+    /// <summary>The window seed — also the helper-readiness probe — tolerating the whole startup race window:
+    /// the helper connects asynchronously after <c>host.Start()</c> AND can bounce mid-connect on a cold boot,
+    /// so the first enumerate fails in more than one shape — <see cref="InvalidOperationException"/>("Helper not
     /// connected") before the channel exists, and a transport fault (e.g. gRPC <c>Cancelled</c> / "gRPC call
-    /// disposed.") when the channel is torn down DURING the call. Seeding is best-effort by contract, so
-    /// retry on ANY non-cancellation failure for ~10s, then degrade to an empty snapshot (the live delta
-    /// streams + the window reconcile backstop repopulate). Never crashes the core — a throw here escapes to
-    /// Main and aborts the process, which the supervisor then crash-loops (bevel-ejon).</summary>
-    private static async ValueTask<IReadOnlyList<T>> SeedWhenHelperReadyAsync<T>(
-        Func<CancellationToken, ValueTask<IReadOnlyList<T>>> enumerate, CancellationToken ct)
+    /// disposed.") when the channel is torn down DURING the call. Seeding is best-effort by contract, so retry
+    /// on ANY non-cancellation failure for ~10s, then degrade to an empty projection (the live delta streams +
+    /// the window reconcile backstop repopulate). Never crashes the core — a throw here escapes to Main and
+    /// aborts the process, which the supervisor then crash-loops (bevel-ejon).
+    ///
+    /// <para>Reports whether the seed REACHED the window source (bevel-wheq). It uses
+    /// <see cref="IWindowManager.TrySeedWindowsAsync"/>, not <c>EnumerateAsync</c>: the macOS manager swallows
+    /// "helper unreachable" into an empty list, which would look like a successful seed of zero windows. That
+    /// null is not retried — it is a definite answer from a connected channel, unlike the throws above — and
+    /// is reported as a failed seed, exactly like an exhausted retry budget.</para></summary>
+    private async Task<(IReadOnlyList<ForeignWindow> Windows, bool Ok)> SeedWindowsAsync(CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
         {
-            try { return await enumerate(ct).ConfigureAwait(false); }
+            try
+            {
+                var windows = await _windows.TrySeedWindowsAsync(ct).ConfigureAwait(false);
+                return windows is null ? (Array.Empty<ForeignWindow>(), false) : (windows, true);
+            }
             // Scope the catch by INTENT (best-effort seed), not by exception type: typing it to
             // InvalidOperationException encoded an assumption about which transport error the helper
             // produces, and the gRPC-disposed shape slipped straight through it. Real cancellation
@@ -200,7 +219,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
             catch (Exception ex) when (!ct.IsCancellationRequested && ex is not OperationCanceledException)
             {
                 if (attempt >= 66)
-                    return Array.Empty<T>();   // ~66 × 150ms ≈ 10s — streams + reconcile will fill it in
+                    return (Array.Empty<ForeignWindow>(), false);   // ~66 × 150ms ≈ 10s — streams + reconcile fill it in
                 await Task.Delay(150, ct).ConfigureAwait(false);
             }
         }
@@ -223,7 +242,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
         }
     }
 
-    /// <summary>Single-shot sibling of <see cref="SeedWhenHelperReadyAsync"/> for the snapshots taken once
+    /// <summary>Single-shot sibling of <see cref="SeedWindowsAsync"/> for the snapshots taken once
     /// the helper is already up (apps/tray share its connection). Same contract — a failed seed degrades to
     /// empty and is repaired by the live streams; it must never abort the core — but no extra retry budget,
     /// so boot isn't lengthened by a genuinely unavailable source.</summary>
@@ -253,10 +272,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
         var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,
             SettingsJson: _settings.SnapshotJson(), SettingsVersion: _settings.Version,
             Epoch: _epoch);
-        // No tray snapshot until the tray projection is real (bevel-ri8c): see _traySeeded.
-        return _traySeeded
-            ? [windowSnapshot, appSnapshot, traySnapshot, settingsSnapshot]
-            : [windowSnapshot, appSnapshot, settingsSnapshot];
+        // No window/tray snapshot until that projection is real (bevel-wheq / bevel-ri8c): see _windowsSeeded
+        // and _traySeeded. Omitted events take no seq, so a client's sequence stays gapless.
+        var events = new List<CoreEvent>(4);
+        if (_windowsSeeded) events.Add(windowSnapshot);
+        events.Add(appSnapshot);
+        if (_traySeeded) events.Add(traySnapshot);
+        events.Add(settingsSnapshot);
+        return events.ToArray();
     }
 
     /// <summary>Stamp + broadcast one event to EVERY client (bevel-4zfs). Under <see cref="_gate"/>, so
@@ -327,6 +350,9 @@ public sealed class ShellCoreServer : IAsyncDisposable
         {
             if (_seedBuffer is not null) { _seedBuffer.Add(() => _windowById[w.Id.Value] = w); return; }
             _windowById[w.Id.Value] = w;   // the PROJECTION always keeps the icon, so snapshots carry it
+            // An open/change/foreground proves the window stream is live (bevel-wheq), so later snapshots are
+            // trustworthy enough to publish. A close alone proves nothing (OnWindowClosed does not set it).
+            _windowsSeeded = true;
             outbound = WithoutUnchangedIcon(w);
         }
         BroadcastStamped(new CoreEvent(kind, Window: outbound));

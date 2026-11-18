@@ -764,6 +764,255 @@ public sealed class ShellCoreIntegrationTests
         Assert.Equal(new[] { "9:90" }, removed.ToArray());
     }
 
+    // ── bevel-wheq: the WINDOW twin of the tray reconcile ────────────────────────────────────────────
+
+    private static CoreEvent WindowSnapshot(params ForeignWindow[] windows) =>
+        new(CoreEventKind.WindowSnapshot, Windows: windows);
+
+    // bevel-wheq: a WindowSnapshot is a full reconcile — a window the adapter raised earlier but the snapshot
+    // omits closed while the link was down, and must be closed (it used to linger as a stale button, masked
+    // only by ShellModel's 2s re-list poll). Fed straight into the adapter: on a live server a PAL close
+    // always broadcasts a delta, so "vanished without a WindowClosed" is only reachable across a core restart
+    // (covered end-to-end below).
+    [Fact]
+    public async Task A_resent_window_snapshot_closes_windows_that_vanished_while_the_link_was_down()
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var wm = new ShellCoreWindowManager(core);
+        var closed = new List<string>();
+        var opened = new List<string>();
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+
+        wm.OnCoreEvent(WindowSnapshot(Win("a", "Alpha"), Win("b", "Beta")));
+        Assert.Empty(closed);
+
+        // The link dropped; "a" closed meanwhile; the reconnect Hello resends the projection.
+        wm.OnCoreEvent(WindowSnapshot(Win("b", "Beta")));
+        Assert.Equal(new[] { "a" }, closed.ToArray());
+        Assert.Equal(new[] { "a", "b", "b" }, opened.ToArray());   // b re-raised: ShellModel upserts by id
+
+        // Ordering: a WindowClosed delta followed by a later snapshot — the delta already forgot "b", so the
+        // snapshot that omits it must not close it a second time.
+        wm.OnCoreEvent(new CoreEvent(CoreEventKind.WindowClosed, Window: Win("b", "Beta")));
+        wm.OnCoreEvent(WindowSnapshot());
+        Assert.Equal(new[] { "a", "b" }, closed.ToArray());
+    }
+
+    // bevel-wheq: ordering the other way — a snapshot followed by a late delta for a window the snapshot did
+    // not contain. ShellModel creates a button for it on ANY of these kinds, so the adapter must track it, and
+    // the next snapshot that omits it must close it. Minimized / other-Space windows are ordinary windows
+    // here (their flags ride WindowChanged), so the same holds for them.
+    [Theory]
+    [InlineData(CoreEventKind.WindowOpened)]
+    [InlineData(CoreEventKind.WindowChanged)]
+    [InlineData(CoreEventKind.WindowForeground)]
+    public async Task A_window_first_seen_in_a_late_delta_is_closed_by_the_next_snapshot(CoreEventKind kind)
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var wm = new ShellCoreWindowManager(core);
+        var closed = new List<string>();
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+
+        wm.OnCoreEvent(WindowSnapshot(Win("a", "Alpha")));
+        wm.OnCoreEvent(new CoreEvent(kind, Window: Win("c", "Late", focused: kind == CoreEventKind.WindowForeground)
+            with { IsMinimized = kind == CoreEventKind.WindowChanged, IsOnOtherSpace = kind == CoreEventKind.WindowChanged }));
+        wm.OnCoreEvent(WindowSnapshot(Win("a", "Alpha")));
+
+        Assert.Equal(new[] { "c" }, closed.ToArray());
+    }
+
+    // bevel-wheq: the full path — reconnect -> Hello -> WindowSnapshot -> adapter reconcile. A core restarts
+    // without a window the taskbar held; the taskbar must raise WindowClosed for exactly that id.
+    [Fact]
+    public async Task A_core_restart_without_a_window_closes_it_on_a_surviving_taskbar()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"), Win("b", "Beta"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var opened = new ConcurrentBag<string>();
+        var closed = new ConcurrentBag<string>();
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => opened.Contains("a") && opened.Contains("b"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal();           // the restarted core's world: "a" is gone
+        pal2.SeedWindows(Win("b", "Beta"));
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+
+        await WaitFor(() => closed.Contains("a"), "the reconnect Hello's snapshot must close the vanished window");
+        await Task.Delay(150);
+        Assert.Equal(new[] { "a" }, closed.ToArray());
+    }
+
+    // bevel-wheq: THE FAILED-SEED HAZARD. MacOSWindowManager.EnumerateAsync swallows "helper unreachable"
+    // into an EMPTY list (it does not throw). Once snapshots reconcile, publishing that as the window
+    // projection would close every button on a taskbar that survived the core restart.
+    [Fact]
+    public async Task A_swallowed_window_seed_failure_does_not_close_a_surviving_taskbars_windows()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"), Win("b", "Beta"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var opened = new ConcurrentBag<string>();
+        var closed = new ConcurrentBag<string>();
+        var windowSnapshots = 0;
+        var settingsSnapshots = 0;
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.WindowSnapshot) Interlocked.Increment(ref windowSnapshots);
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref settingsSnapshots);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => opened.Contains("a") && opened.Contains("b"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal { WindowsUnreachable = true };   // returns EMPTY, does not throw
+        var snapshotsBefore = Volatile.Read(ref windowSnapshots);
+        var settingsBefore = Volatile.Read(ref settingsSnapshots);
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref settingsSnapshots) > settingsBefore,
+            "the reconnect Hello burst landed (settings is always in it)");
+        await Task.Delay(300);   // and any seed-complete burst after it
+        Assert.Equal(snapshotsBefore, Volatile.Read(ref windowSnapshots));   // withheld, not sent empty
+        Assert.Empty(closed);
+    }
+
+    // ...whereas a window seed that SUCCEEDED with zero windows is authoritative: it closes everything.
+    [Fact]
+    public async Task A_successful_empty_window_seed_is_authoritative()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("a", "Alpha"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var opened = new ConcurrentBag<string>();
+        var closed = new ConcurrentBag<string>();
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => opened.Contains("a"), "initial snapshot");
+
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        var pal2 = new ControllablePal();   // seed succeeds, zero windows
+        await using var server2 = new ShellCoreServer(pal2, pal2, pal2, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => closed.Contains("a"), "an authoritative empty window list closes what the taskbar held");
+    }
+
+    // bevel-wheq: after a failed window seed, a CLOSE proves nothing about the projection being complete, so it
+    // must not unlock the (incomplete) WindowSnapshot; an open/change/foreground proves the stream is live.
+    [Fact]
+    public async Task A_window_close_delta_does_not_unlock_the_window_snapshot_after_a_failed_seed()
+    {
+        var pal = new ControllablePal { WindowsUnreachable = true };
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var windowSnapshots = 0;
+        var resynced = 0;
+        core.EventReceived += e =>
+        {
+            if (e.Kind == CoreEventKind.WindowSnapshot) Interlocked.Increment(ref windowSnapshots);
+            if (e.Kind == CoreEventKind.SettingsSnapshot) Interlocked.Increment(ref resynced);
+        };
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) >= 1, "Hello burst");
+        Assert.Equal(0, Volatile.Read(ref windowSnapshots));
+
+        pal.RaiseWindowClosed(Win("x", "Gone"));
+        var before = Volatile.Read(ref resynced);
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        await WaitFor(() => Volatile.Read(ref resynced) > before, "Resync burst");
+        Assert.Equal(0, Volatile.Read(ref windowSnapshots));
+
+        pal.RaiseWindowChanged(Win("y", "Live"));      // a change proves the stream is live
+        await core.SendAsync(new CoreCommand(CoreCommandKind.Resync), Ct);
+        // >= 1, not == 1: the client may also re-Hello on its own (another burst), which is fine here.
+        await WaitFor(() => Volatile.Read(ref windowSnapshots) >= 1, "the Resync burst now carries the windows");
+    }
+
+    // bevel-wheq: windows that arrive via the EnumerateAsync pull (ShellModel's reconcile) get buttons too, so
+    // they are tracked and a later snapshot can close them.
+    [Fact]
+    public async Task Windows_from_the_pull_are_closed_by_a_later_snapshot()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("p", "Pulled"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var closed = new List<string>();
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+
+        Assert.Single(await wm.EnumerateAsync(Ct));
+        wm.OnCoreEvent(WindowSnapshot());
+        Assert.Equal(new[] { "p" }, closed.ToArray());
+    }
+
+    // bevel-wheq: a pull that was in flight when a close delta arrived is older than the close — it must not
+    // resurrect the window (neither in the returned list, which ShellModel reconciles to, nor in the tracking).
+    [Fact]
+    public async Task A_stale_window_pull_landing_after_a_close_does_not_resurrect_it()
+    {
+        var pal = new ControllablePal();
+        pal.SeedWindows(Win("p", "Pulled"));
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var closed = new List<string>();
+        wm.WindowClosed += (_, w) => closed.Add(w.Id.Value);
+
+        wm.BeforePullMergeForTest = () =>
+        {
+            wm.OnCoreEvent(new CoreEvent(CoreEventKind.WindowClosed, Window: Win("p", "Pulled")));
+            return Task.CompletedTask;
+        };
+        Assert.Empty(await wm.EnumerateAsync(Ct));                  // not resurrected for the caller
+        wm.OnCoreEvent(WindowSnapshot());
+        Assert.Equal(new[] { "p" }, closed.ToArray());              // and not a ghost in the tracking (no 2nd close)
+    }
+
     /// <summary>
     /// An in-memory PAL that plays both roles the core owns — window manager and app environment. It
     /// seeds the initial projection, lets a test raise deltas on demand, and records the commands the
@@ -1087,7 +1336,18 @@ public sealed class ShellCoreIntegrationTests
             LastEnumerateEnter = Stopwatch.GetTimestamp();
             EnumerateCalls++;
             if (EnumerateFaults.Count > 0) throw EnumerateFaults.Dequeue();
+            if (WindowsUnreachable) return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
             return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+        }
+
+        /// <summary>Test seam (bevel-wheq): the SWALLOWED-failure shape — like the real MacOSWindowManager,
+        /// EnumerateAsync returns EMPTY when the helper is unreachable instead of throwing, and only
+        /// TrySeedWindowsAsync can tell (null).</summary>
+        public bool WindowsUnreachable;
+        public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
+        {
+            var windows = await EnumerateAsync(ct);
+            return WindowsUnreachable ? null : windows;
         }
 
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
