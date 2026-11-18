@@ -22,6 +22,11 @@ jobs:
 
   build-test:
     name: .NET ${{ matrix.os }}
+    # Today the whole job takes 1.5–3.8 min (windows-latest slowest, Test step ≤ 81 s over the last 30
+    # runs). 15 min ≈ 4× the slowest, and still fits the worst legitimate failure path: setup+build
+    # (~2.5 min) + a 5 min hang to the blame timeout below + dump and artifact upload. Without it a hang
+    # would burn GitHub's 6 h default and hold the queue.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +52,47 @@ jobs:
         run: dotnet build Bevel.sln --no-restore --configuration Release -p:WarningsAsErrors=CS0168%3BCS0169%3BCS0219%3BCS0414%3BCS0649%3BCS0162%3BCS8321
 
       - name: Test
-        run: dotnet test Bevel.sln --no-build --configuration Release
+        # --blame-hang-timeout: no single test comes near 5 min (the longest assembly runs ~40 s in
+        # total), so a test silent that long is hung — kill the host, dump it (mini: tens of MB, not GBs)
+        # and write a Sequence_*.xml naming the hung test. Supported on Windows, Linux and macOS.
+        run: >-
+          dotnet test Bevel.sln --no-build --configuration Release
+          --blame-hang-timeout 5m --blame-hang-dump-type mini
+          --results-directory "${{ runner.temp }}/test-results"
+        env:
+          # bevel-2nn2: HeadlessDispatcherRoot.ReportIfStray logs every stray Dispatcher.UIThread touch
+          # it rescued here. A green run that prints lines below is direct proof the fix is working.
+          BEVEL_TEST_DIAG_DIR: ${{ runner.temp }}
+
+      - name: Report stray dispatcher touches (bevel-2nn2)
+        if: always()
+        shell: bash
+        # One log per test process (parallel processes must not share a file). An empty result means
+        # no log was WRITTEN; the detector itself is covered by DispatcherFrameSupport's tests.
+        run: |
+          shopt -s nullglob
+          logs=("$RUNNER_TEMP"/bevel-2nn2-stray*.log)
+          if (( ${#logs[@]} )); then
+            cat "${logs[@]}"
+            # A re-aligned line means product code posted to the UI dispatcher from a background thread
+            # late enough to race a later test's setup — surface it on the PR, not just in this log.
+            { grep -h "re-aligned" "${logs[@]}" || true; } | while IFS= read -r line; do
+              echo "::warning title=bevel-2nn2 late stray UI-dispatcher store (background thread posting to Dispatcher.UIThread)::${line}"
+            done
+            rescued=$(cat "${logs[@]}" | grep -c "root IDispatcherImpl" || true)
+            echo "::notice title=bevel-2nn2::${rescued} stray Dispatcher.UIThread touch(es) rescued by the root fallback"
+          else
+            echo "no stray log written (detector found no rescued Dispatcher.UIThread touch)"
+          fi
+
+      - name: Upload hang dumps and test results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: ${{ runner.temp }}/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Windows runtime smoke: the split core actually boots + binds UDS (bevel-ncfp.12) ──────────
   # The matrix above only builds/tests. This proves the Windows PAL core role starts headless on real
