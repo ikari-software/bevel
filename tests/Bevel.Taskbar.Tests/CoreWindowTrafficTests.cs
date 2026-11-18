@@ -132,6 +132,10 @@ public sealed class CoreWindowTrafficTests
         var events = new ConcurrentQueue<CoreEvent>();
         core.EventReceived += events.Enqueue;
         await core.StartSessionAsync(Ct);
+        // Every test here raises PAL deltas the moment this returns and counts them, so the session must
+        // be LIVE: an answered Hello is what proves the core has registered this client for broadcasts
+        // (bevel-j5mr — before, a session start could return early and the first deltas miss the client).
+        Assert.Equal(1, server.SessionsStarted);
         return new Harness(pal, server, core, events);
     }
 
