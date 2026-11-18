@@ -24,31 +24,34 @@ public class GlyphIconTests
 
         var host = new Border();
         var window = new Window { Content = host };
-        window.Show();
-        host.Child = icon;
-        Dispatcher.UIThread.RunJobs();
-        var built = Assert.IsAssignableFrom<Control>(icon.Child);
+        try
+        {
+            window.Show();
+            host.Child = icon;
+            Dispatcher.UIThread.RunJobs();
+            var built = Assert.IsAssignableFrom<Control>(icon.Child);
 
-        // Detach + re-attach with the palette unchanged: keep the built icon.
-        host.Child = null;
-        host.Child = icon;
-        Dispatcher.UIThread.RunJobs();
-        Assert.Same(built, icon.Child);
+            // Detach + re-attach with the palette unchanged: keep the built icon.
+            host.Child = null;
+            host.Child = icon;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Same(built, icon.Child);
 
-        // Palette changes while detached: the next attach rebuilds.
-        host.Child = null;
-        Glyphs.InvalidateThemeCache();
-        Dispatcher.UIThread.RunJobs();
-        Assert.Same(built, icon.Child);   // detached hosts don't build
-        host.Child = icon;
-        Dispatcher.UIThread.RunJobs();
-        Assert.NotSame(built, icon.Child);
+            // Palette changes while detached: the next attach rebuilds.
+            host.Child = null;
+            Glyphs.InvalidateThemeCache();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Same(built, icon.Child);   // detached hosts don't build
+            host.Child = icon;
+            Dispatcher.UIThread.RunJobs();
+            Assert.NotSame(built, icon.Child);
 
-        // A property change while attached rebuilds even within one generation.
-        var beforeResize = icon.Child;
-        icon.Size = 16;
-        Assert.NotSame(beforeResize, icon.Child);
-        window.Close();
+            // A property change while attached rebuilds even within one generation.
+            var beforeResize = icon.Child;
+            icon.Size = 16;
+            Assert.NotSame(beforeResize, icon.Child);
+        }
+        finally { window.Close(); }   // a failed assert must not leave a subscribed GlyphIcon alive
     }
 
     [AvaloniaFact]

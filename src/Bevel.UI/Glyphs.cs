@@ -43,7 +43,7 @@ public static class Glyphs
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IBrush> _brushCache = new();
 
     private static int _themeGeneration;
-    private static int _raisePending;   // 1 while a coalesced raise is queued on the UI thread
+    private static int _raisedGeneration;   // the generation the last raise announced (UI thread only)
 
     /// <summary>Palette generation: advanced synchronously by every <see cref="InvalidateThemeCache"/>. A glyph
     /// host stores the generation it built at and rebuilds only when this has moved on (<see cref="GlyphIcon"/>).</summary>
@@ -52,29 +52,38 @@ public static class Glyphs
     /// <summary>Declare that the palette changed. EVERY recolour-engine mutation calls this AFTER writing its new
     /// values into Application.Resources (ThemeService, ColorSchemeService, Blue2001VariantService and
     /// FlatVariantService — Apply and Clear). It drops the brush cache and advances <see cref="ThemeGeneration"/>
-    /// immediately, then posts ONE coalesced <see cref="ThemeCacheInvalidated"/> to the UI thread: a settings change
-    /// runs several engines back to back in one handler, and a single raise after the last write is the only order
-    /// in which a subscriber always rebuilds from the final palette (bevel-yfkw). Callable from any thread.</summary>
+    /// immediately, then posts a raise of <see cref="ThemeCacheInvalidated"/> to the UI thread. Raises COALESCE: a
+    /// settings change runs several engines back to back in one handler, and only the first posted callback after
+    /// the last write raises (the rest see their generation already announced) — one raise, from the final palette
+    /// (bevel-yfkw). Coalescing is keyed on the generation, not on a pending flag, so a dropped post can never latch
+    /// the signal off: the next invalidation simply posts again. Callable from any thread.</summary>
     public static void InvalidateThemeCache()
     {
         _brushCache.Clear();
         Interlocked.Increment(ref _themeGeneration);
-        if (Interlocked.Exchange(ref _raisePending, 1) == 1) return;   // already queued — this write rides along
         Dispatcher.UIThread.Post(RaiseThemeCacheInvalidated);
     }
 
     private static void RaiseThemeCacheInvalidated()
     {
-        Volatile.Write(ref _raisePending, 0);   // a mutation from inside a handler queues a fresh raise
+        var generation = ThemeGeneration;
+        if (generation == _raisedGeneration) return;   // an earlier callback this pass already announced it
+        _raisedGeneration = generation;
         // Clear again: anything built between an engine's invalidation and this pass must not survive into the
         // subscribers' rebuilds.
         _brushCache.Clear();
-        ThemeCacheInvalidated?.Invoke();
+        if (ThemeCacheInvalidated is not { } handlers) return;
+        // One subscriber's failure must not stop the others from recolouring, nor escape to the dispatcher.
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            try { ((Action)handler)(); }
+            catch (Exception ex) { Console.Error.WriteLine($"[Glyphs] ThemeCacheInvalidated subscriber threw: {ex}"); }
+        }
     }
 
     /// <summary>THE app-wide "palette changed" signal (bevel-yfkw): raised when any theme, colour scheme or
     /// colourway changed the tokens Bevel draws from. Always POSTED — on the UI thread, after the engines have
-    /// finished writing, and coalesced to one raise per dispatcher pass however many engines ran. Anything that
+    /// finished writing, and coalesced to one raise however many engines ran back to back. Anything that
     /// holds a built visual coloured from theme tokens (icons, cached brushes) rebuilds here; subscribers must
     /// unsubscribe on detach. Prefer hosting a glyph in <see cref="GlyphIcon"/>, which already does this.</summary>
     public static event Action? ThemeCacheInvalidated;
