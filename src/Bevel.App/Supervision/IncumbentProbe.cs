@@ -48,16 +48,36 @@ internal static class IncumbentProbe
     /// (<c>Contents/Resources</c>, next to <c>Contents/MacOS</c> = <paramref name="baseDirectory"/>) when
     /// running from a .app, else the repo copy found by walking up from the binary, else the
     /// repo-relative name as a last resort.</summary>
-    internal static string RecoverScriptPath(string baseDirectory)
+    internal static string RecoverScriptPath(string baseDirectory, string? ceiling = null)
     {
         const string name = "bevel-recover.sh";
         var bundled = Path.GetFullPath(Path.Combine(baseDirectory, "..", "Resources", name));
         if (File.Exists(bundled)) return bundled;
+        var stop = ceiling is null ? null : Path.GetFullPath(ceiling).TrimEnd(Path.DirectorySeparatorChar);
         for (var dir = new DirectoryInfo(baseDirectory); dir is not null; dir = dir.Parent)
         {
             var repo = Path.Combine(dir.FullName, "packaging", "macos", name);
             if (File.Exists(repo)) return repo;
+            if (stop is not null && string.Equals(dir.FullName.TrimEnd(Path.DirectorySeparatorChar), stop, StringComparison.Ordinal)) break;
         }
         return Path.Combine("packaging", "macos", name);
+    }
+
+    /// <summary>The launcher's whole pre-spawn sequence, collaborators injected so a test can prove the
+    /// order (bevel-9790). Returns the exit code to stand down with (alert shown, NEITHER
+    /// <paramref name="clearQuitMarker"/> NOR <paramref name="spawnChildren"/> called), or null after
+    /// running clear then spawn. Clearing the incumbent's quit marker / heartbeats before knowing it is
+    /// gone would be its own trample, so clear sits strictly behind the probe.</summary>
+    internal static int? Gate(string controlSocket, string coreSocket, string recoverScript,
+        Action<string> log, Action<string, string> alert, Action clearQuitMarker, Action spawnChildren)
+    {
+        if (Decide(controlSocket, coreSocket, recoverScript) is { } standDown)
+        {
+            Announce($"launcher: {standDown} — standing down before spawning anything", log, alert);
+            return StandDownExitCode;
+        }
+        clearQuitMarker();
+        spawnChildren();
+        return null;
     }
 }

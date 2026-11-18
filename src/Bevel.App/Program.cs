@@ -245,19 +245,6 @@ internal static class Program
         var coreToken = Convert.ToHexString(coreNonce);
         var (controlSocket, controlNonce) = LauncherControl.CreateServerEndpoint();
 
-        // Stand down BEFORE anything exists to tear down (bevel-9790). The lock above and a live socket
-        // are independent detectors — an orphaned core can still serve core.sock (2026-10-12) — so
-        // probe BOTH sockets this launcher is about to own, ahead of QuitRequest.Clear, the env export
-        // and every spawn. IsServing is a local connect (no blocking wait); a stale file reads as dead.
-        if (IncumbentProbe.Decide(controlSocket, coreSocket, IncumbentProbe.RecoverScriptPath(AppContext.BaseDirectory)) is { } standDown)
-        {
-            IncumbentProbe.Announce($"launcher: {standDown} — standing down before spawning anything",
-                msg => { Console.Error.WriteLine($"[launcher] {msg}"); RestartDiag.Log(msg); },
-                ShellHealthAlert.ShowNative);
-            Environment.ExitCode = IncumbentProbe.StandDownExitCode;
-            return;
-        }
-
         var childEnv = new Dictionary<string, string>
         {
             ["BEVEL_CORE_SOCKET"] = coreSocket,
@@ -298,9 +285,6 @@ internal static class Program
 
         // A leftover quit marker / heartbeat from a previous session must not suppress crash-respawn
         // or look like a live child this boot.
-        QuitRequest.Clear();
-        RoleHeartbeatStore.ClearAll();
-
         // The stop latch exists BEFORE the supervisor so the skew hook can close over it: a
         // VersionSkew verdict means the RUNNING launcher predates the on-disk bundle (children
         // always respawn from the current bundle, so only the launcher side can be stale). One
@@ -330,7 +314,21 @@ internal static class Program
             health: new ShellHealthMonitor(BuildStamp.Current),
             onAlert: ShellHealthAlert.Show);
 
-        supervisor.StartAsync().GetAwaiter().GetResult();
+        // Stand down BEFORE anything is spawned or cleared (bevel-9790). The lock above and a live socket
+        // are independent detectors — an orphaned core can still serve core.sock (2026-10-12). The gate
+        // probes BOTH sockets, and only on "nobody home" clears the previous session's quit marker /
+        // heartbeats (they must not suppress crash-respawn or look like a live child) and starts the
+        // children, in that order. Everything above only builds objects and sets this process's env.
+        if (IncumbentProbe.Gate(controlSocket, coreSocket,
+                IncumbentProbe.RecoverScriptPath(AppContext.BaseDirectory),
+                log: msg => { Console.Error.WriteLine($"[launcher] {msg}"); RestartDiag.Log(msg); },
+                alert: ShellHealthAlert.ShowNativeThenKill,
+                clearQuitMarker: () => { QuitRequest.Clear(); RoleHeartbeatStore.ClearAll(); },
+                spawnChildren: () => supervisor.StartAsync().GetAwaiter().GetResult()) is { } standDownExit)
+        {
+            Environment.ExitCode = standDownExit;
+            return;
+        }
 
         // Filer supervision (bevel-t48y): a SIBLING of the role supervisor — the user opens N Filer
         // windows, so these children are keyed by instance, not by role. Close-vs-crash policy

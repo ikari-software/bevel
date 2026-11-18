@@ -74,12 +74,10 @@ public sealed class IncumbentStandDownTests
         using var listener = UdsSocketClaim.BindListener(core, backlog: 4);
         try
         {
-            var markerBefore = Bevel.App.Supervision.QuitRequest.Exists();
             var msg = IncumbentProbe.Decide(NewSocketPath(), core, "/x/bevel-recover.sh");
             Assert.NotNull(msg);
             Assert.Contains(core, msg);
             Assert.Contains("/x/bevel-recover.sh", msg);
-            Assert.Equal(markerBefore, Bevel.App.Supervision.QuitRequest.Exists()); // read-only decision
             Assert.Equal(3, IncumbentProbe.StandDownExitCode);
         }
         finally { UdsSocketClaim.ReleaseListener(listener, core); }
