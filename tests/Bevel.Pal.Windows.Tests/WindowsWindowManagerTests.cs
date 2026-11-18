@@ -28,6 +28,19 @@ public class WindowsWindowManagerTests
         Assert.Empty(await wm.EnumerateAsync());
     }
 
+    // bevel-wheq: the empty list above is "nothing to ask", not "no windows are open" — the seed-grade
+    // variant must say so (null), or the core would publish it as an authoritative empty WindowSnapshot.
+    // A disposed manager is the same on every platform.
+    [Fact]
+    public async Task Seed_reports_no_answer_when_there_is_no_window_source()
+    {
+        var wm = new WindowsWindowManager();
+        if (!OperatingSystem.IsWindows())
+            Assert.Null(await ((IWindowManager)wm).TrySeedWindowsAsync());
+        wm.Dispose();
+        Assert.Null(await ((IWindowManager)wm).TrySeedWindowsAsync());
+    }
+
     [Fact]
     public async Task Off_windows_every_action_is_an_inert_no_op()
     {

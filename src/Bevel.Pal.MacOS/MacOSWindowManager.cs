@@ -70,8 +70,16 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     }
 
     public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+        => await TrySeedWindowsAsync(ct).ConfigureAwait(false) ?? Array.Empty<ForeignWindow>();
+
+    /// <summary>Null = the helper could not be reached (disposed / WindowService Unavailable); a list (maybe
+    /// empty) = the helper answered. <see cref="EnumerateAsync"/> folds the null into empty for its callers;
+    /// the core's seed uses this so a down helper is not published as an authoritative empty window list,
+    /// which would close every button on a surviving taskbar (bevel-wheq). Other failures (e.g. "Helper not
+    /// connected" before the channel exists) still throw, as before — the seed retries those.</summary>
+    public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
     {
-        if (_disposed) return Array.Empty<ForeignWindow>();
+        if (_disposed) return null;
 
         try
         {
@@ -83,7 +91,7 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
         {
             _logger.LogWarning("WindowService unavailable: {Message}", ex.Message);
-            return Array.Empty<ForeignWindow>();
+            return null;
         }
     }
 
