@@ -48,6 +48,15 @@ jobs:
 
       - name: Test
         run: dotnet test Bevel.sln --no-build --configuration Release
+        env:
+          # bevel-2nn2: HeadlessDispatcherRoot.ReportIfStray logs every stray Dispatcher.UIThread touch
+          # it rescued here. A green run that prints lines below is direct proof the fix is working.
+          BEVEL_TEST_DIAG_DIR: ${{ runner.temp }}
+
+      - name: Report stray dispatcher touches (bevel-2nn2)
+        if: always()
+        shell: bash
+        run: cat "$RUNNER_TEMP/bevel-2nn2-stray.log" 2>/dev/null || echo "no stray dispatcher touches"
 
   # ── Windows runtime smoke: the split core actually boots + binds UDS (bevel-ncfp.12) ──────────
   # The matrix above only builds/tests. This proves the Windows PAL core role starts headless on real
