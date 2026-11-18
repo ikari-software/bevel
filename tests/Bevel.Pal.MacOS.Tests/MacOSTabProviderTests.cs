@@ -152,6 +152,17 @@ public class MacOSTabProviderTests
         Assert.Contains("on unwrap(s)", script);
     }
 
+    [Theory]
+    [InlineData("com.google.Chrome", "Chromium")]
+    [InlineData("com.apple.Safari", "Safari")]
+    [InlineData("com.googlecode.iterm2", "ITerm")]
+    public void Generated_scripts_use_only_lf_line_endings(string bundleId, string dialectName)
+    {
+        var dialect = Enum.Parse<MacOSTabProvider.Dialect>(dialectName);
+        Assert.DoesNotContain('\r', MacOSTabProvider.ActivationScript(bundleId, dialect, 2, 3));
+        Assert.DoesNotContain('\r', MacOSTabProvider.EnumerationScript(bundleId, dialect));
+    }
+
     [Fact]
     public void Chromium_activation_script_has_exact_remembered_position_and_ordering()
     {
@@ -160,11 +171,17 @@ public class MacOSTabProviderTests
         Assert.Contains("set hitW to 41", s);
         Assert.Contains("set hitT to 97", s);
         Assert.Contains("set active tab index of window hitW to hitT", s);
-        var bail = s.IndexOf("if n is not 1 then return \"none\"", StringComparison.Ordinal);
-        var select = s.IndexOf("set active tab index of window hitW to hitT", StringComparison.Ordinal);
-        var raise = s.IndexOf("set index of window hitW to 1", StringComparison.Ordinal);
-        var activate = s.IndexOf("activate\n", StringComparison.Ordinal);
-        Assert.True(bail > 0 && bail < select && select < raise && raise < activate);
+        // Order of the decisive steps, reported as expected-vs-actual on failure.
+        var steps = new[]
+        {
+            "if n is not 1 then return \"none\"",
+            "set active tab index of window hitW to hitT",
+            "set index of window hitW to 1",
+            "activate\n",
+        };
+        var actual = steps.OrderBy(x => s.IndexOf(x, StringComparison.Ordinal)).ToArray();
+        Assert.All(steps, x => Assert.True(s.Contains(x, StringComparison.Ordinal), $"missing step: {x}"));
+        Assert.Equal(steps, actual);
         Assert.Equal(1, s.Split("activate\n").Length - 1);
     }
 

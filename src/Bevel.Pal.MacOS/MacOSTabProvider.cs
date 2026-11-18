@@ -155,7 +155,13 @@ public sealed class MacOSTabProvider : ITabProvider
     internal static bool IsSafeBundleId(string bundleId) =>
         bundleId.Length > 0 && bundleId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-');
 
-    internal static string EnumerationScript(string bundleId, Dialect dialect) => dialect switch
+    /// <summary>Raw string literals take the line endings of the SOURCE FILE (CRLF on a Windows
+    /// checkout), so every generated script is normalised to "\n": the text must be identical on
+    /// every platform even though it only ever runs on macOS.</summary>
+    internal static string EnumerationScript(string bundleId, Dialect dialect) =>
+        EnumerationScriptRaw(bundleId, dialect).ReplaceLineEndings("\n");
+
+    private static string EnumerationScriptRaw(string bundleId, Dialect dialect) => dialect switch
     {
         // iTerm2: window identity is the stable AppleScript `id` (survives window re-ordering);
         // a tab's display text is its current session's name. Per-tab reads are deliberate here:
@@ -341,7 +347,10 @@ public sealed class MacOSTabProvider : ITabProvider
     /// empty); iTerm2 by session unique id. `activate` runs last, only after a successful select.
     /// Returns "ok" / "none" / "gone" (informational; the caller ignores it). The decision is mirrored
     /// by <see cref="TabIdentity.Resolve"/>.</summary>
-    internal static string ActivationScript(string bundleId, Dialect dialect, int windowRef, int tabIndex) => dialect switch
+    internal static string ActivationScript(string bundleId, Dialect dialect, int windowRef, int tabIndex) =>
+        ActivationScriptRaw(bundleId, dialect, windowRef, tabIndex).ReplaceLineEndings("\n");
+
+    private static string ActivationScriptRaw(string bundleId, Dialect dialect, int windowRef, int tabIndex) => dialect switch
     {
         Dialect.ITerm => $$"""
             {{MatchHandlers}}
