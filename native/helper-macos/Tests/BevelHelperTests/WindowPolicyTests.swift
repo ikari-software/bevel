@@ -74,6 +74,27 @@ final class SpaceContextTests: XCTestCase {
         XCTAssertFalse(ctx(current: [], [5: [459]]).isOnOtherSpace(5), "no current spaces → SkyLight unavailable")
     }
 
+    // MARK: never-placed windows (bevel-0mur)
+
+    func testOrderedOutWindowOnNoSpaceIsRecognised() {
+        // Real capture: Beeper's hidden 400x300 Electron window (cg 236) reports []; its visible
+        // window (228) reports [1]; a Cmd-H hidden or minimized window keeps its Space.
+        let c = ctx(current: [1], [236: [], 228: [1], 1895: [1]])
+        XCTAssertTrue(c.isOnNoSpace(236))
+        XCTAssertFalse(c.isOnNoSpace(228))
+        XCTAssertFalse(c.isOnNoSpace(1895), "hidden/minimized windows keep their Space — they must stay listed")
+    }
+
+    func testOtherSpaceWindowIsNotOnNoSpace() {
+        XCTAssertFalse(ctx(current: [1], [5: [459]]).isOnNoSpace(5))
+    }
+
+    func testUnknownNeverClaimsNoSpace() {
+        let unknown = SpaceContext(current: [1], spacesOf: { _ in nil })
+        XCTAssertFalse(unknown.isOnNoSpace(5), "failed/missing CGSCopySpacesForWindows → unknown, keep the window")
+        XCTAssertFalse(ctx(current: [], [5: []]).isOnNoSpace(5), "no current spaces → SkyLight unavailable")
+    }
+
     // MARK: fullscreen Spaces (bevel-ex8n)
 
     private func ctx(current: Set<Int>, fullscreen: Set<Int>, _ table: [CGWindowID: [Int]]) -> SpaceContext {

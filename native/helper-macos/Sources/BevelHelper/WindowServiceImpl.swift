@@ -826,8 +826,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             { win.title.isEmpty && !win.isMinimized ? "no-title hasAX=\(hasAX)" : nil },
             // Costly (a WindowServer round-trip per off-screen window), so it runs AFTER the cheap gates
             // above have already dropped the flood of title-less / zero-area ghosts.
-            { self.isUnconfirmedOffscreenGhost(cgID: cgID, hasAX: hasAX, entry: entry, spaces: pass.spaces)
-                ? "offscreen-no-ax (unconfirmed tombstone)" : nil },
+            { self.offscreenGhostReason(cgID: cgID, hasAX: hasAX, entry: entry, spaces: pass.spaces) },
             // Bevel hosts shell chrome AND ordinary apps (Filer) in the parent process: drop only
             // the reserved chrome surfaces and transient Avalonia popups, never the whole PID.
             { self.isShellChrome(pid: pid, title: win.title) ? "shell-chrome title='\(win.title)'" : nil },
@@ -848,17 +847,22 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     ///
     /// 1. On a Space no display is showing → definitely live (a tombstone stays on the Space it died
     ///    on). Keep it, and activation will switch Spaces.
-    /// 2. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
+    /// 2. On NO Space at all → definitely not a user window: it was never shown (ordered out). Drop.
+    /// 3. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
     ///    (hidden AX-less apps); until then treat it as a tombstone.
     ///
     /// On-screen windows and AX-correlated windows (incl. minimized) carry a live signal and are
     /// never affected.
-    private func isUnconfirmedOffscreenGhost(
+    private func offscreenGhostReason(
         cgID: CGWindowID, hasAX: Bool, entry: [String: Any], spaces: SpaceContext
-    ) -> Bool {
-        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return false }
-        if spaces.isOnOtherSpace(cgID) { return false }
-        return !offscreenTracker.isConfirmedLive(cgID)
+    ) -> String? {
+        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return nil }
+        if spaces.isOnOtherSpace(cgID) { return nil }
+        // Never placed on any Space = ordered out, not hidden (Cmd-H / minimize keep their Space).
+        // Time can't tell these apart — an unshown window outlives the tracker's window forever —
+        // so this is decided before the tracker ever gets a vote (bevel-0mur).
+        if spaces.isOnNoSpace(cgID) { return "offscreen-no-ax on-no-space (ordered out)" }
+        return offscreenTracker.isConfirmedLive(cgID) ? nil : "offscreen-no-ax (unconfirmed tombstone)"
     }
 
     /// Internal for focused unit coverage via `@testable import BevelHelper`.

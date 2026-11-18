@@ -99,8 +99,16 @@ enum SkyLight {
 
     /// Every Space `window` belongs to (`[]` = unknown). 0x7 = all space kinds (user, fullscreen, system).
     static func spaceIDs(ofWindow window: CGWindowID) -> [Int] {
-        guard let copy = symbols.copySpacesForWindows else { return [] }
-        return (copy(symbols.connection, 0x7, [window] as CFArray)?.takeRetainedValue() as? [Int]) ?? []
+        knownSpaceIDs(ofWindow: window) ?? []
+    }
+
+    /// Like `spaceIDs(ofWindow:)`, but keeps "unknown" (missing symbol, failed call → nil) apart from
+    /// "known to be on no Space" (→ []). Only the latter identifies an ordered-out window.
+    static func knownSpaceIDs(ofWindow window: CGWindowID) -> [Int]? {
+        guard let copy = symbols.copySpacesForWindows,
+              let spaces = copy(symbols.connection, 0x7, [window] as CFArray)?.takeRetainedValue()
+        else { return nil }
+        return spaces as? [Int]
     }
 
     /// Make `cgID` THE key window of `pid`.
@@ -327,9 +335,10 @@ struct SpaceContext {
     /// Spaces of kind fullscreen. Empty when unavailable, which makes every
     /// `isOnFullscreenSpace` answer false.
     let fullscreen: Set<Int>
-    private let spacesOf: (CGWindowID) -> [Int]
+    /// nil = unknown (SkyLight unavailable or the call failed); [] = known to be on no Space.
+    private let spacesOf: (CGWindowID) -> [Int]?
 
-    init(current: Set<Int>, fullscreen: Set<Int> = [], spacesOf: @escaping (CGWindowID) -> [Int]) {
+    init(current: Set<Int>, fullscreen: Set<Int> = [], spacesOf: @escaping (CGWindowID) -> [Int]?) {
         self.current = current
         self.fullscreen = fullscreen
         self.spacesOf = spacesOf
@@ -339,7 +348,7 @@ struct SpaceContext {
         SpaceContext(
             current: SkyLight.currentSpaceIDs(),
             fullscreen: SkyLight.fullscreenSpaceIDs(),
-            spacesOf: SkyLight.spaceIDs(ofWindow:)
+            spacesOf: SkyLight.knownSpaceIDs(ofWindow:)
         )
     }
 
@@ -359,7 +368,18 @@ struct SpaceContext {
     /// The Spaces a window belongs to. Exposed so a caller needing BOTH predicates pays for one
     /// WindowServer round trip instead of two — `CGSCopySpacesForWindows` is per-window, and the
     /// snapshot pass evaluates this for every admitted window.
-    func spaceIDs(of window: CGWindowID) -> [Int] { spacesOf(window) }
+    func spaceIDs(of window: CGWindowID) -> [Int] { spacesOf(window) ?? [] }
+
+    /// True only when the window is KNOWN to be on no Space at all — WindowServer has it but it was
+    /// never placed (an Electron `BrowserWindow` created `show: false`, any ordered-out window).
+    /// That is not a hidden app's window: Cmd-H and minimize both keep the window's Space (measured
+    /// 2026-11-18, Calculator: visible/hidden/minimized all report [1]; Beeper's hidden 400x300
+    /// window reports []). Unknown never claims it — otherwise a SkyLight miss would drop every
+    /// hidden app's buttons (bevel-0mur).
+    func isOnNoSpace(_ window: CGWindowID) -> Bool {
+        guard !current.isEmpty, let spaces = spacesOf(window) else { return false }
+        return spaces.isEmpty
+    }
 
     /// `isOnOtherSpace` against an already-fetched Space list.
     func isOnOtherSpace(spaces: [Int]) -> Bool {
