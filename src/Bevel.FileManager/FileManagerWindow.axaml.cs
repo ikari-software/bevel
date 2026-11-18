@@ -1450,6 +1450,11 @@ public partial class FileManagerWindow : BevelWindow
         StatusBar.UpdateTotalSize(totalSize);
         _infoTotalSize = totalSize;
         UpdateInfoPane(path, nodes.Count);
+        // An F5 or watcher refresh can supersede a LoadDirectory still streaming this folder, which
+        // then exits before its tail applies the reveal (bevel-nwo) — so the reload applies it. Not
+        // discardIfStale: a refresh of the folder on screen says nothing about whether a pending
+        // navigation to the reveal target is still coming; only a fresh listing does.
+        ApplyPendingSelection(path);
     }
 
     /// <summary>

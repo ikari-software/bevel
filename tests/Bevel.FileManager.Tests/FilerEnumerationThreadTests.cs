@@ -269,6 +269,29 @@ public sealed class FilerEnumerationThreadTests
         Assert.Equal(RecordingVfsProvider.Names("/top").Length, Rows(win).Length);
     }
 
+    // ── reveal survives a reload that supersedes the load (review #2) ──────
+
+    [AvaloniaFact]
+    public void A_reload_that_supersedes_a_load_still_applies_the_pending_reveal()
+    {
+        // F5 / a watcher refresh landing while the first listing is still streaming cancels that load
+        // before its tail applies the reveal; the reload that replaces it must apply it instead.
+        var (win, provider, _) = BuildWindow();
+        var gated = RecordingVfsProvider.Path("/gated");
+        var target = VfsPath.Combine(gated, "gated-bfile010.txt");
+        win.SelectAfterLoad(new[] { target });
+
+        var load = Invoke(win, "LoadDirectory", gated);
+        PumpUntil(() => Rows(win).Length >= 32);   // first batch painted; the read is now held at the gate
+        var reload = Invoke(win, "ReloadDifferential", gated);   // cancels the load
+        provider.ReleaseGate();
+        PumpUntil(reload);
+        PumpUntil(load);
+
+        Assert.Equal(64, Rows(win).Length);
+        Assert.Equal(new[] { target }, ItemViewOf(win).SelectedItems.Select(v => v.Path));
+    }
+
     [AvaloniaFact]
     public void Expanding_a_node_twice_while_it_loads_does_not_duplicate_children()
     {
