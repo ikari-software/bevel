@@ -38,7 +38,7 @@ If a step fails twice, stop work on that card: comment on the bead with the comm
 
 **What this loop may do without asking.** Local work only: create a branch or worktree, commit on it, write to the tracker. Pushing, opening a PR, merging and deleting branches happen only when the owner has opted in for the session (for the run that started 2026-11-18 the owner did: PR per card, `/ce-code-review` on each PR, merge when every check is green, then worktree and branch cleanup and `bd dolt push`). Without that opt-in, stop after the local commit and report.
 
-**New beads.** When a card files a new bead, append a row to `waves.txt` in the wave of the card that filed it: `wave|bead|who|size|-|title`. A `-` in the card-file column means there is no card; the bead's own description (`bd show`) is the brief. `progress.sh` lists any open bead that is missing from `waves.txt`.
+**New beads.** When a card files a new bead, add a row to `waves.txt` inside the block of the wave it belongs to by value (default: the wave of the card that filed it; move it earlier if it blocks merges, later if it is polish), not at the end of the file, because `progress.sh` offers rows in file order: `wave|bead|who|size|-|title`. A `-` in the card-file column means there is no card; the bead's own description (`bd show`) is the brief. `progress.sh` lists any open bead that is missing from `waves.txt`.
 
 ## Global constraints
 

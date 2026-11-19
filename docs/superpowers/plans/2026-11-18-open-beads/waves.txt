@@ -16,6 +16,8 @@ W1|bevel-i145|AGENT|M|cards-A-test-reliability.md|Luna render tests flake on sha
 W1|bevel-ayhn|AGENT|M|cards-D-theming.md|Luna tokens are hand-mirrored and not drift-checked (ThemeGen only covers Win2000)
 W1|bevel-tv19|AGENT|S|cards-A-test-reliability.md|RenderFlatAndPastelComparisonTest dirties 5 checked-in PNGs on every run
 W1|bevel-b4a5|AGENT|S|-|CI: build benchmarks/Bevel.Benchmarks (filed by bevel-zhmr)
+W1|bevel-j5mr|AGENT|M|-|Flaky test: CoreWindowTrafficTests title-change burst times out (found in CI)
+W1|bevel-b79z|AGENT|M|-|Flaky ShellCoreIntegrationTests (tray-seed gate / sequence-gap Hello) (found during run)
 W2|bevel-so27|AGENT|L|cards-B-core-ipc-startup.md|Filer enumeration still runs ON THE UI THREAD (syscall count fixed; threading blocked on callers)
 W2|bevel-ri8c|AGENT|M|cards-B-core-ipc-startup.md|Tray reconnect snapshot only upserts -- ghost icons survive a core restart
 W2|bevel-wheq|AGENT|S|cards-B-core-ipc-startup.md|Window-list reconnect snapshot only upserts -- possible stale taskbar buttons after core restart
@@ -32,6 +34,10 @@ W2|bevel-2ip7|AGENT|S|cards-E2-taskbar-customization.md|StacksViewModel reads Ta
 W2|bevel-5dn|AGENT|M|cards-E2-taskbar-customization.md|Taskbar live-apply: separate cheap preview from debounced persist
 W2|bevel-glnc|AGENT|S|cards-B-core-ipc-startup.md|ShellInstanceLock: IOException can escape, and RecordPid leaks the lock stream
 W2|bevel-soon|AGENT|S|cards-G-tray-interop-windows.md|CFNumberCreate declares CFNumberType as int, but it is CFIndex (pointer-sized)
+W2|bevel-2vls|AGENT|M|-|Filer: remaining UI-thread enumeration outside the four so27 consumers (filed by bevel-so27)
+W2|bevel-70nw|AGENT|M|-|Core IPC: events between HandshakeOk and registration are lost (filed by bevel-j5mr review)
+W2|bevel-35r9|AGENT|M|-|Core projection never removes on a helper-stream resubscribe (filed by bevel-wheq)
+W2|bevel-zcgd|AGENT|M|-|Socket-path reclaim can delete or be blocked by non-socket files (filed by bevel-9790)
 W3|bevel-9po|HUMAN|S|cards-C-packaging-security.md|M5: activate release-macos.yml — configure the 6 GitHub 'release' environment secrets
 W3|bevel-m5|A+H|L|cards-C-packaging-security.md|M5 — Polish + packaging = mac v1
 W3|bevel-ka6c|A+H|S|cards-C-packaging-security.md|Apphost links /opt/homebrew brotli — breaks portability of signed builds
@@ -80,6 +86,8 @@ W5|bevel-l17f|A+H|S|cards-E2-taskbar-customization.md|Tabs menu favicons: Chromi
 W5|bevel-y3cl|A+H|M|cards-E2-taskbar-customization.md|Gecko tab engine: stable window identity, pid carry, URL enrichment
 W5|bevel-9w0h|A+H|M|cards-E2-taskbar-customization.md|Arc tabs menu: prefer live/recent tabs over raw sidebar order (Space-aware)
 W5|bevel-s5x|AGENT|S|cards-E2-taskbar-customization.md|Taskbar grouped-button jump-list: per-app custom actions (New window, etc.)
+W5|bevel-bw1v|AGENT|M|-|Tabs menu: ActivateAsync reports its outcome; failed activation refreshes the list (filed by bevel-6asm)
+W5|bevel-8zx2|AGENT|S|-|Widen TabPrefetch freshness (filed by bevel-6asm)
 W6|bevel-7hf4|A+H|M|cards-G-tray-interop-windows.md|Hide mirrored icons from the macOS menu bar when Bevel owns them (Bartender-style)
 W6|bevel-m3|A+H|L|cards-G-tray-interop-windows.md|M3 — Systray mirroring (Ice technique)
 W6|bevel-whz|A+H|M|cards-G-tray-interop-windows.md|Wire AppleScript 'open'/odoc folder-open through IShellAutomation (INT-6)
@@ -128,6 +136,7 @@ W8|bevel-lgpn|A+H|S|cards-A-test-reliability.md|Prove why hero-blue2001.png is n
 W8|bevel-gww.7|HUMAN|L|cards-B-core-ipc-startup.md|P7: NativeAOT publish (the per-process memory payoff)
 W8|bevel-gww|AGENT|L|cards-B-core-ipc-startup.md|Multi-process shell: --role split + shell-core owner + shared caches + AOT
 W8|bevel-0ai|AGENT|M|cards-E1-start-menu-search.md|Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame cap, clickViaCGEvent usleep
+W8|bevel-oi77|AGENT|S|-|ShellHealthAlert: pass osascript values as argv, not hand-escaped source (filed by bevel-6asm)
 W9|bevel-9ue|A+H|L|cards-E2-taskbar-customization.md|Taskbar cust: edge position (top/bottom + vertical L/R) + auto-hide + centered alignment
 W9|bevel-gcd|A+H|M|cards-E2-taskbar-customization.md|Taskbar cust: dock magnification, hover thumbnails, Task View/Search/Widgets buttons
 W9|bevel-hail|A+H|L|cards-E2-taskbar-customization.md|Taskbar menu: true live Quit⇄Force-Quit swap via in-tree Popup
