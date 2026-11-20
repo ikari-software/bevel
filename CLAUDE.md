@@ -60,7 +60,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-.NET 10 SDK (pinned in `global.json`), macOS-first. Common commands:
+.NET 10 SDK (pinned in `global.json`), macOS-first. The build scripts source `tools/sh/pinned-dotnet.sh`, and `.envrc` (direnv; `direnv allow` once) does the same for your terminal, so a newer `dotnet` first on PATH (e.g. Homebrew's) cannot break the build. Common commands:
 
 ```bash
 dotnet build Bevel.sln -clp:ErrorsOnly          # build everything
