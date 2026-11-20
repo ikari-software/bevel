@@ -1,9 +1,10 @@
 # shellcheck shell=bash
 #
-# Source this (don't execute it) from any script that runs `dotnet`, AFTER setting ROOT to the repo root:
+# Source this (don't execute it) from any script that runs `dotnet`:
 #
-#   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-#   . "$ROOT/tools/sh/pinned-dotnet.sh"
+#   . "<path to repo>/tools/sh/pinned-dotnet.sh"
+#
+# It finds the repo root from its own location, so callers need not set anything first.
 #
 # It makes `dotnet` resolve to an install that has the SDK global.json pins, by putting that install first
 # on PATH and exporting DOTNET_ROOT.
@@ -19,13 +20,14 @@
 # a working setup is never overridden.
 
 __bevel_pinned_dotnet() {
-	local root="${ROOT:?pinned-dotnet.sh: set ROOT to the repo root before sourcing}"
-	local cand dir ver
+	local root cand dir ver path_dotnet
 	local -a cands=()
+	root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-	cand="$(command -v dotnet 2>/dev/null || true)"
-	[ -n "$cand" ] && cands+=("$cand")
-	[ -n "${DOTNET_ROOT:-}" ] && cands+=("$DOTNET_ROOT/dotnet")
+	path_dotnet="$(command -v dotnet 2>/dev/null || true)"
+	[ -n "$path_dotnet" ] && cands+=("$path_dotnet")
+	# dotnet.exe: Git Bash on Windows, where DOTNET_ROOT is e.g. C:\Program Files\dotnet.
+	[ -n "${DOTNET_ROOT:-}" ] && cands+=("$DOTNET_ROOT/dotnet" "$DOTNET_ROOT/dotnet.exe")
 	# Official installer (macOS), dotnet-install.sh default, Linux packages, Homebrew's versioned formula.
 	cands+=(/usr/local/share/dotnet/dotnet "$HOME/.dotnet/dotnet" /usr/share/dotnet/dotnet /usr/lib/dotnet/dotnet
 		/opt/homebrew/opt/dotnet@10/libexec/dotnet /usr/local/opt/dotnet@10/libexec/dotnet)
@@ -36,12 +38,12 @@ __bevel_pinned_dotnet() {
 		[ -n "$ver" ] || continue
 		# The dotnet already on PATH works: change nothing. (It may be a wrapper, e.g. Homebrew's, whose
 		# own idea of DOTNET_ROOT we must not override.)
-		[ "$cand" = "$(command -v dotnet 2>/dev/null)" ] && return 0
+		[ "$cand" = "$path_dotnet" ] && return 0
 		# A fallback install. These are real install dirs, the host binary sits at their top level.
 		dir="$(cd "$(dirname "$cand")" && pwd -P)"
 		export DOTNET_ROOT="$dir"
 		export PATH="$dir:$PATH"
-		echo "==> Using .NET SDK $ver from $dir (${cands[0]%/dotnet} has no SDK that global.json accepts)" >&2
+		echo "==> Using .NET SDK $ver from $dir (${path_dotnet:-no dotnet on PATH}${path_dotnet:+ has no SDK that global.json accepts})" >&2
 		return 0
 	done
 
