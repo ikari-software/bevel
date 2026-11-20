@@ -2,6 +2,7 @@
 # Build the AE probe into a faceless .app, register it with LaunchServices, and launch it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$ROOT/../../tools/sh/pinned-dotnet.sh"  # use the SDK global.json pins, not whatever dotnet is first on PATH
 OUT="$ROOT/out"
 APP="$OUT/BevelAEProbe.app"
 

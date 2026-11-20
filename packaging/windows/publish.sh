@@ -5,6 +5,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$ROOT/tools/sh/pinned-dotnet.sh"  # use the SDK global.json pins, not whatever dotnet is first on PATH
 OUT="${1:-$ROOT/dist/win-x64}"
 
 echo "Publishing self-contained win-x64 → $OUT"

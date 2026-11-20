@@ -15,6 +15,7 @@ BUILD="${BUILD:-1}"
 CLEAN="${CLEAN:-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$ROOT/tools/sh/pinned-dotnet.sh"  # use the SDK global.json pins, not whatever dotnet is first on PATH
 OUT="${OUT:-$ROOT/dist}"
 APP="$OUT/Bevel.app"
 PKG="$ROOT/packaging/macos"

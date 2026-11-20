@@ -17,6 +17,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+. tools/sh/pinned-dotnet.sh  # use the SDK global.json pins, not whatever dotnet is first on PATH
 # ABSOLUTE: `dotnet test` runs the test with the test assembly's own directory as its working
 # directory, so a relative _OUT path lands under bin/Debug/... instead of here.
 SHOTS="$PWD/site/shots"
