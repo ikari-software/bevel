@@ -104,7 +104,8 @@ final class TrayServiceTests: XCTestCase {
         NSApp.setActivationPolicy(.prohibited)
         let svc = TrayServiceImpl(expectedKey: "test-key")
         let ok = await svc.runSelfTestForTest()
-        XCTAssertTrue(ok, "self-test should pass (working capture, or limited mode without a grant)")
+        // nil = inconclusive (nothing capturable): not a verdict, and never "broken".
+        XCTAssertNotEqual(ok, false, "self-test should pass (working capture, or limited mode without a grant)")
     }
 
     // MARK: - Self-test re-arm on the limited→live transition (bevel-qcd9)
@@ -192,5 +193,30 @@ final class TrayServiceTests: XCTestCase {
         // Canvas is the fixed box; glyph vertically centred.
         XCTAssertEqual(text.canvasH, 32)
         XCTAssertEqual(app.dstY, (CGFloat(app.canvasH) - app.drawnH) / 2, accuracy: 0.01)
+    }
+
+    // Review (2026-11-21): the Changes stream's cadence. With Accessibility-only items (macOS 27) a
+    // 250 ms glyph-only tick runs between full enumerations; without any (macOS 26) the loop must keep
+    // its old one-tick-per-enumeration cadence, so window items aren't re-captured four times a second.
+    func testPollCadenceTicksFastOnlyWhenThereAreAxItems() {
+        let twoSeconds: UInt64 = 2_000_000_000
+        XCTAssertEqual(TrayServiceImpl.tickDelay(hasAxItems: true, enumerationInterval: twoSeconds),
+                       TrayServiceImpl.glyphRefreshInterval)
+        XCTAssertEqual(TrayServiceImpl.tickDelay(hasAxItems: false, enumerationInterval: twoSeconds), twoSeconds)
+        XCTAssertEqual(TrayServiceImpl.tickDelay(hasAxItems: true, enumerationInterval: 100_000_000), 100_000_000)
+    }
+
+    func testFullEnumerationIsDueOnceTheIntervalHasElapsed() {
+        XCTAssertFalse(TrayServiceImpl.isFullEnumerationDue(elapsed: 899_999_999, interval: 900_000_000))
+        XCTAssertTrue(TrayServiceImpl.isFullEnumerationDue(elapsed: 900_000_000, interval: 900_000_000))
+    }
+
+    // A self-test that had nothing to capture (no window item with a backing store, no AX item on a
+    // display, e.g. everything parked by consolidation at launch) has learnt nothing. Latching live
+    // mirroring OFF on that is the bevel-p6g4 failure shape again; it must stay undecided and retry.
+    func testSelfTestCaptureVerdict() {
+        XCTAssertEqual(TrayServiceImpl.captureVerdict(attempted: true, nonBlank: true), true)
+        XCTAssertEqual(TrayServiceImpl.captureVerdict(attempted: true, nonBlank: false), false)
+        XCTAssertNil(TrayServiceImpl.captureVerdict(attempted: false, nonBlank: false))
     }
 }

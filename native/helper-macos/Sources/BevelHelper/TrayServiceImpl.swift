@@ -53,11 +53,20 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     /// App-icon PNG cache keyed by bundle id — the icon render is off the hot path (limited mode).
+    // What enumeration saw for each AX-only item, so a click can recognise it again (review 2026-11-21:
+    // ids are positional and an app can reorder its extras between enumeration and click).
+    let axIdentityLock = NSLock()
+    var axIdentity: [String: AxTrayMerge.Identity] = [:]
+    // Last raw matte crop + its PNG per AX item: the 250 ms glyph tick re-encodes only on a real change.
+    private let axPngCacheLock = NSLock()
+    private var axPngCache: [String: (raw: Data, png: Data)] = [:]
+    // A self-test that had nothing to capture retries after this, instead of on every 250 ms tick.
+    private var selfTestRetryAfter: UInt64 = 0
     private let iconCacheLock = NSLock()
     private var iconCache: [String: Data] = [:]
 
     private let debug = ProcessInfo.processInfo.environment["BEVEL_DEBUG_TRAY"] == "1"
-    private func dbg(_ msg: @autoclosure () -> String) {
+    func dbg(_ msg: @autoclosure () -> String) {
         guard debug else { return }
         FileHandle.standardError.write(Data(("[BEVEL-TRAY] " + msg() + "\n").utf8))
     }
@@ -314,18 +323,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     // already known (a seconds clock, blinking colons, iStat graphs): 250 ms catches a
                     // half-second blink. Static icons capture byte-identical (measured on 27.3: only the
                     // clock and the live graphs differ run to run), so the diff below emits nothing for them.
+                    // Only AX items get the fast tick: window-backed items (all of them on macOS 26) keep the
+                    // one-capture-per-enumeration cadence they always had (review 2026-11-21).
                     var lastEnumerated = DispatchTime.now().uptimeNanoseconds
                     while !Task.isCancelled {
                         let interval: UInt64 = self.consolidationActive ? 900_000_000 : 2_000_000_000
-                        try await Task.sleep(nanoseconds: Self.glyphRefreshInterval)
+                        let hasAxItems = lastByID.keys.contains { AxTrayMerge.parse(itemID: $0) != nil }
+                        try await Task.sleep(nanoseconds: Self.tickDelay(hasAxItems: hasAxItems,
+                                                                         enumerationInterval: interval))
                         let now = DispatchTime.now().uptimeNanoseconds
                         let current: [Bevel_Helper_V1_TrayItem]
-                        if now - lastEnumerated >= interval {
+                        if Self.isFullEnumerationDue(elapsed: now - lastEnumerated, interval: interval) {
                             current = await self.enumerateWithCapture()
                             lastEnumerated = now
                         } else {
                             var refreshed = Array(lastByID.values)
-                            await self.captureGlyphs(into: &refreshed)
+                            await self.captureGlyphs(into: &refreshed, axOnly: true)
                             current = refreshed
                         }
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
@@ -446,83 +459,6 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
     }
 
-    // MARK: - Accessibility discovery (bevel-lezo)
-
-    /// The app's AXExtrasMenuBar children, in order (index = position, part of the item id).
-    private func axExtras(pid: pid_t) -> [AXUIElement] {
-        let app = AXUIElementCreateApplication(pid)
-        _ = _AXUIElementSetMessagingTimeout(app, 0.3)   // an unresponsive app must not stall enumeration
-        var bar: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &bar) == .success,
-              let bar, CFGetTypeID(bar) == AXUIElementGetTypeID() else { return [] }
-        var kids: CFTypeRef?
-        AXUIElementCopyAttributeValue(bar as! AXUIElement, kAXChildrenAttribute as CFString, &kids)
-        return (kids as? [AXUIElement]) ?? []
-    }
-
-    private func axString(_ el: AXUIElement, _ attr: String) -> String {
-        var v: CFTypeRef?
-        AXUIElementCopyAttributeValue(el, attr as CFString, &v)
-        return (v as? String) ?? ""
-    }
-
-    private func axFrame(_ el: AXUIElement) -> CGRect {
-        var p: CFTypeRef?, s: CFTypeRef?
-        var pt = CGPoint.zero, sz = CGSize.zero
-        if AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &p) == .success, let p,
-           CFGetTypeID(p) == AXValueGetTypeID() { AXValueGetValue(p as! AXValue, .cgPoint, &pt) }
-        if AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &s) == .success, let s,
-           CFGetTypeID(s) == AXValueGetTypeID() { AXValueGetValue(s as! AXValue, .cgSize, &sz) }
-        return CGRect(origin: pt, size: sz)
-    }
-
-    /// Every running app's menu-bar extras as Accessibility reports them. Empty without the
-    /// Accessibility grant, which degrades to exactly today's window-list behaviour.
-    private func axExtrasItems() -> [AxTrayMerge.AxItem] {
-        guard AXIsProcessTrusted() else { return [] }
-        var out: [AxTrayMerge.AxItem] = []
-        for app in NSWorkspace.shared.runningApplications {
-            let pid = app.processIdentifier
-            for (i, el) in axExtras(pid: pid).enumerated() {
-                let title = axString(el, kAXTitleAttribute as String)
-                let label = title.isEmpty ? axString(el, kAXDescriptionAttribute as String) : title
-                out.append(AxTrayMerge.AxItem(pid: pid, appName: app.localizedName ?? "", index: i,
-                                              label: label, frame: axFrame(el)))
-            }
-        }
-        return out
-    }
-
-    /// Clicks an AX-only item by pressing its element directly (it has no window to target). Re-resolves
-    /// the element from pid + index and checks it is still in the menu-bar band, so a vanished or
-    /// reordered item cannot press something else.
-    ///
-    /// Same order as the window path: AX press first, then a real click at the item. The click matters on
-    /// macOS 27, where MenuBarAgent's system items (Wi-Fi, Sound, Control Center, clock) are SwiftUI
-    /// hosting views with no AX actions at all; measured: a click at the item opens Control Center.
-    private func pressAxExtra(pid: pid_t, index: Int, itemID: String,
-                              button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
-        guard AXIsProcessTrusted() else { return false }
-        let extras = axExtras(pid: pid)
-        guard index >= 0, index < extras.count else { return false }
-        let el = extras[index]
-        let frame = axFrame(el)
-        guard AxTrayMerge.isInMenuBarBand(frame) else { return false }
-        let actions: [CFString] = button == .right
-            ? ["AXShowMenu" as CFString, kAXPressAction as CFString]
-            : [kAXPressAction as CFString, "AXShowMenu" as CFString]
-        for action in actions where AXUIElementPerformAction(el, action) == .success {
-            dbg("AX-pressed extra \(itemID) via \(action)")
-            return true
-        }
-        let displays = NSScreen.screens.compactMap { s -> CGRect? in
-            guard let n = s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
-            return CGDisplayBounds(CGDirectDisplayID(n.uint32Value))
-        }
-        guard let point = AxTrayMerge.fallbackClickPoint(frame: frame, displays: displays) else { return false }
-        return clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
-    }
-
     /// Finds the accessibility element at the item's screen point and performs its press/show-menu
     /// action — reveals the real menu without faking the mouse (no cursor teleport). Walks up a couple
     /// of parents if the deepest element under the point doesn't itself support the action.
@@ -576,7 +512,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return nil
     }
 
-    private func clickViaCGEvent(at point: CGPoint, itemID: String,
+    func clickViaCGEvent(at point: CGPoint, itemID: String,
                                  button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         let (downType, upType, cgButton): (CGEventType, CGEventType, CGMouseButton) =
             button == .right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
@@ -638,6 +574,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                   rect.width >= 8, rect.width <= 400 else { continue }
 
             let windowNumber = (w[kCGWindowNumber as String] as? Int) ?? 0
+            // Every in-band status window is a twin, INCLUDING the ones dropped just below (our own ◂
+            // control item, denied items): a window this path chose to skip must also suppress its AX
+            // copy, or on macOS 26 (where AX lists everything too) denied items come straight back.
+            windowItems.append(AxTrayMerge.WindowItem(windowNumber: windowNumber, pid: pid, frame: rect))
             let ownerName = (w[kCGWindowOwnerName as String] as? String) ?? ""
             let windowName = (w[kCGWindowName as String] as? String) ?? ""
             // Self-exclusion (U3): never mirror Bevel's own app-side control item (its ◂◂ marker title —
@@ -678,11 +618,12 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             item.iconPng = identity.icon
             item.isLive = false   // limited mode (§5.5) until SCK capture (M3-B)
             found.append((rect.origin.x, item))
-            windowItems.append(AxTrayMerge.WindowItem(windowNumber: windowNumber, pid: pid, frame: rect))
         }
 
         // bevel-lezo: items only Accessibility still reports (macOS 27 dropped status items from the
         // window list). On macOS 26 every AX item has a window twin, so this adds nothing there.
+        var identities: [String: AxTrayMerge.Identity] = [:]
+        defer { axIdentityLock.withLock { axIdentity = identities } }
         for a in AxTrayMerge.unmatched(ax: axExtrasItems(), windows: windowItems) {
             guard a.pid != ownPID, a.pid != parentPID else { continue }
             let bundleID = NSRunningApplication(processIdentifier: a.pid)?.bundleIdentifier ?? ""
@@ -690,6 +631,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let name = a.label.isEmpty ? a.appName : a.label
             var item = Bevel_Helper_V1_TrayItem()
             item.itemID = AxTrayMerge.itemID(a)
+            identities[item.itemID] = AxTrayMerge.Identity(label: a.label, frame: a.frame)
             item.ownerPid = a.pid
             item.ownerBundleID = bundleID
             item.ownerName = name
@@ -737,6 +679,25 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Cadence of the glyph-only refresh between full enumerations (see the Changes stream).
     static let glyphRefreshInterval: UInt64 = 250_000_000
 
+    /// How long the Changes loop sleeps per tick: the fast glyph tick only when there are AX items to
+    /// refresh, otherwise straight to the next full enumeration (macOS 26's unchanged cadence).
+    static func tickDelay(hasAxItems: Bool, enumerationInterval: UInt64) -> UInt64 {
+        hasAxItems ? min(glyphRefreshInterval, enumerationInterval) : enumerationInterval
+    }
+
+    static func isFullEnumerationDue(elapsed: UInt64, interval: UInt64) -> Bool { elapsed >= interval }
+
+    /// Index → frame of every AX-only item: what `MenuBarStripCapture` needs. One builder, shared by the
+    /// product path and the self-test so the two can't drift.
+    static func axGlyphFrames(_ items: [Bevel_Helper_V1_TrayItem]) -> [Int: CGRect] {
+        var frames: [Int: CGRect] = [:]
+        for (i, item) in items.enumerated() where AxTrayMerge.parse(itemID: item.itemID) != nil {
+            let b = item.bounds
+            frames[i] = CGRect(x: Int(b.x), y: Int(b.y), width: Int(b.width), height: Int(b.height))
+        }
+        return frames
+    }
+
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
@@ -753,7 +714,8 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// The live half of `enumerateWithCapture`: overlays fresh glyph pixels on already-enumerated items.
     /// Also run on its own by the Changes stream's fast glyph tick (`glyphRefreshInterval`), between full
     /// enumerations, so a ticking clock or a live graph keeps up without re-walking Accessibility.
-    func captureGlyphs(into items: inout [Bevel_Helper_V1_TrayItem]) async {
+    /// `axOnly` (the fast tick) skips window-backed items: they refresh with the full enumeration.
+    func captureGlyphs(into items: inout [Bevel_Helper_V1_TrayItem], axOnly: Bool = false) async {
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.
@@ -777,7 +739,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // falling back to the limited-mode app icon. Keyed on the windowNumber half of item_id — no
         // on-screen SCShareableContent gate.
         var noImage = 0, blank = 0
-        for i in items.indices {
+        for i in items.indices where !axOnly {
             let parts = items[i].itemID.split(separator: ":")
             guard parts.count == 2, let num = UInt32(parts[1]) else { continue }
             guard let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else {
@@ -794,18 +756,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // Items only Accessibility reports (macOS 27) have no window to read: matte their glyphs out of the
         // composited menu-bar strip instead (MenuBarStripCapture). Without this they keep the owner's app
         // icon, which for system items is MenuBarAgent's generic one rather than Wi-Fi, Sound, etc.
-        var axFrames: [Int: CGRect] = [:]
-        for i in items.indices where AxTrayMerge.parse(itemID: items[i].itemID) != nil {
-            let b = items[i].bounds
-            axFrames[i] = CGRect(x: Int(b.x), y: Int(b.y), width: Int(b.width), height: Int(b.height))
-        }
-        for (i, glyph) in await MenuBarStripCapture.glyphs(for: axFrames) {
-            let png = pngFromCGImage(glyph)
+        for (i, glyph) in await MenuBarStripCapture.glyphs(for: Self.axGlyphFrames(items)) {
+            let png = cachedGlyphPNG(itemID: items[i].itemID, glyph: glyph)
             if !png.isEmpty {
                 items[i].iconPng = png
                 items[i].isLive = true
             }
         }
+        if axOnly { return }   // the ratio below describes a full pass; the fast tick doesn't move it
 
         // The live/total ratio, split by failure reason, is the one number that distinguishes "mirroring
         // is on but nothing captures" from "mirroring is off" — the two look identical in the taskbar
@@ -815,6 +773,16 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // could not tell "0 live" from "never looked"; every poll still traces it under debug.
         let summary = "captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))"
         if !logCaptureStateIfChanged(summary) { dbg(summary) }
+    }
+
+    /// PNG for an AX glyph, re-encoded only when its pixels changed since the last tick. A static icon
+    /// mattes byte-identical frame to frame, so at 4 Hz the trim + encode was almost always wasted.
+    private func cachedGlyphPNG(itemID: String, glyph: CGImage) -> Data {
+        guard let raw = glyph.dataProvider?.data as Data? else { return pngFromCGImage(glyph) }
+        if let hit = axPngCacheLock.withLock({ axPngCache[itemID] }), hit.raw == raw { return hit.png }
+        let png = pngFromCGImage(glyph)
+        axPngCacheLock.withLock { axPngCache[itemID] = (raw, png) }
+        return png
     }
 
     // The last capture-state line we logged. `enumerateWithCapture` runs on the 2 s poll (and
@@ -939,7 +907,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return run
         }
         guard shouldRun else { return }
-        let ok = await runSelfTest()
+        let now = DispatchTime.now().uptimeNanoseconds
+        if selfTestLock.withLock({ !selfTestDone && now < selfTestRetryAfter }) { return }
+        guard let ok = await runSelfTest() else {
+            // Nothing was capturable (everything parked off-display, no menu-bar window yet): no verdict,
+            // so stay as we are and look again in a few seconds rather than latch mirroring off.
+            selfTestLock.withLock { selfTestRetryAfter = now + 5_000_000_000 }
+            return
+        }
         selfTestLock.withLock { liveMirroringEnabled = ok; selfTestDone = true }
     }
 
@@ -959,12 +934,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// and confirm it's non-blank. A granted-but-broken capture disables live mirroring (→ limited
     /// mode); a missing grant is NOT a failure (limited mode is the expected no-grant path). Result +
     /// OS build are written to the offline diagnostic log.
-    private func runSelfTest() async -> Bool {
+    /// Nil when inconclusive: the grant is there but nothing could be captured at all.
+    private func runSelfTest() async -> Bool? {
         let build = osBuild()
         let discovered = !enumerateTrayItems().isEmpty
         let axOk = AXIsProcessTrusted()
 
-        var captureOk = true
+        var captureOk: Bool? = true
         let granted = CGPreflightScreenCaptureAccess()
         if granted && discovered {
             captureOk = await selfTestCapture()
@@ -972,10 +948,17 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         // Live mirroring is safe iff a granted capture actually worked; without a grant we stay in
         // limited mode regardless. Discovery/AX are logged for diagnosis but don't gate capture.
-        let live = granted ? captureOk : true
+        let live: Bool? = granted ? captureOk : true
         log("self-test build=\(build) discovered=\(discovered) ax=\(axOk) grant=\(granted) " +
-            "capture=\(captureOk) → liveMirroring=\(live)")
+            "capture=\(captureOk.map(String.init) ?? "inconclusive") → liveMirroring=\(live.map(String.init) ?? "undecided")")
         return live
+    }
+
+    /// The self-test's verdict on capture: it works if anything captured non-blank, is broken if things
+    /// captured but all blank, and is UNKNOWN when nothing could be captured at all. Latching "broken" on
+    /// the unknown case is the bevel-p6g4 shape again (review 2026-11-21).
+    static func captureVerdict(attempted: Bool, nonBlank: Bool) -> Bool? {
+        nonBlank ? true : (attempted ? false : nil)
     }
 
     /// Captures a status-item window through the SAME path `enumerateWithCapture` uses and reports
@@ -995,8 +978,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Both live paths are probed, for the same reason: window-backed items through `LegacyWindowCapture`,
     /// and the Accessibility-only items of macOS 27 through `MenuBarStripCapture`. Probing only the first
     /// latched mirroring off on 27, where almost no item has a window left.
-    private func selfTestCapture() async -> Bool {
+    private func selfTestCapture() async -> Bool? {
         let items = enumerateTrayItems()
+        var attempted = false
         // Try every discovered item, not just the first: some items legitimately capture blank
         // (bevel-sd6n), and one of those must not condemn the whole pipeline.
         if LegacyWindowCapture.isAvailable {   // private symbol may be gone on this build
@@ -1004,18 +988,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 let parts = item.itemID.split(separator: ":")
                 guard parts.count == 2, let num = UInt32(parts[1]),
                       let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+                attempted = true
                 if isNonBlank(cgImage) { return true }
             }
         }
-        var axFrames: [Int: CGRect] = [:]
-        for (i, item) in items.enumerated() where AxTrayMerge.parse(itemID: item.itemID) != nil {
-            let b = item.bounds
-            axFrames[i] = CGRect(x: Int(b.x), y: Int(b.y), width: Int(b.width), height: Int(b.height))
-        }
-        for glyph in await MenuBarStripCapture.glyphs(for: axFrames).values where isNonBlank(glyph) {
-            return true
-        }
-        return false   // nothing captured a single non-transparent pixel → genuinely broken
+        let glyphs = await MenuBarStripCapture.glyphs(for: Self.axGlyphFrames(items))
+        attempted = attempted || !glyphs.isEmpty
+        let nonBlank = glyphs.values.contains { isNonBlank($0) }
+        return Self.captureVerdict(attempted: attempted, nonBlank: nonBlank)
     }
 
     /// True when the image has any meaningfully non-transparent pixel (sampled every 4px, as the
@@ -1098,7 +1078,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func friendlyNameForTest(_ raw: String) -> String { friendlyName(raw) }
 
     /// Test seams for the self-test (§5.10).
-    func runSelfTestForTest() async -> Bool { await runSelfTest() }
+    func runSelfTestForTest() async -> Bool? { await runSelfTest() }
     func osBuildForTest() -> String { osBuild() }
 
     // MARK: - Icons (limited mode)

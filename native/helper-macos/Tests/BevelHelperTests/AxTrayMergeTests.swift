@@ -113,4 +113,43 @@ final class AxTrayMergeTests: XCTestCase {
         XCTAssertNil(AxTrayMerge.fallbackClickPoint(frame: CGRect(x: 0, y: 0, width: 5002, height: 30), displays: displays),
                      "the 5002 px control items are not clickable glyphs")
     }
+
+    // Review (2026-11-21): an AX item id is positional (pid + child index). If the app adds, removes or
+    // reorders an extra between enumeration and click, the same index names a different item, and
+    // pressing it would open the wrong menu. The press must resolve to the item the user saw.
+    typealias I = AxTrayMerge.Identity
+
+    func testPressTargetKeepsTheIndexWhenItStillNamesTheSameItem() {
+        let rec = I(label: "Weather", frame: CGRect(x: 1876, y: 0, width: 52, height: 30))
+        XCTAssertEqual(AxTrayMerge.resolvePressTarget(index: 1, recorded: rec, candidates: [
+            I(label: "CPU", frame: CGRect(x: 1800, y: 0, width: 40, height: 30)), rec]), 1)
+    }
+
+    func testPressTargetFollowsTheItemWhenTheIndexShifted() {
+        let rec = I(label: "Weather", frame: CGRect(x: 1876, y: 0, width: 52, height: 30))
+        let inserted = I(label: "New", frame: CGRect(x: 1700, y: 0, width: 24, height: 30))
+        XCTAssertEqual(AxTrayMerge.resolvePressTarget(index: 0, recorded: rec, candidates: [inserted, rec]), 1)
+    }
+
+    func testUnlabelledItemsMatchByPositionAndFailClosedWhenAmbiguous() {
+        // MenuBarAgent's system items have no label at all: only position can identify them.
+        let rec = I(label: "", frame: CGRect(x: 2367, y: 0, width: 26, height: 30))
+        let neighbour = I(label: "", frame: CGRect(x: 2306, y: 0, width: 21, height: 30))
+        let shifted = I(label: "", frame: CGRect(x: 2370, y: 0, width: 26, height: 30))   // clock reflow
+        XCTAssertEqual(AxTrayMerge.resolvePressTarget(index: 0, recorded: rec, candidates: [neighbour, shifted]), 1)
+        XCTAssertNil(AxTrayMerge.resolvePressTarget(index: 0, recorded: rec, candidates: [neighbour]))
+    }
+
+    func testPressTargetFailsClosedWithoutARecordOrOnAnOutOfRangeIndex() {
+        let rec = I(label: "Weather", frame: CGRect(x: 1876, y: 0, width: 52, height: 30))
+        XCTAssertNil(AxTrayMerge.resolvePressTarget(index: 0, recorded: nil, candidates: [rec]))
+        XCTAssertNil(AxTrayMerge.resolvePressTarget(index: -1, recorded: rec, candidates: []))
+        XCTAssertNil(AxTrayMerge.resolvePressTarget(index: 5, recorded: rec, candidates: [
+            I(label: "Other", frame: CGRect(x: 0, y: 0, width: 20, height: 30))]))
+    }
+
+    func testPressActionOrderFollowsTheButton() {
+        XCTAssertEqual(AxTrayMerge.pressActions(rightClick: false), ["AXPress", "AXShowMenu"])
+        XCTAssertEqual(AxTrayMerge.pressActions(rightClick: true), ["AXShowMenu", "AXPress"])
+    }
 }

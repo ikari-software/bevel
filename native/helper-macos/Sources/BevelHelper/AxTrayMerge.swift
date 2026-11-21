@@ -52,6 +52,40 @@ enum AxTrayMerge {
     /// that parses a window number (capture, move, the self-test) skips AX items without a special case.
     static func itemID(_ a: AxItem) -> String { "ax:\(a.pid):\(a.index)" }
 
+    /// What the tray recorded about an AX item at enumeration: enough to recognise it again at click time.
+    struct Identity: Equatable {
+        let label: String
+        let frame: CGRect
+    }
+
+    /// Centre slack when an item has no label and only its position identifies it. A seconds clock
+    /// reflows its neighbours by a few points; real neighbours sit at least ~17 pt apart.
+    static let identityTolerance: CGFloat = 12
+
+    /// Which of an app's current AX extras is the item the user clicked (review 2026-11-21). The id is
+    /// positional, so after the app adds, removes or reorders an extra, `index` may name a different
+    /// item. Keep the index when it still names the recorded item; otherwise follow the item by label
+    /// (or, unlabelled, by position); fail closed rather than press something the user didn't see.
+    static func resolvePressTarget(index: Int, recorded: Identity?, candidates: [Identity]) -> Int? {
+        guard let rec = recorded else { return nil }
+        func distance(_ c: Identity) -> CGFloat {
+            hypot(c.frame.midX - rec.frame.midX, c.frame.midY - rec.frame.midY)
+        }
+        func matches(_ c: Identity) -> Bool {
+            c.label == rec.label && (!rec.label.isEmpty || distance(c) <= identityTolerance)
+        }
+        if candidates.indices.contains(index), matches(candidates[index]) { return index }
+        let m = candidates.indices.filter { matches(candidates[$0]) }
+        if m.count == 1 { return m[0] }
+        let near = m.filter { distance(candidates[$0]) <= identityTolerance }
+        return near.count == 1 ? near[0] : nil
+    }
+
+    /// AX actions to try, in order: a right click wants the menu first, a left click the press.
+    static func pressActions(rightClick: Bool) -> [String] {
+        rightClick ? ["AXShowMenu", "AXPress"] : ["AXPress", "AXShowMenu"]
+    }
+
     enum ClickRoute: Equatable {
         /// An Accessibility-only item: press its element. It has no window, so the window-based parking
         /// (Ice's self-addressed move) cannot apply whatever `park` says.
