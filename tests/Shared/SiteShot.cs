@@ -73,9 +73,22 @@ public static class SiteShot
     public static WriteableBitmap CaptureSettled(Window window, Func<WriteableBitmap, bool>? ready = null,
         TimeSpan? timeout = null, string? what = null)
     {
+        if (TryCaptureSettled(window, ready, timeout ?? TimeSpan.FromSeconds(10), out var last) is { } settled)
+            return settled;
+        var name = what ?? window.Title ?? "window";
+        throw new InvalidOperationException(last is null
+            ? $"{name}: no frame became ready within the timeout"
+            : $"{name}: the frame never settled (kept changing) within the timeout");
+    }
+
+    /// <summary>The settle loop: the settled frame, or null on timeout with <paramref name="last"/> set to the
+    /// last ready frame seen (null if none was).</summary>
+    private static WriteableBitmap? TryCaptureSettled(Window window, Func<WriteableBitmap, bool>? ready,
+        TimeSpan timeout, out WriteableBitmap? last)
+    {
         byte[]? previous = null;
-        WriteableBitmap? last = null;
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+        last = null;
+        var deadline = DateTime.UtcNow + timeout;
 
         while (DateTime.UtcNow < deadline)
         {
@@ -96,28 +109,17 @@ public static class SiteShot
             }
             Thread.Sleep(15);
         }
-
-        var name = what ?? window.Title ?? "window";
-        throw new InvalidOperationException(last is null
-            ? $"{name}: no frame became ready within the timeout"
-            : $"{name}: the frame never settled (kept changing) within the timeout");
+        return null;
     }
 
     /// <summary>
-    /// <see cref="CaptureSettled"/> for <see cref="Save"/>, which keeps its old contract: a frame that never
-    /// settles is still saved (the shot is then reported by the site's drift check, not lost), and only a
-    /// window that never rendered at all throws.
+    /// The settle loop for <see cref="Save"/>, which keeps its old contract: a frame that never settles is
+    /// still saved at the last size seen (the shot is then reported by the site's drift check, not lost), and
+    /// only a window that never rendered at all throws.
     /// </summary>
     private static PixelSize WaitForStableFrame(Window window, string path)
     {
-        try
-        {
-            return CaptureSettled(window, timeout: TimeSpan.FromSeconds(5), what: path).PixelSize;
-        }
-        catch (InvalidOperationException)
-        {
-            if (window.CaptureRenderedFrame() is { } frame) return frame.PixelSize;
-            throw new InvalidOperationException($"nothing rendered for {path}");
-        }
+        var settled = TryCaptureSettled(window, ready: null, TimeSpan.FromSeconds(5), out var last);
+        return (settled ?? last)?.PixelSize ?? throw new InvalidOperationException($"nothing rendered for {path}");
     }
 }
