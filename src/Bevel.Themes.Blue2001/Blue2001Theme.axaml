@@ -838,7 +838,7 @@
                         <Border Name="Face" Background="{TemplateBinding Background}"
                                 BorderBrush="{DynamicResource Blue2001.Brush.StartBorder}" BorderThickness="1"
                                 CornerRadius="0,11,11,0" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter Content="{TemplateBinding Content}"
+                            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
                                               HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>

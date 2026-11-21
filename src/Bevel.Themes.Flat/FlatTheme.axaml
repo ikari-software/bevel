@@ -380,7 +380,7 @@
       </ControlTheme>
       <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button">
         <Setter Property="Foreground" Value="#1A202C"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Background" Value="{DynamicResource Flat.Brush.Start}"/>
-        <Setter Property="Template"><ControlTemplate TargetType="Button"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="0" Padding="{TemplateBinding Padding}"><ContentPresenter Content="{TemplateBinding Content}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></ControlTemplate></Setter>
+        <Setter Property="Template"><ControlTemplate TargetType="Button"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource Flat.Brush.Border}" BorderThickness="1" CornerRadius="0" Padding="{TemplateBinding Padding}"><ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></ControlTemplate></Setter>
         <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.StartHover}"/><Setter Property="BorderBrush" Value="#3570D6"/></Style>
         <Style Selector="^:pressed /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.StartPressed}"/><Setter Property="BorderBrush" Value="#2458B8"/></Style>
       </ControlTheme>
