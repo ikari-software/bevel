@@ -236,8 +236,8 @@ public sealed class ItemViewLayoutTests
         Assert.False(view.SelectedItems.Single().ShowFullName);
     }
 
-    /// <summary>A point inside the revealed label's 2 px left padding (highlight fill, never a glyph),
-    /// on its 4th line, which lies over the next row's cell in Thumbnails.</summary>
+    /// <summary>A point inside the revealed label's 2 px left padding on its 4th line, which lies over the
+    /// next row's cell in Thumbnails (for hit-testing: it is inside item 5's container rect).</summary>
     static Point PaddingOnFourthLine(ItemView view, Visual relativeTo)
     {
         var label = Label(view, 0);
@@ -250,11 +250,23 @@ public sealed class ItemViewLayoutTests
     public void Revealed_name_paints_over_the_row_below()
     {
         var (view, w) = FocusedIcons(ViewMode.Thumbnails, 10);   // 5 per row: item 5 sits under item 0
-        Assert.True(Label(view, 0).TextLayout.TextLines.Count >= 4);
-        var p = PaddingOnFourthLine(view, w);
-        var below = InScroller(view, Container(view, 5));
-        var pInScroller = PaddingOnFourthLine(view, view.ItemsScroller);
-        Assert.True(below.Contains(pInScroller), $"sample {pInScroller} should lie over the next row {below}");
+        var label = Label(view, 0);
+        var lines = label.TextLayout.TextLines;
+        Assert.True(lines.Count >= 4);
+
+        // Sample the highlight fill to the LEFT of the short, centred last line (no glyph there), at a
+        // spot that lies over the next row's opaque thumbnail frame. Without the ZIndex binding the
+        // next row paints its frame over the revealed name there.
+        var last = lines[^1];
+        double lastTop = 0;
+        for (int i = 0; i < lines.Count - 1; i++) lastTop += lines[i].Height;
+        double lineStart = (label.Bounds.Width - last.WidthIncludingTrailingWhitespace) / 2;
+        var under = ThumbFrame(view, 5);
+        var underInLabel = new Rect(under.TranslatePoint(new Point(0, 0), label)!.Value, under.Bounds.Size).Deflate(2);
+        var sampleInLabel = new Point(underInLabel.X + 1, lastTop + last.Height / 2);
+        Assert.True(sampleInLabel.X < lineStart - 1, $"sample x {sampleInLabel.X} must be left of the last line's text ({lineStart})");
+        Assert.True(underInLabel.Contains(sampleInLabel), $"sample {sampleInLabel} must lie over the next row's frame {underInLabel}");
+        var p = label.TranslatePoint(sampleInLabel, w)!.Value;
 
         var frame = w.CaptureRenderedFrame()!;
         var expected = ((ISolidColorBrush)Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushHighlight)!).Color;
@@ -321,6 +333,32 @@ public sealed class ItemViewLayoutTests
         view.AddItems(Nodes(200, "b"));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, view.ItemsScroller.Offset.X);
+    }
+
+    // ── Thumbnails: the frame holds only the picture (owner feedback on bevel-m9jy) ──
+
+    /// <summary>The framed box around the thumbnail picture in the container at <paramref name="index"/>.</summary>
+    static Border ThumbFrame(ItemView view, int index)
+        => Container(view, index).GetVisualDescendants().OfType<Border>().First(b => b.BorderThickness == new Thickness(1));
+
+    [AvaloniaFact]
+    public void Thumbnail_caption_sits_below_the_frame_not_inside_it()
+    {
+        var (view, _) = Show(ViewMode.Thumbnails, 600, 400, items: new[] { Node("photo.jpg") });
+        var c = Container(view, 0);
+        var frame = ThumbFrame(view, 0);
+        Assert.Null(frame.GetVisualDescendants().OfType<NameLabel>().FirstOrDefault());
+        double frameBottom = frame.TranslatePoint(new Point(0, frame.Bounds.Height), c)!.Value.Y;
+        double labelTop = Label(view, 0).TranslatePoint(new Point(0, 0), c)!.Value.Y;
+        Assert.True(labelTop >= frameBottom, $"caption top {labelTop} is inside the frame (bottom {frameBottom})");
+    }
+
+    [AvaloniaFact]
+    public void Thumbnail_frame_uses_the_soft_shadow_line_not_the_window_frame()
+    {
+        var (view, _) = Show(ViewMode.Thumbnails, 600, 400, items: new[] { Node("photo.jpg") });
+        var expected = Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushButtonShadow);
+        Assert.Same(expected, ThumbFrame(view, 0).BorderBrush);
     }
 }
 

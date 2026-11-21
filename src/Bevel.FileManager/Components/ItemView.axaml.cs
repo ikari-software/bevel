@@ -306,7 +306,7 @@ public partial class ItemView : UserControl
         ViewMode.LargeIcons => new Size(80, 72),     // 4 margin + 32 icon + 2 spacing + 30 (two text lines) + 4 margin
         ViewMode.SmallIcons => new Size(180, 20),
         ViewMode.List => new Size(180, 18),
-        ViewMode.Thumbnails => new Size(120, 142),   // 7 (margin 2, border 1, padding 4) + 96 + 2 + 30 + 7
+        ViewMode.Thumbnails => new Size(120, 142),   // 2 margin + 106 frame (1 + 4 + 96 + 4 + 1) + 2 + 30 caption + 2 margin
         _ => new Size(double.NaN, 22),   // Details
     };
 
@@ -450,14 +450,16 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> ThumbTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var b = new Border { BorderThickness = new(1), Padding = new(4), Margin = new(2) };
-        b[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
-        b[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindowFrame);
-        var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 96));
+        // The frame holds only the picture; the caption sits under it, outside the box (Explorer's
+        // thumbnail view). The line is the soft ButtonShadow token: WindowFrame (black in most schemes)
+        // drew every tile as a hard box.
+        var frame = new Border { BorderThickness = new(1), Padding = new(4), Child = GlyphIcon.For(vm.IconKey, 96) };
+        frame[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
+        frame[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushButtonShadow);
+        var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(2) };
+        s.Children.Add(frame);
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
-        b.Child = s;
-        return Row(b);
+        return Row(s);
     });
 
     // ── Rebuild ───────────────────────────────────────────────────────
