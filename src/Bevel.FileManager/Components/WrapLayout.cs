@@ -47,4 +47,40 @@ internal readonly record struct WrapLayout(int Count, int PerLine, int Lines, do
         if (rtl) x = finalWidth - ItemWidth - x;
         return new Rect(x, y, ItemWidth, ItemHeight);
     }
+
+    /// <summary>One item per row, for Details (rows of <paramref name="rowHeight"/> across
+    /// <paramref name="width"/>): Up/Down move a row, Left/Right move one item.</summary>
+    public static WrapLayout SingleColumn(int count, double width, double rowHeight)
+        => new(count, 1, count, width, rowHeight, Horizontal: true);
+
+    /// <summary>Where an arrow key goes from <paramref name="index"/>. <paramref name="dx"/>/<paramref name="dy"/>
+    /// are the arrow's VISUAL direction (-1, 0 or 1; exactly one non-zero), so under
+    /// <paramref name="rtl"/> Right moves toward reading-start (bevel-3cd). Moving along the flow
+    /// continues across line ends (Down at the foot of a List column goes to the top of the next);
+    /// moving across lines keeps the position in the line, lands on the last item when the next line
+    /// is shorter, and stays put at the edges (Explorer behaviour: no clamping to item 0 or the end).</summary>
+    public int Move(int index, int dx, int dy, bool rtl)
+    {
+        int ahead = rtl ? -dx : dx;
+        int along = Horizontal ? ahead : dy;
+        int across = Horizontal ? dy : ahead;
+
+        if (along != 0)
+        {
+            int t = index + along;
+            return t >= 0 && t < Count ? t : index;
+        }
+        if (across != 0)
+        {
+            int t = index + across * PerLine;
+            if (t >= 0 && t < Count) return t;
+            if (across > 0 && index / PerLine < Lines - 1) return Count - 1;   // shorter last line
+        }
+        return index;
+    }
+
+    /// <summary>Items in one full <paramref name="viewport"/> along the scrolling axis (PageUp/PageDown):
+    /// whole rows for horizontal flow, whole columns for vertical flow, at least one line.</summary>
+    public int PageSize(Size viewport)
+        => PerLine * Math.Max(1, (int)(Horizontal ? viewport.Height / ItemHeight : viewport.Width / ItemWidth));
 }

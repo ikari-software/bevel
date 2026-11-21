@@ -84,6 +84,13 @@ public sealed class ItemViewLayoutTests
         var r = InScroller(view, Container(view, 0));
         Assert.Equal(new Point(0, 0), r.Position);
     }
+
+    [AvaloniaFact]
+    public void Details_rows_are_the_cell_height()
+    {
+        var (view, _) = Show(ViewMode.Details, 600, 400, items: Nodes(3));
+        Assert.Equal(ItemView.CellSize(ViewMode.Details).Height, Container(view, 0).Bounds.Height);
+    }
 }
 
 file sealed class LayoutTestNode : IVfsNode

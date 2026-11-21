@@ -65,4 +65,55 @@ public sealed class WrapLayoutTests
         Assert.Equal(new Rect(620, 0, 180, 20), l.RectFor(0, 800, rtl: true));
         Assert.Equal(new Rect(440, 20, 180, 20), l.RectFor(5, 800, rtl: true));
     }
+
+    // bevel-0esz: arrows are visual. In vertical flow (List) Right crosses to the next column and
+    // Down moves one item; past the last item a move stays put.
+    [Fact]
+    public void Vertical_flow_right_moves_one_column_and_down_moves_one_item()
+    {
+        var l = WrapLayout.Compute(30, 180, 180, 18, horizontal: false);
+        Assert.Equal(10, l.PerLine);
+        Assert.Equal(10, l.Move(0, 1, 0, rtl: false));
+        Assert.Equal(1, l.Move(0, 0, 1, rtl: false));
+        Assert.Equal(0, l.Move(0, -1, 0, rtl: false));
+        Assert.Equal(25, l.Move(25, 1, 0, rtl: false));
+        Assert.Equal(25, l.Move(15, 1, 0, rtl: false));
+
+        var shortLast = WrapLayout.Compute(27, 180, 180, 18, horizontal: false);
+        Assert.Equal(26, shortLast.Move(18, 1, 0, rtl: false));   // next column exists but is shorter
+
+        Assert.Equal(10, l.Move(0, -1, 0, rtl: true));
+        Assert.Equal(0, l.Move(0, 1, 0, rtl: true));
+    }
+
+    [Fact]
+    public void Horizontal_flow_up_in_the_first_row_and_down_in_the_last_row_stay_put()
+    {
+        var l = WrapLayout.Compute(10, 320, 80, 60, horizontal: true);   // 4 per row
+        Assert.Equal(1, l.Move(1, 0, -1, rtl: false));
+        Assert.Equal(9, l.Move(9, 0, 1, rtl: false));
+        Assert.Equal(9, l.Move(5, 0, 1, rtl: false));
+        Assert.Equal(6, l.Move(2, 0, 1, rtl: false));
+    }
+
+    [Fact]
+    public void PageSize_is_the_items_in_one_viewport_along_the_scrolling_axis()
+    {
+        var icons = WrapLayout.Compute(100, 320, 80, 60, horizontal: true);   // 4 per row
+        Assert.Equal(4 * 5, icons.PageSize(new Size(320, 300)));
+        var list = WrapLayout.Compute(100, 180, 180, 18, horizontal: false);  // 10 per column
+        Assert.Equal(10 * 3, list.PageSize(new Size(600, 180)));
+        Assert.Equal(10, list.PageSize(new Size(50, 180)));                    // at least one line
+    }
+
+    [Fact]
+    public void SingleColumn_is_one_item_per_row()
+    {
+        var l = WrapLayout.SingleColumn(5, 400, 22);
+        Assert.Equal(1, l.PerLine);
+        Assert.Equal(5, l.Lines);
+        Assert.Equal(new Rect(0, 44, 400, 22), l.RectFor(2, 400, rtl: false));
+        Assert.Equal(3, l.Move(2, 0, 1, rtl: false));
+        Assert.Equal(3, l.Move(2, 1, 0, rtl: false));   // Details keeps Left/Right = ±1 item
+    }
 }

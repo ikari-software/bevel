@@ -212,12 +212,12 @@ public partial class ItemView : UserControl
                 break;
             case ViewMode.LargeIcons:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(80, 60, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = LargeIconTpl;
                 break;
             case ViewMode.SmallIcons:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(180, 20, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = SmallIconTpl;
                 break;
             case ViewMode.List:
@@ -225,12 +225,12 @@ public partial class ItemView : UserControl
                 // Height is constrained (no vertical scroll) so it wraps into columns and the
                 // overflow scrolls horizontally — the classic Filer "List" view.
                 SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Disabled);
-                ItemsPresenter.ItemsPanel = Wrap(180, 18, Orientation.Vertical);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Vertical);
                 ItemsPresenter.ItemTemplate = ListTpl;
                 break;
             case ViewMode.Thumbnails:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(120, 120, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = ThumbTpl;
                 break;
         }
@@ -246,8 +246,21 @@ public partial class ItemView : UserControl
         ItemsScroller.VerticalScrollBarVisibility = vertical;
     }
 
-    private static FuncTemplate<Panel> Wrap(double w, double h, Orientation flow)
-        => new(() => new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, Orientation = flow });
+    private static FuncTemplate<Panel> Wrap(Size cell, Orientation flow)
+        => new(() => new VirtualizingWrapPanel { ItemWidth = cell.Width, ItemHeight = cell.Height, Orientation = flow });
+
+    /// <summary>The cell of each view mode: the ONLY place cell sizes are written. The wrap panels are
+    /// built from it and the Details row height comes from it; navigation and scroll-into-view read
+    /// the panel's <see cref="WrapLayout"/>, never these numbers directly. Details is one row per item
+    /// across the pane, so its width is NaN.</summary>
+    internal static Size CellSize(ViewMode mode) => mode switch
+    {
+        ViewMode.LargeIcons => new Size(80, 60),
+        ViewMode.SmallIcons => new Size(180, 20),
+        ViewMode.List => new Size(180, 18),
+        ViewMode.Thumbnails => new Size(120, 120),
+        _ => new Size(double.NaN, 22),   // Details
+    };
 
     // ── Templates ─────────────────────────────────────────────────────
 
@@ -342,9 +355,9 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         // Keep rows on the active window surface; classic details view does not add horizontal gridlines.
-        var row = new Border { Padding = new(2, 1) };
+        var row = new Border { Padding = new(2, 1) };   // 1 + 1 vertical padding around the grid
         row[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
-        var g = new Grid { Height = 20 };
+        var g = new Grid { Height = CellSize(ViewMode.Details).Height - 2 };
         g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
@@ -885,9 +898,9 @@ public partial class ItemView : UserControl
             case Key.End:
                 MoveTo(_viewModels.Count - 1, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.PageDown:
-                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) + PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) + CurrentLayout().PageSize(ItemsScroller.Viewport), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.PageUp:
-                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) - PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) - CurrentLayout().PageSize(ItemsScroller.Viewport), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.Escape:
                 ClearSel(); RaiseSelection(); e.Handled = true; break;
             default:
@@ -912,21 +925,23 @@ public partial class ItemView : UserControl
     void Navigate(Key key, bool shift)
     {
         if (_viewModels.Count == 0) return;
-        int cols = ColsPerRow();
         int cur = _lastClickIdx < 0 ? 0 : _lastClickIdx;
-        // Arrow keys are VISUAL: under RTL the layout is mirrored (index 0 sits at the visual
-        // right — VirtualizingWrapPanel), so the Right arrow moves toward reading-start, i.e.
-        // a LOWER index (bevel-3cd), exactly like classic Filer on RTL Windows.
-        int ahead = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft ? -1 : 1;
-        int next = key switch
+        // Arrow keys are VISUAL (bevel-0esz): WrapLayout.Move maps the arrow onto the view's flow, so in
+        // List (items flow down, then wrap into columns) Right/Left cross columns and Up/Down move one
+        // item, while in the icon views Up/Down cross rows. Under RTL the layout is mirrored (index 0
+        // sits at the visual right), so Right moves toward reading-start, i.e. a LOWER index (bevel-3cd),
+        // exactly like classic Filer on RTL Windows.
+        bool rtl = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        var (dx, dy) = key switch
         {
-            Key.Down  => cur + cols,   // one row down (a single row in Details/List)
-            Key.Up    => cur - cols,
-            Key.Right => cur + ahead,
-            Key.Left  => cur - ahead,
-            _         => cur,
+            Key.Right => (1, 0),
+            Key.Left  => (-1, 0),
+            Key.Down  => (0, 1),
+            Key.Up    => (0, -1),
+            _         => (0, 0),
         };
-        MoveTo(next, shift);
+        if (dx == 0 && dy == 0) return;
+        MoveTo(CurrentLayout().Move(cur, dx, dy, rtl), shift);
     }
 
     /// <summary>Move the selection cursor to <paramref name="index"/> (clamped), extending the
@@ -940,36 +955,35 @@ public partial class ItemView : UserControl
         ScrollToIndex(index);
     }
 
-    /// <summary>Columns per row for the current view (1 for the vertical Details/List views).</summary>
-    int ColsPerRow()
-    {
-        if (ViewMode is ViewMode.Details or ViewMode.List) return 1;
-        double itemW = ViewMode switch
-        {
-            ViewMode.LargeIcons => 80,
-            ViewMode.SmallIcons => 180,
-            ViewMode.Thumbnails => 120,
-            _ => 80,
-        };
-        return Math.Max(1, (int)(ItemsScroller.Bounds.Width / itemW));
-    }
+    /// <summary>The geometry of what is on screen: the wrap panel's last layout, or one row per item for
+    /// Details (a VirtualizingStackPanel).</summary>
+    internal WrapLayout CurrentLayout()
+        => ItemsPresenter.ItemsPanelRoot is VirtualizingWrapPanel p
+            ? p.Layout
+            : WrapLayout.SingleColumn(_viewModels.Count, ItemsScroller.Viewport.Width, CellSize(ViewMode.Details).Height);
 
-    int PageStep()
-    {
-        double itemH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
-        int rows = Math.Max(1, (int)(ItemsScroller.Bounds.Height / itemH));
-        return Math.Max(1, rows * ColsPerRow());
-    }
-
+    /// <summary>Scroll the minimum that reveals item <paramref name="index"/>, on the axis the view
+    /// scrolls: down for the icon views and Details, sideways for List.</summary>
     void ScrollToIndex(int index)
     {
-        int cols = ColsPerRow();
-        double rowH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
-        double y = index / cols * rowH;
-        double vpH = ItemsScroller.Viewport.Height;
+        var layout = CurrentLayout();
+        if (layout.PerLine <= 0 || ItemsPresenter.ItemsPanelRoot is not { } panel) return;
+        bool rtl = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        var r = layout.RectFor(index, panel.Bounds.Width, rtl);
+        var vp = ItemsScroller.Viewport;
         var off = ItemsScroller.Offset;
-        if (y < off.Y) ItemsScroller.Offset = new Vector(off.X, y);
-        else if (y + rowH > off.Y + vpH) ItemsScroller.Offset = new Vector(off.X, y + rowH - vpH);
+        double x = off.X, y = off.Y;
+        if (layout.Horizontal)
+        {
+            if (r.Y < off.Y) y = r.Y;
+            else if (r.Bottom > off.Y + vp.Height) y = r.Bottom - vp.Height;
+        }
+        else
+        {
+            if (r.X < off.X) x = r.X;
+            else if (r.Right > off.X + vp.Width) x = r.Right - vp.Width;
+        }
+        if (x != off.X || y != off.Y) ItemsScroller.Offset = new Vector(x, y);
     }
 
 
