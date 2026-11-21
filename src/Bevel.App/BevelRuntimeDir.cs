@@ -50,11 +50,19 @@ internal static class BevelRuntimeDir
     /// </summary>
     public static string GuardSocketPathInRuntimeDir(string path)
     {
-        var normalizedPath = Path.GetFullPath(path);
-        var normalizedRoot = Path.GetFullPath(Root);
+        var normalizedPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRoot = Path.GetFullPath(Root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        if (!normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar) &&
-            !normalizedPath.StartsWith(normalizedRoot))
+        // Use appropriate comparison: case-insensitive for Windows/macOS, ordinal otherwise.
+        // Handles paths like /tmp/bevel vs /TMP/BEVEL on case-insensitive filesystems.
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        
+        var pathStartsWithRoot = normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison) ||
+                                 normalizedPath.StartsWith(normalizedRoot, comparison);
+
+        if (!pathStartsWithRoot)
         {
             throw new InvalidOperationException(
                 $"Socket path '{path}' is outside Bevel's runtime directory '{Root}'. " +
