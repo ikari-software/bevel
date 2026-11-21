@@ -25,16 +25,22 @@ namespace Bevel.Taskbar.Tests;
 public class RenderFlatAndPastelComparisonTest
 {
     /// <summary>
-    /// Where the crops land. Defaults to the checked-in design-review set under
-    /// docs/design/flat/renders, and <c>BEVEL_FLATPASTEL_DIR</c> redirects it so site/harvest-shots.sh
-    /// can take theme-flat.png / theme-pastel.png from the same render the reviewers look at, rather
-    /// than someone hand-copying a crop into site/shots and leaving the page to drift from the skin.
+    /// Where the crops land. A plain test run writes them to a temp directory and never touches tracked
+    /// files, like every other <c>Render*</c> test (bevel-tv19). Two opt-ins:
+    /// <list type="bullet">
+    /// <item><c>BEVEL_FLATPASTEL_DIR</c>: site/harvest-shots.sh takes theme-flat.png / theme-pastel.png from
+    /// the same render the reviewers look at, at 2x (see <see cref="ForSite"/>).</item>
+    /// <item><c>BEVEL_FLATPASTEL_DOCS=1</c>: regenerate the design-review set in docs/design/flat/renders, at
+    /// 1x. Run it on macOS (glyph rasterisation is platform-specific) and look at the result before
+    /// committing it.</item>
+    /// </list>
     /// </summary>
     private static readonly string OutDir =
         Environment.GetEnvironmentVariable("BEVEL_FLATPASTEL_DIR") is { Length: > 0 } dir
             ? Path.GetFullPath(dir)
-            : Path.GetFullPath(
-                Path.Combine(AppContext.BaseDirectory, "../../../../../docs/design/flat/renders"));
+            : Environment.GetEnvironmentVariable("BEVEL_FLATPASTEL_DOCS") == "1"
+                ? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../docs/design/flat/renders"))
+                : Path.Combine(Path.GetTempPath(), "bevel-flatpastel");
 
     /// <summary>Whether this run is harvesting for the landing page rather than for design review.</summary>
     private static bool ForSite =>
@@ -199,8 +205,10 @@ public class RenderFlatAndPastelComparisonTest
         };
         window.Show();
 
-        var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window, f => f.PixelSize.Width >= 340, what: fileName);
-        frame.Save(Path.Combine(OutDir, fileName));
+        // Wait for the two-column layout (>= 340 wide), then save through the same path as every other crop,
+        // so the start menu also comes out at 2x when harvesting for the site.
+        Bevel.TestSupport.SiteShot.CaptureSettled(window, f => f.PixelSize.Width >= 340, what: fileName);
+        SaveCrop(window, fileName);
         window.Close();
     }
 
