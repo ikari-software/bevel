@@ -75,10 +75,10 @@ and CI actually executes every gate it claims (three gaps found, listed under "N
 - **Decision:** Tests never write tracked files by default (same rule as every other `Render*` test). `OutDir` precedence: `BEVEL_FLATPASTEL_DIR` (site harvest, 2x — unchanged) → else if `BEVEL_FLATPASTEL_DOCS=1` the docs dir at 1x → else `Path.Combine(Path.GetTempPath(), "bevel-flatpastel")` at 1x (create the directory). `ForSite` stays keyed on `BEVEL_FLATPASTEL_DIR` only. Route the :217 save through `SaveCrop(window, fileName)`.
 - **Test first:** non-code check — before the change `dotnet test ... --filter RenderFlatAndPastelComparisonTest` touches mtime of `docs/design/flat/renders/*.png`; after, `git status --porcelain docs/design/flat/renders` is empty and `stat -f %m` of those files is unchanged.
 - **Steps:**
-  - [ ] Change `OutDir` as decided; `Directory.CreateDirectory(OutDir)` once.
-  - [ ] Replace the direct `frame!.Save` at :217 with `SaveCrop`.
-  - [ ] Add to `docs/design/flat/look-delta.md` one line: regenerate with `BEVEL_FLATPASTEL_DOCS=1 dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderFlatAndPastelComparisonTest"` (on macOS).
-  - [ ] Run with `BEVEL_FLATPASTEL_DOCS=1` twice on macOS; confirm `git status` stays clean (proves 35ea1c0's determinism).
+  - [x] Change `OutDir` as decided; `Directory.CreateDirectory(OutDir)` once.
+  - [x] Replace the direct `frame!.Save` at :217 with `SaveCrop`. (PR #26 had already moved it to `SiteShot.CaptureSettled`; it now waits on that, then saves through `SaveCrop`.)
+  - [x] Add to `docs/design/flat/look-delta.md` one line: regenerate with `BEVEL_FLATPASTEL_DOCS=1 dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderFlatAndPastelComparisonTest"` (on macOS).
+  - [x] Run with `BEVEL_FLATPASTEL_DOCS=1` twice on macOS; confirm `git status` stays clean (proves 35ea1c0's determinism). (2026-11-21: the two runs were byte-identical to each other, but `git status` is not clean on this machine: all 12 files differ from the committed bytes while being pixel-identical, an encoder difference across OS versions. Determinism holds; the bytes are machine-dependent. See bevel-7wkc and the note in look-delta.md.)
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderFlatAndPastelComparisonTest" && git status --porcelain docs/design/flat/renders` → no output.
 - **Done when:** a plain test run leaves the tree clean and the opt-in run is byte-stable twice; then `bd close bevel-tv19 --reason "renders settled (35ea1c0) and docs writes are opt-in via BEVEL_FLATPASTEL_DOCS"`.
 
