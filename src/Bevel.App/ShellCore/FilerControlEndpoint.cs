@@ -41,10 +41,17 @@ public static class FilerControlEndpoint
 
     /// <summary>The rendezvous directory: env-published (so spawned Filers inherit it) or the default
     /// under the temp dir, co-located with the other bevel runtime sockets.</summary>
-    public static string Dir =>
-        Environment.GetEnvironmentVariable(DirEnv) is { Length: > 0 } d
-            ? d
-            : BevelRuntimeDir.FilersDir; // shared runtime root; off %TEMP% on Windows (bevel-ncfp.2)
+    public static string Dir
+    {
+        get
+        {
+            var dir = Environment.GetEnvironmentVariable(DirEnv) is { Length: > 0 } d
+                ? d
+                : BevelRuntimeDir.FilersDir;
+            BevelRuntimeDir.GuardSocketPathInRuntimeDir(dir);
+            return dir;
+        }
+    } // shared runtime root; off %TEMP% on Windows (bevel-ncfp.2)
 
     private static string TokenPath => Path.Combine(Dir, "channel.token");
 

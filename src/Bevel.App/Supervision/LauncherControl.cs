@@ -83,6 +83,7 @@ internal static class LauncherControl
     public static (string SocketPath, byte[] Nonce) CreateServerEndpoint()
     {
         var socketPath = Environment.GetEnvironmentVariable(SocketEnv) is { Length: > 0 } s ? s : DefaultSocketPath;
+        BevelRuntimeDir.GuardSocketPathInRuntimeDir(socketPath);
         var dir = Path.GetDirectoryName(socketPath);
         if (!string.IsNullOrEmpty(dir))
         {
