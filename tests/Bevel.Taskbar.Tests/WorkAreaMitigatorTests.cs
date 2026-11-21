@@ -98,10 +98,25 @@ public class WorkAreaMitigatorTests
         Assert.Equal(2, await Make(wm, new FixedClock()).MitigateOnceAsync());
     }
 
+    // The footprint of a zoom is vertical: top under the menu bar, bottom at the screen bottom. Width is
+    // irrelevant, which covers apps that zoom to a content-fitting width (Finder, Safari, TextEdit) and
+    // tiles of any proportion, wherever they sit horizontally.
+    [Theory]
+    [InlineData(0, 30, 1200, 970)]       // content-width zoom, left aligned
+    [InlineData(200, 30, 1100, 970)]     // content-width zoom, centred
+    [InlineData(1000, 30, 600, 970)]     // a third-ish tile at the right
+    [InlineData(300, 515, 700, 485)]     // a bottom tile of odd width
+    public async Task Any_width_window_spanning_the_zoom_height_is_nudged(int x, int y, int w, int h)
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(x, y, w, h)));
+        Assert.Equal(1, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(x, y, w, 970 - y), Assert.Single(wm.Repositions).Bounds);
+    }
+
     [Fact]
     public async Task A_window_dragged_to_the_middle_of_the_screen_is_still_left_alone()
     {
-        // Full width, top at the vertical midpoint, but it does not reach the screen bottom.
+        // Full width, top at the vertical midpoint, but it does not reach the screen bottom: not a zoom.
         var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 515, 1600, 300)));
         Assert.Equal(0, await Make(wm, new FixedClock()).MitigateOnceAsync());
     }
@@ -109,7 +124,6 @@ public class WorkAreaMitigatorTests
     [Theory]
     [InlineData(300, 700, 800, 400)]    // dragged partly under the bar on purpose
     [InlineData(0, 400, 1600, 600)]     // full width, but does not start under the menu bar
-    [InlineData(0, 30, 1200, 970)]      // starts top-left, but neither full width nor a half
     [InlineData(0, 453, 1920, 987)]     // the pre-warmed Filer's hidden frame (bevel-tm1n)
     public async Task Windows_not_shaped_like_a_zoom_are_left_alone(int x, int y, int w, int h)
     {

@@ -315,27 +315,22 @@ public sealed class WorkAreaMitigator : IDisposable
 
     /// <summary>
     /// bevel-u6ue: whether <paramref name="w"/> has the footprint of a zoom or a macOS tile, the only
-    /// windows this engine exists for. Horizontally it spans the full width (zoom, Fill, top/bottom
-    /// halves) or is half the width against the left or right edge (half and quarter tiles). Vertically
-    /// its top sits just under the menu bar (the top of <paramref name="zoomArea"/>), or at the middle of
-    /// the zoom area for bottom halves and quarters, AND it runs down to the screen's bottom edge. The
-    /// bottom is what makes a window a zoom: it is where an un-mitigated one ends up, because macOS
-    /// doesn't know the taskbar is there.
+    /// windows this engine exists for. The footprint is purely vertical: the top sits just under the
+    /// menu bar (the top of <paramref name="zoomArea"/>), or at the middle of the zoom area for bottom
+    /// halves and quarters, AND the bottom reaches the screen's bottom edge, which is where an
+    /// un-mitigated zoom ends up because macOS doesn't know the taskbar is there. Width and x don't
+    /// matter: apps zoom to content-fitting widths (Finder, Safari, TextEdit), and tiles come in every
+    /// proportion.
     ///
     /// Acting on ANY overlap made the engine erratic: it shrank windows the user dragged partly under
     /// the bar on purpose, and windows still opening (a pre-warmed Filer, built hidden across the band,
-    /// was snapped to 1920 wide). Neither is shaped like a zoom.
+    /// was snapped to 1920 wide). Neither spans the zoom height from one of those tops.
     /// </summary>
     internal static bool IsZoomShaped(PalRect w, PalRect zoomArea)
     {
         static bool Near(int a, int b) => Math.Abs(a - b) <= ZoomShapeTolerance;
         var top = Near(w.Y, zoomArea.Y) || Near(w.Y, zoomArea.Y + zoomArea.Height / 2);
-        if (!top || !Near(w.Y + w.Height, zoomArea.Y + zoomArea.Height)) return false;
-        var left = Near(w.X, zoomArea.X);
-        var right = Near(w.X + w.Width, zoomArea.X + zoomArea.Width);
-        // A margined half is up to ~1.5 margins narrower than half, so allow twice the slack here.
-        var half = Math.Abs(w.Width - zoomArea.Width / 2.0) <= 2 * ZoomShapeTolerance;
-        return (left && right) || (half && (left || right));
+        return top && Near(w.Y + w.Height, zoomArea.Y + zoomArea.Height);
     }
 
     private static bool Overlaps(PalRect w, PalRect band)
