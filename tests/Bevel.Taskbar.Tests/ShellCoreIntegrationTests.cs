@@ -1077,8 +1077,11 @@ public sealed class ShellCoreIntegrationTests
     }
 
 
-    /// <summary>A seed deadline for sources that never answer — long enough for several retries.</summary>
-    private static readonly TimeSpan ShortSeedDeadline = TimeSpan.FromMilliseconds(500);
+    /// <summary>A seed deadline for sources that never answer — long enough for several retries. The deadline
+    /// starts just before the FIRST attempt, so it must also outlast a cold first attempt on a loaded CI
+    /// runner (JIT, a starved thread pool): at 500 ms a macOS runner stalled long enough to make a single
+    /// call, and every "retried at least once" assertion read it as a regression (seen on PR #32).</summary>
+    private static readonly TimeSpan ShortSeedDeadline = TimeSpan.FromMilliseconds(1000);
 
     // bevel-wheq review, fix round 2: the core reports ready only after StartAsync, and the launcher restarts a
     // core that is not ready within ShellHealthMonitor.DefaultReadyTimeout (then Holds after 3). The whole
