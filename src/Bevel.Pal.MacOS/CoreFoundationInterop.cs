@@ -98,12 +98,6 @@ internal static class CoreFoundationInterop
         IntPtr allocator, IntPtr[] keys, IntPtr[] values, nint numValues,
         IntPtr keyCallBacks, IntPtr valueCallBacks);
 
-    // `type` is left as int, against the CFIndex rule above, deliberately. CFNumberType is
-    // `typedef CFIndex CFNumberType`, so pointer-sized would be correct — but unlike the nint/long and
-    // nuint/IntPtr swaps elsewhere here (identical 8-byte widths, provably no-ops), widening 4 bytes to 8
-    // is a real ABI change. It works today and the thumbnail pixel tests cover it, so changing it is a
-    // behaviour change with no demonstrated defect behind it. Tracked separately rather than smuggled
-    // into a consolidation commit.
     [DllImport(Frameworks.CoreFoundation)]
-    public static extern IntPtr CFNumberCreate(IntPtr allocator, int type, ref int value);
+    public static extern IntPtr CFNumberCreate(IntPtr allocator, nint type, ref int value);
 }
