@@ -21,7 +21,7 @@ namespace Bevel.Taskbar.Tests;
 public class RenderFileMenuBarTest
 {
     [AvaloniaFact]
-    public async Task Render_file_menubar_to_png()
+    public void Render_file_menubar_to_png()
     {
         // Render under Luna + the Purple variant — the exact condition where the bar showed submenu arrows
         // and (after the top-level fix) literal access-key underscores.
@@ -38,16 +38,12 @@ public class RenderFileMenuBarTest
         };
         DockPanel.SetDock(menuBar, Dock.Top);
         window.Show();
-        Dispatcher.UIThread.RunJobs();
-        await Task.Delay(30);
-        Dispatcher.UIThread.RunJobs();
 
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
+        var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window, what: "file menubar");
 
         var outPath = Environment.GetEnvironmentVariable("BEVEL_FILEMENU_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-filemenu.png");
-        frame!.Save(outPath);
+        frame.Save(outPath);
 
         // Don't leak the Luna/Purple state into other tests.
         Bevel.UI.Blue2001.Blue2001VariantService.Clear();
@@ -120,11 +116,7 @@ public class RenderFileMenuBarTest
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
-            for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-            }
+            Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
             var menu = new StartMenu(null, null, programs: vm);
             var button = new Button { Content = "Start" };
@@ -144,20 +136,12 @@ public class RenderFileMenuBarTest
                 Content = content,
             };
             window.Show();
-            // Settle the layout AND the capture: async icon loads + the two-column layout selection can
-            // leave the first frame incomplete, and on the suite's shared headless surface under load
-            // CaptureRenderedFrame can transiently return null — retry until we get a real frame (flaky).
-            Avalonia.Media.Imaging.WriteableBitmap? frame = null;
-            for (var i = 0; i < 80 && (frame is null || window.Bounds.Width < 340); i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-                frame = window.CaptureRenderedFrame();
-            }
-            Assert.NotNull(frame);
+            // The two-column Luna layout is >= 340 wide; a narrower frame is the menu before it settled.
+            var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window, f => f.PixelSize.Width >= 340,
+                what: "luna start menu (purple)");
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_PURPLE_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-purple.png");
-            frame!.Save(outPath);
+            frame.Save(outPath);
         }
         finally
         {

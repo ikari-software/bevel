@@ -39,9 +39,8 @@ public class RenderStartMenuTest
         window.MouseMove(new Point(110, 34));
         Dispatcher.UIThread.RunJobs();
 
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
-        Assert.True(frame!.PixelSize.Width > 120, $"menu too narrow: {frame.PixelSize}");
+        var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window, what: "classic start menu");
+        Assert.True(frame.PixelSize.Width > 120, $"menu too narrow: {frame.PixelSize}");
 
         var outPath = Environment.GetEnvironmentVariable("BEVEL_RENDER_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "bevel-startmenu-render.png");
@@ -57,7 +56,7 @@ public class RenderStartMenuTest
     /// so this drives the real container realization and captures pixels.
     /// </summary>
     [AvaloniaFact]
-    public async Task Bound_programs_cascade_realizes_containers_from_the_view_model()
+    public void Bound_programs_cascade_realizes_containers_from_the_view_model()
     {
         var appEnv = new StubAppEnvironment(
             new InstalledApp("com.a", "Alpha", null),
@@ -66,11 +65,7 @@ public class RenderStartMenuTest
         model.Start(); // off-thread enumerate → reconcile onto the UI thread
         var vm = new StartMenuViewModel(model);
 
-        for (var i = 0; i < 50 && model.Programs.Count < 2; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(10);
-        }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");
         Assert.Equal(2, model.Programs.Count);
 
         var menu = new StartMenu(null, null, programs: vm);
@@ -103,7 +98,6 @@ public class RenderStartMenuTest
 
         Assert.Equal(["Alpha", "Beta"], headers);
 
-        var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
+        Bevel.TestSupport.SiteShot.CaptureSettled(window, what: "start menu headers");
     }
 }

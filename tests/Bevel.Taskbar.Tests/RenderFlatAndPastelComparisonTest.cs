@@ -176,11 +176,7 @@ public class RenderFlatAndPastelComparisonTest
         using var model = new ShellModel(null, appEnv, new HeroIconProvider(), usage: TestUsage.Scratch());
         model.Start();
         var vm = new StartMenuViewModel(model);
-        for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(10);
-        }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
         var menu = new StartMenu(null, null, programs: vm);
         var button = new Button { Content = "Start" };
@@ -203,18 +199,8 @@ public class RenderFlatAndPastelComparisonTest
         };
         window.Show();
 
-        Avalonia.Media.Imaging.WriteableBitmap? frame = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            Dispatcher.UIThread.RunJobs();
-            frame = window.CaptureRenderedFrame();
-            if (frame is not null && frame.PixelSize.Width >= 340) break;
-            await Task.Delay(10);
-        }
-
-        Assert.NotNull(frame);
-        frame!.Save(Path.Combine(OutDir, fileName));
+        var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window, f => f.PixelSize.Width >= 340, what: fileName);
+        frame.Save(Path.Combine(OutDir, fileName));
         window.Close();
     }
 

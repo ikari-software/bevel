@@ -37,11 +37,7 @@ public class RenderStartMenuSearchTest
                 new InstalledApp("com.term", "Terminal", null, "Developer Tools"));
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
-            for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-            }
+            Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
             var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));
             var button = new Button { Content = "Start" };
@@ -80,17 +76,6 @@ public class RenderStartMenuSearchTest
             // assemblies run in parallel, so the first frame can still be pending) even though the strip
             // above already has real bounds — the same flake class as RenderBlue2001StartMenuTest, fixed the
             // same way: poll the FRAME itself on a time-based deadline, not the window's bounds.
-            Avalonia.Media.Imaging.WriteableBitmap? frame = null;
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-            while (DateTime.UtcNow < deadline)
-            {
-                Dispatcher.UIThread.RunJobs();
-                frame = window.CaptureRenderedFrame();
-                if (frame is not null && frame.PixelSize.Width > 0) break;
-                await Task.Delay(10);
-            }
-
-            Assert.NotNull(frame);
             var outPath = Environment.GetEnvironmentVariable("BEVEL_RENDER_OUT")
                           ?? Path.Combine(Path.GetTempPath(), $"bevel-startmenu-search-{theme}.png");
             Bevel.TestSupport.SiteShot.Save(window, outPath);
