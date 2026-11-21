@@ -124,8 +124,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func forwardClickWithReveal(
         itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32,
         park: Bool) -> Bool {
-        if park { return revealParkAndClick(itemID: itemID, button: button, modifiers: modifiers) }
-        return forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+        switch AxTrayMerge.clickRoute(itemID: itemID, park: park) {
+        case .parkWindow: return revealParkAndClick(itemID: itemID, button: button, modifiers: modifiers)
+        case .axItem, .window: return forwardClick(itemID: itemID, button: button, modifiers: modifiers)
+        }
     }
 
     /// Single-item reveal via Ice's SELF-ADDRESSED-event move (bevel-6fin; studied from jordanbaird/Ice).
@@ -413,8 +415,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// crucially, works for the Control-Center-hosted items on macOS 26 that ignore synthetic mouse
     /// clicks. Falls back to CGEvent synthesis for older OS / non-CC items. Needs Accessibility.
     func forwardClick(itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
-        if let ax = AxTrayMerge.parse(itemID: itemID) {   // bevel-lezo: an AX-only item has no window
-            return pressAxExtra(pid: ax.pid, index: ax.index, itemID: itemID, rightClick: button == .right)
+        if case let .axItem(pid, index) = AxTrayMerge.clickRoute(itemID: itemID, park: false) {
+            // bevel-lezo: an AX-only item has no window
+            return pressAxExtra(pid: pid, index: index, itemID: itemID, button: button, modifiers: modifiers)
         }
         let parts = itemID.split(separator: ":")
         guard parts.count == 2, let expectedPID = Int(parts[0]), let windowNumber = Int(parts[1]) else { return false }
@@ -493,19 +496,31 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Clicks an AX-only item by pressing its element directly (it has no window to target). Re-resolves
     /// the element from pid + index and checks it is still in the menu-bar band, so a vanished or
     /// reordered item cannot press something else.
-    private func pressAxExtra(pid: pid_t, index: Int, itemID: String, rightClick: Bool) -> Bool {
+    ///
+    /// Same order as the window path: AX press first, then a real click at the item. The click matters on
+    /// macOS 27, where MenuBarAgent's system items (Wi-Fi, Sound, Control Center, clock) are SwiftUI
+    /// hosting views with no AX actions at all; measured: a click at the item opens Control Center.
+    private func pressAxExtra(pid: pid_t, index: Int, itemID: String,
+                              button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
         guard AXIsProcessTrusted() else { return false }
         let extras = axExtras(pid: pid)
-        guard index >= 0, index < extras.count, AxTrayMerge.isInMenuBarBand(axFrame(extras[index])) else { return false }
+        guard index >= 0, index < extras.count else { return false }
         let el = extras[index]
-        let actions: [CFString] = rightClick
+        let frame = axFrame(el)
+        guard AxTrayMerge.isInMenuBarBand(frame) else { return false }
+        let actions: [CFString] = button == .right
             ? ["AXShowMenu" as CFString, kAXPressAction as CFString]
             : [kAXPressAction as CFString, "AXShowMenu" as CFString]
         for action in actions where AXUIElementPerformAction(el, action) == .success {
             dbg("AX-pressed extra \(itemID) via \(action)")
             return true
         }
-        return false
+        let displays = NSScreen.screens.compactMap { s -> CGRect? in
+            guard let n = s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
+            return CGDisplayBounds(CGDirectDisplayID(n.uint32Value))
+        }
+        guard let point = AxTrayMerge.fallbackClickPoint(frame: frame, displays: displays) else { return false }
+        return clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
     }
 
     /// Finds the accessibility element at the item's screen point and performs its press/show-menu

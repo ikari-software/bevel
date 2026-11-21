@@ -87,4 +87,30 @@ final class AxTrayMergeTests: XCTestCase {
         XCTAssertTrue(svc.isDenied(windowName: "Ice Bar", ownerName: "Ice"))
         XCTAssertFalse(svc.isDenied(windowName: "", ownerName: "Bitwarden"))
     }
+
+    // Clicks (measured live on 27.3, 2026-11-21): with menu-bar consolidation ON every tray click came in
+    // with park=true, and the park route only understands window ids, so every AX item failed silently.
+    // AX items must route to the AX press path whatever `park` says: they have no window to relocate.
+    func testAxItemsRouteToAxPressEvenWhenParking() {
+        XCTAssertEqual(AxTrayMerge.clickRoute(itemID: "ax:1155:3", park: true), .axItem(pid: 1155, index: 3))
+        XCTAssertEqual(AxTrayMerge.clickRoute(itemID: "ax:1155:3", park: false), .axItem(pid: 1155, index: 3))
+    }
+
+    func testWindowItemsKeepTheirRoutes() {
+        XCTAssertEqual(AxTrayMerge.clickRoute(itemID: "394:101", park: true), .parkWindow)
+        XCTAssertEqual(AxTrayMerge.clickRoute(itemID: "394:101", park: false), .window)
+    }
+
+    // MenuBarAgent's system items (Wi-Fi, Sound, Control Center, clock) are SwiftUI hosting views with
+    // NO AX actions on 27, so a failed press must fall back to a real click at the item, but only when
+    // the item is actually on the visible bar: a parked (off-screen) item must not get a click at a
+    // point that is now something else.
+    func testSyntheticClickFallbackOnlyForVisibleItems() {
+        let displays = [CGRect(x: 0, y: 0, width: 2560, height: 1440)]
+        XCTAssertEqual(AxTrayMerge.fallbackClickPoint(frame: CGRect(x: 2367, y: 0, width: 26, height: 30), displays: displays),
+                       CGPoint(x: 2380, y: 15))
+        XCTAssertNil(AxTrayMerge.fallbackClickPoint(frame: CGRect(x: -400, y: 0, width: 26, height: 30), displays: displays))
+        XCTAssertNil(AxTrayMerge.fallbackClickPoint(frame: CGRect(x: 0, y: 0, width: 5002, height: 30), displays: displays),
+                     "the 5002 px control items are not clickable glyphs")
+    }
 }

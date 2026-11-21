@@ -52,6 +52,30 @@ enum AxTrayMerge {
     /// that parses a window number (capture, move, the self-test) skips AX items without a special case.
     static func itemID(_ a: AxItem) -> String { "ax:\(a.pid):\(a.index)" }
 
+    enum ClickRoute: Equatable {
+        /// An Accessibility-only item: press its element. It has no window, so the window-based parking
+        /// (Ice's self-addressed move) cannot apply whatever `park` says.
+        case axItem(pid: Int32, index: Int)
+        /// A window-backed item while consolidated: relocate it to a visible slot, then press.
+        case parkWindow
+        /// A window-backed item on the visible bar: press it where it is.
+        case window
+    }
+
+    static func clickRoute(itemID: String, park: Bool) -> ClickRoute {
+        if let ax = parse(itemID: itemID) { return .axItem(pid: ax.pid, index: ax.index) }
+        return park ? .parkWindow : .window
+    }
+
+    /// Where a synthesized click may land for an item whose element offers no AX action (MenuBarAgent's
+    /// hosting views on 27): its centre, but only when the item is a real glyph on a visible display. An
+    /// item parked off-screen has no visible point, and clicking where it used to be would hit something else.
+    static func fallbackClickPoint(frame: CGRect, displays: [CGRect]) -> CGPoint? {
+        guard isInMenuBarBand(frame) else { return nil }
+        let centre = CGPoint(x: frame.midX, y: frame.midY)
+        return displays.contains { $0.contains(centre) } ? centre : nil
+    }
+
     static func parse(itemID: String) -> (pid: Int32, index: Int)? {
         let parts = itemID.split(separator: ":")
         guard parts.count == 3, parts[0] == "ax", let pid = Int32(parts[1]), let index = Int(parts[2]) else { return nil }
