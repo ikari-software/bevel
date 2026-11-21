@@ -37,7 +37,12 @@ public interface IWindowManager
         await RestoreAsync(id, ct).ConfigureAwait(false);
         await ActivateAsync(id, ct).ConfigureAwait(false);
     }
-    Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default);
+    /// <summary>Moves/resizes a window to <paramref name="bounds"/>. With <paramref name="expected"/>, it is
+    /// a compare-and-set (bevel-tm1n): the move lands only if the window's LIVE frame still matches
+    /// <paramref name="expected"/> (<see cref="FrameGuard"/>), and is otherwise a no-op, exactly like a
+    /// window that has gone. A caller that computed <paramref name="bounds"/> from a snapshot passes the
+    /// snapshot's frame, so an out-of-date snapshot can never stamp its stale x/y/width onto the window.</summary>
+    Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default);
 
     /// <summary>Capture a PNG thumbnail of a window's current pixels for hover previews (bevel-cust).
     /// Null when unavailable (no Screen Recording permission, window gone, or unsupported PAL).

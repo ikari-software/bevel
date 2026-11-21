@@ -574,11 +574,24 @@ public nonisolated struct Bevel_Helper_V1_RepositionRequest: Sendable {
   /// Clears the value of `target`. Subsequent reads from it will return its default value.
   public mutating func clearTarget() {self._target = nil}
 
+  /// Compare-and-set (bevel-tm1n): when set, the helper applies `target` only if the window's live
+  /// frame still matches this (FrameGuard tolerance), else answers FAILED_PRECONDITION and moves nothing.
+  /// Callers that computed `target` from a snapshot send the snapshot's frame here.
+  public var expected: Bevel_Helper_V1_PixelRect {
+    get {_expected ?? Bevel_Helper_V1_PixelRect()}
+    set {_expected = newValue}
+  }
+  /// Returns true if `expected` has been explicitly set.
+  public var hasExpected: Bool {self._expected != nil}
+  /// Clears the value of `expected`. Subsequent reads from it will return its default value.
+  public mutating func clearExpected() {self._expected = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _target: Bevel_Helper_V1_PixelRect? = nil
+  fileprivate var _expected: Bevel_Helper_V1_PixelRect? = nil
 }
 
 public nonisolated struct Bevel_Helper_V1_RepositionReply: Sendable {
@@ -1409,7 +1422,7 @@ nonisolated extension Bevel_Helper_V1_TerminateAppReply: SwiftProtobuf.Message, 
 
 nonisolated extension Bevel_Helper_V1_RepositionRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RepositionRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}target\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}target\0\u{1}expected\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1419,6 +1432,7 @@ nonisolated extension Bevel_Helper_V1_RepositionRequest: SwiftProtobuf.Message, 
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._target) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._expected) }()
       default: break
       }
     }
@@ -1435,12 +1449,16 @@ nonisolated extension Bevel_Helper_V1_RepositionRequest: SwiftProtobuf.Message, 
     try { if let v = self._target {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     } }()
+    try { if let v = self._expected {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_RepositionRequest, rhs: Bevel_Helper_V1_RepositionRequest) -> Bool {
     if lhs.windowID != rhs.windowID {return false}
     if lhs._target != rhs._target {return false}
+    if lhs._expected != rhs._expected {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

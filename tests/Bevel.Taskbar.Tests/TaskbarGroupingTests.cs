@@ -176,7 +176,7 @@ public class TaskbarGroupingTests
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) { Restored.Add(id.Value); return Task.CompletedTask; }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) { Closed.Add(id.Value); return Task.CompletedTask; }
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
         public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
@@ -193,7 +193,7 @@ public class TaskbarGroupingTests
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
         public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }

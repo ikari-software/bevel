@@ -180,17 +180,26 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         }
     }
 
-    public async Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+    public async Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+        CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
         try
         {
             var ws = GetWindowClient();
-            await ws.RepositionAsync(new RepositionRequest
+            var request = new RepositionRequest
             {
                 WindowId = id.Value,
                 Target = new PixelRect { X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height },
-            }, headers: AuthHeader(), cancellationToken: ct);
+            };
+            if (expected is { } e)   // compare-and-set: the helper checks the live AX frame (bevel-tm1n)
+                request.Expected = new PixelRect { X = e.X, Y = e.Y, Width = e.Width, Height = e.Height };
+            await ws.RepositionAsync(request, headers: AuthHeader(), cancellationToken: ct);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.FailedPrecondition)
+        {
+            // The window moved since the caller's snapshot: a no-op, like a window that has gone.
+            _logger.LogDebug("Reposition skipped for {Id}: {Message}", id, ex.Message);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
         {

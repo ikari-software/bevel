@@ -162,6 +162,9 @@ public sealed record CoreCommand(
     CoreCommandKind Kind,
     string? WindowId = null,
     PalRect? Bounds = null,
+    /// <summary>Reposition only: the frame the caller computed <see cref="Bounds"/> from; the move lands
+    /// only if the window is still there (compare-and-set, bevel-tm1n).</summary>
+    PalRect? ExpectedBounds = null,
     string? AppIdOrPath = null,
     string? TrayItemId = null,
     TrayButton? TrayButton = null,

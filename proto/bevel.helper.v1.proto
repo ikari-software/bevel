@@ -254,6 +254,10 @@ message TerminateAppReply {
 message RepositionRequest {
   string window_id = 1;
   PixelRect target = 2;
+  // Compare-and-set (bevel-tm1n): when set, the helper applies `target` only if the window's live
+  // frame still matches this (FrameGuard tolerance), else answers FAILED_PRECONDITION and moves nothing.
+  // Callers that computed `target` from a snapshot send the snapshot's frame here.
+  PixelRect expected = 3;
 }
 
 message RepositionReply {}

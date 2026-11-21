@@ -257,7 +257,10 @@ public sealed class WorkAreaMitigator : IDisposable
             _attempts[id] = new Attempt(w.Bounds, _time.GetUtcNow().UtcDateTime);
             try
             {
-                await _windowManager.RepositionAsync(w.Id, w.Bounds with { Height = newHeight }, ct);
+                // Compare-and-set (bevel-tm1n): the target's x/y/width come from this snapshot, which can be
+                // stale (a pre-warmed Filer is built hidden across the band, then shown centred). Passing
+                // the snapshot's frame makes the move land only if the window is still there.
+                await _windowManager.RepositionAsync(w.Id, w.Bounds with { Height = newHeight }, w.Bounds, ct);
                 repositioned++;
             }
             catch (OperationCanceledException) { throw; }  // our own cancellation — end the pass

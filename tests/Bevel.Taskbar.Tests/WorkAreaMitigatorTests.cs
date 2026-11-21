@@ -298,10 +298,71 @@ public class WorkAreaMitigatorTests
         && w.X < band.X + band.Width && w.X + w.Width > band.X;
 
     /// <summary>Records reposition calls and lets a test swap the window list between passes.</summary>
+    // bevel-tm1n, measured on device 2026-11-21: a just-shown Filer (800x600, centred) was snapped to
+    // x=0 y=453 w=1920 h=929. The pre-warmed Filer is built hidden at (0,453,1920,987), across the
+    // band; a pass whose snapshot still held that frame "corrected" the now-visible, centred window
+    // to it. Every correction therefore carries the frame it was computed from, and lands only if the
+    // window is still there.
+    [Fact]
+    public async Task Correction_carries_the_frame_it_was_computed_from()
+    {
+        var at = new PalRect(0, 800, 800, 300);
+        var wm = new RecordingWindowManager(Win("w1", at));
+        await Make(wm, new FixedClock()).MitigateOnceAsync();
+        Assert.Equal(at, Assert.Single(wm.Expected));
+    }
+
+    [Fact]
+    public async Task A_correction_planned_from_a_stale_frame_never_lands()
+    {
+        var fake = new Bevel.Pal.Fake.FakeWindowManager();
+        var live = (await fake.EnumerateAsync())[0];
+        var centred = new PalRect(400, 200, 800, 600);   // clear of the band: what the user sees
+        await fake.RepositionAsync(live.Id, centred);
+        // The engine's snapshot still holds the window's pre-show frame, across the band.
+        var stale = new StaleSnapshot(fake, live with { Bounds = new PalRect(0, 453, 1920, 987) });
+        var m = new WorkAreaMitigator(stale, ScratchSettings(), () => Band, new FixedClock());
+
+        await m.MitigateOnceAsync();
+
+        var after = (await fake.EnumerateAsync()).Single(w => w.Id == live.Id);
+        Assert.Equal(centred, after.Bounds);
+    }
+
+    [Fact]
+    public void Frame_guard_tolerates_rounding_but_not_a_different_frame()
+    {
+        var f = new PalRect(100, 200, 800, 600);
+        Assert.True(FrameGuard.Matches(f, f with { X = 101, Height = 602 }));
+        Assert.False(FrameGuard.Matches(f, f with { Width = 1920 }));
+        Assert.False(FrameGuard.Matches(f, f with { Y = 453 }));
+    }
+
+    /// <summary>Delegates to a real (Fake) window manager but reports an out-of-date snapshot.</summary>
+    private sealed class StaleSnapshot(IWindowManager inner, ForeignWindow snapshot) : IWindowManager
+    {
+        public Capabilities Capabilities => inner.Capabilities;
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(new[] { snapshot });
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+            CancellationToken ct = default) => inner.RepositionAsync(id, bounds, expected, ct);
+        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+#pragma warning disable CS0067
+        public event EventHandler<ForeignWindow>? WindowOpened;
+        public event EventHandler<ForeignWindow>? WindowClosed;
+        public event EventHandler<ForeignWindow>? WindowChanged;
+        public event EventHandler<ForeignWindow>? ForegroundChanged;
+#pragma warning restore CS0067
+    }
+
     private sealed class RecordingWindowManager : IWindowManager
     {
         private IReadOnlyList<ForeignWindow> _windows;
         public List<(ForeignWindowId Id, PalRect Bounds)> Repositions { get; } = new();
+        public List<PalRect?> Expected { get; } = new();
 
         /// <summary>Called with the running reposition count after each one, so a test can script
         /// what the desktop looks like next (e.g. a zoom animation landing on our correction).</summary>
@@ -323,9 +384,11 @@ public class WorkAreaMitigatorTests
         /// TRIED and simply did not succeed.</summary>
         public HashSet<string> FailFor { get; } = new();
 
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+            CancellationToken ct = default)
         {
             Repositions.Add((id, bounds));
+            Expected.Add(expected);
             OnReposition?.Invoke(Repositions.Count);
             if (FailFor.Contains(id.Value))
                 throw new InvalidOperationException($"shell-core Reposition failed: {id.Value} unreachable");
