@@ -37,7 +37,8 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// bar), Control Center's own menu chrome (BentoBox), Ice's control separators, and modules Bevel
     /// already provides (its clock / Siri). Extend at launch via BEVEL_TRAY_DENY (comma-separated).
     private let denyList: [String] = {   // eager (not lazy) — read concurrently from ListTrayItems + the Changes poll (review: swift-ios)
-        var list = ["istatmenus", "bentobox", "ice.controlitem", "clock", "siri"]
+        // "ice bar": Ice's own floating panel is a status-layer window in the band (bevel-lezo).
+        var list = ["istatmenus", "bentobox", "ice.controlitem", "ice bar", "clock", "siri"]
         if let extra = ProcessInfo.processInfo.environment["BEVEL_TRAY_DENY"] {
             list += extra.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                         .filter { !$0.isEmpty }
@@ -398,6 +399,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// crucially, works for the Control-Center-hosted items on macOS 26 that ignore synthetic mouse
     /// clicks. Falls back to CGEvent synthesis for older OS / non-CC items. Needs Accessibility.
     func forwardClick(itemID: String, button: Bevel_Helper_V1_ForwardClickRequest.Button, modifiers: UInt32) -> Bool {
+        if let ax = AxTrayMerge.parse(itemID: itemID) {   // bevel-lezo: an AX-only item has no window
+            return pressAxExtra(pid: ax.pid, index: ax.index, itemID: itemID, rightClick: button == .right)
+        }
         let parts = itemID.split(separator: ":")
         guard parts.count == 2, let expectedPID = Int(parts[0]), let windowNumber = Int(parts[1]) else { return false }
         // Validate the resolved window is STILL the intended status item before synthesizing input: match
@@ -423,6 +427,71 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         // 2. Fallback: synthesize a real mouse click at the item's coordinates.
         return clickViaCGEvent(at: point, itemID: itemID, button: button, modifiers: modifiers)
+    }
+
+    // MARK: - Accessibility discovery (bevel-lezo)
+
+    /// The app's AXExtrasMenuBar children, in order (index = position, part of the item id).
+    private func axExtras(pid: pid_t) -> [AXUIElement] {
+        let app = AXUIElementCreateApplication(pid)
+        _ = _AXUIElementSetMessagingTimeout(app, 0.3)   // an unresponsive app must not stall enumeration
+        var bar: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &bar) == .success,
+              let bar, CFGetTypeID(bar) == AXUIElementGetTypeID() else { return [] }
+        var kids: CFTypeRef?
+        AXUIElementCopyAttributeValue(bar as! AXUIElement, kAXChildrenAttribute as CFString, &kids)
+        return (kids as? [AXUIElement]) ?? []
+    }
+
+    private func axString(_ el: AXUIElement, _ attr: String) -> String {
+        var v: CFTypeRef?
+        AXUIElementCopyAttributeValue(el, attr as CFString, &v)
+        return (v as? String) ?? ""
+    }
+
+    private func axFrame(_ el: AXUIElement) -> CGRect {
+        var p: CFTypeRef?, s: CFTypeRef?
+        var pt = CGPoint.zero, sz = CGSize.zero
+        if AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &p) == .success, let p,
+           CFGetTypeID(p) == AXValueGetTypeID() { AXValueGetValue(p as! AXValue, .cgPoint, &pt) }
+        if AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &s) == .success, let s,
+           CFGetTypeID(s) == AXValueGetTypeID() { AXValueGetValue(s as! AXValue, .cgSize, &sz) }
+        return CGRect(origin: pt, size: sz)
+    }
+
+    /// Every running app's menu-bar extras as Accessibility reports them. Empty without the
+    /// Accessibility grant, which degrades to exactly today's window-list behaviour.
+    private func axExtrasItems() -> [AxTrayMerge.AxItem] {
+        guard AXIsProcessTrusted() else { return [] }
+        var out: [AxTrayMerge.AxItem] = []
+        for app in NSWorkspace.shared.runningApplications {
+            let pid = app.processIdentifier
+            for (i, el) in axExtras(pid: pid).enumerated() {
+                let title = axString(el, kAXTitleAttribute as String)
+                let label = title.isEmpty ? axString(el, kAXDescriptionAttribute as String) : title
+                out.append(AxTrayMerge.AxItem(pid: pid, appName: app.localizedName ?? "", index: i,
+                                              label: label, frame: axFrame(el)))
+            }
+        }
+        return out
+    }
+
+    /// Clicks an AX-only item by pressing its element directly (it has no window to target). Re-resolves
+    /// the element from pid + index and checks it is still in the menu-bar band, so a vanished or
+    /// reordered item cannot press something else.
+    private func pressAxExtra(pid: pid_t, index: Int, itemID: String, rightClick: Bool) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        let extras = axExtras(pid: pid)
+        guard index >= 0, index < extras.count, AxTrayMerge.isInMenuBarBand(axFrame(extras[index])) else { return false }
+        let el = extras[index]
+        let actions: [CFString] = rightClick
+            ? ["AXShowMenu" as CFString, kAXPressAction as CFString]
+            : [kAXPressAction as CFString, "AXShowMenu" as CFString]
+        for action in actions where AXUIElementPerformAction(el, action) == .success {
+            dbg("AX-pressed extra \(itemID) via \(action)")
+            return true
+        }
+        return false
     }
 
     /// Finds the accessibility element at the item's screen point and performs its press/show-menu
@@ -528,6 +597,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
 
         var found: [(x: CGFloat, item: Bevel_Helper_V1_TrayItem)] = []
+        var windowItems: [AxTrayMerge.WindowItem] = []
         for w in windows {
             guard let layer = w[kCGWindowLayer as String] as? Int, layer == statusWindowLayer else { continue }
             guard let pid = w[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID, pid != parentPID else { continue }
@@ -579,6 +649,29 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             item.iconPng = identity.icon
             item.isLive = false   // limited mode (§5.5) until SCK capture (M3-B)
             found.append((rect.origin.x, item))
+            windowItems.append(AxTrayMerge.WindowItem(windowNumber: windowNumber, pid: pid, frame: rect))
+        }
+
+        // bevel-lezo: items only Accessibility still reports (macOS 27 dropped status items from the
+        // window list). On macOS 26 every AX item has a window twin, so this adds nothing there.
+        for a in AxTrayMerge.unmatched(ax: axExtrasItems(), windows: windowItems) {
+            guard a.pid != ownPID, a.pid != parentPID else { continue }
+            let bundleID = NSRunningApplication(processIdentifier: a.pid)?.bundleIdentifier ?? ""
+            if a.label.contains("◂") || isDenied(windowName: a.label, ownerName: a.appName + " " + bundleID) { continue }
+            let name = a.label.isEmpty ? a.appName : a.label
+            var item = Bevel_Helper_V1_TrayItem()
+            item.itemID = AxTrayMerge.itemID(a)
+            item.ownerPid = a.pid
+            item.ownerBundleID = bundleID
+            item.ownerName = name
+            item.tooltip = name
+            var pr = Bevel_Helper_V1_PixelRect()
+            pr.x = Int32(a.frame.origin.x); pr.y = Int32(a.frame.origin.y)
+            pr.width = Int32(a.frame.width); pr.height = Int32(a.frame.height)
+            item.bounds = pr
+            item.iconPng = cachedAppIconPNG(bundleID: bundleID)   // limited mode: no window to capture
+            item.isLive = false
+            found.append((a.frame.origin.x, item))
         }
 
         let sorted = found.sorted { $0.x < $1.x }.map { $0.item }

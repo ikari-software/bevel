@@ -15,11 +15,16 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertNotNil(items)
         for item in items {
             XCTAssertFalse(item.itemID.isEmpty, "every item needs a stable id")
-            // id is "ownerPID:windowNumber".
-            let parts = item.itemID.split(separator: ":")
-            XCTAssertEqual(parts.count, 2, "item id must be 'pid:windowNumber' — got \(item.itemID)")
-            XCTAssertNotNil(Int(parts[0]))
-            XCTAssertNotNil(Int(parts[1]))
+            // id is "ownerPID:windowNumber" for a window-list item, or "ax:pid:index" for an item only
+            // Accessibility reports (bevel-lezo: macOS 27 dropped status items from the window list).
+            if let ax = AxTrayMerge.parse(itemID: item.itemID) {
+                XCTAssertEqual(ax.pid, item.ownerPid, "an AX item's id carries its owner pid")
+            } else {
+                let parts = item.itemID.split(separator: ":")
+                XCTAssertEqual(parts.count, 2, "item id must be 'pid:windowNumber' or 'ax:pid:index' — got \(item.itemID)")
+                XCTAssertNotNil(Int(parts[0]))
+                XCTAssertNotNil(Int(parts[1]))
+            }
             XCTAssertFalse(item.isLive, "M3-A is limited mode — no live capture yet")
             XCTAssertGreaterThan(item.bounds.width, 0)
         }
@@ -63,6 +68,8 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertFalse(svc.forwardClick(itemID: "not-an-id", button: .left, modifiers: 0))
         XCTAssertFalse(svc.forwardClick(itemID: "1:2147483000", button: .left, modifiers: 0),
                        "a windowNumber that isn't on screen must not resolve to a click")
+        XCTAssertFalse(svc.forwardClick(itemID: "ax:1:999999", button: .left, modifiers: 0),
+                       "an AX index that doesn't exist must not resolve to a press")
     }
 
     func testDenylistHidesIstatAndNoiseButKeepsRealItems() {
