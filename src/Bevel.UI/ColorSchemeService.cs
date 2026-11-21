@@ -51,6 +51,7 @@ public static class ColorSchemeService
 
     private static readonly Uri BaseUri = new("avares://Bevel.App/App.axaml");
     private static IResourceDictionary? _aliasesMergedInto;
+    private static ResourceInclude? _aliases;
 
     /// <summary>Merges the Bevel semantic-brush alias layer once (bevel-9js). Tokens.axaml's
     /// <c>Bevel.Brush.*</c> are <c>StaticResource</c>-frozen and can't follow a scheme change; this
@@ -59,10 +60,11 @@ public static class ColorSchemeService
     private static void EnsureAliases(IResourceDictionary appResources)
     {
         if (ReferenceEquals(_aliasesMergedInto, appResources)) return;
-        appResources.MergedDictionaries.Add(new ResourceInclude(BaseUri)
+        _aliases = new ResourceInclude(BaseUri)
         {
             Source = new Uri("avares://Bevel.Themes.Industrial1999/SchemeAliases.axaml"),
-        });
+        };
+        appResources.MergedDictionaries.Add(_aliases);
         _aliasesMergedInto = appResources;
     }
 
@@ -103,11 +105,21 @@ public static class ColorSchemeService
     /// <summary>Removes the merged Win2000 colour-scheme dictionary. Call when switching AWAY from the
     /// Win2000 theme (symmetric to <see cref="Blue2001VariantService.Clear"/>) — otherwise the scheme's
     /// Application-level values (e.g. WindowCaptionHeightKey=18) LINGER and outrank the incoming theme's,
-    /// which is what shrank Luna's title bar after a Win2000 round-trip (bevel-p3va). The alias layer is
-    /// left in place (it's inert unless a scheme overrides the SystemColors it aliases). Idempotent.</summary>
+    /// which is what shrank Luna's title bar after a Win2000 round-trip (bevel-p3va). The alias layer goes
+    /// too: it is NOT inert. It redefines the Bevel.Brush.* palette at Application level, which outranks a
+    /// Styles-set theme's own tokens, so after one Industrial1999 visit Flat and Pastel resolved
+    /// Bevel.Brush.WindowFrame to the classic SystemColors black (black Filer borders). Idempotent.</summary>
     public static void Clear()
     {
         if (Application.Current?.Resources is not { } appResources) return;
+        if (_aliases is not null)
+        {
+            var aliasesOwned = ReferenceEquals(_aliasesMergedInto, appResources);
+            if (aliasesOwned) appResources.MergedDictionaries.Remove(_aliases);
+            _aliases = null;
+            _aliasesMergedInto = null;
+            if (aliasesOwned && _applied is null) Glyphs.InvalidateThemeCache();   // the alias palette just left
+        }
         if (_applied is not null)
         {
             // A dictionary merged into a previous Application is not in this one: forget it, announce nothing.
