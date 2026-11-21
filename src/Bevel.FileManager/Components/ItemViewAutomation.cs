@@ -73,6 +73,18 @@ internal sealed class ItemList : ItemsControl
     protected override System.Type StyleKeyOverride => typeof(ItemsControl);
 
     protected override AutomationPeer OnCreateAutomationPeer() => new ItemListAutomationPeer(this);
+
+    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealZ = new(full => full ? 1 : 0);
+
+    /// <summary>The revealed item's whole name draws over the rows below it, so its container paints
+    /// above its siblings (bevel-m9jy). A binding, not an imperative set, so a recycled container
+    /// picks up the right value for its new item.</summary>
+    protected override void PrepareContainerForItemOverride(Control container, object? item, int index)
+    {
+        base.PrepareContainerForItemOverride(container, item, index);
+        container.Bind(Avalonia.Visual.ZIndexProperty,
+            new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealZ });
+    }
 }
 
 internal sealed class ItemListAutomationPeer : ItemsControlAutomationPeer

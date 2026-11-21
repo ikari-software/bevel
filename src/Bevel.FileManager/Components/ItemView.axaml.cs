@@ -194,6 +194,8 @@ public partial class ItemView : UserControl
             ApplyViewMode((ViewMode)change.NewValue!);
         else if (change.Property == ItemsProperty)
             RebuildItems();
+        else if (change.Property == IsKeyboardFocusWithinProperty)
+            UpdateFullNameReveal();
     }
 
     // ── View modes ────────────────────────────────────────────────────
@@ -240,6 +242,7 @@ public partial class ItemView : UserControl
                 ItemsPresenter.ItemTemplate = ThumbTpl;
                 break;
         }
+        UpdateFullNameReveal();
     }
 
     // Horizontal-flow icon grids wrap to the viewport WIDTH, so horizontal scroll must be off
@@ -283,10 +286,10 @@ public partial class ItemView : UserControl
     /// across the pane, so its width is NaN.</summary>
     internal static Size CellSize(ViewMode mode) => mode switch
     {
-        ViewMode.LargeIcons => new Size(80, 60),
+        ViewMode.LargeIcons => new Size(80, 72),     // 4 margin + 32 icon + 2 spacing + 30 (two text lines) + 4 margin
         ViewMode.SmallIcons => new Size(180, 20),
         ViewMode.List => new Size(180, 18),
-        ViewMode.Thumbnails => new Size(120, 120),
+        ViewMode.Thumbnails => new Size(120, 142),   // 7 (margin 2, border 1, padding 4) + 96 + 2 + 30 + 7
         _ => new Size(double.NaN, 22),   // Details
     };
 
@@ -314,6 +317,8 @@ public partial class ItemView : UserControl
     static IBrush NormalText => ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
         new(sel => sel ? SelectionFill : Brushes.Transparent);
+    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealLinesConv =
+        new(full => full ? 0 : 2);
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
         new(sel => sel ? SelectionText : NormalText);
 
@@ -327,9 +332,19 @@ public partial class ItemView : UserControl
             Text = text, FontSize = 11,
             TextWrapping = wrap, TextAlignment = align,
             MaxWidth = maxW > 0 ? maxW : double.MaxValue,
-            TextTrimming = wrap == TextWrapping.NoWrap ? TextTrimming.CharacterEllipsis : TextTrimming.None,
+            // Every cut-off name ends in an ellipsis. Wrapped names (icon views) stop at two lines of a
+            // fixed 15 px, so the cell height in CellSize does not depend on the font's own metrics
+            // (bevel-m9jy); NameLabel adds the ellipsis Avalonia skips when the cut falls between words.
+            TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        if (wrap != TextWrapping.NoWrap)
+        {
+            label.LineHeight = 15;
+            // Two lines, or the whole name while this is the revealed item (MaxLines 0 = no limit).
+            label.Bind(TextBlock.MaxLinesProperty,
+                new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealLinesConv });
+        }
         label.Bind(TextBlock.ForegroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelFgConv });
 
         var highlight = new Border { Child = label, Padding = new(2, 0) };
@@ -644,6 +659,14 @@ public partial class ItemView : UserControl
         // No _viewModels.Contains(vm) guard: a realized container's DataContext is always a current
         // ItemViewModel once ItemsSource is set, and the Contains was an O(n) scan INSIDE this O(n)
         // container loop — O(n²) per click in a large folder (ce-review: performance).
+        // A revealed name draws over the cells below it, so a click on that text belongs to its item,
+        // not to the one underneath (bevel-m9jy).
+        if (_revealed is not null && ItemsPresenter.ContainerFromItem(_revealed) is { } rc
+            && rc.FindDescendantOfType<NameLabel>()?.Parent is Control nameCell
+            && nameCell.TranslatePoint(default, ItemsPresenter) is { } np
+            && new Rect(np, nameCell.Bounds.Size).Contains(pt))
+            return _revealed;
+
         foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
             if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm)
@@ -727,7 +750,25 @@ public partial class ItemView : UserControl
 
     /// <summary>Raised whenever the selection set changes (drives the info pane).</summary>
     public event Action? SelectionChanged;
-    void RaiseSelection() { UpdateFocusCue(); SelectionChanged?.Invoke(); }
+    void RaiseSelection() { UpdateFocusCue(); UpdateFullNameReveal(); SelectionChanged?.Invoke(); }
+
+    /// <summary>The item whose label currently shows its whole name (bevel-m9jy).</summary>
+    ItemViewModel? _revealed;
+
+    /// <summary>Explorer behaviour: in Large Icons and Thumbnails the ONE selected item of a focused view
+    /// shows its whole name, drawn over the rows below (its container's ZIndex is bound to the flag in
+    /// <see cref="ItemList"/>); every other name stops at two lines and an ellipsis.</summary>
+    void UpdateFullNameReveal()
+    {
+        var target = IsKeyboardFocusWithin && _selected.Count == 1 && _selectedOrder.Count == 1
+                     && ViewMode is ViewMode.LargeIcons or ViewMode.Thumbnails
+            ? _selectedOrder[0]
+            : null;
+        if (ReferenceEquals(target, _revealed)) return;
+        if (_revealed is not null) _revealed.ShowFullName = false;
+        _revealed = target;
+        if (target is not null) target.ShowFullName = true;
+    }
 
     /// <summary>The dotted focus rectangle is visible only while the list is focused, holds items, and
     /// has an empty selection — otherwise the selection highlight itself communicates focus.</summary>

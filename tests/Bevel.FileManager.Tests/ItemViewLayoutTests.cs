@@ -1,7 +1,9 @@
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -163,6 +165,119 @@ public sealed class ItemViewLayoutTests
         view.AddItems(Nodes(5));
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(first, ListColumnWidth(view));
+    }
+
+    // ── bevel-m9jy: icon-view names stay inside their cell ───────────────
+
+    [AvaloniaTheory]
+    [InlineData(ViewMode.LargeIcons, 80, 72)]
+    [InlineData(ViewMode.Thumbnails, 120, 142)]
+    public void Long_name_stays_inside_its_icon_cell(ViewMode mode, double cellW, double cellH)
+    {
+        const string longName = "A really quite long file name with many words in it for wrapping.txt";
+        var (view, _) = Show(mode, 600, 400, items: new[] { Node(longName), Node("short.txt") });
+        int i = view.ItemsControl.Items.Cast<ItemViewModel>().ToList().FindIndex(v => v.DisplayName == longName);
+        var c = Container(view, i);
+        Assert.Equal(new Size(cellW, cellH), c.Bounds.Size);
+        var label = Label(view, i);
+        double bottom = label.TranslatePoint(new Point(0, label.Bounds.Height), c)!.Value.Y;
+        Assert.True(bottom <= c.Bounds.Height, $"label bottom {bottom} > cell {c.Bounds.Height}");
+    }
+
+    // ── bevel-m9jy: the one selected item shows its whole name ───────────
+
+    const string RevealName = "A really quite long file name with many words in it for wrapping.txt";
+
+    static (ItemView View, Window Window) FocusedIcons(ViewMode mode, int count)
+    {
+        var items = new[] { Node(RevealName) }.Concat(Nodes(count - 1)).ToArray();   // RevealName sorts first
+        var (view, w) = Show(mode, 600, 500, items: items);
+        view.Focus();
+        Dispatcher.UIThread.RunJobs();
+        w.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);   // select item 0, the long name
+        Dispatcher.UIThread.RunJobs();
+        return (view, w);
+    }
+
+    [AvaloniaFact]
+    public void Selecting_one_item_reveals_its_whole_name()
+    {
+        var (view, w) = FocusedIcons(ViewMode.LargeIcons, 10);
+        Assert.Equal(RevealName, view.SelectedItems.Single().DisplayName);
+        Assert.True(Label(view, 0).TextLayout.TextLines.Count > 2, "the selected name is shown in full");
+        Assert.Equal(1, Container(view, 0).ZIndex);
+
+        w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);   // two selected: no reveal
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, view.SelectedItems.Count);
+        Assert.Equal(2, Label(view, 0).TextLayout.TextLines.Count);
+        Assert.Equal(0, Container(view, 0).ZIndex);
+    }
+
+    [AvaloniaFact]
+    public void Revealed_name_is_hidden_again_when_the_view_loses_focus()
+    {
+        var view = new ItemView { ViewMode = ViewMode.LargeIcons };
+        var other = new TextBox();
+        DockPanel.SetDock(other, Dock.Top);
+        var w = new Window { Width = 600, Height = 500, Content = new DockPanel { Children = { other, view } } };
+        w.Show();
+        Dispatcher.UIThread.RunJobs();
+        view.Items = new[] { Node(RevealName) }.Concat(Nodes(9)).ToArray();
+        Dispatcher.UIThread.RunJobs();
+        view.Focus();
+        Dispatcher.UIThread.RunJobs();
+        w.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(view.SelectedItems.Single().ShowFullName);
+
+        other.Focus();
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(view.SelectedItems.Single().ShowFullName);
+    }
+
+    /// <summary>A point inside the revealed label's 2 px left padding (highlight fill, never a glyph),
+    /// on its 4th line, which lies over the next row's cell in Thumbnails.</summary>
+    static Point PaddingOnFourthLine(ItemView view, Visual relativeTo)
+    {
+        var label = Label(view, 0);
+        var highlight = (Control)label.GetVisualParent()!;
+        var labelTop = label.TranslatePoint(new Point(0, 0), highlight)!.Value.Y;
+        return highlight.TranslatePoint(new Point(1, labelTop + 15 * 3 + 7), relativeTo)!.Value;
+    }
+
+    [AvaloniaFact]
+    public void Revealed_name_paints_over_the_row_below()
+    {
+        var (view, w) = FocusedIcons(ViewMode.Thumbnails, 10);   // 5 per row: item 5 sits under item 0
+        Assert.True(Label(view, 0).TextLayout.TextLines.Count >= 4);
+        var p = PaddingOnFourthLine(view, w);
+        var below = InScroller(view, Container(view, 5));
+        var pInScroller = PaddingOnFourthLine(view, view.ItemsScroller);
+        Assert.True(below.Contains(pInScroller), $"sample {pInScroller} should lie over the next row {below}");
+
+        var frame = w.CaptureRenderedFrame()!;
+        var expected = ((ISolidColorBrush)Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushHighlight)!).Color;
+        Assert.Equal(expected, Pixel(frame, (int)p.X, (int)p.Y));
+    }
+
+    static Color Pixel(Avalonia.Media.Imaging.WriteableBitmap bmp, int x, int y)
+    {
+        using var fb = bmp.Lock();
+        int v = System.Runtime.InteropServices.Marshal.ReadInt32(fb.Address, y * fb.RowBytes + x * 4);
+        byte b = (byte)v, g = (byte)(v >> 8), r = (byte)(v >> 16), a = (byte)(v >> 24);
+        return fb.Format == Avalonia.Platform.PixelFormat.Rgba8888 ? Color.FromArgb(a, b, g, r) : Color.FromArgb(a, r, g, b);
+    }
+
+    [AvaloniaFact]
+    public void Click_on_the_revealed_name_keeps_that_item_selected()
+    {
+        var (view, w) = FocusedIcons(ViewMode.Thumbnails, 10);
+        var p = PaddingOnFourthLine(view, w);
+        w.MouseDown(p, MouseButton.Left);
+        w.MouseUp(p, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(RevealName, view.SelectedItems.Single().DisplayName);
     }
 }
 

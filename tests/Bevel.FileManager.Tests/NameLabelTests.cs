@@ -49,4 +49,47 @@ public sealed class NameLabelTests
         Assert.False(label.IsTrimmed);
         Assert.Null(ToolTip.GetTip(label));
     }
+
+    // ── bevel-m9jy: wrapped names show two lines, then an ellipsis ───────
+
+    static NameLabel TwoLine(string text)
+    {
+        var label = new NameLabel
+        {
+            Text = text, FontSize = 11, LineHeight = 15, TextWrapping = TextWrapping.Wrap,
+            MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 72,
+        };
+        var window = new Window { Width = 400, Height = 200, Content = new StackPanel { Children = { label } } };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        return label;
+    }
+
+    [AvaloniaFact]
+    public void Two_line_name_cut_between_words_still_ends_in_an_ellipsis()
+    {
+        var label = TwoLine("A really quite long file name with many words in it for wrapping.txt");
+        Assert.Equal(2, label.TextLayout.TextLines.Count);
+        Assert.True(label.TextLayout.TextLines[1].HasCollapsed, "second line must end in an ellipsis");
+        Assert.True(label.IsTrimmed);
+        Assert.Equal(30, label.DesiredSize.Height);
+    }
+
+    [AvaloniaFact]
+    public void Two_line_name_cut_inside_a_word_ends_in_an_ellipsis()
+    {
+        var label = TwoLine(new string('w', 70));
+        Assert.Equal(2, label.TextLayout.TextLines.Count);
+        Assert.True(label.TextLayout.TextLines[1].HasCollapsed);
+        Assert.True(label.IsTrimmed);
+    }
+
+    [AvaloniaFact]
+    public void Short_name_is_one_line_and_not_trimmed()
+    {
+        var label = TwoLine("short.txt");
+        Assert.Single(label.TextLayout.TextLines);
+        Assert.False(label.IsTrimmed);
+        Assert.Null(ToolTip.GetTip(label));
+    }
 }

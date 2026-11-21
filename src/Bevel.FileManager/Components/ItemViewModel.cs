@@ -14,6 +14,7 @@ public sealed class ItemViewModel : INotifyPropertyChanged
     private bool _isSelected;
     private bool _isEditing;
     private string? _editName;
+    private bool _showFullName;
 
     public ItemViewModel(IVfsNode node)
     {
@@ -42,6 +43,14 @@ public sealed class ItemViewModel : INotifyPropertyChanged
         if (old.TypeDescription != node.TypeDescription) OnPropertyChanged(nameof(TypeDescription));
         if (old.IconKey != node.IconKey) OnPropertyChanged(nameof(IconKey));
         OnPropertyChanged(nameof(Node));
+    }
+
+    /// <summary>Icon views: this is the one selected item of a focused view, so its label shows the whole
+    /// name over the rows below instead of two lines + ellipsis (bevel-m9jy). Set by ItemView only.</summary>
+    public bool ShowFullName
+    {
+        get => _showFullName;
+        set { if (_showFullName == value) return; _showFullName = value; OnPropertyChanged(); }
     }
 
     // ── VFS data ──────────────────────────────────────────────────────

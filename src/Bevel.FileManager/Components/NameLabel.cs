@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 
 namespace Bevel.FileManager.Components;
@@ -24,11 +25,31 @@ internal sealed class NameLabel : TextBlock
     protected override TextLayout CreateTextLayout(string? text)
     {
         var layout = base.CreateTextLayout(text);
-        bool trimmed = false;
+        bool collapsed = false;
         foreach (var line in layout.TextLines)
-            if (line.HasCollapsed) { trimmed = true; break; }
-        IsTrimmed = trimmed;
-        return layout;
+            if (line.HasCollapsed) { collapsed = true; break; }
+        IsTrimmed = collapsed;
+
+        // Wrapped and line-limited (icon views, bevel-m9jy): Avalonia drops the lines past MaxLines but
+        // adds the ellipsis only when the last kept line is cut INSIDE a word; a cut between words shows
+        // two clean lines and silently loses the rest of the name. Detect the lost text and lay it out
+        // again with the line break made explicit and wrapping off, so the trimmer collapses line 2.
+        if (collapsed || string.IsNullOrEmpty(text) || TextWrapping == TextWrapping.NoWrap || MaxLines <= 0)
+            return layout;
+        int shown = 0;
+        foreach (var line in layout.TextLines) shown += line.Length;
+        if (shown >= text.Length || layout.TextLines.Count < 2) return layout;
+
+        IsTrimmed = true;
+        int head = 0;
+        for (int i = 0; i < layout.TextLines.Count - 1; i++) head += layout.TextLines[i].Length;
+        var forced = text[..head].TrimEnd() + "\n" + text[head..].TrimStart();
+        var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+        double maxW = layout.MaxWidth, maxH = layout.MaxHeight;
+        layout.Dispose();
+        return new TextLayout(forced, typeface, FontFeatures, FontSize, Foreground, TextAlignment,
+            TextWrapping.NoWrap, TextTrimming, TextDecorations, FlowDirection,
+            maxW, maxH, LineHeight, LetterSpacing, MaxLines, null);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
