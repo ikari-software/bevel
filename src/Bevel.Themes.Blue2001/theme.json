@@ -1,5 +1,5 @@
 {
-  "_comment": "Source of truth for the Bevel 2001 Blue theme tokens (05-theming.md §9 LUN-02 palette, §3 metrics 'XP Luna' column, §5 fonts). Values are mirrored (as overrides over the Win2000 base) in Blue2001Tokens.axaml. Wiring this file into tools/ThemeGen so the axaml is generated + drift-checked like Win2000's is a follow-up (bevel-dob).",
+  "_comment": "Source of truth for the Bevel 2001 Blue theme tokens (05-theming.md §9 LUN-02 palette, §3 metrics 'XP Luna' column, §5 fonts). An override over the industrial1999 base: tools/ThemeGen emits exactly these palette and metric keys into Blue2001Tokens.g.axaml (bevel-ayhn), which Blue2001Tokens.axaml merges, and CI fails if the generated file drifts. Blue2001Tokens.axaml keeps only what this file cannot express (SystemColors / SystemParameters keys, the ControlBrushKey remap).",
   "theme": "blue2001",
   "inherits": "industrial1999",
   "scheme": "Bevel 2001 Blue",

@@ -7,6 +7,11 @@ using System.Text.Json;
 //
 //   dotnet run --project tools/ThemeGen                 (from the repo root)
 //   dotnet run --project tools/ThemeGen -- <theme.json> <Tokens.axaml> <ThemeTokens.cs>
+//
+// The default run also generates every INHERITING theme (bevel-ayhn): a theme.json with "inherits"
+// emits only the keys it overrides, into <Theme>Tokens.g.axaml, which that theme's hand-written
+// tokens file merges. An inheriting theme never regenerates ThemeTokens.cs: the key contract is the
+// base theme's.
 
 var repoRoot = RepoPaths.Root;
 
@@ -27,6 +32,17 @@ File.WriteAllText(axamlPath, EmitAxaml(palette, metrics, fonts, edgeRendering), 
 File.WriteAllText(csPath, EmitCs(palette, metrics, fonts), new UTF8Encoding(false));
 Console.WriteLine($"themegen: wrote {axamlPath}");
 Console.WriteLine($"themegen: wrote {csPath}");
+
+// Inheriting themes (bevel-ayhn): override dictionaries over the base above.
+if (args.Length == 0)
+{
+    var blue2001Dir = Path.Combine(repoRoot, "src", "Bevel.Themes.Blue2001");
+    var overridePath = Path.Combine(blue2001Dir, "Blue2001Tokens.g.axaml");
+    using var overrideDoc = JsonDocument.Parse(File.ReadAllText(Path.Combine(blue2001Dir, "theme.json")));
+    File.WriteAllText(overridePath, EmitOverrideAxaml(overrideDoc.RootElement, "src/Bevel.Themes.Blue2001/theme.json"),
+        new UTF8Encoding(false));
+    Console.WriteLine($"themegen: wrote {overridePath}");
+}
 
 // Classic color schemes (W2K-01 / bevel-c75): one SystemColors dictionary per scheme in the
 // vendored fork, generated from schemes.json.
@@ -135,6 +151,60 @@ static string EmitAxaml(JsonElement palette, JsonElement metrics, JsonElement fo
     b.Append("\n    <!-- ── Edge rendering default (chrome spec §8; user override: Display settings) ── -->\n\n");
     b.Append($"    <classic:EdgeRendering x:Key=\"Bevel.Edge.Rendering\">{edgeRendering}</classic:EdgeRendering>\n");
 
+    b.Append("</ResourceDictionary>\n");
+    return b.ToString();
+}
+
+/// <summary>An inheriting theme's override dictionary: only the palette and metric keys its theme.json
+/// lists, as Bevel.Color.* / Bevel.Brush.* / Bevel.Metric.*. Fonts and the edge-rendering default are
+/// optional in an inheriting theme and emitted only when present.</summary>
+static string EmitOverrideAxaml(JsonElement theme, string sourcePath)
+{
+    var b = new StringBuilder();
+    var inherits = theme.GetProperty("inherits").GetString();
+    b.Append($$"""
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:classic="using:Classic.Avalonia.Theme">
+    <!--
+      auto-generated: do NOT edit by hand.
+      Token OVERRIDES over the {{inherits}} base, generated from {{sourcePath}} by
+      tools/ThemeGen (bevel-ayhn). Only the keys that theme.json lists are here; every other
+      Bevel token falls through to the base Tokens.axaml. Edit theme.json and run
+      tools/ThemeGen (dotnet run); CI fails when this file drifts from a fresh generation.
+    -->
+
+""");
+    b.Append('\n');
+    if (theme.TryGetProperty("palette", out var palette))
+    {
+        b.Append("    <!-- ── Palette ────────────────────────────────────────────────────────── -->\n\n");
+        foreach (var p in palette.EnumerateObject())
+            b.Append($"    <Color x:Key=\"Bevel.Color.{p.Name}\">{p.Value.GetString()}</Color>\n");
+        b.Append('\n');
+        foreach (var p in palette.EnumerateObject())
+            b.Append($"    <SolidColorBrush x:Key=\"Bevel.Brush.{p.Name}\" Color=\"{{StaticResource Bevel.Color.{p.Name}}}\" />\n");
+    }
+    if (theme.TryGetProperty("metrics", out var metrics))
+    {
+        b.Append("\n    <!-- ── Metrics (logical px at 1.0 scale) ──────────────────────────────── -->\n\n");
+        foreach (var m in metrics.EnumerateObject())
+        {
+            var (tag, text) = MetricValue(m.Value);
+            b.Append($"    <{tag} x:Key=\"Bevel.Metric.{m.Name}\">{text}</{tag}>\n");
+        }
+    }
+    if (theme.TryGetProperty("fonts", out var fonts))
+    {
+        b.Append("\n    <!-- ── Fonts ─────────────────────────────────────────────────────────── -->\n\n");
+        foreach (var f in fonts.EnumerateObject())
+            b.Append($"    <FontFamily x:Key=\"Bevel.Font.{f.Name}\">{f.Value.GetString()}</FontFamily>\n");
+    }
+    if (theme.TryGetProperty("edgeRendering", out var edge))
+    {
+        b.Append("\n    <!-- ── Edge rendering default ─────────────────────────────────────────── -->\n\n");
+        b.Append($"    <classic:EdgeRendering x:Key=\"Bevel.Edge.Rendering\">{edge.GetString()}</classic:EdgeRendering>\n");
+    }
     b.Append("</ResourceDictionary>\n");
     return b.ToString();
 }

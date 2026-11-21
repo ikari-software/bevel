@@ -152,10 +152,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Two steps, gate first. (1) Fix the CI path to `src/Bevel.Themes.Industrial1999/Tokens.axaml`. (2) Add an override mode to ThemeGen: when the JSON has `"inherits"`, emit only the keys present (palette → `Bevel.Color.*`/`Bevel.Brush.*`, metrics → `Bevel.Metric.*`) into a generated `Blue2001Tokens.g.axaml` (new) that `Blue2001Tokens.axaml` merges; the hand-written file keeps only what theme.json cannot express (the `SystemColors.*` caption keys, gradients). Do NOT regenerate `ThemeTokens.cs` from an inheriting theme. Flat/Pastel get a `theme.json` later under bevel-tknt, not here.
 - **Test first:** CI job `theme-drift` fails when `Tokens.axaml` is hand-edited (prove locally: edit one hex in `src/Bevel.Themes.Industrial1999/Tokens.axaml`, run `dotnet run --project tools/ThemeGen`, `git diff --exit-code -- src/Bevel.Themes.Industrial1999/Tokens.axaml` → clean again).
 - **Steps:**
-  - [ ] Fix the path at `ci.yml:187`; commit separately.
-  - [ ] Add the inherits/override emit path to `Program.cs`; default run generates Industrial1999 AND Blue2001.
-  - [ ] Move the duplicated plain keys out of `Blue2001Tokens.axaml` into the generated file; diff rendered output via `RenderBlue2001ControlsTest` / `RenderBlue2001WindowTest` (no PNG change).
-  - [ ] Add `src/Bevel.Themes.Blue2001/Blue2001Tokens.g.axaml` to the CI diff list; update the `theme.json` `_comment`.
+  - [x] Fix the path at `ci.yml:187`; commit separately.
+  - [x] Add the inherits/override emit path to `Program.cs`; default run generates Industrial1999 AND Blue2001.
+  - [x] Move the duplicated plain keys out of `Blue2001Tokens.axaml` into the generated file; diff rendered output via `RenderBlue2001ControlsTest` / `RenderBlue2001WindowTest` (no PNG change).
+  - [x] Add `src/Bevel.Themes.Blue2001/Blue2001Tokens.g.axaml` to the CI diff list; update the `theme.json` `_comment`.
 - **Verify:** `dotnet run --project tools/ThemeGen && git diff --exit-code -- src/Bevel.Themes.Industrial1999 src/Bevel.Themes.Blue2001 src/Bevel.UI/ThemeTokens.cs` → exit 0
 - **Done when:** editing either theme.json without regenerating fails CI; then `bd close bevel-ayhn --reason "ThemeGen covers Blue2001; CI gate path fixed"`
 
