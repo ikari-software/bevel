@@ -297,6 +297,70 @@ public class ItemViewTests
         finally { window.Close(); }   // a failed assert must not leave subscribed GlyphIcons alive
     }
 
+    // ── bevel-5rel: selection colours are live theme resources ───────────
+
+    static Avalonia.Controls.Border NameCellOf(ItemView view, string name)
+        => view.ItemsControl.GetRealizedContainers()
+            .First(c => (c.DataContext as ItemViewModel)?.DisplayName == name)
+            .GetVisualDescendants().OfType<Avalonia.Controls.Border>().First(b => b.Classes.Contains("namecell"));
+
+    /// <summary>Overwrite an Application-level brush token for the duration of <paramref name="body"/>.</summary>
+    static void WithToken(string key, IBrush brush, Action body)
+    {
+        var resources = Application.Current!.Resources;
+        bool had = resources.TryGetValue(key, out var old);
+        resources[key] = brush;
+        try { Dispatcher.UIThread.RunJobs(); body(); }
+        finally
+        {
+            if (had) resources[key] = old; else resources.Remove(key);
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Selection_colours_follow_a_live_token_change_without_reselecting()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt") };
+        Dispatcher.UIThread.RunJobs();
+        view.SelectPath(new VfsPath("test", "a.txt"));
+        Dispatcher.UIThread.RunJobs();
+
+        var red = new SolidColorBrush(Colors.Red);
+        WithToken(ThemeTokens.BrushHighlight, red, () =>
+            Assert.Same(red, NameCellOf(view, "a.txt").Background));
+    }
+
+    [AvaloniaFact]
+    public void Unselected_text_follows_a_live_token_change()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt") };
+        Dispatcher.UIThread.RunJobs();
+
+        var green = new SolidColorBrush(Colors.Green);
+        WithToken(ThemeTokens.BrushWindowText, green, () =>
+            Assert.Same(green, NameCellOf(view, "b.txt").GetVisualDescendants().OfType<NameLabel>().Single().Foreground));
+    }
+
+    [AvaloniaFact]
+    public void Selected_text_uses_the_highlight_text_token()
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.Items = new[] { Node("a.txt"), Node("b.txt") };
+        Dispatcher.UIThread.RunJobs();
+        view.SelectPath(new VfsPath("test", "a.txt"));
+        Dispatcher.UIThread.RunJobs();
+
+        var yellow = new SolidColorBrush(Colors.Yellow);
+        WithToken(ThemeTokens.BrushHighlightText, yellow, () =>
+            Assert.Same(yellow, NameCellOf(view, "a.txt").GetVisualDescendants().OfType<NameLabel>().Single().Foreground));
+    }
+
     private static Color BackTop(GlyphIcon icon)
     {
         var back = icon.GetVisualDescendants().OfType<Path>().First();

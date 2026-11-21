@@ -6,7 +6,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Bevel.UI;
 
 namespace Bevel.FileManager.Components;
 
@@ -28,9 +30,6 @@ public partial class TabStrip : UserControl
         public required TextBlock HeaderText { get; init; }
         public required Button CloseButton { get; init; }
     }
-
-    private static readonly IBrush ActiveBrush = Brushes.White;
-    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.Parse("#D4D0C8"));
 
     private readonly List<TabEntry> _entries = new();
     private Guid? _activeId;
@@ -84,12 +83,13 @@ public partial class TabStrip : UserControl
 
         var container = new Border
         {
-            BorderBrush = Brushes.Gray,
             BorderThickness = new Thickness(1, 1, 1, 0),
             Margin = new Thickness(0, 0, 1, 0),
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = content,
         };
+        // Theme tokens, not baked brushes, so a live theme / colour-scheme switch recolours the tabs (bevel-5rel).
+        container[!Border.BorderBrushProperty] = new DynamicResourceExtension(ThemeTokens.BrushButtonShadow);
         Avalonia.Automation.AutomationProperties.SetName(container, header);   // the tab's accessible name
 
         var entry = new TabEntry { Id = id, Container = container, HeaderText = headerText, CloseButton = closeButton };
@@ -146,7 +146,8 @@ public partial class TabStrip : UserControl
         foreach (var entry in _entries)
         {
             var isActive = entry.Id == _activeId;
-            entry.Container.Background = isActive ? ActiveBrush : InactiveBrush;
+            entry.Container[!Border.BackgroundProperty] =
+                new DynamicResourceExtension(isActive ? ThemeTokens.BrushWindow : ThemeTokens.BrushButtonFace);
             entry.HeaderText.FontWeight = isActive ? FontWeight.Bold : FontWeight.Normal;
             entry.CloseButton.IsVisible = !hideClose;
         }

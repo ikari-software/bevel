@@ -95,10 +95,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** No brush objects in code. In `NameCell`: `highlight.Classes.Add("namecell")` and `highlight.BindClass("selected", new Binding(nameof(ItemViewModel.IsSelected)), null)` (Avalonia 11.3.18 `StyledElementExtensions.BindClass`). In `ItemView.axaml` add `<UserControl.Styles>`: `Border.namecell > TextBlock` Foreground `{DynamicResource Bevel.Brush.WindowText}`; `Border.namecell.selected` Background `{DynamicResource Bevel.Brush.Highlight}`; `Border.namecell.selected > TextBlock` Foreground `{DynamicResource Bevel.Brush.HighlightText}`. Delete `ThemeBrush`, `SelectionFill`, `SelectionText`, `NormalText`, `SelBgConv`, `SelFgConv`. Reason: zero per-row event subscriptions in a virtualized list. TabStrip: replace the two statics with `entry.Container[!Border.BackgroundProperty] = new DynamicResourceExtension(isActive ? ThemeTokens.BrushWindow : ThemeTokens.BrushButtonFace)` and `:87` with `ThemeTokens.BrushButtonShadow`.
 - **Test first:** `ItemViewTests.Selection_colours_follow_a_live_token_change_without_reselecting`: show an ItemView with 2 items, select one, `RunJobs()`; set `Application.Current.Resources[ThemeTokens.BrushHighlight] = Brushes.Red` (try/finally remove); `RunJobs()`; assert the selected row's `Border` with class `namecell` has `Background == Brushes.Red` with no selection change.
 - **Steps:**
-  - [ ] Write the test; confirm it fails on the stale brush.
-  - [ ] Apply the ItemView change; check the rename path (`ItemView.axaml.cs` near `:994`) does not read the deleted members.
-  - [ ] Apply the TabStrip change.
-  - [ ] `grep -n "static readonly IBrush\|ThemeBrush(" src/Bevel.FileManager/Components/*.cs` → no hits.
+  - [x] Write the test; confirm it fails on the stale brush.
+  - [x] Apply the ItemView change; check the rename path (`ItemView.axaml.cs` near `:994`) does not read the deleted members.
+  - [x] Apply the TabStrip change.
+  - [x] `grep -n "static readonly IBrush\|ThemeBrush(" src/Bevel.FileManager/Components/*.cs` → no hits.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~ItemViewTests|FullyQualifiedName~ClickSelection|FullyQualifiedName~MarqueeSelection|FullyQualifiedName~TabbedBrowsing"` → pass
 - **Done when:** a live theme switch recolours selected and unselected rows in place; then `bd close bevel-5rel --reason "selection + tab brushes are DynamicResource styles"`
 
