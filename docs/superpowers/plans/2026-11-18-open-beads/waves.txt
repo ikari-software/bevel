@@ -29,6 +29,10 @@ W2|bevel-hsvx|AGENT|S|cards-B-core-ipc-startup.md|Start-menu folder opens bypass
 W2|bevel-yfkw|AGENT|M|cards-D-theming.md|Glyphs.Icon() direct consumers never rebuild on live theme switch
 W2|bevel-5rel|AGENT|S|cards-D-theming.md|ItemView static selection brushes resolved once at type-init, never invalidated
 W2|bevel-yf7c|AGENT|S|cards-D-theming.md|Filer Toolbar.ApplyIcons() rasterized once in the ctor, never re-applied on live theme switch
+W2|bevel-w912|AGENT|S|cards-F-filer.md|Filer List view: columns are centred when they do not fill the width; should be left-aligned
+W2|bevel-0esz|AGENT|M|cards-F-filer.md|Filer List view: Right/Left arrows should move between columns (today Right == Down)
+W2|bevel-3fgd|A+H|M|cards-F-filer.md|Filer List view: names overflow their 180px column and overlap the next column
+W2|bevel-m9jy|A+H|M|cards-F-filer.md|Filer icon views: long names clipped mid-line -- no second line, no ellipsis
 W2|bevel-6asm|A+H|M|cards-E2-taskbar-customization.md|Tab activation is positional, so a stale row activates the wrong tab
 W2|bevel-2ip7|AGENT|S|cards-E2-taskbar-customization.md|StacksViewModel reads TaskbarStacks once at construction, never subscribes to settings.Changed
 W2|bevel-5dn|AGENT|M|cards-E2-taskbar-customization.md|Taskbar live-apply: separate cheap preview from debounced persist
@@ -137,6 +141,7 @@ W8|bevel-gww.7|HUMAN|L|cards-B-core-ipc-startup.md|P7: NativeAOT publish (the pe
 W8|bevel-gww|AGENT|L|cards-B-core-ipc-startup.md|Multi-process shell: --role split + shell-core owner + shared caches + AOT
 W8|bevel-0ai|AGENT|M|cards-E1-start-menu-search.md|Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame cap, clickViaCGEvent usleep
 W8|bevel-oi77|AGENT|S|-|ShellHealthAlert: pass osascript values as argv, not hand-escaped source (filed by bevel-6asm)
+W8|bevel-2ncr|AGENT|S|cards-F-filer.md|Filer List view under RTL opens scrolled to the reading end (first column off-screen)
 W9|bevel-9ue|A+H|L|cards-E2-taskbar-customization.md|Taskbar cust: edge position (top/bottom + vertical L/R) + auto-hide + centered alignment
 W9|bevel-gcd|A+H|M|cards-E2-taskbar-customization.md|Taskbar cust: dock magnification, hover thumbnails, Task View/Search/Widgets buttons
 W9|bevel-hail|A+H|L|cards-E2-taskbar-customization.md|Taskbar menu: true live Quit⇄Force-Quit swap via in-tree Popup

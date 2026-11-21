@@ -111,6 +111,7 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 5. **Files several cards edit are edited one card at a time,** never in parallel branches: `ShellCoreSystemTrayHost.cs`, `StartMenu.axaml(.cs)`, `TaskbarView.axaml.cs` (`ApplyLiveSettings`), `ItemView.axaml(.cs)`, `SettingsService.cs`, `.github/workflows/ci.yml`.
 6. **`bevel-ioxx` (real file icons) waits for `bevel-rzz` (virtualized panel) and `bevel-yfkw` (theme signal).**
 7. **Anything that changes a wire format or a persisted name** (`CoreCommand`/`CoreResponse` in `bevel-alb`, the enum rename in `bevel-zvo0`, new settings keys) must read the old form too, and adds a test that an old value still loads.
+8. **The Filer view-layout set runs before `bevel-rzz` and owns three types.** `bevel-w912`, `bevel-0esz`, `bevel-3fgd` and `bevel-m9jy` (W2, in that order, one at a time) create `WrapLayout`, `ItemView.CellSize` and `NameLabel`. `bevel-rzz` and `bevel-onyp` extend those and do not recreate them; both cards carry an override line. Cell sizes and the List column width are read from `CellSize` and the panel's `Layout`, never copied as numbers into another card's code.
 
 ## Order of work
 
@@ -163,6 +164,12 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 | 14 | `bevel-5dn` | Taskbar live-apply: separate cheap preview from debounced persist | P3 | M | agent | open | [E2](cards-E2-taskbar-customization.md) |
 | 15 | `bevel-glnc` | ShellInstanceLock: IOException can escape, and RecordPid leaks the lock stream | P3 | S | agent | open | [B](cards-B-core-ipc-startup.md) |
 | 16 | `bevel-soon` | CFNumberCreate declares CFNumberType as int, but it is CFIndex (pointer-sized) | P3 | S | agent | open | [G](cards-G-tray-interop-windows.md) |
+| 17 | `bevel-w912` | Filer List view: columns are centred when they do not fill the width; should be left-ali | P2 | S | agent | open, cause measured | [F](cards-F-filer.md) |
+| 18 | `bevel-0esz` | Filer List view: Right/Left arrows should move between columns (today Right == Down) | P2 | M | agent | open, cause measured | [F](cards-F-filer.md) |
+| 19 | `bevel-3fgd` | Filer List view: names overflow their 180px column and overlap the next column | P2 | M | agent, owner verifies | open, cause measured | [F](cards-F-filer.md) |
+| 20 | `bevel-m9jy` | Filer icon views: long names clipped mid-line — no second line, no ellipsis | P2 | M | agent, owner verifies | open, cause measured | [F](cards-F-filer.md) |
+
+Rows 17-20 were added on 2026-11-21. In `waves.txt` they sit after `bevel-yf7c`, so `progress.sh` offers them there, as one chain in this order.
 
 ### W3 — Shippable: release, update, uninstall
 
@@ -287,6 +294,7 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 | 18 | `bevel-gww.7` | P7: NativeAOT publish (the per-process memory payoff) | P2 | L | owner | partly done | [B](cards-B-core-ipc-startup.md) |
 | 19 | `bevel-gww` | Multi-process shell: --role split + shell-core owner + shared caches + AOT | P2 | L | agent | open | [B](cards-B-core-ipc-startup.md) |
 | 20 | `bevel-0ai` | Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame ca | P3 | M | agent | open | [E1](cards-E1-start-menu-search.md) |
+| 21 | `bevel-2ncr` | Filer List view under RTL opens scrolled to the reading end (first column off-screen) | P3 | S | agent | open, cause measured | [F](cards-F-filer.md) |
 
 ### W9 — Big bets, research and parked decisions
 
