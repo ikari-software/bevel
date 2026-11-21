@@ -51,6 +51,12 @@ jobs:
         # MSBuild doesn't parse each code as a separate command-line switch (MSB1006).
         run: dotnet build Bevel.sln --no-restore --configuration Release -p:WarningsAsErrors=CS0168%3BCS0169%3BCS0219%3BCS0414%3BCS0649%3BCS0162%3BCS8321
 
+      - name: Build benchmarks (bevel-b4a5)
+        # bevel-b4a5: CI: build benchmarks/Bevel.Benchmarks (Release) so it cannot rot.
+        # Ubuntu-only: BenchmarkDotNet + Avalonia.Skia + Avalonia.Headless is heavy on macOS/Windows runners.
+        if: runner.os == 'Linux'
+        run: dotnet build benchmarks/Bevel.Benchmarks --configuration Release
+
       - name: Test
         # --blame-hang-timeout: no single test comes near 5 min (the longest assembly runs ~40 s in
         # total), so a test silent that long is hung — kill the host, dump it (mini: tens of MB, not GBs)
