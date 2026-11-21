@@ -55,39 +55,71 @@ public static class SiteShot
     }
 
     /// <summary>
-    /// Polls until two consecutive captures are byte-identical, and returns the settled logical size.
+    /// The settled frame of <paramref name="window"/>: polls until a capture exists, satisfies
+    /// <paramref name="ready"/> (when given) and is byte-identical to the capture before it, then returns it.
+    /// Throws when that does not happen within <paramref name="timeout"/> (default 10 s), naming what never
+    /// became ready, so a render that never finished fails loudly instead of saving a half-drawn frame.
     ///
-    /// A shot captured mid-transition is a shot whose bytes depend on timing, and the site's drift check
-    /// compares bytes — so it reports a stale screenshot on a run where nothing changed, and everyone
-    /// learns to ignore it. The Luna task button's hover gradient was doing exactly that: same content,
-    /// slightly different highlight from one run to the next.
+    /// This is the one settle loop for every render test (bevel-i145). The hand-rolled ones it replaces each
+    /// stopped at the first frame that passed a size check: CaptureRenderedFrame can still return the
+    /// PREVIOUS frame, or transiently null under a loaded full-suite run, so what they saved depended on
+    /// timing. Synchronous on purpose: an async settle loop resumes on whatever dispatcher is current after
+    /// the await, which is how a test ends up driving a dead one (bevel-2nn2).
     ///
     /// Stability is checked on the RENDERED FRAME rather than on layout state, because that is what gets
-    /// written to disk — the same reason the start menu's settle loop polls the frame, not Bounds.
+    /// written to disk. The short sleep between polls is not a settle delay: it yields to the thread-pool
+    /// work some renders wait on (icon decodes), and the loop exits on the first stable frame.
     /// </summary>
-    private static PixelSize WaitForStableFrame(Window window, string path)
+    public static WriteableBitmap CaptureSettled(Window window, Func<WriteableBitmap, bool>? ready = null,
+        TimeSpan? timeout = null, string? what = null)
+    {
+        if (TryCaptureSettled(window, ready, timeout ?? TimeSpan.FromSeconds(10), out var last) is { } settled)
+            return settled;
+        var name = what ?? window.Title ?? "window";
+        throw new InvalidOperationException(last is null
+            ? $"{name}: no frame became ready within the timeout"
+            : $"{name}: the frame never settled (kept changing) within the timeout");
+    }
+
+    /// <summary>The settle loop: the settled frame, or null on timeout with <paramref name="last"/> set to the
+    /// last ready frame seen (null if none was).</summary>
+    private static WriteableBitmap? TryCaptureSettled(Window window, Func<WriteableBitmap, bool>? ready,
+        TimeSpan timeout, out WriteableBitmap? last)
     {
         byte[]? previous = null;
-        var size = default(PixelSize);
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        last = null;
+        var deadline = DateTime.UtcNow + timeout;
 
         while (DateTime.UtcNow < deadline)
         {
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var frame = window.CaptureRenderedFrame();
-            if (frame is not null)
+            if (frame is not null && (ready is null || ready(frame)))
             {
-                size = frame.PixelSize;
                 using var buffer = new MemoryStream();
                 frame.Save(buffer);
                 var bytes = buffer.ToArray();
-                if (previous is not null && bytes.AsSpan().SequenceEqual(previous)) return size;
+                if (previous is not null && bytes.AsSpan().SequenceEqual(previous)) return frame;
                 previous = bytes;
+                last = frame;
+            }
+            else
+            {
+                previous = null;   // a not-ready frame breaks the run of identical ones
             }
             Thread.Sleep(15);
         }
+        return null;
+    }
 
-        if (size != default) return size;   // never settled, but something rendered — save it and move on
-        throw new InvalidOperationException($"nothing rendered for {path}");
+    /// <summary>
+    /// The settle loop for <see cref="Save"/>, which keeps its old contract: a frame that never settles is
+    /// still saved at the last size seen (the shot is then reported by the site's drift check, not lost), and
+    /// only a window that never rendered at all throws.
+    /// </summary>
+    private static PixelSize WaitForStableFrame(Window window, string path)
+    {
+        var settled = TryCaptureSettled(window, ready: null, TimeSpan.FromSeconds(5), out var last);
+        return (settled ?? last)?.PixelSize ?? throw new InvalidOperationException($"nothing rendered for {path}");
     }
 }

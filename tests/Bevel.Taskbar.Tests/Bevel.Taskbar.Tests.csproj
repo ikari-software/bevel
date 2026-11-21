@@ -22,6 +22,7 @@
   <ItemGroup>
     <!-- Shared with the other render-test project: one definition of the landing page's asset scale. -->
     <Compile Include="..\Shared\SiteShot.cs" Link="SiteShot.cs" />
+    <Compile Include="..\Shared\Settle.cs" Link="Settle.cs" />
     <Compile Include="..\Shared\DispatcherFrameSupport.cs" Link="DispatcherFrameSupport.cs" />
     <Compile Include="..\Shared\HeadlessDispatcherRoot.cs" Link="HeadlessDispatcherRoot.cs" />
   </ItemGroup>

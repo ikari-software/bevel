@@ -13,14 +13,14 @@ namespace Bevel.Taskbar.Tests;
 public sealed class ShellModelTests
 {
     [AvaloniaFact]
-    public async Task Programs_reconcile_live_when_installed_apps_change()
+    public void Programs_reconcile_live_when_installed_apps_change()
     {
         // The Start menu's Programs must NOT be a one-shot startup list: installing or removing an app
         // updates it live via IAppEnvironment.InstalledAppsChanged (bevel).
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
-        for (var i = 0; i < 50 && model.Programs.Count < 1; i++) { Dispatcher.UIThread.RunJobs(); await Task.Delay(10); }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
         Assert.Equal("Alpha", Assert.Single(model.Programs).DisplayName);
 
         // App installed → the list grows live, in place.
@@ -416,7 +416,7 @@ public sealed class ShellModelTests
     }
 
     [AvaloniaFact]
-    public async Task Programs_reconcile_from_installed_apps()
+    public void Programs_reconcile_from_installed_apps()
     {
         var appEnv = new StubAppEnvironment(
             new InstalledApp("com.a", "Alpha", null),
@@ -424,11 +424,7 @@ public sealed class ShellModelTests
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start(); // LoadProgramsAsync enumerates off-thread, then reconciles on the UI thread
 
-        for (var i = 0; i < 50 && model.Programs.Count < 2; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(10);
-        }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");
 
         Assert.Equal(["Alpha", "Beta"], model.Programs.Select(p => p.DisplayName));
     }

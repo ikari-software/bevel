@@ -36,11 +36,7 @@ public class RenderBlue2001StartMenuTest
             using var model = new ShellModel(null, appEnv, new HeroIconProvider(), usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
-            for (var i = 0; i < 50 && model.Programs.Count < 4; i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-            }
+            Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
             var menu = new StartMenu(null, null, programs: vm);
 
@@ -70,23 +66,14 @@ public class RenderBlue2001StartMenuTest
             // finish happy while the frame was still narrow. It also had only a 60x10ms budget, which a
             // full-solution run (assemblies in parallel) blows straight through. Poll the frame itself,
             // on a time-based deadline generous enough not to flake but still fast when it is ready.
-            Avalonia.Media.Imaging.WriteableBitmap? frame = null;
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-            while (DateTime.UtcNow < deadline)
-            {
-                Dispatcher.UIThread.RunJobs();
-                frame = window.CaptureRenderedFrame();
-                // Width alone is not settled: icons load ASYNCHRONOUSLY, so a frame can be full width
-                // with the program rows still drawing the "unknown app" plate. Capturing there made the
-                // hero's bytes depend on how fast the decode happened to be, and the drift check caught
-                // it. Wait for every program to actually have its icon.
-                var iconsIn = model.Programs.Count > 0 && model.Programs.All(p => p.IconSource is not null);
-                if (frame is not null && frame.PixelSize.Width >= 340 && iconsIn) break;
-                await Task.Delay(10);
-            }
-
-            Assert.NotNull(frame);
-            Assert.True(frame!.PixelSize.Width >= 340, $"luna menu too narrow: {frame.PixelSize}");
+            // Width alone is not settled: icons load ASYNCHRONOUSLY, so a frame can be full width with the
+            // program rows still drawing the "unknown app" plate. Capturing there made the hero's bytes depend
+            // on how fast the decode happened to be, and the drift check caught it. Wait for every program to
+            // actually have its icon.
+            var frame = Bevel.TestSupport.SiteShot.CaptureSettled(window,
+                f => f.PixelSize.Width >= 340
+                     && model.Programs.Count > 0 && model.Programs.All(p => p.IconSource is not null),
+                what: "luna start menu");
 
             var outPath = Environment.GetEnvironmentVariable("BEVEL_LUNA_START_OUT")
                           ?? Path.Combine(Path.GetTempPath(), "bevel-luna-startmenu.png");
@@ -117,11 +104,7 @@ public class RenderBlue2001StartMenuTest
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
             var vm = new StartMenuViewModel(model);
-            for (var i = 0; i < 50 && model.Programs.Count < 2; i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-            }
+            Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");
 
             var menu = new StartMenu(null, null, programs: vm);
             var button = new Button();

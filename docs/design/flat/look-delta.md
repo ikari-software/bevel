@@ -103,6 +103,15 @@ square chrome corners.
 
 ## 4. Baseline integrity (confirmed)
 
+> **Regenerating these renders (2026-11-21, bevel-tv19 / bevel-7wkc).** A plain test run no longer writes
+> here; it writes to `$TMPDIR/bevel-flatpastel`. To regenerate this folder, on macOS:
+> `BEVEL_FLATPASTEL_DOCS=1 dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderFlatAndPastelComparisonTest"`.
+> Compare the result by **pixels, not bytes**: on 2026-11-21 all 12 regenerated files were pixel-identical to
+> the committed ones but had different PNG bytes, because the encoder (SkiaSharp / system zlib) compresses
+> the same pixels differently across machines and OS versions. The sha256 values below describe the
+> October review and no longer match the committed files.
+
+
 The pristine baseline (`renders/_before/`, 13 PNGs) was regenerated from the reviewed parent
 commit with the render harness clock pinned at `2026-01-01 14:14 UTC`. Window and start-menu
 output is byte-deterministic: `_before/flat-window-blue.png` and

@@ -159,7 +159,7 @@ public class StartMenuTests
     }
 
     [AvaloniaFact]
-    public async Task Bound_programs_shows_loading_then_binds_when_enumeration_completes()
+    public void Bound_programs_shows_loading_then_binds_when_enumeration_completes()
     {
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
@@ -171,11 +171,7 @@ public class StartMenuTests
         Assert.Equal("(Loading…)", Assert.Single(programsItem!.Items.OfType<MenuItem>()).Header);
 
         model.Start();
-        for (var i = 0; i < 50 && model.Programs.Count < 1; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(10);
-        }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
         Dispatcher.UIThread.RunJobs();
 
         // Populated → cascade binds the live reconciled collection; the placeholder is gone.
