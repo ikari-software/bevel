@@ -98,6 +98,11 @@ internal static class CoreFoundationInterop
         IntPtr allocator, IntPtr[] keys, IntPtr[] values, nint numValues,
         IntPtr keyCallBacks, IntPtr valueCallBacks);
 
+    /// <summary>
+    /// Creates a CFNumber. <paramref name="type"/> is nint (not int) because CFNumberType is
+    /// typedef'd as CFIndex, which is pointer-sized on all platforms. Using int would cause an ABI
+    /// mismatch on 64-bit systems where nint=8 bytes but int=4 bytes.
+    /// </summary>
     [DllImport(Frameworks.CoreFoundation)]
     public static extern IntPtr CFNumberCreate(IntPtr allocator, nint type, ref int value);
 }
