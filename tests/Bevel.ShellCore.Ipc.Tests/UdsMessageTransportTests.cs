@@ -260,6 +260,51 @@ public sealed class UdsMessageTransportTests
         Assert.Equal(new[] { "0-snapshot", "1-delta" }, order.ToArray());
     }
 
+    // bevel-70nw: Events raised between HandshakeOk and connection registration are NOT lost.
+    // A broadcast sent while the client is connecting (after HandshakeOk is queued but before
+    // registration completes) must still be delivered to that client, and must arrive AFTER the
+    // snapshot and AFTER HandshakeOk.
+    [Fact]
+    public async Task HandshakeOk_RegistrationRace_BroadcastNotLost()
+    {
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = StartServer(path, nonce);
+        server.ClientConnected += send => _ = send(Encoding.UTF8.GetBytes("SNAPSHOT"));
+
+        var order = new ConcurrentQueue<string>();
+        var snapshotSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var broadcastSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var client = new UdsMessageClient(path, nonce, "shell");
+        client.BroadcastReceived += b =>
+        {
+            var msg = Encoding.UTF8.GetString(b);
+            order.Enqueue(msg);
+            if (msg == "SNAPSHOT") snapshotSeen.TrySetResult();
+            if (msg == "BROADCAST") broadcastSeen.TrySetResult();
+        };
+
+        // Start connect - this will trigger ClientConnected and register the connection
+        var connectTask = client.ConnectAsync(Ct);
+        
+        // Wait for the connection to be registered (ClientCount == 1)
+        await WaitFor(() => server.ClientCount == 1);
+        
+        // Send a broadcast IMMEDIATELY after the connection is registered.
+        // With the fix, this broadcast should be queued AFTER the snapshot and delivered to the client.
+        server.Broadcast(Encoding.UTF8.GetBytes("BROADCAST"));
+        
+        // Wait for both snapshot and broadcast to be received
+        await Task.WhenAll(snapshotSeen.Task, broadcastSeen.Task).WaitAsync(Timeout);
+        
+        // Verify the order: snapshot first, then broadcast
+        Assert.Equal(new[] { "SNAPSHOT", "BROADCAST" }, order.ToArray());
+        
+        // Also verify connect completed successfully
+        await connectTask.WaitAsync(Timeout);
+    }
+
     // Review (correctness): IsConnected must go false once the receive loop faults, not stay true
     // forever. Drop the server and the client's connection state must flip.
     [Fact]

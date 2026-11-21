@@ -163,19 +163,25 @@ public sealed class UdsMessageServer : IAsyncDisposable
                 return;
             }
 
-            await Framing.WriteFrameAsync(stream, FrameKind.HandshakeOk, 0, ReadOnlyMemory<byte>.Empty, ct)
-                .ConfigureAwait(false);
-
             // A liveness probe is answered and closed here — never registered, never snapshotted
             // (see ProbeCapability). The Ok it just read is the whole answer.
             if (capability == ProbeCapability)
             {
+                await Framing.WriteFrameAsync(stream, FrameKind.HandshakeOk, 0, ReadOnlyMemory<byte>.Empty, ct)
+                    .ConfigureAwait(false);
                 stream.Dispose();
                 return;
             }
 
+            // Create the connection first, then queue HandshakeOk through it BEFORE registering
+            // for broadcasts. This closes the race window between HandshakeOk and registration
+            // where AppLaunched/AppTerminated events would be lost (bevel-70nw).
+            //
+            // The pump is NOT started yet — we queue HandshakeOk first, then register the connection,
+            // then start the pump. This guarantees that HandshakeOk is the first frame written,
+            // and any broadcast that arrives after registration will be queued behind it.
             conn = new ClientConnection(stream);
-            conn.StartPump(this, ct);
+            conn.Enqueue(FrameKind.HandshakeOk, correlationId: 0, Array.Empty<byte>());
 
             // Snapshot BEFORE the client is visible to Broadcast: the ClientConnected handler
             // enqueues its snapshot first, then registering the client makes later broadcasts
@@ -192,6 +198,7 @@ public sealed class UdsMessageServer : IAsyncDisposable
             }
 
             _clients[conn.Id] = conn;
+            conn.StartPump(this, ct);
 
             // Request loop. Each request is dispatched concurrently so a slow handler can't
             // head-of-line block the others; the response carries the request's correlation id.
