@@ -59,4 +59,60 @@ public sealed class VirtualizingWrapPanelTests
         Assert.Equal(320 - 240, p.Children[2].Bounds.X);
         Assert.Equal(0, p.Children[0].Bounds.Y);          // still the first row
     }
+
+    // bevel-w912: the panel must fill its slot. Returning only the item extent from ArrangeOverride
+    // made Avalonia centre a Stretch-aligned panel, so a short List view sat mid-pane.
+    private static VirtualizingWrapPanel Hosted(VirtualizingWrapPanel p, double w, double h)
+    {
+        var host = new Decorator { Child = p };
+        host.Measure(new Size(w, h));
+        host.Arrange(new Rect(0, 0, w, h));
+        return p;
+    }
+
+    [AvaloniaFact]
+    public void Columns_narrower_than_the_slot_start_at_the_left_edge()
+    {
+        var p = Hosted(Panel(5, 180, 18, Orientation.Vertical), 800, 40);   // 2 per column, 3 columns
+        Assert.Equal(0, p.Bounds.X);
+        Assert.Equal(800, p.Bounds.Width);
+        Assert.Equal(0, p.Children[0].Bounds.X);
+        Assert.Equal(180, p.Children[2].Bounds.X);
+    }
+
+    [AvaloniaFact]
+    public void Columns_start_at_the_right_edge_under_rtl()
+    {
+        var p = Panel(5, 180, 18, Orientation.Vertical);
+        p.FlowDirection = Avalonia.Media.FlowDirection.RightToLeft;
+        Hosted(p, 800, 40);
+        Assert.Equal(0, p.Bounds.X);   // child bounds are panel-relative; the panel itself must not shift
+        Assert.Equal(620, p.Children[0].Bounds.X);
+        Assert.Equal(440, p.Children[2].Bounds.X);
+    }
+
+    [AvaloniaFact]
+    public void Changing_item_width_relays_out()
+    {
+        var p = Panel(5, 180, 18, Orientation.Vertical);
+        var host = new Decorator { Child = p };
+        host.Measure(new Size(800, 40));
+        host.Arrange(new Rect(0, 0, 800, 40));
+        p.ItemWidth = 100;
+        // Re-measure the panel itself: a detached host has no layout manager to pass the
+        // invalidation up, and Measure with an unchanged size is skipped unless the panel's own
+        // measure was invalidated (which AffectsMeasure does).
+        p.Measure(new Size(800, 40));
+        p.Arrange(new Rect(0, 0, 800, 40));
+        Assert.Equal(100, p.Children[2].Bounds.X);
+    }
+
+    [AvaloniaFact]
+    public void Rows_keep_the_spare_width_on_the_trailing_side()
+    {
+        var p = Hosted(Panel(3, 80, 60, Orientation.Horizontal), 830, 1000);
+        Assert.Equal(0, p.Bounds.X);
+        Assert.Equal(0, p.Children[0].Bounds.X);
+        Assert.Equal(0, p.Children[0].Bounds.Y);
+    }
 }

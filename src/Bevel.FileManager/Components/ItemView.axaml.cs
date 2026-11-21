@@ -97,6 +97,8 @@ public partial class ItemView : UserControl
     }
 
     private readonly ObservableCollection<ItemViewModel> _viewModels = new();
+    // List-view column width follows the names (bevel-3fgd); fed every DisplayName that enters the list.
+    private readonly NameColumnSizer _nameSizer = new();
     private readonly HashSet<ItemViewModel> _selected = new();
     private readonly List<ItemViewModel> _selectedOrder = new();
     private ItemViewModel? _anchor;
@@ -148,6 +150,7 @@ public partial class ItemView : UserControl
         // Focus-visible cue: a low-vision keyboard user needs to see WHERE focus is even before they
         // move the selection. Show a subtle dotted rectangle whenever the list holds focus with nothing
         // selected; it disappears the moment a selection exists (the navy highlight then shows focus).
+        ItemsScroller.ScrollChanged += OnItemsScrollChanged;
         GotFocus += (_, _) => UpdateFocusCue();
         LostFocus += (_, _) => UpdateFocusCue();
         _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
@@ -192,6 +195,8 @@ public partial class ItemView : UserControl
             ApplyViewMode((ViewMode)change.NewValue!);
         else if (change.Property == ItemsProperty)
             RebuildItems();
+        else if (change.Property == IsKeyboardFocusWithinProperty)
+            UpdateFullNameReveal();
     }
 
     // ── View modes ────────────────────────────────────────────────────
@@ -204,20 +209,23 @@ public partial class ItemView : UserControl
         switch (mode)
         {
             case ViewMode.Details:
-                // Vertical list; columns may exceed the width, so allow horizontal scroll.
-                SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Auto);
+                // Vertical list at the pane's width. No horizontal scroll: the column header sits outside
+                // the scroller and never scrolls, so a scrollable row could only drift out of line with
+                // it, and an unconstrained width let a long name widen every row instead of trimming in
+                // the star (Name) column (bevel-3fgd).
+                SetScroll(horizontal: ScrollBarVisibility.Disabled, vertical: ScrollBarVisibility.Auto);
                 ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
                     new VirtualizingStackPanel { Orientation = Orientation.Vertical });
                 ItemsPresenter.ItemTemplate = _detailsTpl;
                 break;
             case ViewMode.LargeIcons:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(80, 60, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = LargeIconTpl;
                 break;
             case ViewMode.SmallIcons:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(180, 20, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = SmallIconTpl;
                 break;
             case ViewMode.List:
@@ -225,16 +233,46 @@ public partial class ItemView : UserControl
                 // Height is constrained (no vertical scroll) so it wraps into columns and the
                 // overflow scrolls horizontally — the classic Filer "List" view.
                 SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Disabled);
-                ItemsPresenter.ItemsPanel = Wrap(180, 18, Orientation.Vertical);
+                // Column width comes from the names, not the table (CellSize gives the row height).
+                ItemsPresenter.ItemsPanel = Wrap(new Size(ListColumnWidth(), CellSize(mode).Height), Orientation.Vertical);
                 ItemsPresenter.ItemTemplate = ListTpl;
                 break;
             case ViewMode.Thumbnails:
                 GridScroll();
-                ItemsPresenter.ItemsPanel = Wrap(120, 120, Orientation.Horizontal);
+                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Horizontal);
                 ItemsPresenter.ItemTemplate = ThumbTpl;
                 break;
         }
+        _pinnedToReadingStart = true;
+        UpdateFullNameReveal();
     }
+
+    /// <summary>RTL List view (bevel-2ncr): the panel mirrors columns inside its extent, so the reading
+    /// start (index 0) is at the far RIGHT, but a ScrollViewer opens at offset 0, the far left. Keep the
+    /// reading start in view while the extent grows (folder open, streaming batches) until the user
+    /// scrolls away from it: only an offset that was at the old maximum (or a list that fitted) is
+    /// re-pinned, so a position the user chose is left alone. Nothing to do under LTR.</summary>
+    void OnItemsScrollChanged(object? _, ScrollChangedEventArgs e)
+    {
+        if (ViewMode != ViewMode.List || FlowDirection != Avalonia.Media.FlowDirection.RightToLeft) return;
+        var sv = ItemsScroller;
+        double max = Math.Max(0, sv.Extent.Width - sv.Viewport.Width);
+        if (e.ExtentDelta.X != 0 || e.ViewportDelta.X != 0)
+        {
+            // The list grew or the pane was resized: keep the reading start in view if we were there.
+            if (_pinnedToReadingStart && sv.Offset.X != max) sv.Offset = new Vector(max, sv.Offset.Y);
+        }
+        else if (e.OffsetDelta.X != 0)
+        {
+            // Only the offset moved: the user scrolled (or a key scrolled the selection into view).
+            _pinnedToReadingStart = sv.Offset.X >= max - 1;
+        }
+    }
+
+    /// <summary>RTL List only: the view is showing its reading start (the far right), so growth and
+    /// resizes keep it there. Set on a reset or view switch; cleared when the user scrolls away
+    /// (review #2: the old handler ignored viewport-only resizes).</summary>
+    bool _pinnedToReadingStart = true;
 
     // Horizontal-flow icon grids wrap to the viewport WIDTH, so horizontal scroll must be off
     // (otherwise the panel is measured at infinite width and never wraps); overflow scrolls down.
@@ -246,8 +284,43 @@ public partial class ItemView : UserControl
         ItemsScroller.VerticalScrollBarVisibility = vertical;
     }
 
-    private static FuncTemplate<Panel> Wrap(double w, double h, Orientation flow)
-        => new(() => new VirtualizingWrapPanel { ItemWidth = w, ItemHeight = h, Orientation = flow });
+    private static FuncTemplate<Panel> Wrap(Size cell, Orientation flow)
+        => new(() => new VirtualizingWrapPanel { ItemWidth = cell.Width, ItemHeight = cell.Height, Orientation = flow });
+
+    /// <summary>The List column width the current names need (100 to 360 px).</summary>
+    double ListColumnWidth() => _nameSizer.Width(MeasureName);
+
+    /// <summary>The drawn width of a name in the item label's font (FontSize 11, see NameCell).</summary>
+    double MeasureName(string name)
+    {
+        using var layout = new Avalonia.Media.TextFormatting.TextLayout(
+            name, new Typeface(FontFamily, FontStyle, FontWeight), 11, null);
+        return layout.WidthIncludingTrailingWhitespace;
+    }
+
+    /// <summary>After names entered the list: in List view, widen the columns to fit them. Between
+    /// resets the width only grows, so columns do not jitter while a folder streams in;
+    /// <paramref name="reset"/> starts again from the current names.</summary>
+    void FitListColumns(bool reset)
+    {
+        if (ViewMode != ViewMode.List || ItemsPresenter.ItemsPanelRoot is not VirtualizingWrapPanel p) return;
+        double w = ListColumnWidth();
+        p.ItemWidth = reset ? w : Math.Max(p.ItemWidth, w);
+    }
+
+    /// <summary>The cell of each view mode: the ONLY place cell sizes are written (List's column width
+    /// is the exception: it follows the names, see <see cref="ListColumnWidth"/>). The wrap panels are
+    /// built from it and the Details row height comes from it; navigation and scroll-into-view read
+    /// the panel's <see cref="WrapLayout"/>, never these numbers directly. Details is one row per item
+    /// across the pane, so its width is NaN.</summary>
+    internal static Size CellSize(ViewMode mode) => mode switch
+    {
+        ViewMode.LargeIcons => new Size(80, 72),     // 4 margin + 32 icon + 2 spacing + 30 (two text lines) + 4 margin
+        ViewMode.SmallIcons => new Size(180, 20),
+        ViewMode.List => new Size(180, 18),
+        ViewMode.Thumbnails => new Size(120, 142),   // 2 margin + 106 frame (1 + 4 + 96 + 4 + 1) + 2 + 30 caption + 2 margin
+        _ => new Size(double.NaN, 22),   // Details
+    };
 
     // ── Templates ─────────────────────────────────────────────────────
 
@@ -273,6 +346,8 @@ public partial class ItemView : UserControl
     static IBrush NormalText => ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
         new(sel => sel ? SelectionFill : Brushes.Transparent);
+    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealLinesConv =
+        new(full => full ? 0 : 2);
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
         new(sel => sel ? SelectionText : NormalText);
 
@@ -281,19 +356,44 @@ public partial class ItemView : UserControl
     static Control NameCell(string text, TextWrapping wrap = TextWrapping.NoWrap, double maxW = 0,
         TextAlignment align = TextAlignment.Left)
     {
-        var label = new TextBlock
+        var label = new NameLabel
         {
             Text = text, FontSize = 11,
             TextWrapping = wrap, TextAlignment = align,
             MaxWidth = maxW > 0 ? maxW : double.MaxValue,
-            TextTrimming = wrap == TextWrapping.NoWrap ? TextTrimming.CharacterEllipsis : TextTrimming.None,
+            // Every cut-off name ends in an ellipsis. Wrapped names (icon views) stop at two lines of a
+            // fixed 15 px, so the cell height in CellSize does not depend on the font's own metrics
+            // (bevel-m9jy); NameLabel adds the ellipsis Avalonia skips when the cut falls between words.
+            TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        if (wrap != TextWrapping.NoWrap)
+        {
+            label.LineHeight = 15;
+            // Two lines, or the whole name while this is the revealed item (MaxLines 0 = no limit).
+            label.Bind(TextBlock.MaxLinesProperty,
+                new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealLinesConv });
+        }
         label.Bind(TextBlock.ForegroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelFgConv });
 
         var highlight = new Border { Child = label, Padding = new(2, 0) };
         highlight.Bind(Border.BackgroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelBgConv });
         return highlight;
+    }
+
+    /// <summary>Icon docked left, name filling the rest of the row (bevel-3fgd). A horizontal StackPanel
+    /// measured the name at unlimited width, so it never trimmed and drew over the next column; the
+    /// DockPanel gives it the cell's remaining width to trim to. The highlight hugs the text (Left), so
+    /// the selection bar is only as wide as the visible name.</summary>
+    static Control IconAndName(Control icon, Control nameCell, Thickness margin = default)
+    {
+        icon.Margin = new Thickness(0, 0, 4, 0);
+        DockPanel.SetDock(icon, Dock.Left);
+        nameCell.HorizontalAlignment = HorizontalAlignment.Left;
+        var row = new DockPanel { LastChildFill = true, Margin = margin };
+        row.Children.Add(icon);
+        row.Children.Add(nameCell);
+        return row;
     }
 
     /// <summary>Wrap a row template's visual root in an <see cref="ItemRow"/> so the row exposes a
@@ -321,19 +421,13 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> SmallIconTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        s.Children.Add(NameCell(vm.DisplayName));
-        return Row(s);
+        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(2, 0)));
     });
 
     static readonly FuncDataTemplate<ItemViewModel> ListTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        s.Children.Add(NameCell(vm.DisplayName));
-        return Row(s);
+        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(0, 1)));
     });
 
     // Instance (not static) so each row's Size/Type/Date columns bind to the shared column
@@ -342,17 +436,14 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         // Keep rows on the active window surface; classic details view does not add horizontal gridlines.
-        var row = new Border { Padding = new(2, 1) };
+        var row = new Border { Padding = new(2, 1) };   // 1 + 1 vertical padding around the grid
         row[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
-        var g = new Grid { Height = 20 };
+        var g = new Grid { Height = CellSize(ViewMode.Details).Height - 2 };
         g.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(DateColWidthProperty));
-        var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        name.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        name.Children.Add(NameCell(vm.DisplayName));
-        g.Children.Add(name);
+        g.Children.Add(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName)));
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 3, Text = vm.ModifiedDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
@@ -371,14 +462,16 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> ThumbTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var b = new Border { BorderThickness = new(1), Padding = new(4), Margin = new(2) };
-        b[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
-        b[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindowFrame);
-        var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2 };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 96));
+        // The frame holds only the picture; the caption sits under it, outside the box (Explorer's
+        // thumbnail view). The line is the light ButtonFace grey: WindowFrame (black) and ButtonShadow
+        // (#808080 in the classic scheme) both drew every tile as a hard box on the white window.
+        var frame = new Border { BorderThickness = new(1), Padding = new(4), Child = GlyphIcon.For(vm.IconKey, 96) };
+        frame[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
+        frame[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushButtonFace);
+        var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(2) };
+        s.Children.Add(frame);
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
-        b.Child = s;
-        return Row(b);
+        return Row(s);
     });
 
     // ── Rebuild ───────────────────────────────────────────────────────
@@ -386,6 +479,9 @@ public partial class ItemView : UserControl
     /// <summary>Clear all items and reset view. Call before streaming new items.</summary>
     public void ResetItems()
     {
+        _pinnedToReadingStart = true;
+        _nameSizer.Reset();
+        FitListColumns(reset: true);
         _viewModels.Clear();
         _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
         ItemsPresenter.ItemsSource = _viewModels;
@@ -398,7 +494,13 @@ public partial class ItemView : UserControl
     /// re-sort (header click) still goes through SortAsync/ApplyOrder.</summary>
     public void AddItems(IReadOnlyList<IVfsNode> nodes)
     {
-        foreach (var n in nodes) InsertSorted(new ItemViewModel(n));
+        foreach (var n in nodes)
+        {
+            var vm = new ItemViewModel(n);
+            _nameSizer.Add(vm.DisplayName);
+            InsertSorted(vm);
+        }
+        FitListColumns(reset: false);
     }
 
     /// <summary>Binary-search the current sorted position for <paramref name="vm"/> and Insert it there
@@ -434,10 +536,12 @@ public partial class ItemView : UserControl
         {
             incoming.Add(n.Path);
             if (existing.TryGetValue(n.Path, out var vm))
-                vm.Update(n);                       // same row, fresh metadata
+                vm.Update(n);                       // same row, fresh metadata (a rename lands here)
             else
-                InsertSorted(new ItemViewModel(n)); // new row placed in order, no teardown
+                InsertSorted(vm = new ItemViewModel(n)); // new row placed in order, no teardown
+            _nameSizer.Add(vm.DisplayName);
         }
+        FitListColumns(reset: false);
 
         // Drop rows whose paths disappeared (in place — a Remove doesn't tear down the list).
         for (var i = _viewModels.Count - 1; i >= 0; i--)
@@ -455,8 +559,16 @@ public partial class ItemView : UserControl
     {
         _viewModels.Clear();
         _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
+        _nameSizer.Reset();
+        _pinnedToReadingStart = true;
         if (Items != null)
-            foreach (var n in Items) _viewModels.Add(new ItemViewModel(n));
+            foreach (var n in Items)
+            {
+                var vm = new ItemViewModel(n);
+                _nameSizer.Add(vm.DisplayName);
+                _viewModels.Add(vm);
+            }
+        FitListColumns(reset: true);
         SortItems();
         ItemsPresenter.ItemsSource = _viewModels;
     }
@@ -570,7 +682,7 @@ public partial class ItemView : UserControl
 
     // ── Selection ────────────────────────────────────────────────────
 
-    ItemViewModel? Hit(Point pt)
+    ItemViewModel? Hit(Point pt, bool revealedFirst = true)
     {
         // pt is in ItemsPresenter coordinates (all callers use GetPosition(ItemsPresenter)).
         // Match it against realized container RECTS rather than visual hit-testing: templates
@@ -580,6 +692,14 @@ public partial class ItemView : UserControl
         // No _viewModels.Contains(vm) guard: a realized container's DataContext is always a current
         // ItemViewModel once ItemsSource is set, and the Contains was an O(n) scan INSIDE this O(n)
         // container loop — O(n²) per click in a large folder (ce-review: performance).
+        // A revealed name draws over the cells below it, so a click on that text belongs to its item,
+        // not to the one underneath (bevel-m9jy).
+        if (revealedFirst && _revealed is not null && ItemsPresenter.ContainerFromItem(_revealed) is { } rc
+            && rc.FindDescendantOfType<NameLabel>()?.Parent is Control nameCell
+            && nameCell.TranslatePoint(default, ItemsPresenter) is { } np
+            && new Rect(np, nameCell.Bounds.Size).Contains(pt))
+            return _revealed;
+
         foreach (var c in ItemsPresenter.GetRealizedContainers())
         {
             if (c is not Control ctl || ctl.DataContext is not ItemViewModel vm)
@@ -663,7 +783,25 @@ public partial class ItemView : UserControl
 
     /// <summary>Raised whenever the selection set changes (drives the info pane).</summary>
     public event Action? SelectionChanged;
-    void RaiseSelection() { UpdateFocusCue(); SelectionChanged?.Invoke(); }
+    void RaiseSelection() { UpdateFocusCue(); UpdateFullNameReveal(); SelectionChanged?.Invoke(); }
+
+    /// <summary>The item whose label currently shows its whole name (bevel-m9jy).</summary>
+    ItemViewModel? _revealed;
+
+    /// <summary>Explorer behaviour: in Large Icons and Thumbnails the ONE selected item of a focused view
+    /// shows its whole name, drawn over the rows below (its container's ZIndex is bound to the flag in
+    /// <see cref="ItemList"/>); every other name stops at two lines and an ellipsis.</summary>
+    void UpdateFullNameReveal()
+    {
+        var target = IsKeyboardFocusWithin && _selected.Count == 1 && _selectedOrder.Count == 1
+                     && ViewMode is ViewMode.LargeIcons or ViewMode.Thumbnails
+            ? _selectedOrder[0]
+            : null;
+        if (ReferenceEquals(target, _revealed)) return;
+        if (_revealed is not null) _revealed.ShowFullName = false;
+        _revealed = target;
+        if (target is not null) target.ShowFullName = true;
+    }
 
     /// <summary>The dotted focus rectangle is visible only while the list is focused, holds items, and
     /// has an empty selection — otherwise the selection highlight itself communicates focus.</summary>
@@ -824,6 +962,14 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>The folder a drop at <paramref name="pt"/> (ItemsPresenter coordinates) lands in, or null
+    /// for the current directory.</summary>
+    /// <remarks>Drops ignore the revealed full name (review #3): it is an overlay of the selected item,
+    /// which is often the thing being dragged, so the drop belongs to the cell underneath. A click on it
+    /// still selects the revealed item (Hit's default).</remarks>
+    internal ItemViewModel? DropTargetAt(Point pt)
+        => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
+
     void OnDrop(object? _, DragEventArgs e)
     {
         List<VfsPath>? paths = null;
@@ -832,8 +978,7 @@ public partial class ItemView : UserControl
         else if (e.Data.Contains(DataFormats.Files))
             paths = e.Data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
         // Dropping onto a folder targets that folder; onto empty space, the current directory.
-        var over = Hit(e.GetPosition(ItemsPresenter));
-        var target = over is { IsFolder: true } ? over.Path : (VfsPath?)null;
+        var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;
@@ -885,9 +1030,9 @@ public partial class ItemView : UserControl
             case Key.End:
                 MoveTo(_viewModels.Count - 1, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.PageDown:
-                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) + PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) + CurrentLayout().PageSize(ItemsScroller.Viewport), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.PageUp:
-                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) - PageStep(), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
+                MoveTo((_lastClickIdx < 0 ? 0 : _lastClickIdx) - CurrentLayout().PageSize(ItemsScroller.Viewport), e.KeyModifiers.HasFlag(KeyModifiers.Shift)); e.Handled = true; break;
             case Key.Escape:
                 ClearSel(); RaiseSelection(); e.Handled = true; break;
             default:
@@ -912,21 +1057,23 @@ public partial class ItemView : UserControl
     void Navigate(Key key, bool shift)
     {
         if (_viewModels.Count == 0) return;
-        int cols = ColsPerRow();
         int cur = _lastClickIdx < 0 ? 0 : _lastClickIdx;
-        // Arrow keys are VISUAL: under RTL the layout is mirrored (index 0 sits at the visual
-        // right — VirtualizingWrapPanel), so the Right arrow moves toward reading-start, i.e.
-        // a LOWER index (bevel-3cd), exactly like classic Filer on RTL Windows.
-        int ahead = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft ? -1 : 1;
-        int next = key switch
+        // Arrow keys are VISUAL (bevel-0esz): WrapLayout.Move maps the arrow onto the view's flow, so in
+        // List (items flow down, then wrap into columns) Right/Left cross columns and Up/Down move one
+        // item, while in the icon views Up/Down cross rows. Under RTL the layout is mirrored (index 0
+        // sits at the visual right), so Right moves toward reading-start, i.e. a LOWER index (bevel-3cd),
+        // exactly like classic Filer on RTL Windows.
+        bool rtl = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        var (dx, dy) = key switch
         {
-            Key.Down  => cur + cols,   // one row down (a single row in Details/List)
-            Key.Up    => cur - cols,
-            Key.Right => cur + ahead,
-            Key.Left  => cur - ahead,
-            _         => cur,
+            Key.Right => (1, 0),
+            Key.Left  => (-1, 0),
+            Key.Down  => (0, 1),
+            Key.Up    => (0, -1),
+            _         => (0, 0),
         };
-        MoveTo(next, shift);
+        if (dx == 0 && dy == 0) return;
+        MoveTo(CurrentLayout().Move(cur, dx, dy, rtl), shift);
     }
 
     /// <summary>Move the selection cursor to <paramref name="index"/> (clamped), extending the
@@ -940,36 +1087,35 @@ public partial class ItemView : UserControl
         ScrollToIndex(index);
     }
 
-    /// <summary>Columns per row for the current view (1 for the vertical Details/List views).</summary>
-    int ColsPerRow()
-    {
-        if (ViewMode is ViewMode.Details or ViewMode.List) return 1;
-        double itemW = ViewMode switch
-        {
-            ViewMode.LargeIcons => 80,
-            ViewMode.SmallIcons => 180,
-            ViewMode.Thumbnails => 120,
-            _ => 80,
-        };
-        return Math.Max(1, (int)(ItemsScroller.Bounds.Width / itemW));
-    }
+    /// <summary>The geometry of what is on screen: the wrap panel's last layout, or one row per item for
+    /// Details (a VirtualizingStackPanel).</summary>
+    internal WrapLayout CurrentLayout()
+        => ItemsPresenter.ItemsPanelRoot is VirtualizingWrapPanel p
+            ? p.Layout
+            : WrapLayout.SingleColumn(_viewModels.Count, ItemsScroller.Viewport.Width, CellSize(ViewMode.Details).Height);
 
-    int PageStep()
-    {
-        double itemH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
-        int rows = Math.Max(1, (int)(ItemsScroller.Bounds.Height / itemH));
-        return Math.Max(1, rows * ColsPerRow());
-    }
-
+    /// <summary>Scroll the minimum that reveals item <paramref name="index"/>, on the axis the view
+    /// scrolls: down for the icon views and Details, sideways for List.</summary>
     void ScrollToIndex(int index)
     {
-        int cols = ColsPerRow();
-        double rowH = ViewMode switch { ViewMode.LargeIcons => 60, ViewMode.Thumbnails => 120, _ => 20 };
-        double y = index / cols * rowH;
-        double vpH = ItemsScroller.Viewport.Height;
+        var layout = CurrentLayout();
+        if (layout.PerLine <= 0 || ItemsPresenter.ItemsPanelRoot is not { } panel) return;
+        bool rtl = FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        var r = layout.RectFor(index, panel.Bounds.Width, rtl);
+        var vp = ItemsScroller.Viewport;
         var off = ItemsScroller.Offset;
-        if (y < off.Y) ItemsScroller.Offset = new Vector(off.X, y);
-        else if (y + rowH > off.Y + vpH) ItemsScroller.Offset = new Vector(off.X, y + rowH - vpH);
+        double x = off.X, y = off.Y;
+        if (layout.Horizontal)
+        {
+            if (r.Y < off.Y) y = r.Y;
+            else if (r.Bottom > off.Y + vp.Height) y = r.Bottom - vp.Height;
+        }
+        else
+        {
+            if (r.X < off.X) x = r.X;
+            else if (r.Right > off.X + vp.Width) x = r.Right - vp.Width;
+        }
+        if (x != off.X || y != off.Y) ItemsScroller.Offset = new Vector(x, y);
     }
 
 

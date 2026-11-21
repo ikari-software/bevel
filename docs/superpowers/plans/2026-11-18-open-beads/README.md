@@ -168,8 +168,9 @@ The cards were written by eight researchers in parallel. Where they disagree, th
 | 18 | `bevel-0esz` | Filer List view: Right/Left arrows should move between columns (today Right == Down) | P2 | M | agent | open, cause measured | [F](cards-F-filer.md) |
 | 19 | `bevel-3fgd` | Filer List view: names overflow their 180px column and overlap the next column | P2 | M | agent, owner verifies | open, cause measured | [F](cards-F-filer.md) |
 | 20 | `bevel-m9jy` | Filer icon views: long names clipped mid-line — no second line, no ellipsis | P2 | M | agent, owner verifies | open, cause measured | [F](cards-F-filer.md) |
+| 21 | `bevel-2ncr` | Filer List view under RTL opens scrolled to the reading end (first column off-screen) | P3 | S | agent | open, cause measured | [F](cards-F-filer.md) |
 
-Rows 17-20 were added on 2026-11-21. In `waves.txt` they sit after `bevel-yf7c`, so `progress.sh` offers them there, as one chain in this order.
+Rows 17-21 were added on 2026-11-21. In `waves.txt` they sit after `bevel-yf7c`, so `progress.sh` offers them there, as one chain in this order (`bevel-2ncr` last; moved here from W8 so the chain stays together).
 
 ### W3 — Shippable: release, update, uninstall
 
@@ -294,7 +295,6 @@ Rows 17-20 were added on 2026-11-21. In `waves.txt` they sit after `bevel-yf7c`,
 | 18 | `bevel-gww.7` | P7: NativeAOT publish (the per-process memory payoff) | P2 | L | owner | partly done | [B](cards-B-core-ipc-startup.md) |
 | 19 | `bevel-gww` | Multi-process shell: --role split + shell-core owner + shared caches + AOT | P2 | L | agent | open | [B](cards-B-core-ipc-startup.md) |
 | 20 | `bevel-0ai` | Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame ca | P3 | M | agent | open | [E1](cards-E1-start-menu-search.md) |
-| 21 | `bevel-2ncr` | Filer List view under RTL opens scrolled to the reading end (first column off-screen) | P3 | S | agent | open, cause measured | [F](cards-F-filer.md) |
 
 ### W9 — Big bets, research and parked decisions
 
