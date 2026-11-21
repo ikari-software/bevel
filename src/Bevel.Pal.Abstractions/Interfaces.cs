@@ -39,8 +39,8 @@ public interface IWindowManager
     }
     /// <summary>Moves/resizes a window to <paramref name="bounds"/>. With <paramref name="expected"/>, it is
     /// a compare-and-set (bevel-tm1n): the move lands only if the window's LIVE frame still matches
-    /// <paramref name="expected"/> (<see cref="FrameGuard"/>), and is otherwise a no-op, exactly like a
-    /// window that has gone. A caller that computed <paramref name="bounds"/> from a snapshot passes the
+    /// <paramref name="expected"/> (<see cref="FrameGuard"/>), and is otherwise a silent no-op (callers get no
+    /// signal that it was skipped). A caller that computed <paramref name="bounds"/> from a snapshot passes the
     /// snapshot's frame, so an out-of-date snapshot can never stamp its stale x/y/width onto the window.</summary>
     Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default);
 

@@ -315,9 +315,12 @@ public sealed class WorkAreaMitigator : IDisposable
 
     /// <summary>
     /// bevel-u6ue: whether <paramref name="w"/> has the footprint of a zoom or a macOS tile, the only
-    /// windows this engine exists for. Its top sits just under the menu bar (the top of
-    /// <paramref name="zoomArea"/>), and it either spans the full width (zoom, Fill) or is half the width
-    /// against the left or right edge (half tiles). The bottom is the caller's band-overlap test.
+    /// windows this engine exists for. Horizontally it spans the full width (zoom, Fill, top/bottom
+    /// halves) or is half the width against the left or right edge (half and quarter tiles). Vertically
+    /// its top sits just under the menu bar (the top of <paramref name="zoomArea"/>), or at the middle of
+    /// the zoom area for bottom halves and quarters, AND it runs down to the screen's bottom edge. The
+    /// bottom is what makes a window a zoom: it is where an un-mitigated one ends up, because macOS
+    /// doesn't know the taskbar is there.
     ///
     /// Acting on ANY overlap made the engine erratic: it shrank windows the user dragged partly under
     /// the bar on purpose, and windows still opening (a pre-warmed Filer, built hidden across the band,
@@ -326,10 +329,12 @@ public sealed class WorkAreaMitigator : IDisposable
     internal static bool IsZoomShaped(PalRect w, PalRect zoomArea)
     {
         static bool Near(int a, int b) => Math.Abs(a - b) <= ZoomShapeTolerance;
-        if (!Near(w.Y, zoomArea.Y)) return false;
+        var top = Near(w.Y, zoomArea.Y) || Near(w.Y, zoomArea.Y + zoomArea.Height / 2);
+        if (!top || !Near(w.Y + w.Height, zoomArea.Y + zoomArea.Height)) return false;
         var left = Near(w.X, zoomArea.X);
         var right = Near(w.X + w.Width, zoomArea.X + zoomArea.Width);
-        var half = Math.Abs(w.Width - zoomArea.Width / 2.0) <= ZoomShapeTolerance;
+        // A margined half is up to ~1.5 margins narrower than half, so allow twice the slack here.
+        var half = Math.Abs(w.Width - zoomArea.Width / 2.0) <= 2 * ZoomShapeTolerance;
         return (left && right) || (half && (left || right));
     }
 

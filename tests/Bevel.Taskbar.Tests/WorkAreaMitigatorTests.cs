@@ -73,6 +73,39 @@ public class WorkAreaMitigatorTests
         Assert.Equal(new PalRect(8, 38, 1584, 932), Assert.Single(wm.Repositions).Bounds);
     }
 
+    // Review 2026-11-21 (correctness + adversarial, validated): macOS tiling also has bottom halves and
+    // quarters. Their top sits at the middle of the zoom area, but they run to the screen bottom, under
+    // the bar, exactly like a zoom does. The hidden Filer (top 453 of a 30..1000 area) is still far from it.
+    [Fact]
+    public async Task Bottom_halves_and_quarters_are_nudged_too()
+    {
+        var wm = new RecordingWindowManager(
+            Win("bottom", new PalRect(0, 515, 1600, 485)),
+            Win("bottomLeft", new PalRect(0, 515, 800, 485)),
+            Win("bottomRight", new PalRect(800, 515, 800, 485)));
+        Assert.Equal(3, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(0, 515, 1600, 455), wm.Repositions[0].Bounds);   // bottom on 970
+        Assert.Equal(new PalRect(800, 515, 800, 455), wm.Repositions[2].Bounds);
+    }
+
+    // Review 2026-11-21 (adversarial): a margined half tile is up to ~1.5 margins narrower than half,
+    // so it only passed at the exact edge of the tolerance.
+    [Fact]
+    public async Task Margined_half_tiles_pass_comfortably()
+    {
+        var wm = new RecordingWindowManager(
+            Win("l", new PalRect(8, 38, 788, 954)), Win("r", new PalRect(804, 38, 788, 954)));
+        Assert.Equal(2, await Make(wm, new FixedClock()).MitigateOnceAsync());
+    }
+
+    [Fact]
+    public async Task A_window_dragged_to_the_middle_of_the_screen_is_still_left_alone()
+    {
+        // Full width, top at the vertical midpoint, but it does not reach the screen bottom.
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 515, 1600, 300)));
+        Assert.Equal(0, await Make(wm, new FixedClock()).MitigateOnceAsync());
+    }
+
     [Theory]
     [InlineData(300, 700, 800, 400)]    // dragged partly under the bar on purpose
     [InlineData(0, 400, 1600, 600)]     // full width, but does not start under the menu bar
