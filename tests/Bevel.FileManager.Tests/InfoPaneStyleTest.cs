@@ -243,11 +243,15 @@ public class InfoPaneStyleTest
         try
         {
             var fallback = pane.Resources["InfoPane.Xp.Watermark"];
+            // The pane follows Glyphs.ThemeCacheInvalidated, which is POSTED (coalesced across engines),
+            // so it refreshes on the next dispatcher pass, not inside Apply (bevel-yf7c).
             Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
+            Dispatcher.UIThread.RunJobs();
             var purple = pane.Resources["InfoPane.Xp.Watermark"];
             Assert.NotSame(fallback, purple);
 
             Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+            Dispatcher.UIThread.RunJobs();
             Assert.Same(fallback, pane.Resources["InfoPane.Xp.Watermark"]);
         }
         finally

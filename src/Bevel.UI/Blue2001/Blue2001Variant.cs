@@ -51,9 +51,6 @@ internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (doub
 /// </summary>
 public static class Blue2001VariantService
 {
-    /// <summary>Raised after the application-level Luna brush set is replaced or cleared. Surfaces that
-    /// provide their own non-Luna fallback resources use this to refresh aliases without polling.</summary>
-    public static event Action? Changed;
 
     public static readonly IReadOnlyList<(string Id, string Display)> Colors = new[]
     {
@@ -261,7 +258,6 @@ public static class Blue2001VariantService
         _appliedColor = color;
         _appliedGloss = gloss;
         Bevel.UI.Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw)
-        Changed?.Invoke();
     }
 
     /// <summary>Vertical white-alpha sheen overlay from the given (alpha, offset) stops.</summary>
@@ -294,7 +290,6 @@ public static class Blue2001VariantService
         _appliedGloss = DefaultGloss;
         if (!owned) return;
         Bevel.UI.Glyphs.InvalidateThemeCache();   // the variant's colours just left (bevel-yfkw)
-        Changed?.Invoke();
     }
 
     private static IBrush BuildBrush(Surface s, ColorXform xform, Blue2001Gloss gloss, Blue2001ColorVariant variant)

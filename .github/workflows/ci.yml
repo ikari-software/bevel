@@ -189,8 +189,9 @@ jobs:
   # ── Theme token codegen drift check (bevel-51t / MET-01) ────────────────────
   #
   #  Regenerates Tokens.axaml + ThemeTokens.cs from theme.json (the single source of
-  #  truth) and fails if the checked-in files differ — someone edited a generated file
-  #  by hand, or edited theme.json without running tools/ThemeGen.
+  #  truth), the Blue2001 override dictionary from its inheriting theme.json (bevel-ayhn),
+  #  and the classic scheme dictionaries, and fails if the checked-in files differ: someone
+  #  edited a generated file by hand, or edited a theme.json without running tools/ThemeGen.
 
   theme-drift:
     name: Theme token codegen drift
@@ -208,7 +209,7 @@ jobs:
 
       - name: Fail on drift
         run: |
-          if ! git diff --exit-code -- src/Bevel.Themes.Win2000/Tokens.axaml src/Bevel.UI/ThemeTokens.cs third_party/classic-avalonia/Classic.Avalonia.Theme/Colors; then
+          if ! git diff --exit-code -- src/Bevel.Themes.Industrial1999/Tokens.axaml src/Bevel.Themes.Blue2001/Blue2001Tokens.g.axaml src/Bevel.UI/ThemeTokens.cs third_party/classic-avalonia/Classic.Avalonia.Theme/Colors; then
             echo "::error::Generated theme tokens or scheme dictionaries drifted from theme.json/schemes.json. Edit the JSON and run 'dotnet run --project tools/ThemeGen', then commit the result."
             exit 1
           fi

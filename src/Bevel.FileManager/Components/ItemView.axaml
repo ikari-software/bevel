@@ -4,6 +4,21 @@
              x:Class="Bevel.FileManager.Components.ItemView"
              Focusable="True">
 
+    <!-- Filename label colours (bevel-5rel): tokens, not brush objects, so a live theme switch
+         recolours realized rows in place. NameCell builds Border.namecell > NameLabel and binds the
+         "selected" class to ItemViewModel.IsSelected; NameLabel's StyleKey is TextBlock. -->
+    <UserControl.Styles>
+        <Style Selector="Border.namecell > TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.WindowText}" />
+        </Style>
+        <Style Selector="Border.namecell.selected">
+            <Setter Property="Background" Value="{DynamicResource Bevel.Brush.Highlight}" />
+        </Style>
+        <Style Selector="Border.namecell.selected > TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.HighlightText}" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto,*">
         <!-- Details column headers -->
         <!-- Raised button-style column headers (ButtonHighlight top-left, ButtonShadow

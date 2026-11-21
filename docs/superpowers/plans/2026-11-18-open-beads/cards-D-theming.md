@@ -95,10 +95,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** No brush objects in code. In `NameCell`: `highlight.Classes.Add("namecell")` and `highlight.BindClass("selected", new Binding(nameof(ItemViewModel.IsSelected)), null)` (Avalonia 11.3.18 `StyledElementExtensions.BindClass`). In `ItemView.axaml` add `<UserControl.Styles>`: `Border.namecell > TextBlock` Foreground `{DynamicResource Bevel.Brush.WindowText}`; `Border.namecell.selected` Background `{DynamicResource Bevel.Brush.Highlight}`; `Border.namecell.selected > TextBlock` Foreground `{DynamicResource Bevel.Brush.HighlightText}`. Delete `ThemeBrush`, `SelectionFill`, `SelectionText`, `NormalText`, `SelBgConv`, `SelFgConv`. Reason: zero per-row event subscriptions in a virtualized list. TabStrip: replace the two statics with `entry.Container[!Border.BackgroundProperty] = new DynamicResourceExtension(isActive ? ThemeTokens.BrushWindow : ThemeTokens.BrushButtonFace)` and `:87` with `ThemeTokens.BrushButtonShadow`.
 - **Test first:** `ItemViewTests.Selection_colours_follow_a_live_token_change_without_reselecting`: show an ItemView with 2 items, select one, `RunJobs()`; set `Application.Current.Resources[ThemeTokens.BrushHighlight] = Brushes.Red` (try/finally remove); `RunJobs()`; assert the selected row's `Border` with class `namecell` has `Background == Brushes.Red` with no selection change.
 - **Steps:**
-  - [ ] Write the test; confirm it fails on the stale brush.
-  - [ ] Apply the ItemView change; check the rename path (`ItemView.axaml.cs` near `:994`) does not read the deleted members.
-  - [ ] Apply the TabStrip change.
-  - [ ] `grep -n "static readonly IBrush\|ThemeBrush(" src/Bevel.FileManager/Components/*.cs` → no hits.
+  - [x] Write the test; confirm it fails on the stale brush.
+  - [x] Apply the ItemView change; check the rename path (`ItemView.axaml.cs` near `:994`) does not read the deleted members.
+  - [x] Apply the TabStrip change.
+  - [x] `grep -n "static readonly IBrush\|ThemeBrush(" src/Bevel.FileManager/Components/*.cs` → no hits.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~ItemViewTests|FullyQualifiedName~ClickSelection|FullyQualifiedName~MarqueeSelection|FullyQualifiedName~TabbedBrowsing"` → pass
 - **Done when:** a live theme switch recolours selected and unselected rows in place; then `bd close bevel-5rel --reason "selection + tab brushes are DynamicResource styles"`
 
@@ -110,10 +110,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Toolbar overrides `OnAttachedToVisualTree`/`OnDetachedFromVisualTree` to add/remove `Glyphs.ThemeCacheInvalidated += ApplyIcons` and calls `ApplyIcons()` on attach (not in the ctor). `Set` disposes the previous `SmallIcon` bitmap after assigning the new one. NOT routed through `FileManagerWindow.ApplyFolderOptions` (the bead's suggestion): that fan-out only runs on settings writes in the Filer role and would make a second invalidation path. InfoPane switches its two subscriptions to `Glyphs.ThemeCacheInvalidated`; then delete `Blue2001VariantService.Changed` (`Blue2001Variant.cs:56` and its two `Changed?.Invoke()` calls).
 - **Test first:** `ToolbarThemeTests.Toolbar_icons_are_re_rasterized_when_the_theme_cache_is_invalidated`: show a `Toolbar` in a `Window`, `RunJobs()`, keep `((Classic.CommonControls.ToolBarButton)toolbar.Views).SmallIcon`; call `Glyphs.InvalidateThemeCache()`; `RunJobs()`; `Assert.NotSame(before, after)`; also assert `AutomationProperties.GetName(toolbar.BackButton) == "Back"` still holds.
 - **Steps:**
-  - [ ] Write the test; confirm it fails.
-  - [ ] Move `ApplyIcons()` to attach + subscribe/unsubscribe; dispose replaced bitmaps.
-  - [ ] Re-point InfoPane; delete `Blue2001VariantService.Changed`; `grep -rn "VariantService.Changed" src tests tools` → no hits.
-  - [ ] Run `InfoPaneStyleTest` (it renders the XP pane under each colourway).
+  - [x] Write the test; confirm it fails.
+  - [x] Move `ApplyIcons()` to attach + subscribe/unsubscribe; dispose replaced bitmaps.
+  - [x] Re-point InfoPane; delete `Blue2001VariantService.Changed`; `grep -rn "VariantService.Changed" src tests tools` → no hits.
+  - [x] Run `InfoPaneStyleTest` (it renders the XP pane under each colourway).
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~ToolbarTheme|FullyQualifiedName~InfoPaneStyle|FullyQualifiedName~AccessibilityNaming"` → pass
 - **Done when:** an open Filer window's toolbar and XP info pane recolour on a live switch; then `bd close bevel-yf7c --reason "Toolbar + InfoPane on Glyphs.ThemeCacheInvalidated; private Changed event removed"`
 
@@ -152,10 +152,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Two steps, gate first. (1) Fix the CI path to `src/Bevel.Themes.Industrial1999/Tokens.axaml`. (2) Add an override mode to ThemeGen: when the JSON has `"inherits"`, emit only the keys present (palette → `Bevel.Color.*`/`Bevel.Brush.*`, metrics → `Bevel.Metric.*`) into a generated `Blue2001Tokens.g.axaml` (new) that `Blue2001Tokens.axaml` merges; the hand-written file keeps only what theme.json cannot express (the `SystemColors.*` caption keys, gradients). Do NOT regenerate `ThemeTokens.cs` from an inheriting theme. Flat/Pastel get a `theme.json` later under bevel-tknt, not here.
 - **Test first:** CI job `theme-drift` fails when `Tokens.axaml` is hand-edited (prove locally: edit one hex in `src/Bevel.Themes.Industrial1999/Tokens.axaml`, run `dotnet run --project tools/ThemeGen`, `git diff --exit-code -- src/Bevel.Themes.Industrial1999/Tokens.axaml` → clean again).
 - **Steps:**
-  - [ ] Fix the path at `ci.yml:187`; commit separately.
-  - [ ] Add the inherits/override emit path to `Program.cs`; default run generates Industrial1999 AND Blue2001.
-  - [ ] Move the duplicated plain keys out of `Blue2001Tokens.axaml` into the generated file; diff rendered output via `RenderBlue2001ControlsTest` / `RenderBlue2001WindowTest` (no PNG change).
-  - [ ] Add `src/Bevel.Themes.Blue2001/Blue2001Tokens.g.axaml` to the CI diff list; update the `theme.json` `_comment`.
+  - [x] Fix the path at `ci.yml:187`; commit separately.
+  - [x] Add the inherits/override emit path to `Program.cs`; default run generates Industrial1999 AND Blue2001.
+  - [x] Move the duplicated plain keys out of `Blue2001Tokens.axaml` into the generated file; diff rendered output via `RenderBlue2001ControlsTest` / `RenderBlue2001WindowTest` (no PNG change).
+  - [x] Add `src/Bevel.Themes.Blue2001/Blue2001Tokens.g.axaml` to the CI diff list; update the `theme.json` `_comment`.
 - **Verify:** `dotnet run --project tools/ThemeGen && git diff --exit-code -- src/Bevel.Themes.Industrial1999 src/Bevel.Themes.Blue2001 src/Bevel.UI/ThemeTokens.cs` → exit 0
 - **Done when:** editing either theme.json without regenerating fails CI; then `bd close bevel-ayhn --reason "ThemeGen covers Blue2001; CI gate path fixed"`
 

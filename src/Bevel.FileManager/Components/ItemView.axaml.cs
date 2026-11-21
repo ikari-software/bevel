@@ -332,24 +332,13 @@ public partial class ItemView : UserControl
         TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
-    // Win2000 selection: the filename label gets a Highlight-colored bar with HighlightText
-    // text; the icon is left un-highlighted, exactly like classic Filer. Colors come from
-    // the theme tokens (bevel-38y) so classic color schemes recolor selection too; the literal
-    // fallbacks are the Windows Standard values, used only when no theme is loaded (bare unit
-    // tests). Bound to the row's IsSelected so it tracks selection without rebuilding the row.
-    static IBrush ThemeBrush(string key, string fallbackHex)
-        => Avalonia.Application.Current?.TryGetResource(key, null, out var v) == true && v is IBrush b
-            ? b
-            : new SolidColorBrush(Color.Parse(fallbackHex));
-    static IBrush SelectionFill => ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlight, "#0A246A");
-    static IBrush SelectionText => ThemeBrush(Bevel.UI.ThemeTokens.BrushHighlightText, "#FFFFFF");
-    static IBrush NormalText => ThemeBrush(Bevel.UI.ThemeTokens.BrushWindowText, "#000000");
-    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush?> SelBgConv =
-        new(sel => sel ? SelectionFill : Brushes.Transparent);
+    // Win2000 selection: the filename label gets a Highlight-coloured bar with HighlightText text; the
+    // icon is left un-highlighted, exactly like classic Filer. The colours are NOT brush objects resolved
+    // here: the name cell carries the "namecell" class (plus "selected", bound to IsSelected) and the
+    // styles in ItemView.axaml paint it with DynamicResource tokens, so a live theme or colour-scheme
+    // switch recolours every realized row in place (bevel-5rel). No per-row event subscriptions.
     static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealLinesConv =
         new(full => full ? 0 : 2);
-    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, IBrush> SelFgConv =
-        new(sel => sel ? SelectionText : NormalText);
 
     /// <summary>The filename label wrapped in a selection-highlight border (navy bar + white text
     /// when selected, plus a dotted focus outline). Used by every view mode's template.</summary>
@@ -374,10 +363,10 @@ public partial class ItemView : UserControl
             label.Bind(TextBlock.MaxLinesProperty,
                 new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealLinesConv });
         }
-        label.Bind(TextBlock.ForegroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelFgConv });
 
         var highlight = new Border { Child = label, Padding = new(2, 0) };
-        highlight.Bind(Border.BackgroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelBgConv });
+        highlight.Classes.Add("namecell");
+        highlight.BindClass("selected", new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)), null!);
         return highlight;
     }
 
