@@ -208,7 +208,7 @@ jobs:
 
       - name: Fail on drift
         run: |
-          if ! git diff --exit-code -- src/Bevel.Themes.Win2000/Tokens.axaml src/Bevel.UI/ThemeTokens.cs third_party/classic-avalonia/Classic.Avalonia.Theme/Colors; then
+          if ! git diff --exit-code -- src/Bevel.Themes.Industrial1999/Tokens.axaml src/Bevel.UI/ThemeTokens.cs third_party/classic-avalonia/Classic.Avalonia.Theme/Colors; then
             echo "::error::Generated theme tokens or scheme dictionaries drifted from theme.json/schemes.json. Edit the JSON and run 'dotnet run --project tools/ThemeGen', then commit the result."
             exit 1
           fi
