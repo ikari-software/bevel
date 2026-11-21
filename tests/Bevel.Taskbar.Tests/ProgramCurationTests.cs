@@ -17,14 +17,10 @@ public sealed class ProgramCurationTests
     private static string TempDir()
         => Path.Combine(Path.GetTempPath(), "bevel-usage-" + Guid.NewGuid().ToString("N"));
 
-    private static async Task LoadPrograms(ShellModel model, int expected)
+    private static void LoadPrograms(ShellModel model, int expected)
     {
         model.Start();
-        for (var i = 0; i < 60 && model.Programs.Count < expected; i++)
-        {
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(10);
-        }
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= expected, "expected programs to load");
         Dispatcher.UIThread.RunJobs();
     }
 
@@ -50,7 +46,7 @@ public sealed class ProgramCurationTests
     }
 
     [AvaloniaFact]
-    public async Task Frequent_programs_rank_by_launch_count()
+    public void Frequent_programs_rank_by_launch_count()
     {
         var dir = TempDir();
         try
@@ -65,7 +61,7 @@ public sealed class ProgramCurationTests
                 new InstalledApp("com.b", "Beta", null),
                 new InstalledApp("com.c", "Cee", null));
             using var model = new ShellModel(null, appEnv, null, usage: store);
-            await LoadPrograms(model, 3);
+            LoadPrograms(model, 3);
 
             // All share one first-seen → all "frequent" → ordered by launches desc.
             Assert.Equal(3, model.FrequentPrograms.Count);
@@ -77,7 +73,7 @@ public sealed class ProgramCurationTests
     }
 
     [AvaloniaFact]
-    public async Task Newly_added_app_sorts_above_a_heavily_used_old_one()
+    public void Newly_added_app_sorts_above_a_heavily_used_old_one()
     {
         var dir = TempDir();
         try
@@ -89,7 +85,7 @@ public sealed class ProgramCurationTests
                 new InstalledApp("com.a", "Alpha", null),
                 new InstalledApp("com.b", "Beta", null));
             using var model = new ShellModel(null, appEnv, null, usage: store);
-            await LoadPrograms(model, 2);
+            LoadPrograms(model, 2);
 
             Assert.Equal("Beta", model.FrequentPrograms[0].DisplayName);   // newest on top, above the frequent one
             Assert.Equal("Alpha", model.FrequentPrograms[1].DisplayName);
@@ -98,7 +94,7 @@ public sealed class ProgramCurationTests
     }
 
     [AvaloniaFact]
-    public async Task Newly_added_window_expires_so_stale_installs_rejoin_the_frequency_ranking()
+    public void Newly_added_window_expires_so_stale_installs_rejoin_the_frequency_ranking()
     {
         var dir = TempDir();
         try
@@ -113,7 +109,7 @@ public sealed class ProgramCurationTests
                 new InstalledApp("com.a", "Alpha", null),
                 new InstalledApp("com.b", "Beta", null));
             using var model = new ShellModel(null, appEnv, null, usage: store);
-            await LoadPrograms(model, 2);
+            LoadPrograms(model, 2);
 
             Assert.Equal("Alpha", model.FrequentPrograms[0].DisplayName);   // stale install no longer starves frequency
             Assert.Equal("Beta", model.FrequentPrograms[1].DisplayName);
@@ -122,7 +118,7 @@ public sealed class ProgramCurationTests
     }
 
     [AvaloniaFact]
-    public async Task Frequent_programs_respect_the_cap()
+    public void Frequent_programs_respect_the_cap()
     {
         var dir = TempDir();
         try
@@ -138,7 +134,7 @@ public sealed class ProgramCurationTests
             }
             var appEnv = new StubAppEnvironment(apps);
             using var model = new ShellModel(null, appEnv, null, usage: store) { FrequentCap = 3 };
-            await LoadPrograms(model, 5);
+            LoadPrograms(model, 5);
 
             Assert.Equal(5, model.Programs.Count);       // full list unaffected
             Assert.Equal(3, model.FrequentPrograms.Count); // curated list capped

@@ -331,11 +331,7 @@ public class StartMenuSearchTests
                 new InstalledApp("com.code", "Visual Studio Code", null));
             var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
-            for (var i = 0; i < 100 && model.Programs.Count < 4; i++)
-            {
-                Dispatcher.UIThread.RunJobs();
-                await Task.Delay(10);
-            }
+            Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(4, model.Programs.Count);
 

@@ -46,13 +46,30 @@ public static class ThemeService
     public const string DefaultTheme = Bevel.Core.ThemeIds.Default;
 
     /// <summary>The currently-applied theme id. Surfaces that swap whole layouts by theme (the Start
-    /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.</summary>
-    public static string Current => _appliedId;
+    /// menu's classic single column vs Luna's two-column panel) read this to choose which to show.
+    /// Reports the theme THIS Application carries: when the statics were written into a different
+    /// Application (every headless test gets a fresh one) it is the default, which is what that Application
+    /// renders (bevel-i145).</summary>
+    public static string Current => Application.Current is { } app && IsLiveIn(app) ? _appliedId : DefaultTheme;
 
     private static readonly Uri BaseUri = new("avares://Bevel.App/App.axaml");
     private static ResourceInclude? _applied;
     private static StyleInclude? _appliedStyles;
     private static string _appliedId = DefaultTheme;
+    // The Application the contributions above went into. These statics outlive an Application (each headless
+    // test runs on a fresh one), so "applied" means applied HERE, the same owner check ColorSchemeService,
+    // Blue2001VariantService and FlatVariantService make (bevel-yfkw).
+    private static Application? _owner;
+
+    /// <summary>True when <paramref name="app"/> actually carries what the statics say was applied: it is the
+    /// Application they were written into, and the theme's dictionary and Styles set are still in it. The
+    /// default theme contributes neither, so for it only the owner matters.</summary>
+    private static bool IsLiveIn(Application app) =>
+        _appliedId == DefaultTheme
+            ? _owner is null || ReferenceEquals(_owner, app)
+            : ReferenceEquals(_owner, app)
+              && (_applied is null || app.Resources.MergedDictionaries.Contains(_applied))
+              && (_appliedStyles is null || app.Styles.Contains(_appliedStyles));
 
     /// <summary>The token-override dictionary a theme merges, or null when it ships none (base theme, or
     /// a Styles-set theme that carries its tokens inside its own <see cref="StylesFor"/> bundle).</summary>
@@ -87,21 +104,26 @@ public static class ThemeService
     public static bool Apply(string? id)
     {
         var theme = string.IsNullOrWhiteSpace(id) || !IsKnown(id!) ? DefaultTheme : id!;
-        if (theme == _appliedId) return true;   // already in place — safe to apply the variant/font
         if (Application.Current is not { } app || app.Resources is not { } res) return false;
+        // Already in place — safe to apply the variant/font. Checked against THIS Application, not just the
+        // id: a stale "blue2001" left by another Application must not turn this Apply into a no-op.
+        if (theme == _appliedId && IsLiveIn(app)) return true;
 
         // Drop the previously-applied theme contributions (if any) so themes don't stack — both the
-        // token dict at Application level and the control-template Styles set.
+        // token dict at Application level and the control-template Styles set. Only from the Application
+        // they went into; a different one never received them.
+        var owned = ReferenceEquals(_owner, app);
         if (_applied is not null)
         {
-            res.MergedDictionaries.Remove(_applied);
+            if (owned) res.MergedDictionaries.Remove(_applied);
             _applied = null;
         }
         if (_appliedStyles is not null)
         {
-            app.Styles.Remove(_appliedStyles);
+            if (owned) app.Styles.Remove(_appliedStyles);
             _appliedStyles = null;
         }
+        _owner = app;
 
         if (SourceFor(theme) is { } src)
         {
@@ -130,15 +152,16 @@ public static class ThemeService
                 // Avalonia.Styling.Styles.TryGetResource NREs on it: the next control attached to the
                 // logical tree (TaskbarView.OnLoaded adding children) dies on the dispatcher and takes the
                 // whole process with it. Leaving it for the NEXT Apply() to remove is too late — nothing
-                // survives to call it. Degrade to the previous theme's templates instead: partial, but live.
+                // survives to call it. Degrade to the base templates instead: partial, but live.
                 try { app.Styles.Remove(styles); } catch { /* best-effort; never throw out of a rollback */ }
                 _appliedStyles = null;
             }
         }
-        // Commit the applied id only if nothing threw. On a faulty swap we leave _appliedId at the previous
-        // theme so a retry of the SAME theme isn't swallowed as a no-op — otherwise a half-applied theme
-        // would latch and Apply(theme) could never re-run to recover.
-        if (applied) _appliedId = theme;
+        // Commit the requested id only if nothing threw. A faulty swap has already taken the previous theme's
+        // contributions out of this Application, so what it renders now is the base set: record the default,
+        // so Current tells the truth and a retry of either theme re-runs instead of being swallowed as a
+        // no-op (a half-applied theme must never latch).
+        _appliedId = applied ? theme : DefaultTheme;
         Glyphs.InvalidateThemeCache();   // token bundle swapped — drop cached icon brushes (bevel-lha4)
         return applied;
 

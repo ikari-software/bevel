@@ -142,6 +142,7 @@ W8|bevel-gww|AGENT|L|cards-B-core-ipc-startup.md|Multi-process shell: --role spl
 W8|bevel-0ai|AGENT|M|cards-E1-start-menu-search.md|Taskbar cust follow-ups: stacks live-apply, transparency click-through, large-PNG frame cap, clickViaCGEvent usleep
 W8|bevel-oi77|AGENT|S|-|ShellHealthAlert: pass osascript values as argv, not hand-escaped source (filed by bevel-6asm)
 W8|bevel-2ncr|AGENT|S|cards-F-filer.md|Filer List view under RTL opens scrolled to the reading end (first column off-screen)
+W8|bevel-7wkc|A+H|S|-|Committed Flat/Pastel design renders are stale, and every test run rewrites them in the working tree
 W9|bevel-9ue|A+H|L|cards-E2-taskbar-customization.md|Taskbar cust: edge position (top/bottom + vertical L/R) + auto-hide + centered alignment
 W9|bevel-gcd|A+H|M|cards-E2-taskbar-customization.md|Taskbar cust: dock magnification, hover thumbnails, Task View/Search/Widgets buttons
 W9|bevel-hail|A+H|L|cards-E2-taskbar-customization.md|Taskbar menu: true live Quit⇄Force-Quit swap via in-tree Popup
