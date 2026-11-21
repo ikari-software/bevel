@@ -354,10 +354,12 @@ public sealed class ItemViewLayoutTests
     }
 
     [AvaloniaFact]
-    public void Thumbnail_frame_uses_the_soft_shadow_line_not_the_window_frame()
+    public void Thumbnail_frame_uses_the_light_face_line_not_a_dark_one()
     {
+        // WindowFrame (black) and ButtonShadow (#808080 in the classic scheme) both read as a hard box
+        // on the white window; the owner asked for a soft line, which is the ButtonFace grey.
         var (view, _) = Show(ViewMode.Thumbnails, 600, 400, items: new[] { Node("photo.jpg") });
-        var expected = Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushButtonShadow);
+        var expected = Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushButtonFace);
         Assert.Same(expected, ThumbFrame(view, 0).BorderBrush);
     }
 }

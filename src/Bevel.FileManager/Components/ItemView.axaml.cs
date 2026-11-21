@@ -451,11 +451,11 @@ public partial class ItemView : UserControl
     {
         if (vm is null) return new TextBlock { Text = "" };
         // The frame holds only the picture; the caption sits under it, outside the box (Explorer's
-        // thumbnail view). The line is the soft ButtonShadow token: WindowFrame (black in most schemes)
-        // drew every tile as a hard box.
+        // thumbnail view). The line is the light ButtonFace grey: WindowFrame (black) and ButtonShadow
+        // (#808080 in the classic scheme) both drew every tile as a hard box on the white window.
         var frame = new Border { BorderThickness = new(1), Padding = new(4), Child = GlyphIcon.For(vm.IconKey, 96) };
         frame[!Border.BackgroundProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushWindow);
-        frame[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushButtonShadow);
+        frame[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushButtonFace);
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(2) };
         s.Children.Add(frame);
         s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
