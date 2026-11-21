@@ -8,7 +8,22 @@ public partial class Toolbar : UserControl
     public Toolbar()
     {
         InitializeComponent();
+    }
+
+    // The icons are bitmaps rasterized from theme tokens (ToolbarIcons.Raster), so they are drawn when the
+    // toolbar is attached and redrawn on the app-wide palette signal; drawing them once in the constructor
+    // left an open Filer with the previous theme's icons (bevel-yf7c).
+    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        Bevel.UI.Glyphs.ThemeCacheInvalidated += ApplyIcons;
         ApplyIcons();
+    }
+
+    protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        Bevel.UI.Glyphs.ThemeCacheInvalidated -= ApplyIcons;
+        base.OnDetachedFromVisualTree(e);
     }
 
     /// <summary>Assign the self-drawn vector glyph AND a screen-reader name to each toolbar button.
@@ -34,7 +49,9 @@ public partial class Toolbar : UserControl
 
         static void Set(Classic.CommonControls.ToolBarButton button, Avalonia.Media.Imaging.Bitmap? icon, string name)
         {
+            var previous = button.SmallIcon;
             button.SmallIcon = icon;
+            if (!ReferenceEquals(previous, icon)) previous?.Dispose();   // the replaced raster is ours, and unshared
             AutomationProperties.SetName(button, name);
         }
     }

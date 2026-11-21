@@ -8,6 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Bevel.UI;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 using Bevel.Core;
 using Bevel.UI.Blue2001;
@@ -48,8 +49,10 @@ public partial class InfoPane : UserControl
         _xpDefaultLinkText = (IBrush)Resources["InfoPane.Xp.LinkText"]!;
         _xpDefaultArrow = (IBrush)Resources["InfoPane.Xp.Arrow"]!;
         _xpDefaultMutedText = (IBrush)Resources["InfoPane.Xp.MutedText"]!;
-        AttachedToVisualTree += (_, _) => Blue2001VariantService.Changed += OnBlue2001VariantChanged;
-        DetachedFromVisualTree += (_, _) => Blue2001VariantService.Changed -= OnBlue2001VariantChanged;
+        // The app-wide palette signal (bevel-yf7c), not a Blue2001-only event: the XP palette copy must also
+        // refresh on a theme switch and on colour-scheme / Flat-variant changes.
+        AttachedToVisualTree += (_, _) => Glyphs.ThemeCacheInvalidated += OnPaletteChanged;
+        DetachedFromVisualTree += (_, _) => Glyphs.ThemeCacheInvalidated -= OnPaletteChanged;
     }
 
     /// <summary>Selected visual style. Off leaves the (empty) pane; the host collapses the column.</summary>
@@ -103,7 +106,7 @@ public partial class InfoPane : UserControl
         CopyApplicationBrush("Blue2001.Brush.InfoPaneMutedText", "InfoPane.Xp.MutedText", _xpDefaultMutedText);
     }
 
-    private void OnBlue2001VariantChanged()
+    private void OnPaletteChanged()
     {
         if (_style != InfoPaneStyle.WinXP) return;
         ApplyXpPalette();

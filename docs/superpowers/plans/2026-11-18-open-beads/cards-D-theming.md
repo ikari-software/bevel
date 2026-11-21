@@ -110,10 +110,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Toolbar overrides `OnAttachedToVisualTree`/`OnDetachedFromVisualTree` to add/remove `Glyphs.ThemeCacheInvalidated += ApplyIcons` and calls `ApplyIcons()` on attach (not in the ctor). `Set` disposes the previous `SmallIcon` bitmap after assigning the new one. NOT routed through `FileManagerWindow.ApplyFolderOptions` (the bead's suggestion): that fan-out only runs on settings writes in the Filer role and would make a second invalidation path. InfoPane switches its two subscriptions to `Glyphs.ThemeCacheInvalidated`; then delete `Blue2001VariantService.Changed` (`Blue2001Variant.cs:56` and its two `Changed?.Invoke()` calls).
 - **Test first:** `ToolbarThemeTests.Toolbar_icons_are_re_rasterized_when_the_theme_cache_is_invalidated`: show a `Toolbar` in a `Window`, `RunJobs()`, keep `((Classic.CommonControls.ToolBarButton)toolbar.Views).SmallIcon`; call `Glyphs.InvalidateThemeCache()`; `RunJobs()`; `Assert.NotSame(before, after)`; also assert `AutomationProperties.GetName(toolbar.BackButton) == "Back"` still holds.
 - **Steps:**
-  - [ ] Write the test; confirm it fails.
-  - [ ] Move `ApplyIcons()` to attach + subscribe/unsubscribe; dispose replaced bitmaps.
-  - [ ] Re-point InfoPane; delete `Blue2001VariantService.Changed`; `grep -rn "VariantService.Changed" src tests tools` → no hits.
-  - [ ] Run `InfoPaneStyleTest` (it renders the XP pane under each colourway).
+  - [x] Write the test; confirm it fails.
+  - [x] Move `ApplyIcons()` to attach + subscribe/unsubscribe; dispose replaced bitmaps.
+  - [x] Re-point InfoPane; delete `Blue2001VariantService.Changed`; `grep -rn "VariantService.Changed" src tests tools` → no hits.
+  - [x] Run `InfoPaneStyleTest` (it renders the XP pane under each colourway).
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~ToolbarTheme|FullyQualifiedName~InfoPaneStyle|FullyQualifiedName~AccessibilityNaming"` → pass
 - **Done when:** an open Filer window's toolbar and XP info pane recolour on a live switch; then `bd close bevel-yf7c --reason "Toolbar + InfoPane on Glyphs.ThemeCacheInvalidated; private Changed event removed"`
 
