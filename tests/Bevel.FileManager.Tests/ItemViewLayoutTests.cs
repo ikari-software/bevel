@@ -279,6 +279,49 @@ public sealed class ItemViewLayoutTests
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(RevealName, view.SelectedItems.Single().DisplayName);
     }
+
+    // ── bevel-2ncr: an RTL List view opens at its reading start ──────────
+
+    static void AssertFirstColumnVisible(ItemView view)
+    {
+        Assert.True(view.ItemsScroller.Extent.Width > view.ItemsScroller.Viewport.Width, "needs a scrolling list");
+        var vp = new Rect(view.ItemsScroller.Viewport);
+        var r = InScroller(view, Container(view, 0));
+        Assert.True(vp.Contains(r), $"item 0 at {r} is outside the viewport {vp} (offset {view.ItemsScroller.Offset})");
+    }
+
+    [AvaloniaFact]
+    public void Rtl_list_view_opens_at_the_reading_start()
+    {
+        var (view, _) = Show(ViewMode.List, 830, 400, FlowDirection.RightToLeft, Nodes(200));
+        AssertFirstColumnVisible(view);
+    }
+
+    [AvaloniaFact]
+    public void Rtl_list_view_stays_at_the_reading_start_while_items_stream_in()
+    {
+        var (view, _) = Show(ViewMode.List, 830, 400, FlowDirection.RightToLeft);
+        view.ResetItems();
+        view.AddItems(Nodes(200, "a"));
+        Dispatcher.UIThread.RunJobs();
+        view.AddItems(Nodes(200, "b"));
+        Dispatcher.UIThread.RunJobs();
+        AssertFirstColumnVisible(view);
+    }
+
+    [AvaloniaFact]
+    public void Rtl_list_view_keeps_a_position_the_user_scrolled_to()
+    {
+        var (view, _) = Show(ViewMode.List, 830, 400, FlowDirection.RightToLeft);
+        view.ResetItems();
+        view.AddItems(Nodes(200, "a"));
+        Dispatcher.UIThread.RunJobs();
+        view.ItemsScroller.Offset = new Vector(0, 0);   // the user scrolled to the reading end
+        Dispatcher.UIThread.RunJobs();
+        view.AddItems(Nodes(200, "b"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, view.ItemsScroller.Offset.X);
+    }
 }
 
 file sealed class LayoutTestNode : IVfsNode

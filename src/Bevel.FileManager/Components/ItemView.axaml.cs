@@ -150,6 +150,7 @@ public partial class ItemView : UserControl
         // Focus-visible cue: a low-vision keyboard user needs to see WHERE focus is even before they
         // move the selection. Show a subtle dotted rectangle whenever the list holds focus with nothing
         // selected; it disappears the moment a selection exists (the navy highlight then shows focus).
+        ItemsScroller.ScrollChanged += OnItemsScrollChanged;
         GotFocus += (_, _) => UpdateFocusCue();
         LostFocus += (_, _) => UpdateFocusCue();
         _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
@@ -243,6 +244,22 @@ public partial class ItemView : UserControl
                 break;
         }
         UpdateFullNameReveal();
+    }
+
+    /// <summary>RTL List view (bevel-2ncr): the panel mirrors columns inside its extent, so the reading
+    /// start (index 0) is at the far RIGHT, but a ScrollViewer opens at offset 0, the far left. Keep the
+    /// reading start in view while the extent grows (folder open, streaming batches) until the user
+    /// scrolls away from it: only an offset that was at the old maximum (or a list that fitted) is
+    /// re-pinned, so a position the user chose is left alone. Nothing to do under LTR.</summary>
+    void OnItemsScrollChanged(object? _, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentDelta.X == 0 || ViewMode != ViewMode.List
+            || FlowDirection != Avalonia.Media.FlowDirection.RightToLeft) return;
+        var sv = ItemsScroller;
+        double oldMax = Math.Max(0, (sv.Extent.Width - e.ExtentDelta.X) - sv.Viewport.Width);
+        double oldOffset = sv.Offset.X - e.OffsetDelta.X;
+        if (oldOffset >= oldMax - 1)
+            sv.Offset = new Vector(Math.Max(0, sv.Extent.Width - sv.Viewport.Width), sv.Offset.Y);
     }
 
     // Horizontal-flow icon grids wrap to the viewport WIDTH, so horizontal scroll must be off

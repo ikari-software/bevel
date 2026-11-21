@@ -152,8 +152,8 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
 - **Decision:** Keep the reading start in view until the user scrolls away from it. Subscribe to `ItemsScroller.ScrollChanged`. When `e.ExtentDelta.X != 0`, the view is List and the flow is RTL: let `oldMax = max(0, (Extent.Width - e.ExtentDelta.X) - Viewport.Width)` and `oldOffset = Offset.X - e.OffsetDelta.X`; if `oldOffset >= oldMax - 1` (it was at the reading start, or the content fitted), set `Offset = new Vector(max(0, Extent.Width - Viewport.Width), Offset.Y)`. A user who scrolled toward the end is not at the old maximum, so their position is left alone. No change under LTR. `ScrollToIndex` already reveals the right place under RTL because `RectFor` mirrors.
 - **Test first:** `ItemViewLayoutTests.Rtl_list_view_opens_at_the_reading_start` (new): RTL, List, 200 items, 830x400 window: the container for index 0 lies inside the viewport. Fails today (x=1620).
 - **Steps:**
-  - [ ] Add the test; see it fail.
-  - [ ] Add the `ScrollChanged` handler. Add `Rtl_list_view_stays_at_the_reading_start_while_items_stream_in` (second `AddItems` of 200: index 0 still inside the viewport) and `Rtl_list_view_keeps_a_position_the_user_scrolled_to` (set `Offset.X = 0`, add items: the offset is still 0).
+  - [x] Add the test; see it fail.
+  - [x] Add the `ScrollChanged` handler. Add `Rtl_list_view_stays_at_the_reading_start_while_items_stream_in` (second `AddItems` of 200: index 0 still inside the viewport) and `Rtl_list_view_keeps_a_position_the_user_scrolled_to` (set `Offset.X = 0`, add items: the offset is still 0).
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~ItemViewLayout|FullyQualifiedName~RtlSupport"` → all pass
 - **Done when:** an RTL List view opens showing its first column and stays there while loading; then `bd close bevel-2ncr --reason "RTL List view pins the scroll offset to the reading start until the user scrolls"`
 
