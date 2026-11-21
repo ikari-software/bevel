@@ -233,8 +233,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     expectedKey: self.expectedKey,
                     expectedCapability: "window"
                 )
-                _ = try await ServerRequest(stream: request)
-                let windows = self.enumerateWindows()
+                let req = try await ServerRequest(stream: request)
+                let windows = self.enumerateWindows(skipIcons: req.message.skipIcons)
                 var reply = Bevel_Helper_V1_ListWindowsReply()
                 reply.windows = windows
                 return StreamingServerResponse(single: ServerResponse(message: reply))
@@ -658,8 +658,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// The taskbar's windows for a pass, with the pressed state resolved. This is the
     /// single readable chain: admit each CG entry (`describe`) → resolve which one has focus.
-    private func listWindows(_ pass: SnapshotPass) -> [Bevel_Helper_V1_TaskbarWindow] {
-        var kept = pass.entries.compactMap { describe(entry: $0, pass: pass) }
+    private func listWindows(_ pass: SnapshotPass, skipIcons: Bool = false) -> [Bevel_Helper_V1_TaskbarWindow] {
+        var kept = pass.entries.compactMap { describe(entry: $0, pass: pass, skipIcons: skipIcons) }
         markFocusedWindow(in: &kept, pass: pass)
         return kept
     }
@@ -697,13 +697,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Reads top to bottom as the admission pipeline: Dock app? → descriptor → AX state → stable
     /// title → ordered drop gates. Focus is NOT decided here — it is per-app, so the pass resolves it
     /// once for the foreground app (`markFocusedWindow`).
-    private func describe(entry: [String: Any], pass: SnapshotPass) -> Bevel_Helper_V1_TaskbarWindow? {
+    private func describe(entry: [String: Any], pass: SnapshotPass, skipIcons: Bool = false) -> Bevel_Helper_V1_TaskbarWindow? {
         guard let cgID = entry[kCGWindowNumber as String] as? CGWindowID else { return nil }
         let pid = entry[kCGWindowOwnerPID as String] as? pid_t ?? 0
         guard let app = dockApp(pid: pid, cgID: cgID, ownerName: entry[kCGWindowOwnerName as String] as? String ?? "?")
         else { return nil }
 
-        var win = baseDescriptor(entry: entry, cgID: cgID, pid: pid, app: app)
+        var win = baseDescriptor(entry: entry, cgID: cgID, pid: pid, app: app, skipIcons: skipIcons)
 
         if let axWin = pass.axMap[cgID], let reason = applyAXState(to: &win, axWin: axWin) {
             dbg("drop cg=\(cgID) '\(win.appName)' reason=\(reason)")
@@ -753,7 +753,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     private func baseDescriptor(
-        entry: [String: Any], cgID: CGWindowID, pid: pid_t, app: NSRunningApplication
+        entry: [String: Any], cgID: CGWindowID, pid: pid_t, app: NSRunningApplication, skipIcons: Bool = false
     ) -> Bevel_Helper_V1_TaskbarWindow {
         var win = Bevel_Helper_V1_TaskbarWindow()
         win.windowID = String(cgID)
@@ -763,7 +763,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         win.pid = Int32(pid)
 
         // App icon as PNG (best-effort; empty when unavailable), cached per bundle id.
-        if !win.appBundleID.isEmpty {
+        // Skip when skipIcons is true to avoid IPC overhead on reconcile polls.
+        if !skipIcons && !win.appBundleID.isEmpty {
             win.appIconPng = cachedAppIconPNG(bundleID: win.appBundleID)
         }
 
@@ -944,11 +945,17 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Enumerate all layer-0 windows (including minimized), each with a full
     /// AX-correlated descriptor. Backs ListWindows and the Changes snapshot.
-    func enumerateWindows() -> [Bevel_Helper_V1_TaskbarWindow] {
-        var windows = listWindows(beginPass(forReconcile: false))
+    func enumerateWindows(skipIcons: Bool = false) -> [Bevel_Helper_V1_TaskbarWindow] {
+        var windows = listWindows(beginPass(forReconcile: false), skipIcons: skipIcons)
         // Append the last-computed app-presence entries (bevel-ww71) so ListWindows + the Changes snapshot
         // carry windowless-running apps too. The 500ms reconcile keeps `appStore` current.
-        windows.append(contentsOf: stateLock.withLock { Array(appStore.values) })
+        var appWindows = stateLock.withLock { Array(appStore.values) }
+        if skipIcons {
+            for i in 0..<appWindows.count {
+                appWindows[i].appIconPng = Data()
+            }
+        }
+        windows.append(contentsOf: appWindows)
         return windows
     }
 

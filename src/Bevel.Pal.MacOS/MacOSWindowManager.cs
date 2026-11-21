@@ -70,7 +70,11 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     }
 
     public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-        => await TrySeedWindowsAsync(ct).ConfigureAwait(false) ?? Array.Empty<ForeignWindow>();
+        => await EnumerateAsync(skipIcons: false, ct).ConfigureAwait(false);
+
+    /// <summary>Enumerate windows with an option to skip app icons (for lightweight polling).</summary>
+    public async ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(bool skipIcons, CancellationToken ct = default)
+        => await TrySeedWindowsAsync(skipIcons, ct).ConfigureAwait(false) ?? Array.Empty<ForeignWindow>();
 
     /// <summary>Null = the helper could not be reached (disposed / WindowService Unavailable); a list (maybe
     /// empty) = the helper answered. <see cref="EnumerateAsync"/> folds the null into empty for its callers;
@@ -78,13 +82,17 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     /// which would close every button on a surviving taskbar (bevel-wheq). Other failures (e.g. "Helper not
     /// connected" before the channel exists) still throw, as before — the seed retries those.</summary>
     public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(CancellationToken ct = default)
+        => await TrySeedWindowsAsync(skipIcons: false, ct).ConfigureAwait(false);
+
+    /// <summary>Enumerate windows with an option to skip app icons.</summary>
+    public async ValueTask<IReadOnlyList<ForeignWindow>?> TrySeedWindowsAsync(bool skipIcons, CancellationToken ct = default)
     {
         if (_disposed) return null;
 
         try
         {
             var ws = GetWindowClient();
-            var reply = await ws.ListWindowsAsync(new ListWindowsRequest(),
+            var reply = await ws.ListWindowsAsync(new ListWindowsRequest { SkipIcons = skipIcons },
                 headers: AuthHeader(), cancellationToken: ct);
             return reply.Windows.Select(Map).ToList();
         }

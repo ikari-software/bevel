@@ -179,7 +179,8 @@ public sealed class ShellModel : IDisposable
         {
             try
             {
-                var live = await _windows!.EnumerateAsync(ct).ConfigureAwait(false);
+                // Skip icons for the reconcile poll to avoid ~1KB/window IPC overhead (bevel-tnii).
+                var live = await _windows!.EnumerateAsync(skipIcons: true, ct).ConfigureAwait(false);
                 // Unread badges ride the same backstop tick (bevel-ijln). Read off-thread — on macOS
                 // this walks the Dock's accessibility tree, a synchronous cross-process hop — and pass
                 // only the finished key→label index to the UI thread. A badge failure must not cost the
