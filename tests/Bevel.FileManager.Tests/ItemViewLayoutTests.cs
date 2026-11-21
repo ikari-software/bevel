@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
 using Xunit;
@@ -90,6 +91,78 @@ public sealed class ItemViewLayoutTests
     {
         var (view, _) = Show(ViewMode.Details, 600, 400, items: Nodes(3));
         Assert.Equal(ItemView.CellSize(ViewMode.Details).Height, Container(view, 0).Bounds.Height);
+    }
+
+    // ── bevel-3fgd: a name never draws outside its cell ─────────────────
+
+    internal static readonly string LongName = new string('x', 100) + ".txt";
+
+    /// <summary>The name label of the container at <paramref name="index"/>.</summary>
+    internal static TextBlock Label(ItemView view, int index)
+        => Container(view, index).GetVisualDescendants().OfType<TextBlock>().First();
+
+    /// <summary>The label's right edge in its container's coordinates.</summary>
+    static double LabelRight(ItemView view, int index)
+    {
+        var label = Label(view, index);
+        return label.TranslatePoint(new Point(label.Bounds.Width, 0), Container(view, index))!.Value.X;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ViewMode.List)]
+    [InlineData(ViewMode.SmallIcons)]
+    public void Long_name_stays_inside_its_cell(ViewMode mode)
+    {
+        var (view, _) = Show(mode, 600, 400, items: new[] { Node("b.txt"), Node(LongName) });
+        int i = view.ItemsControl.Items.Cast<ItemViewModel>().ToList().FindIndex(v => v.DisplayName == LongName);
+        Assert.True(LabelRight(view, i) <= Container(view, i).Bounds.Width,
+            $"label right {LabelRight(view, i)} > cell {Container(view, i).Bounds.Width}");
+        Assert.True(Assert.IsType<NameLabel>(Label(view, i)).IsTrimmed);
+    }
+
+    [AvaloniaFact]
+    public void Long_name_does_not_widen_details_rows()
+    {
+        var (view, _) = Show(ViewMode.Details, 600, 400, items: new[] { Node("b.txt"), Node(LongName) });
+        foreach (var c in view.ItemsControl.GetRealizedContainers())
+            Assert.True(c.Bounds.Width <= view.ItemsScroller.Viewport.Width,
+                $"row {c.Bounds.Width} wider than viewport {view.ItemsScroller.Viewport.Width}");
+    }
+
+    static double ListColumnWidth(ItemView view)
+        => Assert.IsType<VirtualizingWrapPanel>(view.ItemsControl.ItemsPanelRoot).Layout.ItemWidth;
+
+    [AvaloniaFact]
+    public void List_columns_fit_short_names()
+    {
+        var (view, _) = Show(ViewMode.List, 600, 400,
+            items: new[] { Node("a.txt"), Node("b.txt"), Node("c.txt"), Node("d.txt"), Node("e.txt") });
+        Assert.Equal(100, ListColumnWidth(view));
+    }
+
+    [AvaloniaFact]
+    public void List_columns_grow_but_never_shrink_while_streaming()
+    {
+        var (view, _) = Show(ViewMode.List, 600, 400);
+        view.ResetItems();
+        view.AddItems(Nodes(5));
+        Dispatcher.UIThread.RunJobs();
+        double first = ListColumnWidth(view);
+
+        var longOne = Node(new string('m', 40) + ".txt");
+        view.AddItems(new[] { longOne });
+        Dispatcher.UIThread.RunJobs();
+        double grown = ListColumnWidth(view);
+        Assert.True(grown > first, $"{grown} should exceed {first}");
+
+        view.ReconcileItems(Nodes(5));   // the long name is gone, but a refresh must not jitter narrower
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(grown, ListColumnWidth(view));
+
+        view.ResetItems();               // a new folder starts again from its own names
+        view.AddItems(Nodes(5));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(first, ListColumnWidth(view));
     }
 }
 

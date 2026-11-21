@@ -59,12 +59,15 @@ public sealed class ItemViewKeyboardTests
     [AvaloniaFact]
     public void List_end_scrolls_the_selection_into_view()
     {
-        var (view, w) = Focused(ViewMode.List, 60, 600, 220);
+        // Enough items that the columns overflow the pane even at the 100 px minimum column width.
+        var (view, w) = Focused(ViewMode.List, 150, 600, 220);
+        Assert.True(view.ItemsScroller.Extent.Width > view.ItemsScroller.Viewport.Width);
         Press(w, PhysicalKey.End);
-        Assert.Equal("f59.txt", Selected(view));
+        var last = view.ItemsControl.Items.Cast<ItemViewModel>().Last();
+        Assert.Equal(last.DisplayName, Selected(view));
 
         var vp = new Rect(view.ItemsScroller.Viewport);
-        var r = InScroller(view, Container(view, 59));
+        var r = InScroller(view, Container(view, 149));
         Assert.True(view.ItemsScroller.Offset.X > 0, $"offset {view.ItemsScroller.Offset}");
         Assert.True(vp.Contains(r), $"selection {r} outside viewport {vp}");
     }

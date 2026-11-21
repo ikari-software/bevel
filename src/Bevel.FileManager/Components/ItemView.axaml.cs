@@ -97,6 +97,8 @@ public partial class ItemView : UserControl
     }
 
     private readonly ObservableCollection<ItemViewModel> _viewModels = new();
+    // List-view column width follows the names (bevel-3fgd); fed every DisplayName that enters the list.
+    private readonly NameColumnSizer _nameSizer = new();
     private readonly HashSet<ItemViewModel> _selected = new();
     private readonly List<ItemViewModel> _selectedOrder = new();
     private ItemViewModel? _anchor;
@@ -204,8 +206,11 @@ public partial class ItemView : UserControl
         switch (mode)
         {
             case ViewMode.Details:
-                // Vertical list; columns may exceed the width, so allow horizontal scroll.
-                SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Auto);
+                // Vertical list at the pane's width. No horizontal scroll: the column header sits outside
+                // the scroller and never scrolls, so a scrollable row could only drift out of line with
+                // it, and an unconstrained width let a long name widen every row instead of trimming in
+                // the star (Name) column (bevel-3fgd).
+                SetScroll(horizontal: ScrollBarVisibility.Disabled, vertical: ScrollBarVisibility.Auto);
                 ItemsPresenter.ItemsPanel = new FuncTemplate<Panel>(() =>
                     new VirtualizingStackPanel { Orientation = Orientation.Vertical });
                 ItemsPresenter.ItemTemplate = _detailsTpl;
@@ -225,7 +230,8 @@ public partial class ItemView : UserControl
                 // Height is constrained (no vertical scroll) so it wraps into columns and the
                 // overflow scrolls horizontally — the classic Filer "List" view.
                 SetScroll(horizontal: ScrollBarVisibility.Auto, vertical: ScrollBarVisibility.Disabled);
-                ItemsPresenter.ItemsPanel = Wrap(CellSize(mode), Orientation.Vertical);
+                // Column width comes from the names, not the table (CellSize gives the row height).
+                ItemsPresenter.ItemsPanel = Wrap(new Size(ListColumnWidth(), CellSize(mode).Height), Orientation.Vertical);
                 ItemsPresenter.ItemTemplate = ListTpl;
                 break;
             case ViewMode.Thumbnails:
@@ -249,7 +255,29 @@ public partial class ItemView : UserControl
     private static FuncTemplate<Panel> Wrap(Size cell, Orientation flow)
         => new(() => new VirtualizingWrapPanel { ItemWidth = cell.Width, ItemHeight = cell.Height, Orientation = flow });
 
-    /// <summary>The cell of each view mode: the ONLY place cell sizes are written. The wrap panels are
+    /// <summary>The List column width the current names need (100 to 360 px).</summary>
+    double ListColumnWidth() => _nameSizer.Width(MeasureName);
+
+    /// <summary>The drawn width of a name in the item label's font (FontSize 11, see NameCell).</summary>
+    double MeasureName(string name)
+    {
+        using var layout = new Avalonia.Media.TextFormatting.TextLayout(
+            name, new Typeface(FontFamily, FontStyle, FontWeight), 11, null);
+        return layout.WidthIncludingTrailingWhitespace;
+    }
+
+    /// <summary>After names entered the list: in List view, widen the columns to fit them. Between
+    /// resets the width only grows, so columns do not jitter while a folder streams in;
+    /// <paramref name="reset"/> starts again from the current names.</summary>
+    void FitListColumns(bool reset)
+    {
+        if (ViewMode != ViewMode.List || ItemsPresenter.ItemsPanelRoot is not VirtualizingWrapPanel p) return;
+        double w = ListColumnWidth();
+        p.ItemWidth = reset ? w : Math.Max(p.ItemWidth, w);
+    }
+
+    /// <summary>The cell of each view mode: the ONLY place cell sizes are written (List's column width
+    /// is the exception: it follows the names, see <see cref="ListColumnWidth"/>). The wrap panels are
     /// built from it and the Details row height comes from it; navigation and scroll-into-view read
     /// the panel's <see cref="WrapLayout"/>, never these numbers directly. Details is one row per item
     /// across the pane, so its width is NaN.</summary>
@@ -294,7 +322,7 @@ public partial class ItemView : UserControl
     static Control NameCell(string text, TextWrapping wrap = TextWrapping.NoWrap, double maxW = 0,
         TextAlignment align = TextAlignment.Left)
     {
-        var label = new TextBlock
+        var label = new NameLabel
         {
             Text = text, FontSize = 11,
             TextWrapping = wrap, TextAlignment = align,
@@ -307,6 +335,21 @@ public partial class ItemView : UserControl
         var highlight = new Border { Child = label, Padding = new(2, 0) };
         highlight.Bind(Border.BackgroundProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)) { Converter = SelBgConv });
         return highlight;
+    }
+
+    /// <summary>Icon docked left, name filling the rest of the row (bevel-3fgd). A horizontal StackPanel
+    /// measured the name at unlimited width, so it never trimmed and drew over the next column; the
+    /// DockPanel gives it the cell's remaining width to trim to. The highlight hugs the text (Left), so
+    /// the selection bar is only as wide as the visible name.</summary>
+    static Control IconAndName(Control icon, Control nameCell, Thickness margin = default)
+    {
+        icon.Margin = new Thickness(0, 0, 4, 0);
+        DockPanel.SetDock(icon, Dock.Left);
+        nameCell.HorizontalAlignment = HorizontalAlignment.Left;
+        var row = new DockPanel { LastChildFill = true, Margin = margin };
+        row.Children.Add(icon);
+        row.Children.Add(nameCell);
+        return row;
     }
 
     /// <summary>Wrap a row template's visual root in an <see cref="ItemRow"/> so the row exposes a
@@ -334,19 +377,13 @@ public partial class ItemView : UserControl
     static readonly FuncDataTemplate<ItemViewModel> SmallIconTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(2, 0) };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        s.Children.Add(NameCell(vm.DisplayName));
-        return Row(s);
+        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(2, 0)));
     });
 
     static readonly FuncDataTemplate<ItemViewModel> ListTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new(0, 1) };
-        s.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        s.Children.Add(NameCell(vm.DisplayName));
-        return Row(s);
+        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(0, 1)));
     });
 
     // Instance (not static) so each row's Size/Type/Date columns bind to the shared column
@@ -362,10 +399,7 @@ public partial class ItemView : UserControl
         g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(DateColWidthProperty));
-        var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        name.Children.Add(GlyphIcon.For(vm.IconKey, 16));
-        name.Children.Add(NameCell(vm.DisplayName));
-        g.Children.Add(name);
+        g.Children.Add(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName)));
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 3, Text = vm.ModifiedDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
@@ -399,6 +433,8 @@ public partial class ItemView : UserControl
     /// <summary>Clear all items and reset view. Call before streaming new items.</summary>
     public void ResetItems()
     {
+        _nameSizer.Reset();
+        FitListColumns(reset: true);
         _viewModels.Clear();
         _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
         ItemsPresenter.ItemsSource = _viewModels;
@@ -411,7 +447,13 @@ public partial class ItemView : UserControl
     /// re-sort (header click) still goes through SortAsync/ApplyOrder.</summary>
     public void AddItems(IReadOnlyList<IVfsNode> nodes)
     {
-        foreach (var n in nodes) InsertSorted(new ItemViewModel(n));
+        foreach (var n in nodes)
+        {
+            var vm = new ItemViewModel(n);
+            _nameSizer.Add(vm.DisplayName);
+            InsertSorted(vm);
+        }
+        FitListColumns(reset: false);
     }
 
     /// <summary>Binary-search the current sorted position for <paramref name="vm"/> and Insert it there
@@ -447,10 +489,12 @@ public partial class ItemView : UserControl
         {
             incoming.Add(n.Path);
             if (existing.TryGetValue(n.Path, out var vm))
-                vm.Update(n);                       // same row, fresh metadata
+                vm.Update(n);                       // same row, fresh metadata (a rename lands here)
             else
-                InsertSorted(new ItemViewModel(n)); // new row placed in order, no teardown
+                InsertSorted(vm = new ItemViewModel(n)); // new row placed in order, no teardown
+            _nameSizer.Add(vm.DisplayName);
         }
+        FitListColumns(reset: false);
 
         // Drop rows whose paths disappeared (in place — a Remove doesn't tear down the list).
         for (var i = _viewModels.Count - 1; i >= 0; i--)
@@ -468,8 +512,15 @@ public partial class ItemView : UserControl
     {
         _viewModels.Clear();
         _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
+        _nameSizer.Reset();
         if (Items != null)
-            foreach (var n in Items) _viewModels.Add(new ItemViewModel(n));
+            foreach (var n in Items)
+            {
+                var vm = new ItemViewModel(n);
+                _nameSizer.Add(vm.DisplayName);
+                _viewModels.Add(vm);
+            }
+        FitListColumns(reset: true);
         SortItems();
         ItemsPresenter.ItemsSource = _viewModels;
     }
