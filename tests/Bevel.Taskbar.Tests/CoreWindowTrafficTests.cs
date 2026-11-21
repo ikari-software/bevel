@@ -286,7 +286,7 @@ public sealed class CoreWindowTrafficTests
 
         var wm = new ShellCoreWindowManager(h.Core);
         using var mitigator = new WorkAreaMitigator(wm, ScratchSettings(),
-            () => new PalRect(0, 900, 1440, 40));
+            () => new PalRect(0, 900, 1440, 40), () => new PalRect(0, 30, 1440, 910));
 
         var before = pal.EnumerateCalls;
         await mitigator.MitigateOnceAsync(Ct);
@@ -304,7 +304,7 @@ public sealed class CoreWindowTrafficTests
         var pal = new Pal();
         pal.Seed(Win("w1", "Doc"));
         using var mitigator = new WorkAreaMitigator(pal, ScratchSettings(),
-            () => new PalRect(0, 900, 1440, 40));
+            () => new PalRect(0, 900, 1440, 40), () => new PalRect(0, 30, 1440, 910));
 
         await mitigator.MitigateOnceAsync(Ct);
 

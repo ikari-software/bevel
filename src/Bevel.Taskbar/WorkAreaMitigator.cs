@@ -5,8 +5,10 @@ using Bevel.Pal.Abstractions;
 namespace Bevel.Taskbar;
 
 /// <summary>
-/// Work-area overlap mitigation engine (U12, Nudge strategy). Shrinks windows whose bottom
-/// edge crosses into the taskbar band so they sit above it, via IWindowManager.RepositionAsync.
+/// Work-area overlap mitigation engine (U12, Nudge strategy). Shrinks ZOOMED and TILED windows whose
+/// bottom edge crosses into the taskbar band so they sit above it, via IWindowManager.RepositionAsync.
+/// Any other overlap is the user's business and left alone (<see cref="IsZoomShaped"/>, bevel-u6ue),
+/// and every correction is compare-and-set against the frame it was computed from (bevel-tm1n).
 ///
 /// <para><b>This is a mitigation, not a reservation — by platform necessity.</b> macOS has no public
 /// API to reserve screen work area (no <c>_NET_WM_STRUT</c> equivalent): <c>NSScreen.visibleFrame</c>
@@ -96,9 +98,12 @@ public sealed class WorkAreaMitigator : IDisposable
     /// so display reconfigurations are picked up live.</param>
     /// <param name="timeProvider">Clock for rate-limiting; defaults to the system clock.
     /// Injectable so tests can advance time deterministically.</param>
+    /// <param name="zoomArea">The area a zoom or tile fills on the bar's display
+    /// (<see cref="TaskbarGeometry.ZoomArea"/>); only windows shaped like it are corrected.</param>
     public WorkAreaMitigator(IWindowManager windowManager, ISettingsService settings,
-        Func<PalRect?> taskbarBand, TimeProvider? timeProvider = null)
+        Func<PalRect?> taskbarBand, Func<PalRect?> zoomArea, TimeProvider? timeProvider = null)
     {
+        _zoomArea = zoomArea;
         _windowManager = windowManager;
         // Read geometry from the core's projection where there IS one (bevel-ougs). This engine runs a
         // 3s safety poll AND a pass 100ms after every window open/change/focus event AND a verify pass
@@ -114,6 +119,7 @@ public sealed class WorkAreaMitigator : IDisposable
     }
 
     private readonly IProjectedWindowSource? _projected;
+    private readonly Func<PalRect?> _zoomArea;
 
     /// <summary>Count of window enumerations this engine has issued, split by source. Lets a test
     /// assert that the mitigator stops driving helper passes without reaching into the transport.</summary>
@@ -221,7 +227,7 @@ public sealed class WorkAreaMitigator : IDisposable
     /// </summary>
     internal async Task<int> MitigateOnceAsync(CancellationToken ct = default)
     {
-        if (_taskbarBand() is not { } band) return 0;
+        if (_taskbarBand() is not { } band || _zoomArea() is not { } zoomArea) return 0;
 
         var windows = await ReadWindowsAsync(ct);
         var live = new HashSet<string>(windows.Count);
@@ -232,7 +238,7 @@ public sealed class WorkAreaMitigator : IDisposable
             var id = w.Id.Value;
             live.Add(id);
 
-            if (!IsCandidate(w) || !Overlaps(w.Bounds, band))
+            if (!IsCandidate(w) || !IsZoomShaped(w.Bounds, zoomArea) || !Overlaps(w.Bounds, band))
             {
                 // Clear of the band (or gone from view): whatever we last attempted for this window
                 // took, so it can be corrected again immediately next time it crosses in — a
@@ -302,6 +308,30 @@ public sealed class WorkAreaMitigator : IDisposable
     /// </summary>
     private static bool IsCandidate(ForeignWindow w)
         => !w.IsMinimized && !w.IsFullscreen && !w.IsOnOtherSpace;
+
+    /// <summary>Slack per edge for <see cref="IsZoomShaped"/>: Sequoia+ tiling can inset tiled windows by
+    /// a margin, and apps round their frames.</summary>
+    internal const int ZoomShapeTolerance = 12;
+
+    /// <summary>
+    /// bevel-u6ue: whether <paramref name="w"/> has the footprint of a zoom or a macOS tile, the only
+    /// windows this engine exists for. Its top sits just under the menu bar (the top of
+    /// <paramref name="zoomArea"/>), and it either spans the full width (zoom, Fill) or is half the width
+    /// against the left or right edge (half tiles). The bottom is the caller's band-overlap test.
+    ///
+    /// Acting on ANY overlap made the engine erratic: it shrank windows the user dragged partly under
+    /// the bar on purpose, and windows still opening (a pre-warmed Filer, built hidden across the band,
+    /// was snapped to 1920 wide). Neither is shaped like a zoom.
+    /// </summary>
+    internal static bool IsZoomShaped(PalRect w, PalRect zoomArea)
+    {
+        static bool Near(int a, int b) => Math.Abs(a - b) <= ZoomShapeTolerance;
+        if (!Near(w.Y, zoomArea.Y)) return false;
+        var left = Near(w.X, zoomArea.X);
+        var right = Near(w.X + w.Width, zoomArea.X + zoomArea.Width);
+        var half = Math.Abs(w.Width - zoomArea.Width / 2.0) <= ZoomShapeTolerance;
+        return (left && right) || (half && (left || right));
+    }
 
     private static bool Overlaps(PalRect w, PalRect band)
         => w.Y < band.Y + band.Height

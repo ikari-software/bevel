@@ -273,6 +273,7 @@ public sealed class TaskbarWindow : BevelWindow
 
     private readonly object _bandLock = new();
     private PalRect? _workAreaBand;
+    private PalRect? _zoomArea;
 
     /// <summary>
     /// The taskbar's occupied band in the window manager's coordinate space — top-left-origin
@@ -289,9 +290,16 @@ public sealed class TaskbarWindow : BevelWindow
         lock (_bandLock) return _workAreaBand;
     }
 
+    /// <summary>The area a zoom or tile fills on the bar's display (<see cref="TaskbarGeometry.ZoomArea"/>),
+    /// refreshed with the band. The mitigator corrects only windows shaped like it (bevel-u6ue).</summary>
+    public PalRect? GetZoomArea()
+    {
+        lock (_bandLock) return _zoomArea;
+    }
+
     private void RecomputeWorkAreaBand()
     {
-        PalRect? band = null;
+        PalRect? band = null, zoomArea = null;
         var primary = Screens?.Primary ?? Screens?.All?.FirstOrDefault();
         if (primary is not null)
         {
@@ -303,8 +311,10 @@ public sealed class TaskbarWindow : BevelWindow
             var barH = TaskbarTheme.HeightForRows(_rows);
             band = TaskbarGeometry.WorkAreaBand(
                 primary.Bounds, scale, barH, windowManagerUsesPhysicalPixels: OperatingSystem.IsWindows());
+            zoomArea = TaskbarGeometry.ZoomArea(
+                primary.Bounds, primary.WorkingArea, scale, windowManagerUsesPhysicalPixels: OperatingSystem.IsWindows());
         }
-        lock (_bandLock) _workAreaBand = band;
+        lock (_bandLock) { _workAreaBand = band; _zoomArea = zoomArea; }
     }
 
     /// <summary>
