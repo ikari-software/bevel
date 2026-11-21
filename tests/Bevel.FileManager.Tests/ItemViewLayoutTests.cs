@@ -129,6 +129,11 @@ public sealed class ItemViewLayoutTests
         foreach (var c in view.ItemsControl.GetRealizedContainers())
             Assert.True(c.Bounds.Width <= view.ItemsScroller.Viewport.Width,
                 $"row {c.Bounds.Width} wider than viewport {view.ItemsScroller.Viewport.Width}");
+        // ...and the long name trims inside its row rather than just not widening it (review #5).
+        int i = view.ItemsControl.Items.Cast<ItemViewModel>().ToList().FindIndex(v => v.DisplayName == LongName);
+        Assert.True(Assert.IsType<NameLabel>(Label(view, i)).IsTrimmed);
+        Assert.True(LabelRight(view, i) <= Container(view, i).Bounds.Width,
+            $"label right {LabelRight(view, i)} > row {Container(view, i).Bounds.Width}");
     }
 
     static double ListColumnWidth(ItemView view)
@@ -361,6 +366,64 @@ public sealed class ItemViewLayoutTests
         var (view, _) = Show(ViewMode.Thumbnails, 600, 400, items: new[] { Node("photo.jpg") });
         var expected = Application.Current!.FindResource(Bevel.UI.ThemeTokens.BrushButtonFace);
         Assert.Same(expected, ThumbFrame(view, 0).BorderBrush);
+    }
+
+    // ── Review #2: RTL List keeps its reading start across a resize ──────
+
+    [AvaloniaFact]
+    public void Rtl_list_view_keeps_the_reading_start_when_the_window_narrows()
+    {
+        var (view, w) = Show(ViewMode.List, 830, 400, FlowDirection.RightToLeft, Nodes(200));
+        AssertFirstColumnVisible(view);
+        w.Width = 500;
+        Dispatcher.UIThread.RunJobs();
+        AssertFirstColumnVisible(view);
+        w.Width = 700;
+        Dispatcher.UIThread.RunJobs();
+        AssertFirstColumnVisible(view);
+    }
+
+    [AvaloniaFact]
+    public void Rtl_list_view_keeps_a_user_position_across_a_resize()
+    {
+        var (view, w) = Show(ViewMode.List, 830, 400, FlowDirection.RightToLeft, Nodes(200));
+        view.ItemsScroller.Offset = new Vector(0, 0);   // the user scrolled to the reading end
+        Dispatcher.UIThread.RunJobs();
+        w.Width = 500;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, view.ItemsScroller.Offset.X);
+    }
+
+    // ── Review #3: a drop on the revealed caption targets the folder underneath ──
+
+    [AvaloniaFact]
+    public void Drop_on_the_revealed_caption_targets_the_folder_underneath()
+    {
+        var folder = new LayoutTestNode
+        {
+            Path = new VfsPath("test", "f05-folder"), DisplayName = "f05-folder", Kind = VfsNodeKind.Folder,
+            TypeDescription = "File Folder", MightHaveChildren = true,
+        };
+        // Folders sort first, so give the long-named item a folder too and keep it at index 0.
+        var items = new IVfsNode[] { new LayoutTestNode
+        {
+            Path = new VfsPath("test", RevealName), DisplayName = RevealName, Kind = VfsNodeKind.Folder,
+            TypeDescription = "File Folder", MightHaveChildren = true,
+        } }.Concat(Enumerable.Range(1, 4).Select(i => (IVfsNode)new LayoutTestNode
+        {
+            Path = new VfsPath("test", $"f0{i}-folder"), DisplayName = $"f0{i}-folder", Kind = VfsNodeKind.Folder,
+            TypeDescription = "File Folder", MightHaveChildren = true,
+        })).Append(folder).Concat(Nodes(4)).ToArray();
+        var (view, w) = Show(ViewMode.Thumbnails, 600, 500, items: items);
+        view.Focus();
+        Dispatcher.UIThread.RunJobs();
+        w.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(view.SelectedItems.Single().ShowFullName);
+
+        var p = PaddingOnFourthLine(view, view.ItemsControl);   // inside item 5's cell, on the revealed caption
+        Assert.Equal("f05-folder", Assert.IsType<ItemViewModel>(view.ItemsControl.ContainerFromIndex(5)!.DataContext).DisplayName);
+        Assert.Equal(folder.Path, view.DropTargetAt(p)?.Path);
     }
 }
 

@@ -116,4 +116,17 @@ public sealed class WrapLayoutTests
         Assert.Equal(3, l.Move(2, 0, 1, rtl: false));
         Assert.Equal(3, l.Move(2, 1, 0, rtl: false));   // Details keeps Left/Right = ±1 item
     }
+
+    // Review #1: an empty panel's layout is default (PerLine 0). Keys pressed after the first batch
+    // arrives but before the next layout pass reach Move with it and must not divide by zero.
+    [Fact]
+    public void Move_on_an_empty_layout_stays_put()
+    {
+        var l = default(WrapLayout);
+        Assert.Equal(0, l.Move(0, 0, 1, rtl: false));
+        Assert.Equal(0, l.Move(0, 1, 0, rtl: false));
+        Assert.Equal(3, l.Move(3, 0, -1, rtl: true));
+        var vertical = new WrapLayout(0, 0, 0, 180, 18, Horizontal: false);
+        Assert.Equal(0, vertical.Move(0, 1, 0, rtl: false));
+    }
 }

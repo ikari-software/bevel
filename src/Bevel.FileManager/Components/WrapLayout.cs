@@ -61,6 +61,9 @@ internal readonly record struct WrapLayout(int Count, int PerLine, int Lines, do
     /// is shorter, and stays put at the edges (Explorer behaviour: no clamping to item 0 or the end).</summary>
     public int Move(int index, int dx, int dy, bool rtl)
     {
+        // An empty panel's layout is default (PerLine 0): a key pressed after the first batch arrives but
+        // before the next layout pass lands here, and must not divide by zero (review #1).
+        if (PerLine <= 0 || Count <= 0) return index;
         int ahead = rtl ? -dx : dx;
         int along = Horizontal ? ahead : dy;
         int across = Horizontal ? dy : ahead;

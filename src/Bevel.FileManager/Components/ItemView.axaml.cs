@@ -243,6 +243,7 @@ public partial class ItemView : UserControl
                 ItemsPresenter.ItemTemplate = ThumbTpl;
                 break;
         }
+        _pinnedToReadingStart = true;
         UpdateFullNameReveal();
     }
 
@@ -253,14 +254,25 @@ public partial class ItemView : UserControl
     /// re-pinned, so a position the user chose is left alone. Nothing to do under LTR.</summary>
     void OnItemsScrollChanged(object? _, ScrollChangedEventArgs e)
     {
-        if (e.ExtentDelta.X == 0 || ViewMode != ViewMode.List
-            || FlowDirection != Avalonia.Media.FlowDirection.RightToLeft) return;
+        if (ViewMode != ViewMode.List || FlowDirection != Avalonia.Media.FlowDirection.RightToLeft) return;
         var sv = ItemsScroller;
-        double oldMax = Math.Max(0, (sv.Extent.Width - e.ExtentDelta.X) - sv.Viewport.Width);
-        double oldOffset = sv.Offset.X - e.OffsetDelta.X;
-        if (oldOffset >= oldMax - 1)
-            sv.Offset = new Vector(Math.Max(0, sv.Extent.Width - sv.Viewport.Width), sv.Offset.Y);
+        double max = Math.Max(0, sv.Extent.Width - sv.Viewport.Width);
+        if (e.ExtentDelta.X != 0 || e.ViewportDelta.X != 0)
+        {
+            // The list grew or the pane was resized: keep the reading start in view if we were there.
+            if (_pinnedToReadingStart && sv.Offset.X != max) sv.Offset = new Vector(max, sv.Offset.Y);
+        }
+        else if (e.OffsetDelta.X != 0)
+        {
+            // Only the offset moved: the user scrolled (or a key scrolled the selection into view).
+            _pinnedToReadingStart = sv.Offset.X >= max - 1;
+        }
     }
+
+    /// <summary>RTL List only: the view is showing its reading start (the far right), so growth and
+    /// resizes keep it there. Set on a reset or view switch; cleared when the user scrolls away
+    /// (review #2: the old handler ignored viewport-only resizes).</summary>
+    bool _pinnedToReadingStart = true;
 
     // Horizontal-flow icon grids wrap to the viewport WIDTH, so horizontal scroll must be off
     // (otherwise the panel is measured at infinite width and never wraps); overflow scrolls down.
@@ -467,6 +479,7 @@ public partial class ItemView : UserControl
     /// <summary>Clear all items and reset view. Call before streaming new items.</summary>
     public void ResetItems()
     {
+        _pinnedToReadingStart = true;
         _nameSizer.Reset();
         FitListColumns(reset: true);
         _viewModels.Clear();
@@ -547,6 +560,7 @@ public partial class ItemView : UserControl
         _viewModels.Clear();
         _selected.Clear(); _selectedOrder.Clear(); _marqueeHits.Clear(); _anchor = null; _lastClickIdx = -1;
         _nameSizer.Reset();
+        _pinnedToReadingStart = true;
         if (Items != null)
             foreach (var n in Items)
             {
@@ -668,7 +682,7 @@ public partial class ItemView : UserControl
 
     // ── Selection ────────────────────────────────────────────────────
 
-    ItemViewModel? Hit(Point pt)
+    ItemViewModel? Hit(Point pt, bool revealedFirst = true)
     {
         // pt is in ItemsPresenter coordinates (all callers use GetPosition(ItemsPresenter)).
         // Match it against realized container RECTS rather than visual hit-testing: templates
@@ -680,7 +694,7 @@ public partial class ItemView : UserControl
         // container loop — O(n²) per click in a large folder (ce-review: performance).
         // A revealed name draws over the cells below it, so a click on that text belongs to its item,
         // not to the one underneath (bevel-m9jy).
-        if (_revealed is not null && ItemsPresenter.ContainerFromItem(_revealed) is { } rc
+        if (revealedFirst && _revealed is not null && ItemsPresenter.ContainerFromItem(_revealed) is { } rc
             && rc.FindDescendantOfType<NameLabel>()?.Parent is Control nameCell
             && nameCell.TranslatePoint(default, ItemsPresenter) is { } np
             && new Rect(np, nameCell.Bounds.Size).Contains(pt))
@@ -948,6 +962,14 @@ public partial class ItemView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>The folder a drop at <paramref name="pt"/> (ItemsPresenter coordinates) lands in, or null
+    /// for the current directory.</summary>
+    /// <remarks>Drops ignore the revealed full name (review #3): it is an overlay of the selected item,
+    /// which is often the thing being dragged, so the drop belongs to the cell underneath. A click on it
+    /// still selects the revealed item (Hit's default).</remarks>
+    internal ItemViewModel? DropTargetAt(Point pt)
+        => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
+
     void OnDrop(object? _, DragEventArgs e)
     {
         List<VfsPath>? paths = null;
@@ -956,8 +978,7 @@ public partial class ItemView : UserControl
         else if (e.Data.Contains(DataFormats.Files))
             paths = e.Data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
         // Dropping onto a folder targets that folder; onto empty space, the current directory.
-        var over = Hit(e.GetPosition(ItemsPresenter));
-        var target = over is { IsFolder: true } ? over.Path : (VfsPath?)null;
+        var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;

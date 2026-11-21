@@ -90,4 +90,50 @@ public sealed class ItemViewKeyboardTests
         Press(w, PhysicalKey.ArrowLeft);
         Assert.Equal($"f{perCol:D2}.txt", Selected(view));
     }
+
+    // ── Review #4: vertical scroll-into-view and PageUp/PageDown ─────────
+
+    static void AssertSelectionVisible(ItemView view)
+    {
+        var sel = view.SelectedItems.Single();
+        int i = view.ItemsControl.Items.Cast<ItemViewModel>().ToList().IndexOf(sel);
+        var vp = new Rect(view.ItemsScroller.Viewport);
+        var r = InScroller(view, Container(view, i));
+        Assert.True(vp.Contains(r), $"selection {r} outside viewport {vp} (offset {view.ItemsScroller.Offset})");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ViewMode.LargeIcons)]
+    [InlineData(ViewMode.Details)]
+    public void End_and_home_scroll_the_selection_into_view_vertically(ViewMode mode)
+    {
+        var (view, w) = Focused(mode, 300, 600, 300);
+        Assert.True(view.ItemsScroller.Extent.Height > view.ItemsScroller.Viewport.Height);
+        Press(w, PhysicalKey.End);
+        Assert.True(view.ItemsScroller.Offset.Y > 0, $"offset {view.ItemsScroller.Offset}");
+        AssertSelectionVisible(view);
+        Press(w, PhysicalKey.Home);
+        Assert.Equal(0, view.ItemsScroller.Offset.Y);
+        AssertSelectionVisible(view);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ViewMode.LargeIcons)]
+    [InlineData(ViewMode.Details)]
+    public void Page_down_and_up_move_by_one_viewport(ViewMode mode)
+    {
+        var (view, w) = Focused(mode, 300, 600, 300);
+        int page = view.CurrentLayout().PageSize(view.ItemsScroller.Viewport);
+        Assert.True(page > 1);
+        var items = view.ItemsControl.Items.Cast<ItemViewModel>().ToList();
+
+        Press(w, PhysicalKey.PageDown);
+        Assert.Equal(items[page].DisplayName, Selected(view));
+        AssertSelectionVisible(view);
+        Assert.True(view.ItemsScroller.Offset.Y > 0);
+
+        Press(w, PhysicalKey.PageUp);
+        Assert.Equal(items[0].DisplayName, Selected(view));
+        AssertSelectionVisible(view);
+    }
 }
