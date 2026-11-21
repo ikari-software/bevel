@@ -308,10 +308,24 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     // then, so liveness matters most), slower in plain mirror mode to save CPU. The state
                     // comes from the app's SetConsolidation notify (bevel-qpir) — the hide itself is
                     // app-side; this helper owns no status item.
+                    // Between full enumerations, a fast tick re-captures only the glyph PIXELS of the items
+                    // already known (a seconds clock, blinking colons, iStat graphs): 250 ms catches a
+                    // half-second blink. Static icons capture byte-identical (measured on 27.3: only the
+                    // clock and the live graphs differ run to run), so the diff below emits nothing for them.
+                    var lastEnumerated = DispatchTime.now().uptimeNanoseconds
                     while !Task.isCancelled {
                         let interval: UInt64 = self.consolidationActive ? 900_000_000 : 2_000_000_000
-                        try await Task.sleep(nanoseconds: interval)
-                        let current = await self.enumerateWithCapture()
+                        try await Task.sleep(nanoseconds: Self.glyphRefreshInterval)
+                        let now = DispatchTime.now().uptimeNanoseconds
+                        let current: [Bevel_Helper_V1_TrayItem]
+                        if now - lastEnumerated >= interval {
+                            current = await self.enumerateWithCapture()
+                            lastEnumerated = now
+                        } else {
+                            var refreshed = Array(lastByID.values)
+                            await self.captureGlyphs(into: &refreshed)
+                            current = refreshed
+                        }
                         var currentByID: [String: Bevel_Helper_V1_TrayItem] = [:]
                         for item in current { currentByID[item.itemID] = item }
 
@@ -705,6 +719,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         try? text.write(toFile: "/tmp/bevel-geo-\(getpid()).log", atomically: true, encoding: .utf8)
     }
 
+    /// Cadence of the glyph-only refresh between full enumerations (see the Changes stream).
+    static let glyphRefreshInterval: UInt64 = 250_000_000
+
     // MARK: - Live capture (ScreenCaptureKit, §5.3)
 
     /// Enumerates the tray items and, when Screen Recording is granted, overlays a live per-window
@@ -714,6 +731,14 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     func enumerateWithCapture() async -> [Bevel_Helper_V1_TrayItem] {
         var items = enumerateTrayItems()
         dumpGeometry()   // TEMP (bevel-7hf4): geometry probe for single-item reveal; self-gated by /tmp/bevel-geo
+        await captureGlyphs(into: &items)
+        return items
+    }
+
+    /// The live half of `enumerateWithCapture`: overlays fresh glyph pixels on already-enumerated items.
+    /// Also run on its own by the Changes stream's fast glyph tick (`glyphRefreshInterval`), between full
+    /// enumerations, so a ticking clock or a live graph keeps up without re-walking Accessibility.
+    func captureGlyphs(into items: inout [Bevel_Helper_V1_TrayItem]) async {
         await ensureSelfTested()
         // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
         // mirroring on this OS build (§5.10) — never show black/wrong frames.
@@ -728,7 +753,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 ? "live capture OFF: self-test disabled live mirroring on this build → limited mode (app icons)"
                 : "live capture OFF: Screen Recording not granted to \(binary) → limited mode (app icons); " +
                   "grant it in System Settings › Privacy & Security › Screen & System Audio Recording")
-            return items
+            return
         }
 
         // Capture each item's window by ID via the legacy CG path (U1/KTD1). Unlike ScreenCaptureKit
@@ -751,6 +776,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 items[i].isLive = true
             }
         }
+        // Items only Accessibility reports (macOS 27) have no window to read: matte their glyphs out of the
+        // composited menu-bar strip instead (MenuBarStripCapture). Without this they keep the owner's app
+        // icon, which for system items is MenuBarAgent's generic one rather than Wi-Fi, Sound, etc.
+        var axFrames: [Int: CGRect] = [:]
+        for i in items.indices where AxTrayMerge.parse(itemID: items[i].itemID) != nil {
+            let b = items[i].bounds
+            axFrames[i] = CGRect(x: Int(b.x), y: Int(b.y), width: Int(b.width), height: Int(b.height))
+        }
+        for (i, glyph) in await MenuBarStripCapture.glyphs(for: axFrames) {
+            let png = pngFromCGImage(glyph)
+            if !png.isEmpty {
+                items[i].iconPng = png
+                items[i].isLive = true
+            }
+        }
+
         // The live/total ratio, split by failure reason, is the one number that distinguishes "mirroring
         // is on but nothing captures" from "mirroring is off" — the two look identical in the taskbar
         // (both show limited-mode app icons), which is exactly where bevel-p6g4 hid. `blank` counts
@@ -759,7 +800,6 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // could not tell "0 live" from "never looked"; every poll still traces it under debug.
         let summary = "captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))"
         if !logCaptureStateIfChanged(summary) { dbg(summary) }
-        return items
     }
 
     // The last capture-state line we logged. `enumerateWithCapture` runs on the 2 s poll (and
@@ -912,7 +952,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         var captureOk = true
         let granted = CGPreflightScreenCaptureAccess()
         if granted && discovered {
-            captureOk = selfTestCapture()
+            captureOk = await selfTestCapture()
         }
 
         // Live mirroring is safe iff a granted capture actually worked; without a grant we stay in
@@ -936,15 +976,29 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// live capture for every item. Self-reinforcing: the better the hiding worked, the more certainly
     /// the gate failed. A self-test that tests a different pipeline than the product uses is worse than
     /// no self-test — it fails closed on healthy code.
-    private func selfTestCapture() -> Bool {
-        guard LegacyWindowCapture.isAvailable else { return false }   // private symbol gone on this build
+    ///
+    /// Both live paths are probed, for the same reason: window-backed items through `LegacyWindowCapture`,
+    /// and the Accessibility-only items of macOS 27 through `MenuBarStripCapture`. Probing only the first
+    /// latched mirroring off on 27, where almost no item has a window left.
+    private func selfTestCapture() async -> Bool {
+        let items = enumerateTrayItems()
         // Try every discovered item, not just the first: some items legitimately capture blank
         // (bevel-sd6n), and one of those must not condemn the whole pipeline.
-        for item in enumerateTrayItems() {
-            let parts = item.itemID.split(separator: ":")
-            guard parts.count == 2, let num = UInt32(parts[1]),
-                  let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
-            if isNonBlank(cgImage) { return true }
+        if LegacyWindowCapture.isAvailable {   // private symbol may be gone on this build
+            for item in items {
+                let parts = item.itemID.split(separator: ":")
+                guard parts.count == 2, let num = UInt32(parts[1]),
+                      let cgImage = LegacyWindowCapture.image(windowID: CGWindowID(num)) else { continue }
+                if isNonBlank(cgImage) { return true }
+            }
+        }
+        var axFrames: [Int: CGRect] = [:]
+        for (i, item) in items.enumerated() where AxTrayMerge.parse(itemID: item.itemID) != nil {
+            let b = item.bounds
+            axFrames[i] = CGRect(x: Int(b.x), y: Int(b.y), width: Int(b.width), height: Int(b.height))
+        }
+        for glyph in await MenuBarStripCapture.glyphs(for: axFrames).values where isNonBlank(glyph) {
+            return true
         }
         return false   // nothing captured a single non-transparent pixel → genuinely broken
     }
