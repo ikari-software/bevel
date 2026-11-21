@@ -362,6 +362,7 @@ public sealed class TaskbarWindow : BevelWindow
         TaskbarNative.SetWindowLevel(handle, TaskbarNative.CGMainMenuWindowLevel - 1);
         TaskbarNative.SetCanBecomeKeyWindow(handle, false);
         TaskbarNative.SetAcceptsMouseMovedEvents(handle, true);
+        PopupHoverEnabler.Install();   // the bar's popups are separate NSWindows and need the same opt-in
         TaskbarNative.SetCollectionBehavior(handle,
             TaskbarNative.NSWindowCollectionBehaviorCanJoinAllSpaces |
             TaskbarNative.NSWindowCollectionBehaviorStationary |
