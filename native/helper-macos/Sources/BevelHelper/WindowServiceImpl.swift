@@ -390,7 +390,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 let req = try await ServerRequest(stream: request)
                 try self.repositionWindow(
                     windowID: req.message.windowID,
-                    target: req.message.target
+                    target: req.message.target,
+                    expected: req.message.hasExpected ? req.message.expected : nil
                 )
                 return StreamingServerResponse(
                     single: ServerResponse(message: Bevel_Helper_V1_RepositionReply())
@@ -1320,8 +1321,20 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Reposition/resize a window to an absolute target rect (device pixels, AppKit
     /// bottom-left origin) via AXPosition + AXSize.
-    func repositionWindow(windowID: String, target: Bevel_Helper_V1_PixelRect) throws {
+    ///
+    /// With `expected`, a compare-and-set (bevel-tm1n): the window's LIVE AX frame must still match
+    /// (`FrameGuard`), else FAILED_PRECONDITION and nothing moves. The caller's snapshot was stale.
+    func repositionWindow(windowID: String, target: Bevel_Helper_V1_PixelRect,
+                          expected: Bevel_Helper_V1_PixelRect? = nil) throws {
         let axWin = try axWindow(for: windowID)
+
+        if let expected {
+            let want = CGRect(x: Int(expected.x), y: Int(expected.y), width: Int(expected.width), height: Int(expected.height))
+            guard let live = axWindowFrame(axWin), FrameGuard.matches(live: live, expected: want) else {
+                throw RPCError(code: .failedPrecondition,
+                               message: "Window \(windowID) is no longer at the frame the reposition was computed from")
+            }
+        }
 
         var point = CGPoint(x: CGFloat(target.x), y: CGFloat(target.y))
         guard let posValue = AXValueCreate(.cgPoint, &point) else {

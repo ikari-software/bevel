@@ -49,13 +49,15 @@ public sealed class FakeWindowManager : IWindowManager
     /// window server would: the caller can read the new frame back from
     /// <see cref="EnumerateAsync"/> and sees the same WindowChanged it would get on-device. An
     /// unknown id is ignored (the window closed) rather than throwing.</summary>
-    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+        CancellationToken ct = default)
     {
         ForeignWindow? moved = null;
         lock (_windows)
         {
             var i = _windows.FindIndex(w => w.Id == id);
-            if (i >= 0) _windows[i] = moved = _windows[i] with { Bounds = bounds };
+            if (i >= 0 && (expected is not { } e || FrameGuard.Matches(_windows[i].Bounds, e)))
+                _windows[i] = moved = _windows[i] with { Bounds = bounds };
         }
         if (moved is not null) WindowChanged?.Invoke(this, moved);
         return Task.CompletedTask;

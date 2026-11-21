@@ -50,4 +50,23 @@ public class TaskbarWindowGeometryTests
         Assert.Equal(40, window.Geometry.ButtonHeight);
         Assert.Equal(before, window.MinHeight);
     }
+
+    // bevel-u6ue (review follow-up): the zoom area is cached from Screen.WorkingArea, which also moves
+    // when the menu bar auto-hides or a Dock appears, events that raise neither PositionChanged,
+    // ScalingChanged nor Screens.Changed. A periodic re-check must notice, and must stay silent
+    // otherwise, since a change kicks a mitigation pass.
+    [AvaloniaFact]
+    public void Work_area_refresh_notices_a_stale_zoom_area_and_is_silent_otherwise()
+    {
+        var window = new TaskbarWindow(null, rows: 1);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(window.RefreshWorkArea());                      // nothing changed since opening
+        Assert.False(window.RefreshWorkArea());
+
+        window.StaleWorkAreaForTest();                               // the real top moved under the cache
+        Assert.True(window.RefreshWorkArea());
+        Assert.False(window.RefreshWorkArea());                      // refreshed: quiet again
+    }
 }

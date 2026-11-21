@@ -52,4 +52,20 @@ internal static class TaskbarGeometry
             (int)Math.Round(w),
             heightDip);
     }
+
+    /// <summary>The area a zoom or a macOS tile fills (bevel-u6ue): the screen's full width, from the
+    /// working area's top (just under the menu bar) down to the screen's bottom edge, which is where
+    /// an un-mitigated zoom ends up because macOS doesn't know the taskbar is there. Same units as
+    /// <see cref="WorkAreaBand"/>, so the mitigator compares like with like.</summary>
+    public static PalRect ZoomArea(PixelRect bounds, PixelRect workingArea, double scale, bool windowManagerUsesPhysicalPixels)
+    {
+        var s = windowManagerUsesPhysicalPixels ? 1.0 : (scale <= 0 ? 1.0 : scale);
+        var top = workingArea.Y / s;
+        var bottom = (bounds.Y + bounds.Height) / s;
+        return new PalRect(
+            (int)Math.Round(bounds.X / s),
+            (int)Math.Round(top),
+            (int)Math.Round(bounds.Width / s),
+            (int)Math.Round(bottom - top));
+    }
 }

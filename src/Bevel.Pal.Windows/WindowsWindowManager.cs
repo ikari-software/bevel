@@ -136,13 +136,17 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return Task.Run(() => { if (IsWindow(hwnd)) PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero); }, ct);
     }
 
-    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+        CancellationToken ct = default)
     {
         if (!OperatingSystem.IsWindows() || _disposed || !TryParseHwnd(id, out var hwnd))
             return Task.CompletedTask;
         return Task.Run(() =>
         {
-            if (IsWindow(hwnd))
+            if (!IsWindow(hwnd)) return;
+            // Compare-and-set (bevel-tm1n): same measure the enumeration reports, so a window that
+            // moved since the caller looked is left alone.
+            if (expected is { } e && !FrameGuard.Matches(GetPhysicalBounds(hwnd), e)) return;
                 SetWindowPos(hwnd, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height,
                     SWP_NOZORDER | SWP_NOACTIVATE);
         }, ct);

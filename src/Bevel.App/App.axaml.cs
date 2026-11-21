@@ -449,7 +449,7 @@ public partial class App : Application
         if (services.GetService<Bevel.Pal.Abstractions.IWindowManager>() is { } mitigationWm)
         {
             var mitigator = new Taskbar.WorkAreaMitigator(
-                mitigationWm, settings, taskbarWin.GetWorkAreaBand);
+                mitigationWm, settings, taskbarWin.GetWorkAreaBand, taskbarWin.GetZoomArea);
             mitigator.Start();
             // A resolution/arrangement change re-anchors the bar and refreshes the band but
             // moves no window, so kick an immediate re-nudge instead of waiting on the poll.

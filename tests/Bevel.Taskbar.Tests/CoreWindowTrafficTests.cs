@@ -84,7 +84,12 @@ public sealed class CoreWindowTrafficTests
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public List<(ForeignWindowId Id, PalRect Bounds, PalRect? Expected)> Repositions { get; } = [];
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default)
+        {
+            lock (Repositions) Repositions.Add((id, bounds, expected));
+            return Task.CompletedTask;
+        }
         public Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int w, int h, CancellationToken ct = default)
             => Task.FromResult<byte[]?>(null);
 
@@ -286,7 +291,7 @@ public sealed class CoreWindowTrafficTests
 
         var wm = new ShellCoreWindowManager(h.Core);
         using var mitigator = new WorkAreaMitigator(wm, ScratchSettings(),
-            () => new PalRect(0, 900, 1440, 40));
+            () => new PalRect(0, 900, 1440, 40), () => new PalRect(0, 30, 1440, 910));
 
         var before = pal.EnumerateCalls;
         await mitigator.MitigateOnceAsync(Ct);
@@ -294,6 +299,38 @@ public sealed class CoreWindowTrafficTests
         Assert.Equal(1, mitigator.ProjectedEnumerations);
         Assert.Equal(0, mitigator.DirectEnumerations);
         Assert.Equal(before, pal.EnumerateCalls);   // no helper pass behind it
+    }
+
+    // bevel-tm1n: the compare-and-set frame has to survive the taskbar -> core hop. Dropping it would
+    // silently turn every guarded move back into the unguarded one that caused the bug, with no test red.
+    [Fact]
+    public async Task Reposition_carries_its_expected_frame_across_the_core()
+    {
+        var pal = new Pal();
+        pal.Seed(Win("w1", "Doc"));
+        await using var h = await StartAsync(pal);
+        var wm = new ShellCoreWindowManager(h.Core);
+        var target = new PalRect(0, 30, 1440, 870);
+        var expected = new PalRect(0, 30, 1440, 910);
+
+        await wm.RepositionAsync(new ForeignWindowId("w1"), target, expected, Ct);
+
+        var got = Assert.Single(pal.Repositions);
+        Assert.Equal(target, got.Bounds);
+        Assert.Equal(expected, got.Expected);
+    }
+
+    [Fact]
+    public async Task Reposition_without_an_expected_frame_stays_unconditional()
+    {
+        var pal = new Pal();
+        pal.Seed(Win("w1", "Doc"));
+        await using var h = await StartAsync(pal);
+        var wm = new ShellCoreWindowManager(h.Core);
+
+        await wm.RepositionAsync(new ForeignWindowId("w1"), new PalRect(0, 0, 800, 600), ct: Ct);
+
+        Assert.Null(Assert.Single(pal.Repositions).Expected);
     }
 
     /// <summary>On a PAL that IS the window source there is no projection, so the mitigator uses the
@@ -304,7 +341,7 @@ public sealed class CoreWindowTrafficTests
         var pal = new Pal();
         pal.Seed(Win("w1", "Doc"));
         using var mitigator = new WorkAreaMitigator(pal, ScratchSettings(),
-            () => new PalRect(0, 900, 1440, 40));
+            () => new PalRect(0, 900, 1440, 40), () => new PalRect(0, 30, 1440, 910));
 
         await mitigator.MitigateOnceAsync(Ct);
 

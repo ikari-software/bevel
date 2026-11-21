@@ -389,7 +389,7 @@ public sealed class ShellModelTests
             return Task.CompletedTask;
         }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
 
         /// <summary>When set, a capture blocks until its token cancels — a stand-in for a wedged/cold
         /// ScreenCaptureKit init in the helper — then returns null (the PAL's bounded-timeout fallback to

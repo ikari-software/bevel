@@ -186,3 +186,17 @@ public sealed record AppTab(
     string? Url = null,
     byte[]? IconPng = null,
     string? SessionId = null);
+
+/// <summary>The one rule for "is this window still where the caller thinks" (bevel-tm1n). Every PAL's
+/// compare-and-set reposition uses it, and the Swift helper mirrors it (<c>FrameGuard.swift</c>).</summary>
+public static class FrameGuard
+{
+    /// <summary>Points of slack per edge: AX and CoreGraphics round fractional frames differently.</summary>
+    public const int Tolerance = 2;
+
+    public static bool Matches(PalRect live, PalRect expected)
+        => Math.Abs(live.X - expected.X) <= Tolerance
+        && Math.Abs(live.Y - expected.Y) <= Tolerance
+        && Math.Abs(live.Width - expected.Width) <= Tolerance
+        && Math.Abs(live.Height - expected.Height) <= Tolerance;
+}

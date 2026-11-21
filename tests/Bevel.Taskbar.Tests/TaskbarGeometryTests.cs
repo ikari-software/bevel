@@ -1,3 +1,4 @@
+using Bevel.Pal.Abstractions;
 using Avalonia;
 using Xunit;
 
@@ -58,5 +59,25 @@ public class TaskbarGeometryTests
         Assert.Equal(510, band.Y); // 540 - 30
         Assert.Equal(960, band.Width);
         Assert.Equal(30, band.Height);
+    }
+
+    // bevel-u6ue: the area a zoom or tile fills: the whole screen width, from just under the menu bar
+    // (the working area's top) to the screen bottom. The mitigator only corrects windows shaped like it.
+    [Fact]
+    public void ZoomArea_on_macOS_runs_from_under_the_menu_bar_to_the_screen_bottom_in_points()
+    {
+        var bounds = new PixelRect(0, 0, 5120, 2880);
+        var working = new PixelRect(0, 60, 5120, 2820);   // a 30pt menu bar at 2x
+        var area = TaskbarGeometry.ZoomArea(bounds, working, scale: 2.0, windowManagerUsesPhysicalPixels: false);
+        Assert.Equal(new PalRect(0, 30, 2560, 1410), area);
+    }
+
+    [Fact]
+    public void ZoomArea_on_Windows_stays_in_physical_pixels()
+    {
+        var bounds = new PixelRect(0, 0, 1920, 1080);
+        var working = new PixelRect(0, 0, 1920, 1040);
+        var area = TaskbarGeometry.ZoomArea(bounds, working, scale: 2.0, windowManagerUsesPhysicalPixels: true);
+        Assert.Equal(new PalRect(0, 0, 1920, 1080), area);
     }
 }

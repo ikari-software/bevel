@@ -210,10 +210,20 @@ public sealed class TaskbarWindow : BevelWindow
             Screens.Changed += OnScreensChanged;
         if (_desktop is not null)
             _desktop.MonitorsChanged += OnMonitorsChanged;
+
+        // The zoom area also follows the screen's WORKING area, which moves with the menu bar's
+        // auto-hide or a Dock appearing without any of the events above. A cheap UI-thread re-check
+        // keeps it honest and re-nudges only when something really changed (bevel-u6ue).
+        _workAreaTimer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _workAreaTimer.Tick += (_, _) => { if (RefreshWorkArea()) WorkAreaChanged?.Invoke(); };
+        _workAreaTimer.Start();
     }
+
+    private Avalonia.Threading.DispatcherTimer? _workAreaTimer;
 
     protected override void OnClosed(EventArgs e)
     {
+        _workAreaTimer?.Stop();
         if (Screens is not null)
             Screens.Changed -= OnScreensChanged;
         if (_desktop is not null)
@@ -273,6 +283,7 @@ public sealed class TaskbarWindow : BevelWindow
 
     private readonly object _bandLock = new();
     private PalRect? _workAreaBand;
+    private PalRect? _zoomArea;
 
     /// <summary>
     /// The taskbar's occupied band in the window manager's coordinate space — top-left-origin
@@ -289,9 +300,34 @@ public sealed class TaskbarWindow : BevelWindow
         lock (_bandLock) return _workAreaBand;
     }
 
+    /// <summary>The area a zoom or tile fills on the bar's display (<see cref="TaskbarGeometry.ZoomArea"/>),
+    /// refreshed with the band. The mitigator corrects only windows shaped like it (bevel-u6ue).</summary>
+    public PalRect? GetZoomArea()
+    {
+        lock (_bandLock) return _zoomArea;
+    }
+
+    /// <summary>Re-reads the band and zoom area from the screen and reports whether either changed.
+    /// Called on a timer as well as on the display events: a work-area-only change (menu bar auto-hide,
+    /// a Dock appearing) raises none of those events, which left the zoom area stale (bevel-u6ue).
+    /// <b>UI thread</b>: reads <c>Screens</c>.</summary>
+    internal bool RefreshWorkArea()
+    {
+        PalRect? band0, zoom0;
+        lock (_bandLock) { band0 = _workAreaBand; zoom0 = _zoomArea; }
+        RecomputeWorkAreaBand();
+        lock (_bandLock) return band0 != _workAreaBand || zoom0 != _zoomArea;
+    }
+
+    /// <summary>Test seam: makes the cached zoom area disagree with the screen.</summary>
+    internal void StaleWorkAreaForTest()
+    {
+        lock (_bandLock) _zoomArea = new PalRect(-1, -1, 1, 1);
+    }
+
     private void RecomputeWorkAreaBand()
     {
-        PalRect? band = null;
+        PalRect? band = null, zoomArea = null;
         var primary = Screens?.Primary ?? Screens?.All?.FirstOrDefault();
         if (primary is not null)
         {
@@ -303,8 +339,10 @@ public sealed class TaskbarWindow : BevelWindow
             var barH = TaskbarTheme.HeightForRows(_rows);
             band = TaskbarGeometry.WorkAreaBand(
                 primary.Bounds, scale, barH, windowManagerUsesPhysicalPixels: OperatingSystem.IsWindows());
+            zoomArea = TaskbarGeometry.ZoomArea(
+                primary.Bounds, primary.WorkingArea, scale, windowManagerUsesPhysicalPixels: OperatingSystem.IsWindows());
         }
-        lock (_bandLock) _workAreaBand = band;
+        lock (_bandLock) { _workAreaBand = band; _zoomArea = zoomArea; }
     }
 
     /// <summary>

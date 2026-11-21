@@ -28,7 +28,7 @@ public class TaskButtonMenuTabsTests
         public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
         public event EventHandler<ForeignWindow>? WindowOpened;
         public event EventHandler<ForeignWindow>? WindowClosed;
         public event EventHandler<ForeignWindow>? WindowChanged;

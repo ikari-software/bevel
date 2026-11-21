@@ -15,6 +15,14 @@ namespace Bevel.Taskbar.Tests;
 public class WorkAreaMitigatorTests
 {
     private static readonly PalRect Band = new(0, 970, 1600, 30);
+    // What a zoom or a macOS tile fills on this 1600x1000 screen: under a 30pt menu bar, to the bottom.
+    private static readonly PalRect ZoomArea = new(0, 30, 1600, 970);
+    private static readonly PalRect Zoomed = ZoomArea;
+    private static readonly PalRect Corrected = new(0, 30, 1600, 940);     // bottom on the band top (970)
+    private static readonly PalRect LeftHalf = new(0, 30, 800, 970);
+    private static readonly PalRect RightHalf = new(800, 30, 800, 970);
+    // Sequoia+ tiling can leave a margin around tiled windows.
+    private static readonly PalRect ZoomedWithMargins = new(8, 38, 1584, 962);
 
     /// Settings rooted in a throwaway directory. The parameterless SettingsService ctor resolves the
     /// developer's REAL ~/.config/bevel and is now refused outright in a test host (BevelConfigDir);
@@ -29,26 +37,105 @@ public class WorkAreaMitigatorTests
                IsFullscreen: fullscreen, IsOnOtherSpace: otherSpace);
 
     private static WorkAreaMitigator Make(RecordingWindowManager wm, FixedClock clock)
-        => new(wm, ScratchSettings(), () => Band, clock);
+        => new(wm, ScratchSettings(), () => Band, () => ZoomArea, clock);
 
     [Fact]
-    public async Task Overlapping_window_is_nudged_to_sit_above_the_band()
+    public async Task Zoomed_window_is_nudged_to_sit_above_the_band()
     {
-        // Bottom edge (1100) crosses the band; top (800) leaves 170pt of usable height.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed));
         var m = Make(wm, new FixedClock());
 
         Assert.Equal(1, await m.MitigateOnceAsync());
         var (id, target) = Assert.Single(wm.Repositions);
         Assert.Equal("w1", id.Value);
-        // Shrunk so its bottom sits on the band's top edge (970): height = 970 - 800.
-        Assert.Equal(new PalRect(0, 800, 800, 170), target);
+        // Shrunk so its bottom sits on the band's top edge (970): height = 970 - 30.
+        Assert.Equal(Corrected, target);
+    }
+
+    // bevel-u6ue: the engine only ever existed to stop ZOOMED windows going under the bar. It used to
+    // shrink anything overlapping the band (a window the user dragged there on purpose, a Filer still
+    // opening), which made it erratic. Now it acts on the zoom's footprint only: top just under the
+    // menu bar, spanning the screen (zoom / Fill) or one half of it (left/right tile).
+    [Fact]
+    public async Task Half_tiles_are_nudged_too()
+    {
+        var wm = new RecordingWindowManager(Win("l", LeftHalf), Win("r", RightHalf));
+        Assert.Equal(2, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(0, 30, 800, 940), wm.Repositions[0].Bounds);
+        Assert.Equal(new PalRect(800, 30, 800, 940), wm.Repositions[1].Bounds);
+    }
+
+    [Fact]
+    public async Task Tiling_margins_are_tolerated()
+    {
+        var wm = new RecordingWindowManager(Win("w1", ZoomedWithMargins));
+        Assert.Equal(1, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(8, 38, 1584, 932), Assert.Single(wm.Repositions).Bounds);
+    }
+
+    // Review 2026-11-21 (correctness + adversarial, validated): macOS tiling also has bottom halves and
+    // quarters. Their top sits at the middle of the zoom area, but they run to the screen bottom, under
+    // the bar, exactly like a zoom does. The hidden Filer (top 453 of a 30..1000 area) is still far from it.
+    [Fact]
+    public async Task Bottom_halves_and_quarters_are_nudged_too()
+    {
+        var wm = new RecordingWindowManager(
+            Win("bottom", new PalRect(0, 515, 1600, 485)),
+            Win("bottomLeft", new PalRect(0, 515, 800, 485)),
+            Win("bottomRight", new PalRect(800, 515, 800, 485)));
+        Assert.Equal(3, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(0, 515, 1600, 455), wm.Repositions[0].Bounds);   // bottom on 970
+        Assert.Equal(new PalRect(800, 515, 800, 455), wm.Repositions[2].Bounds);
+    }
+
+    // Review 2026-11-21 (adversarial): a margined half tile is up to ~1.5 margins narrower than half,
+    // so it only passed at the exact edge of the tolerance.
+    [Fact]
+    public async Task Margined_half_tiles_pass_comfortably()
+    {
+        var wm = new RecordingWindowManager(
+            Win("l", new PalRect(8, 38, 788, 954)), Win("r", new PalRect(804, 38, 788, 954)));
+        Assert.Equal(2, await Make(wm, new FixedClock()).MitigateOnceAsync());
+    }
+
+    // The footprint of a zoom is vertical: top under the menu bar, bottom at the screen bottom. Width is
+    // irrelevant, which covers apps that zoom to a content-fitting width (Finder, Safari, TextEdit) and
+    // tiles of any proportion, wherever they sit horizontally.
+    [Theory]
+    [InlineData(0, 30, 1200, 970)]       // content-width zoom, left aligned
+    [InlineData(200, 30, 1100, 970)]     // content-width zoom, centred
+    [InlineData(1000, 30, 600, 970)]     // a third-ish tile at the right
+    [InlineData(300, 515, 700, 485)]     // a bottom tile of odd width
+    public async Task Any_width_window_spanning_the_zoom_height_is_nudged(int x, int y, int w, int h)
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(x, y, w, h)));
+        Assert.Equal(1, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Equal(new PalRect(x, y, w, 970 - y), Assert.Single(wm.Repositions).Bounds);
+    }
+
+    [Fact]
+    public async Task A_window_dragged_to_the_middle_of_the_screen_is_still_left_alone()
+    {
+        // Full width, top at the vertical midpoint, but it does not reach the screen bottom: not a zoom.
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 515, 1600, 300)));
+        Assert.Equal(0, await Make(wm, new FixedClock()).MitigateOnceAsync());
+    }
+
+    [Theory]
+    [InlineData(300, 700, 800, 400)]    // dragged partly under the bar on purpose
+    [InlineData(0, 400, 1600, 600)]     // full width, but does not start under the menu bar
+    [InlineData(0, 453, 1920, 987)]     // the pre-warmed Filer's hidden frame (bevel-tm1n)
+    public async Task Windows_not_shaped_like_a_zoom_are_left_alone(int x, int y, int w, int h)
+    {
+        var wm = new RecordingWindowManager(Win("w1", new PalRect(x, y, w, h)));
+        Assert.Equal(0, await Make(wm, new FixedClock()).MitigateOnceAsync());
+        Assert.Empty(wm.Repositions);
     }
 
     [Fact]
     public async Task Minimized_window_is_never_nudged()
     {
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300), minimized: true));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed, minimized: true));
         var m = Make(wm, new FixedClock());
 
         await m.MitigateOnceAsync();
@@ -71,10 +158,11 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Window_that_would_be_squashed_below_minimum_is_left_alone()
     {
-        // Top at 900 → available height above the band is only 70pt (< 100 floor):
-        // shrinking it here would be worse than the overlap, so it's skipped.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 900, 800, 300)));
-        var m = Make(wm, new FixedClock());
+        // A bar so tall that a zoom keeps only 70pt above it (< 100 floor): shrinking it there would
+        // be worse than the overlap, so it's skipped.
+        var wm = new RecordingWindowManager(Win("w1", Zoomed));
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => new PalRect(0, 100, 1600, 900),
+            () => ZoomArea, new FixedClock());
 
         await m.MitigateOnceAsync();
 
@@ -86,7 +174,7 @@ public class WorkAreaMitigatorTests
     {
         // The fake holds the window's frame fixed after the nudge — i.e. the app re-asserted the very
         // frame we just corrected. That is the reposition fight Req 9.2's rate limit exists for.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed));
         var clock = new FixedClock();
         var m = Make(wm, clock);
 
@@ -110,7 +198,7 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Zoom_landing_after_a_correction_is_fixed_without_waiting_for_the_cooldown()
     {
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var wm = new RecordingWindowManager(Win("w1", ZoomedWithMargins));
         var clock = new FixedClock();
         var m = Make(wm, clock);
 
@@ -118,12 +206,12 @@ public class WorkAreaMitigatorTests
 
         // The zoom's own final frame arrives: a DIFFERENT overlapping rect (top at the menu bar,
         // bottom at the screen edge), well inside the 2s limiter window.
-        wm.Set(Win("w1", new PalRect(0, 30, 1600, 970)));
+        wm.Set(Win("w1", Zoomed));
         clock.Advance(TimeSpan.FromMilliseconds(400));
 
         Assert.Equal(1, await m.MitigateOnceAsync());
         Assert.Equal(2, wm.Repositions.Count);
-        Assert.Equal(new PalRect(0, 30, 1600, 940), wm.Repositions[1].Bounds);   // bottom on 970
+        Assert.Equal(Corrected, wm.Repositions[1].Bounds);   // bottom on 970
     }
 
     /// <summary>A window observed clear of the band forgets its back-off, so re-zooming it moments
@@ -131,13 +219,13 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Window_seen_clear_of_the_band_forgets_its_back_off()
     {
-        var zoomed = new PalRect(0, 800, 800, 300);
+        var zoomed = Zoomed;
         var wm = new RecordingWindowManager(Win("w1", zoomed));
         var clock = new FixedClock();
         var m = Make(wm, clock);
 
         await m.MitigateOnceAsync();                          // nudge #1
-        wm.Set(Win("w1", new PalRect(0, 800, 800, 170)));     // correction took: clear of the band
+        wm.Set(Win("w1", Corrected));                          // correction took: clear of the band
         await m.MitigateOnceAsync();
         Assert.Single(wm.Repositions);
 
@@ -160,11 +248,11 @@ public class WorkAreaMitigatorTests
         if (OperatingSystem.IsWindows()) return;   // the settle timer never fires under Avalonia's headless Windows dispatch model (framework limit, not Bevel); passes on Linux+macOS
         // The window re-enters the band ONCE right after the first correction (the animation landing)
         // and emits no event — only the engine's own verify pass can catch it.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var wm = new RecordingWindowManager(Win("w1", ZoomedWithMargins));
         wm.OnReposition = count => wm.Set(count == 1
-            ? Win("w1", new PalRect(0, 30, 1600, 970))        // zoom lands over the band
-            : Win("w1", new PalRect(0, 30, 1600, 940)));      // second correction holds
-        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band);
+            ? Win("w1", Zoomed)                               // zoom lands over the band
+            : Win("w1", Corrected));                          // second correction holds
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band, () => ZoomArea);
         m.Start();
 
         m.RequestMitigation();
@@ -184,15 +272,21 @@ public class WorkAreaMitigatorTests
     public async Task Fake_pal_window_ends_up_above_the_band()
     {
         var wm = new Bevel.Pal.Fake.FakeWindowManager();
-        // The Fake desktop's widest window (w3: y=150 h=800 → bottom 950) clears this band, so give
-        // the engine a band it does cross: the bottom 30pt of a 900pt-tall screen.
+        // Zoom one of the Fake desktop's windows on a 900pt-tall screen with the bar along its bottom.
         var band = new PalRect(0, 870, 1600, 30);
-        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => band, new FixedClock());
+        var zoomArea = new PalRect(0, 30, 1600, 870);
+        var windows = await wm.EnumerateAsync();
+        var zoomed = windows[0].Id;
+        await wm.RepositionAsync(zoomed, zoomArea);
+        // w2 (200,200 1024x768) also crosses this band, but it is just a window the user put there.
+        var plain = windows.Single(w => w.Id.Value == "w2");
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => band, () => zoomArea, new FixedClock());
 
-        Assert.True(await m.MitigateOnceAsync() > 0);
+        Assert.Equal(1, await m.MitigateOnceAsync());
 
-        foreach (var w in await wm.EnumerateAsync())
-            Assert.False(Crosses(w.Bounds, band), $"{w.Id.Value} still crosses the band: {w.Bounds}");
+        var after = await wm.EnumerateAsync();
+        Assert.Equal(new PalRect(0, 30, 1600, 840), after.Single(w => w.Id == zoomed).Bounds);
+        Assert.Equal(plain.Bounds, after.Single(w => w.Id == plain.Id).Bounds);
         Assert.Equal(0, await m.MitigateOnceAsync());   // nothing left to correct
     }
 
@@ -203,8 +297,8 @@ public class WorkAreaMitigatorTests
         // Models a display reconfiguration: no window moved (so no WindowChanged fires), yet the
         // band is now occupied by an overlapping window and must be nudged. Real clock so the
         // settle debounce actually elapses; poll with a generous deadline to stay non-flaky.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
-        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band);
+        var wm = new RecordingWindowManager(Win("w1", Zoomed));
+        var m = new WorkAreaMitigator(wm, ScratchSettings(), () => Band, () => ZoomArea);
         m.Start();
 
         m.RequestMitigation();
@@ -215,7 +309,7 @@ public class WorkAreaMitigatorTests
 
         var (id, target) = Assert.Single(wm.Repositions);
         Assert.Equal("w1", id.Value);
-        Assert.Equal(new PalRect(0, 800, 800, 170), target);
+        Assert.Equal(Corrected, target);
         m.Dispose();
     }
 
@@ -229,7 +323,7 @@ public class WorkAreaMitigatorTests
     public async Task Fullscreen_window_is_never_nudged()
     {
         // Same overlapping geometry as the nudge test, so ONLY the flag can be what spares it.
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300), fullscreen: true));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed, fullscreen: true));
         var m = Make(wm, new FixedClock());
 
         Assert.Equal(0, await m.MitigateOnceAsync());
@@ -244,7 +338,7 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Window_on_another_space_is_never_nudged()
     {
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300), otherSpace: true));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed, otherSpace: true));
         var m = Make(wm, new FixedClock());
 
         Assert.Equal(0, await m.MitigateOnceAsync());
@@ -260,9 +354,9 @@ public class WorkAreaMitigatorTests
     public async Task One_failing_reposition_does_not_abort_the_pass()
     {
         var wm = new RecordingWindowManager(
-            Win("w1", new PalRect(0, 800, 400, 300)),
-            Win("w2", new PalRect(400, 800, 400, 300)),
-            Win("w3", new PalRect(800, 800, 400, 300)));
+            Win("w1", LeftHalf),
+            Win("w2", Zoomed),
+            Win("w3", RightHalf));
         wm.FailFor.Add("w2");
         var m = Make(wm, new FixedClock());
 
@@ -277,7 +371,7 @@ public class WorkAreaMitigatorTests
     [Fact]
     public async Task Failing_window_is_rate_limited_like_any_other()
     {
-        var wm = new RecordingWindowManager(Win("w1", new PalRect(0, 800, 800, 300)));
+        var wm = new RecordingWindowManager(Win("w1", Zoomed));
         wm.FailFor.Add("w1");
         var clock = new FixedClock();
         var m = Make(wm, clock);
@@ -293,15 +387,73 @@ public class WorkAreaMitigatorTests
         Assert.Equal(2, wm.Repositions.Count);
     }
 
-    private static bool Crosses(PalRect w, PalRect band)
-        => w.Y < band.Y + band.Height && w.Y + w.Height > band.Y
-        && w.X < band.X + band.Width && w.X + w.Width > band.X;
-
     /// <summary>Records reposition calls and lets a test swap the window list between passes.</summary>
+    // bevel-tm1n, measured on device 2026-11-21: a just-shown Filer (800x600, centred) was snapped to
+    // x=0 y=453 w=1920 h=929. The pre-warmed Filer is built hidden at (0,453,1920,987), across the
+    // band; a pass whose snapshot still held that frame "corrected" the now-visible, centred window
+    // to it. Every correction therefore carries the frame it was computed from, and lands only if the
+    // window is still there.
+    [Fact]
+    public async Task Correction_carries_the_frame_it_was_computed_from()
+    {
+        var at = Zoomed;
+        var wm = new RecordingWindowManager(Win("w1", at));
+        await Make(wm, new FixedClock()).MitigateOnceAsync();
+        Assert.Equal(at, Assert.Single(wm.Expected));
+    }
+
+    [Fact]
+    public async Task A_correction_planned_from_a_stale_frame_never_lands()
+    {
+        var fake = new Bevel.Pal.Fake.FakeWindowManager();
+        var live = (await fake.EnumerateAsync())[0];
+        var centred = new PalRect(400, 200, 800, 600);   // clear of the band: what the user sees
+        await fake.RepositionAsync(live.Id, centred);
+        // The engine's snapshot is out of date: it still says the window is zoomed, which would be
+        // worth correcting. Only compare-and-set stops the stale target landing on the real window.
+        var stale = new StaleSnapshot(fake, live with { Bounds = Zoomed });
+        var m = new WorkAreaMitigator(stale, ScratchSettings(), () => Band, () => ZoomArea, new FixedClock());
+
+        await m.MitigateOnceAsync();
+
+        var after = (await fake.EnumerateAsync()).Single(w => w.Id == live.Id);
+        Assert.Equal(centred, after.Bounds);
+    }
+
+    [Fact]
+    public void Frame_guard_tolerates_rounding_but_not_a_different_frame()
+    {
+        var f = new PalRect(100, 200, 800, 600);
+        Assert.True(FrameGuard.Matches(f, f with { X = 101, Height = 602 }));
+        Assert.False(FrameGuard.Matches(f, f with { Width = 1920 }));
+        Assert.False(FrameGuard.Matches(f, f with { Y = 453 }));
+    }
+
+    /// <summary>Delegates to a real (Fake) window manager but reports an out-of-date snapshot.</summary>
+    private sealed class StaleSnapshot(IWindowManager inner, ForeignWindow snapshot) : IWindowManager
+    {
+        public Capabilities Capabilities => inner.Capabilities;
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(new[] { snapshot });
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+            CancellationToken ct = default) => inner.RepositionAsync(id, bounds, expected, ct);
+        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+#pragma warning disable CS0067
+        public event EventHandler<ForeignWindow>? WindowOpened;
+        public event EventHandler<ForeignWindow>? WindowClosed;
+        public event EventHandler<ForeignWindow>? WindowChanged;
+        public event EventHandler<ForeignWindow>? ForegroundChanged;
+#pragma warning restore CS0067
+    }
+
     private sealed class RecordingWindowManager : IWindowManager
     {
         private IReadOnlyList<ForeignWindow> _windows;
         public List<(ForeignWindowId Id, PalRect Bounds)> Repositions { get; } = new();
+        public List<PalRect?> Expected { get; } = new();
 
         /// <summary>Called with the running reposition count after each one, so a test can script
         /// what the desktop looks like next (e.g. a zoom animation landing on our correction).</summary>
@@ -323,9 +475,11 @@ public class WorkAreaMitigatorTests
         /// TRIED and simply did not succeed.</summary>
         public HashSet<string> FailFor { get; } = new();
 
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default)
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+            CancellationToken ct = default)
         {
             Repositions.Add((id, bounds));
+            Expected.Add(expected);
             OnReposition?.Invoke(Repositions.Count);
             if (FailFor.Contains(id.Value))
                 throw new InvalidOperationException($"shell-core Reposition failed: {id.Value} unreachable");

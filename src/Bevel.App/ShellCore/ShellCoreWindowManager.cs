@@ -125,8 +125,10 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 
-    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, CancellationToken ct = default) =>
-        Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds), ct);
+    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
+        CancellationToken ct = default) =>
+        Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds,
+            ExpectedBounds: expected), ct);
 
     /// <summary>Query (like Enumerate): proxy the capture to the core and return the PNG, or null if the
     /// link is down / core rejects / capture unavailable. Not queued — a stale thumbnail is worthless.</summary>
