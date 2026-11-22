@@ -206,11 +206,16 @@ public partial class FileManagerWindow : BevelWindow
         {
             await foreach (var node in _searchService.SearchAsync(_controller.CurrentDirectory, query, ct: ct))
             {
+                // A match already in flight when the search was cancelled (pane closed, new query,
+                // navigation) must not paint: it would replace the refreshed listing with stale results.
+                // Latent; it surfaced once bevel-2vls moved the search's folder reads onto the pool.
+                if (ct.IsCancellationRequested) return;
                 results.Add(node);
                 ItemView.Items = results.ToArray();   // rebuild as matches stream in
             }
         }
         catch (OperationCanceledException) { return; }
+        if (ct.IsCancellationRequested) return;
         SearchPane.SetResultCount(results.Count);
     }
 
