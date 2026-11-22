@@ -979,18 +979,13 @@ public partial class ItemView : UserControl
             transfer.Add(fileItem);
         }
 
-        // Internal payload for same-process Filer-to-Filer drops.
-        if (paths.Count > 0)
-        {
-            var payloadItem = new DataTransferItem();
-            var fmt = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
-            payloadItem.Set(fmt, System.Text.Json.JsonSerializer.Serialize(new FileDropPayload { Paths = paths }));
-            transfer.Add(payloadItem);
-        }
+        // NOTE: no text/payload items — adding anything beyond SetFile hangs the native
+        // drag session on macOS (bevel-u2x6). Internal Filer-to-Filer falls back to
+        // DataFormat.File which the drop side resolves via TryGetFiles().
 
         try
         {
-            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy);
             try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
         }
         catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
@@ -1006,7 +1001,7 @@ public partial class ItemView : UserControl
                         || e.DataTransfer.Contains(DataFormat.File)
                         || e.DataTransfer.Contains(DataFormat.Text)
                         || e.DataTransfer.Contains(jsonFormat)
-            ? DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link : DragDropEffects.None;
+            ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
