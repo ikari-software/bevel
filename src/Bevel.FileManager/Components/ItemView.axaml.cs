@@ -959,15 +959,29 @@ public partial class ItemView : UserControl
     internal ItemViewModel? DropTargetAt(Point pt)
         => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
 
+    /// <summary>Attempts to extract file paths from a <see cref="IDataObject">, preferring <see cref="FileDropPayload">
+    /// as the primary source, and falling back to <see cref="DataFormats.Files"> if the payload is missing or empty.</summary>
+    internal static List<VfsPath>? ResolveDropPaths(IDataObject data)
+    {
+        // Try to get the internal payload first.
+        if (data.Contains(FileDropPayload.DataFormat))
+        {
+            var payload = data.Get(FileDropPayload.DataFormat) as FileDropPayload;
+            if (payload?.Paths is { Count: > 0 } paths)
+                return paths.ToList();
+        }
+        // Fall back to the OS file list if the internal payload is missing or empty.
+        if (data.Contains(DataFormats.Files))
+        {
+            return data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+        }
+        return null;
+    }
+
     void OnDrop(object? _, DragEventArgs e)
     {
-        List<VfsPath>? paths = null;
-        if (e.Data.Contains(FileDropPayload.DataFormat))
-            paths = (e.Data.Get(FileDropPayload.DataFormat) as FileDropPayload)?.Paths.ToList();
-        else if (e.Data.Contains(DataFormats.Files))
-            paths = e.Data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
-        // Dropping onto a folder targets that folder; onto empty space, the current directory.
         var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
+        var paths = ResolveDropPaths(e.Data);
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;

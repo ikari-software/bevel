@@ -64,6 +64,28 @@ public sealed class ItemViewDragSourceTests
         Assert.Contains("FileDropPayload.DataFormat", StartDragBody());
     }
 
+    /// <summary>A drop whose internal payload did not survive falls back to the file list.
+    ///
+    /// This test verifies that ResolveDropPaths helper exists and implements the fallback logic.
+    /// </summary>
+    [Fact]
+    public void A_drop_whose_internal_payload_did_not_survive_falls_back_to_the_file_list()
+    {
+        var src = Source();
+        
+        // Verify ResolveDropPaths method exists
+        Assert.Contains("internal static List<VfsPath>? ResolveDropPaths(IDataObject data)", src);
+        
+        // Verify it checks FileDropPayload.DataFormat
+        Assert.Contains("data.Contains(FileDropPayload.DataFormat)", src);
+        
+        // Verify it falls back to DataFormats.Files
+        Assert.Contains("data.Contains(DataFormats.Files)", src);
+        
+        // Verify it's used in OnDrop
+        Assert.Contains("paths = ResolveDropPaths(e.Data)", src);
+    }
+
     /// <summary>Folders resolve through TryGetFolderFromPathAsync, not TryGetFileFromPathAsync.
     ///
     /// <para>Asking for a FILE at a directory path returns null, so a mixed selection would drag only
