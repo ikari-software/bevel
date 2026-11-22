@@ -326,7 +326,7 @@ public sealed class FilerEnumerationThreadTests
 
         Assert.NotEmpty(provider.Threads);
         Assert.DoesNotContain(ui, provider.Threads);
-        Assert.Equal("100 Files, 40 Folders", dialog.ContainsValue.Text);
+        Assert.Equal("60 Files, 40 Folders", dialog.ContainsValue.Text);   // the /top fixture: 40 folders + 60 files
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public sealed class FilerEnumerationThreadTests
     [Fact]
     public async Task FileManagerController_free_name_scan_enumerates_off_the_UI_thread()
     {
-        var provider = new RecordingVfsProvider();
+        var provider = new RecordingVfsProvider { Writable = true };   // no mutator = no scan at all
         var root = new VfsRoot();
         root.Register(provider);
         var fileOps = new FileOperationService(root, new DefaultConflictHandler());
@@ -370,7 +370,7 @@ public sealed class FilerEnumerationThreadTests
     [Fact]
     public async Task FileManagerController_free_name_scan_for_file_enumerates_off_the_UI_thread()
     {
-        var provider = new RecordingVfsProvider();
+        var provider = new RecordingVfsProvider { Writable = true };   // no mutator = no scan at all
         var root = new VfsRoot();
         root.Register(provider);
         var fileOps = new FileOperationService(root, new DefaultConflictHandler());

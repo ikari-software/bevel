@@ -839,17 +839,23 @@ public partial class FileManagerWindow : BevelWindow
             long totalSize = 0;
             int count = 0;
 
-            // Directory watcher — CreateWatcher may perform synchronous I/O (Directory.Exists),
-            // so run it off the UI thread (bevel-2vls).
+            // Directory watcher — CreateWatcher may perform synchronous I/O (Directory.Exists), so it is
+            // created off the UI thread (bevel-2vls). It is NOT awaited here: the listing must start in
+            // this same dispatcher turn (an await in front of it hands the start to a later job, which
+            // the existing so27 tests, and anything blocking the UI thread on a load, rely on not
+            // happening), and the watcher attaches on the UI thread once ready — unless a newer
+            // navigation has taken over by then (AttachWatcher).
             _watcherSubscription?.Dispose();
             _directoryWatcher?.Dispose();
-            try
+            _watcherSubscription = null;
+            _directoryWatcher = null;
+            var vfsRoot = _vfsRoot;
+            _ = Task.Run(() =>
             {
-                _directoryWatcher = await Task.Run(() => _vfsRoot.CreateWatcher(path));
-            }
-            catch { _directoryWatcher = null; }
-            if (_directoryWatcher is not null)
-                _watcherSubscription = _directoryWatcher.Changes.Subscribe(OnDirectoryChanged);
+                try { return vfsRoot.CreateWatcher(path); } catch { return null; }
+            }).ContinueWith(
+                t => Dispatcher.UIThread.Post(() => AttachWatcher(t.Result, ct)),
+                TaskScheduler.Default);
 
             // Stream the listing in batches — read on the pool by VfsBatchReader, painted here as each
             // batch arrives (bevel-so27). The loop body runs on the UI thread, but the await does NOT
@@ -900,6 +906,17 @@ public partial class FileManagerWindow : BevelWindow
             ApplyPendingSelection(path, discardIfStale: true);   // model→view reveal highlight, now that items exist (bevel-nwo)
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>Takes ownership of a freshly created watcher on the UI thread. A newer navigation cancels
+    /// <paramref name="ct"/> and has already disposed the previous watcher, so a watcher that arrives for
+    /// a superseded load is disposed here instead of overwriting the current one.</summary>
+    private void AttachWatcher(IDirectoryWatcher? watcher, CancellationToken ct)
+    {
+        if (watcher is null) return;
+        if (ct.IsCancellationRequested) { watcher.Dispose(); return; }
+        _directoryWatcher = watcher;
+        _watcherSubscription = watcher.Changes.Subscribe(OnDirectoryChanged);
     }
 
     void UpdateInfoPane(VfsPath path, int count)
