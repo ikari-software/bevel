@@ -932,14 +932,20 @@ public partial class ItemView : UserControl
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
-        
-        // Ensure storage items are resolved; retry if not ready (bevel-u2x6)
-        if (_dragStorageTask is not { IsCompletedSuccessfully: true })
-            return;
-        
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
-        data.Set(DataFormats.Files, _dragStorageTask.Result);
+        
+        // Set DataFormats.Files if available, or with raw paths as fallback (bevel-u2x6)
+        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 })
+        {
+            data.Set(DataFormats.Files, _dragStorageTask.Result);
+        }
+        else
+        {
+            // Fallback: use file URIs which native platforms can understand
+            var fileUris = paths.Select(p => new Uri(p.Value, UriKind.Absolute)).ToArray();
+            data.Set(DataFormats.Files, fileUris);
+        }
         
         try
         {
