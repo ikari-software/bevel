@@ -108,7 +108,25 @@ internal sealed class RecordingVfsProvider : IVfsProvider
     public ValueTask<IVfsNode> ResolveAsync(VfsPath path, CancellationToken ct)
         => ValueTask.FromResult<IVfsNode>(VirtualNode.Folder(path, path.FileName));
     public ValueTask<Stream> OpenReadAsync(VfsPath file, CancellationToken ct) => throw new NotSupportedException();
-    public ValueTask<IVfsMutator?> GetMutatorAsync(VfsPath folder, CancellationToken ct) => ValueTask.FromResult<IVfsMutator?>(null);
+    /// <summary>Off by default (read-only, like before). The free-name-scan tests turn it on: the controller
+    /// returns before enumerating anything when a folder has no mutator, so without one they test nothing.</summary>
+    public bool Writable { get; set; }
+
+    public ValueTask<IVfsMutator?> GetMutatorAsync(VfsPath folder, CancellationToken ct)
+        => ValueTask.FromResult<IVfsMutator?>(Writable ? new WritableStub() : null);
+
+    /// <summary>Just enough of a mutator for NewFolderAsync / NewFileAsync; everything else is unsupported.</summary>
+    private sealed class WritableStub : IVfsMutator
+    {
+        public ValueTask<VfsPath> CreateFolderAsync(VfsPath parent, string name, CancellationToken ct)
+            => ValueTask.FromResult(new VfsPath(parent.Scheme, parent.Value.TrimEnd('/') + "/" + name));
+        public ValueTask<Stream> OpenWriteAsync(VfsPath file, CancellationToken ct)
+            => ValueTask.FromResult<Stream>(new MemoryStream());
+        public ValueTask RenameAsync(VfsPath path, string newName, CancellationToken ct) => throw new NotSupportedException();
+        public ValueTask<VfsPath> MoveAsync(VfsPath path, VfsPath destinationParent, CancellationToken ct) => throw new NotSupportedException();
+        public ValueTask<VfsPath?> DeleteAsync(VfsPath path, bool toTrash, CancellationToken ct) => throw new NotSupportedException();
+        public ValueTask SetAttributesAsync(VfsPath path, VfsNodeAttributes attributes, CancellationToken ct) => throw new NotSupportedException();
+    }
     public IDirectoryWatcher? CreateWatcher(VfsPath folder) => null;
     public NameValidationResult ValidateName(VfsPath folder, string proposedName) => NameValidationResult.Ok;
 }

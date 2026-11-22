@@ -23,6 +23,9 @@ public partial class ClockWidget : UserControl
     private bool _seconds;
     private bool _showDate;
 
+    /// <summary>Test-only seam: counts Configure calls for LiveApplyDiffTests (bevel-5dn).</summary>
+    public int ConfigureCount { get; private set; }
+
     public ClockWidget()
     {
         InitializeComponent();
@@ -78,6 +81,7 @@ public partial class ClockWidget : UserControl
         IsVisible = show;
         UpdateTime();
         if (_timer is not null) StartTimer();   // re-arm at the new cadence if already running
+        ConfigureCount++;   // bevel-5dn: test-only counter
     }
 
     private void StartTimer()

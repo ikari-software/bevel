@@ -209,11 +209,18 @@ public sealed class FileManagerController : IDisposable
 
         // CreateFolderAsync is idempotent (Directory.CreateDirectory), so choose a free name
         // ourselves rather than silently reusing an existing folder.
+        // LocalFsProvider.EnumerateAsync is synchronous, so route through Task.Run to
+        // ensure enumeration happens off the UI thread (bevel-2vls).
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            await foreach (var child in _vfs.EnumerateAsync(dir, new EnumerateOptions(), ct))
-                existing.Add(child.DisplayName);
+            existing = await Task.Run(async () =>
+            {
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                await foreach (var child in _vfs.EnumerateAsync(dir, new EnumerateOptions(), ct).ConfigureAwait(false))
+                    names.Add(child.DisplayName);
+                return names;
+            }, ct);
         }
         catch { /* best-effort — fall back to the base name */ }
 
@@ -237,11 +244,18 @@ public sealed class FileManagerController : IDisposable
         var mutator = await _vfs.GetProvider(dir).GetMutatorAsync(dir, ct);
         if (mutator is null) return null;
 
+        // LocalFsProvider.EnumerateAsync is synchronous, so route through Task.Run to
+        // ensure enumeration happens off the UI thread (bevel-2vls).
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            await foreach (var child in _vfs.EnumerateAsync(dir, new EnumerateOptions(), ct))
-                existing.Add(child.DisplayName);
+            existing = await Task.Run(async () =>
+            {
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                await foreach (var child in _vfs.EnumerateAsync(dir, new EnumerateOptions(), ct).ConfigureAwait(false))
+                    names.Add(child.DisplayName);
+                return names;
+            }, ct);
         }
         catch { /* best-effort — fall back to the base name */ }
 

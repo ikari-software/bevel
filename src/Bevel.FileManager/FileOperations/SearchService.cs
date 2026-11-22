@@ -103,10 +103,15 @@ public sealed class SearchService
 
     private async Task<List<IVfsNode>> CollectChildrenAsync(VfsPath folder, EnumerateOptions options, CancellationToken ct)
     {
-        var list = new List<IVfsNode>();
-        await foreach (var node in _vfsRoot.EnumerateAsync(folder, options, ct).ConfigureAwait(false))
-            list.Add(node);
-        return list;
+        // LocalFsProvider.EnumerateAsync is synchronous, so route through Task.Run to
+        // ensure enumeration happens off the UI thread (bevel-2vls).
+        return await Task.Run(async () =>
+        {
+            var list = new List<IVfsNode>();
+            await foreach (var node in _vfsRoot.EnumerateAsync(folder, options, ct).ConfigureAwait(false))
+                list.Add(node);
+            return list;
+        }, ct);
     }
 
     private static bool NameMatches(string displayName, string pattern)

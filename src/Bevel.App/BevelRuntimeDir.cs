@@ -42,4 +42,37 @@ internal static class BevelRuntimeDir
                 "Shorten the runtime dir (BevelRuntimeDir.Root) or the socket name.");
         return path;
     }
+
+    /// <summary>
+    /// Asserts a socket path is inside Bevel's own runtime directory. Only paths under Root are
+    /// reclaimed on bind failure; paths outside (e.g., from a mistyped env var) are rejected to
+    /// prevent data loss (bevel-zcgd). Returns the path unchanged for fluent use.
+    /// </summary>
+    public static string GuardSocketPathInRuntimeDir(string path)
+    {
+        if (!IsUnderAllowedDir(path, new[] { CoreDir, FilersDir }, caseInsensitive: OperatingSystem.IsWindows()))
+            throw new InvalidOperationException(
+                $"Socket path '{path}' is outside Bevel's socket directories ('{CoreDir}', '{FilersDir}'). " +
+                "Only paths there are reclaimed on bind. " +
+                "Check environment variables BEVEL_CORE_SOCKET, BEVEL_LAUNCHER_SOCKET, BEVEL_FILER_DIR.");
+        return path;
+    }
+
+    /// <summary>True when <paramref name="path"/> is one of <paramref name="dirs"/> or inside one. The
+    /// comparison is separator-terminated, so a sibling such as <c>bevel-core-evil</c> never passes for
+    /// <c>bevel-core</c>, and case-sensitive except on Windows (an APFS volume may be case-sensitive).
+    /// Lexical only: callers pass paths Bevel built from the same roots. Review fix for bevel-zcgd.</summary>
+    internal static bool IsUnderAllowedDir(string path, IEnumerable<string> dirs, bool caseInsensitive)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathRooted(path)) return false;
+        var cmp = caseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        foreach (var dir in dirs)
+        {
+            var d = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+            if (string.Equals(full, d, cmp) || full.StartsWith(d + Path.DirectorySeparatorChar, cmp))
+                return true;
+        }
+        return false;
+    }
 }

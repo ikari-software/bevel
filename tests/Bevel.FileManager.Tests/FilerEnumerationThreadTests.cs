@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Reflection;
 using Avalonia.Controls;
@@ -6,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
+using Bevel.FileManager.FileOperations;
 using Xunit;
 using static Bevel.FileManager.Tests.DispatcherPump;
 
@@ -304,5 +306,82 @@ public sealed class FilerEnumerationThreadTests
         PumpUntil(Task.WhenAll(first, second));
 
         Assert.Equal(RecordingVfsProvider.FolderNames("/top"), node.Items.OfType<TreeViewItem>().Select(t => t.Header as string));
+    }
+
+    // ── bevel-2vls: additional enumeration sites ─────────────────────────
+
+    [AvaloniaFact]
+    public void PropertiesDialog_folder_scan_enumerates_off_the_UI_thread()
+    {
+        var provider = new RecordingVfsProvider();
+        var root = new VfsRoot();
+        root.Register(provider);
+        var ui = Environment.CurrentManagedThreadId;
+
+        var node = Core.Vfs.VirtualNode.Folder(RecordingVfsProvider.Path("/top"), "top");
+
+        var dialog = new PropertiesDialog(root, node);
+        PumpUntil(() => dialog.ContainsScanTask is not null);
+        PumpUntil(dialog.ContainsScanTask!);
+
+        Assert.NotEmpty(provider.Threads);
+        Assert.DoesNotContain(ui, provider.Threads);
+        Assert.Equal("60 Files, 40 Folders", dialog.ContainsValue.Text);   // the /top fixture: 40 folders + 60 files
+    }
+
+    [Fact]
+    public async Task SearchService_walk_enumerates_off_the_UI_thread()
+    {
+        var provider = new RecordingVfsProvider();
+        var root = new VfsRoot();
+        root.Register(provider);
+        var svc = new SearchService(root);
+
+        var ui = Environment.CurrentManagedThreadId;
+        provider.Threads.Clear();
+
+        var results = new List<IVfsNode>();
+        await foreach (var node in svc.SearchAsync(RecordingVfsProvider.Path("/top"), "file"))
+            results.Add(node);
+
+        Assert.NotEmpty(provider.Threads);
+        Assert.DoesNotContain(ui, provider.Threads);
+        Assert.Equal(60, results.Count);
+    }
+
+    [Fact]
+    public async Task FileManagerController_free_name_scan_enumerates_off_the_UI_thread()
+    {
+        var provider = new RecordingVfsProvider { Writable = true };   // no mutator = no scan at all
+        var root = new VfsRoot();
+        root.Register(provider);
+        var fileOps = new FileOperationService(root, new DefaultConflictHandler());
+        var controller = new FileManagerController(root, fileOps);
+
+        var ui = Environment.CurrentManagedThreadId;
+        provider.Threads.Clear();
+
+        await controller.NewFolderAsync(RecordingVfsProvider.Path("/top"));
+
+        Assert.NotEmpty(provider.Threads);
+        Assert.DoesNotContain(ui, provider.Threads);
+    }
+
+    [Fact]
+    public async Task FileManagerController_free_name_scan_for_file_enumerates_off_the_UI_thread()
+    {
+        var provider = new RecordingVfsProvider { Writable = true };   // no mutator = no scan at all
+        var root = new VfsRoot();
+        root.Register(provider);
+        var fileOps = new FileOperationService(root, new DefaultConflictHandler());
+        var controller = new FileManagerController(root, fileOps);
+
+        var ui = Environment.CurrentManagedThreadId;
+        provider.Threads.Clear();
+
+        await controller.NewFileAsync(RecordingVfsProvider.Path("/top"));
+
+        Assert.NotEmpty(provider.Threads);
+        Assert.DoesNotContain(ui, provider.Threads);
     }
 }
