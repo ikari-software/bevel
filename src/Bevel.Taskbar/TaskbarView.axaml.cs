@@ -60,6 +60,8 @@ public partial class TaskbarView : UserControl
     /// <summary>Composes the stacks region from <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7
     /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
     private ComponentBarHost? _componentHost;
+    /// <summary>Last applied settings snapshot (bevel-5dn). Used to diff-guarded re-apply only changed sections.</summary>
+    private BevelSettings? _applied;
     /// <summary>
     /// Test-only seam (bevel-aqr7 Task 14 fix round 2, Finding 1): lets <c>Bevel.Taskbar.Tests</c>
     /// (via the existing <c>InternalsVisibleTo</c>) drive <see cref="ApplyComponentRegion"/> directly
@@ -388,30 +390,84 @@ public partial class TaskbarView : UserControl
         // OnLoaded ever runs (the same peer-settings race _settingsServiceWired's comment describes),
         // and InitComponentRegion must not build the host from a stale snapshot once it does.
         _initialSettings = s;
-        Clock.Configure(s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
-        ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
+
+        var applied = _applied;
+
+        // Clock section: 4 fields (bevel-5dn)
+        if (applied is null ||
+            s.TaskbarShowClock != applied.TaskbarShowClock ||
+            s.TaskbarClock24Hour != applied.TaskbarClock24Hour ||
+            s.TaskbarClockShowSeconds != applied.TaskbarClockShowSeconds ||
+            s.TaskbarClockShowDate != applied.TaskbarClockShowDate)
+        {
+            Clock.Configure(s.TaskbarShowClock, s.TaskbarClock24Hour, s.TaskbarClockShowSeconds, s.TaskbarClockShowDate);
+        }
+
+        // Start section: 2 fields (bevel-5dn)
+        if (applied is null ||
+            s.TaskbarShowStart != applied.TaskbarShowStart ||
+            s.TaskbarStartLabel != applied.TaskbarStartLabel)
+        {
+            ApplyStart(s.TaskbarShowStart, s.TaskbarStartLabel);
+        }
         if (_startBadgeFullDetail != s.StartBadgeFullDetail)
         {
             _startBadgeFullDetail = s.StartBadgeFullDetail;
             RebuildStartBadge();
         }
-        _grouping = s.TaskbarGrouping;
-        _vm?.SetGrouping(_grouping);
-        _sort = s.TaskbarWindowSort;
-        _windowlessLast = s.WindowlessAppsLast;
-        _vm?.SetSort(_sort, _windowlessLast);
-        _buttonLabels = s.TaskbarButtonLabels;
-        _middleClickCloses = s.TaskbarMiddleClickCloses;
-        TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
-        _fontSize = s.TaskbarFontSize;
-        _bgColor = s.TaskbarBackgroundColor;
-        _opacity = s.TaskbarOpacity;
-        ApplyAppearance(_fontSize, _bgColor, _opacity);
-        _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
-        _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
-        ApplyStacks(s);   // bevel-2ip7
-        ApplyComponentRegion(s);   // bevel-aqr7 Task 14: re-apply the component list, off the UI thread
 
+        // Grouping/sort/label/middle-click/reclick (bevel-5dn) - these affect button layout
+        bool layoutFieldsChanged = applied is null ||
+            s.TaskbarGrouping != applied.TaskbarGrouping ||
+            s.TaskbarWindowSort != applied.TaskbarWindowSort ||
+            s.WindowlessAppsLast != applied.WindowlessAppsLast ||
+            s.TaskbarButtonLabels != applied.TaskbarButtonLabels ||
+            s.TaskbarMiddleClickCloses != applied.TaskbarMiddleClickCloses;
+
+        if (layoutFieldsChanged)
+        {
+            _grouping = s.TaskbarGrouping;
+            _vm?.SetGrouping(_grouping);
+            _sort = s.TaskbarWindowSort;
+            _windowlessLast = s.WindowlessAppsLast;
+            _vm?.SetSort(_sort, _windowlessLast);
+            _buttonLabels = s.TaskbarButtonLabels;
+            _middleClickCloses = s.TaskbarMiddleClickCloses;
+            TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
+        }
+
+        // Appearance section: 3 fields (bevel-5dn)
+        if (applied is null ||
+            s.TaskbarFontSize != applied.TaskbarFontSize ||
+            s.TaskbarBackgroundColor != applied.TaskbarBackgroundColor ||
+            s.TaskbarOpacity != applied.TaskbarOpacity)
+        {
+            _fontSize = s.TaskbarFontSize;
+            _bgColor = s.TaskbarBackgroundColor;
+            _opacity = s.TaskbarOpacity;
+            ApplyAppearance(_fontSize, _bgColor, _opacity);
+        }
+
+        // Tray section: 3 fields (bevel-5dn)
+        if (applied is null ||
+            s.TaskbarTrayOverflowCap != applied.TaskbarTrayOverflowCap ||
+            s.TaskbarTrayIconSize != applied.TaskbarTrayIconSize ||
+            s.TaskbarConsolidateMenuBar != applied.TaskbarConsolidateMenuBar)
+        {
+            _vm?.Tray.Configure(s.TaskbarTrayOverflowCap, s.TaskbarTrayIconSize);
+            _vm?.Tray.SetConsolidated(s.TaskbarConsolidateMenuBar);   // Strategy C (bevel-7hf4): in-process apply path
+        }
+
+        // Stacks (bevel-2ip7) - already has its own diff guard via _appliedStacks
+        ApplyStacks(s);
+
+        // Component region (bevel-aqr7 Task 14)
+        if (applied is null || !s.TaskbarComponents.AsSpan().SequenceEqual(applied.TaskbarComponents.AsSpan()))
+        {
+            ApplyComponentRegion(s);
+        }
+
+        // Lock/always-on-top/desktop button (bevel-5dn)
         _locked = s.TaskbarLocked;
         ResizeGrip.IsVisible = !_locked;
         LockMenuItem.IsChecked = _locked;   // reflect lock state as the context-menu check mark
@@ -425,27 +481,45 @@ public partial class TaskbarView : UserControl
         _showDesktop = s.TaskbarShowDesktopButton;
         ShowDesktopButton.IsVisible = _showDesktop;
 
-        // Button width/size — apply live, no restart (bevel-cust). Width settings are cheap (they only
-        // feed the next LayoutButtons pass). Button SIZE changes the bar height, so it's guarded to a
-        // real change: it re-Configures the process-wide metric, resizes/re-anchors the window + work-
-        // area band, and re-heights the already-realized buttons (WireTaskButton only sets new ones).
+        // Button width/size — apply live, no restart (bevel-cust). Button SIZE changes the bar height,
+        // so it's guarded to a real change. Width fields drive LayoutButtons (bevel-5dn).
+        bool widthFieldsChanged = applied is null ||
+            s.TaskbarButtonWidth != applied.TaskbarButtonWidth ||
+            s.TaskbarButtonWidthMode != applied.TaskbarButtonWidthMode ||
+            s.TaskbarMinButtonWidth != applied.TaskbarMinButtonWidth ||
+            s.TaskbarButtonSize != applied.TaskbarButtonSize;
+
         _maxButtonWidth = s.TaskbarButtonWidth;
         _widthMode = s.TaskbarButtonWidthMode;
         _minButtonWidth = Math.Clamp(s.TaskbarMinButtonWidth, IconOnlyFloorFor(TaskbarTheme.TaskIconSize), s.TaskbarButtonWidth);
-        if (_buttonSize != s.TaskbarButtonSize)
+
+        if (widthFieldsChanged)
         {
-            _buttonSize = s.TaskbarButtonSize;
-            TaskbarTheme.Configure(_buttonSize);
-            _window?.ReapplyMetrics();     // resize + re-anchor + refresh band; raises RowsChanged → ApplyRowLayout
-            StartButton.MaxHeight = StartButtonMaxHeight();
-            ReapplyButtonHeights();
-            ApplyTaskIconMetric();         // bigger/smaller glyphs follow the tier, live (bevel-c54t)
+            if (_buttonSize != s.TaskbarButtonSize)
+            {
+                _buttonSize = s.TaskbarButtonSize;
+                TaskbarTheme.Configure(_buttonSize);
+                _window?.ReapplyMetrics();     // resize + re-anchor + refresh band; raises RowsChanged → ApplyRowLayout
+                StartButton.MaxHeight = StartButtonMaxHeight();
+                ReapplyButtonHeights();
+                ApplyTaskIconMetric();         // bigger/smaller glyphs follow the tier, live (bevel-c54t)
+            }
+            // Row count from the settings slider — the same knob as dragging the resize grip. SetRows is a
+            // no-op when unchanged and clamps to the screen-derived MaxRows.
+            if (_window != null && _window.Rows != s.TaskbarRows)
+                _window.SetRows(s.TaskbarRows);
+            LayoutButtons();
         }
-        // Row count from the settings slider — the same knob as dragging the resize grip. SetRows is a
-        // no-op when unchanged and clamps to the screen-derived MaxRows.
-        if (_window != null && _window.Rows != s.TaskbarRows)
-            _window.SetRows(s.TaskbarRows);
-        LayoutButtons();
+        else if (applied is null || s.TaskbarRows != applied.TaskbarRows)
+        {
+            // Only rows changed, but not width/layout fields
+            if (_window != null && _window.Rows != s.TaskbarRows)
+                _window.SetRows(s.TaskbarRows);
+            LayoutButtons();
+        }
+
+        // Update the applied snapshot (bevel-5dn)
+        _applied = s.Clone();
     }
 
     /// <summary>

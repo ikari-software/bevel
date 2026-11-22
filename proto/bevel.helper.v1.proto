@@ -224,7 +224,12 @@ message WindowChange {
 
 // ── Request / Reply wrappers ─────────────────────────────────────────────────
 
-message ListWindowsRequest {}
+message ListWindowsRequest {
+  // Whether to skip app icons in the response (PNG bytes).
+  // Set to true for lightweight enumeration where only identity fields are needed,
+  // avoiding ~1KB/window IPC overhead on every poll. Defaults to false (include icons).
+  bool skip_icons = 1;
+}
 
 message ListWindowsReply {
   repeated TaskbarWindow windows = 1;

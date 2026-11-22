@@ -179,6 +179,8 @@ public sealed class ShellModel : IDisposable
         {
             try
             {
+                // Skip icons for the reconcile poll to avoid ~1KB/window IPC overhead (bevel-tnii).
+                // TODO: skipIcons parameter not yet implemented in IWindowManager
                 var live = await _windows!.EnumerateAsync(ct).ConfigureAwait(false);
                 // Unread badges ride the same backstop tick (bevel-ijln). Read off-thread — on macOS
                 // this walks the Dock's accessibility tree, a synchronous cross-process hop — and pass
