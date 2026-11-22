@@ -933,8 +933,20 @@ public partial class ItemView : UserControl
         if (paths.Count == 0) return;
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
+        
+        // Always set DataFormats.Files for cross-process compatibility (bevel-u2x6).
+        // Try to use resolved IStorageItems first, but fall back to VfsPath strings if unavailable.
         if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
+        {
             data.Set(DataFormats.Files, ready.Result);
+        }
+        else
+        {
+            // Fallback: set file paths as strings (works for native drag-drop targets like Finder)
+            var filePaths = paths.Select(p => p.Value).ToArray();
+            data.Set(DataFormats.Files, filePaths);
+        }
+        
         try
         {
             await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
