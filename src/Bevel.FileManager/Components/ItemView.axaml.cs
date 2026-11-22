@@ -937,19 +937,27 @@ public partial class ItemView : UserControl
         if (paths.Count == 0) return;
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
-        
-        // Set DataFormats.Files if available, or with raw paths as fallback (bevel-u2x6)
-        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 })
+
+        // Always offer plain path strings — the most universally understood form (bevel-u2x6).
+        var pathStrings = paths.Select(p => p.Value).ToArray();
+        data.Set(DataFormats.FileNames, pathStrings);
+
+        // IStorageItems when the press-time resolve already finished; otherwise file URIs.
+        // Set under BOTH the legacy "Files" format and the new "Universal: File" format —
+        // the macOS backend maps only the latter to NSPasteboardTypeFileUrl, without which
+        // Finder/desktop/other apps see a drag with no files and refuse it silently.
+        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
         {
-            data.Set(DataFormats.Files, _dragStorageTask.Result);
+            data.Set(DataFormats.Files, ready.Result);
+            data.Set(DataFormat.File.ToString(), ready.Result);
         }
         else
         {
-            // Fallback: use file URIs which native platforms can understand
-            var fileUris = paths.Select(p => new Uri(p.Value, UriKind.Absolute)).ToArray();
+            var fileUris = paths.Select(p => new UriBuilder { Scheme = "file", Host = string.Empty, Path = p.Value }.Uri).ToArray();
             data.Set(DataFormats.Files, fileUris);
+            data.Set(DataFormat.File.ToString(), fileUris);
         }
-        
+
         try
         {
             await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
@@ -961,7 +969,8 @@ public partial class ItemView : UserControl
 
     void OnDragOver(object? _, DragEventArgs e)
     {
-        e.DragEffects = e.Data.Contains(DataFormats.Files) || e.Data.Contains(FileDropPayload.DataFormat)
+        e.DragEffects = e.Data.Contains(DataFormats.Files) || e.Data.Contains(DataFormats.FileNames)
+                        || e.Data.Contains(FileDropPayload.DataFormat)
             ? DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link : DragDropEffects.None;
         e.Handled = true;
     }

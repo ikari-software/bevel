@@ -46,15 +46,26 @@ public sealed class ItemViewDragSourceTests
         var decl = Array.FindIndex(lines, l => l.Contains("Task StartDragAsync("));
         Assert.True(decl >= 0, "StartDragAsync not found in ItemView.axaml.cs — if it was renamed, "
                                + "update this guard rather than deleting it.");
-        return string.Join('\n', lines.Skip(decl).Take(16));
+        return string.Join('\n', lines.Skip(decl).Take(30));
     }
 
     /// <summary>The OS file list is what every non-Bevel target reads. Without it the drag is a no-op
-    /// outside Bevel.</summary>
+    /// <summary>The OS file list is what every non-Bevel target reads. Without it the drag is a no-op
+    /// outside Bevel. Both the legacy "Files" and the new "Universal: File" formats must be set —
+    /// the macOS backend maps only the latter to NSPasteboardTypeFileUrl.</summary>
     [Fact]
     public void The_drag_offers_the_os_file_list()
     {
         Assert.Contains("DataFormats.Files", StartDragBody());
+        Assert.Contains("DataFormat.File", StartDragBody());
+    }
+
+    /// <summary>Plain path strings under FileNames are the most universally understood form and
+    /// must always be set, even when storage items aren't ready yet.</summary>
+    [Fact]
+    public void The_drag_always_offers_plain_path_strings()
+    {
+        Assert.Contains("DataFormats.FileNames", StartDragBody());
     }
 
     /// <summary>...and the internal payload must stay, because it is what preserves Bevel's own
