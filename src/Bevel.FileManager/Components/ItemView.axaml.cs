@@ -965,7 +965,11 @@ public partial class ItemView : UserControl
         // the paths exist and what formats are set.
         try
         {
-            var diag = $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storageReady={_dragStorageTask is { IsCompletedSuccessfully: true }}";
+            var storageInfo = _dragStorageTask is null ? "null"
+                : _dragStorageTask.IsCompletedSuccessfully ? $"ok/{_dragStorageTask.Result.Length}"
+                : _dragStorageTask.IsFaulted ? $"faulted/{_dragStorageTask.Exception?.GetType().Name}"
+                : _dragStorageTask.IsCanceled ? "canceled" : "pending";
+            var diag = $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storage={storageInfo}";
             System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", diag + "\n");
         }
         catch { }
