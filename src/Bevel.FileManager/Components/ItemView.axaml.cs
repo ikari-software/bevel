@@ -944,6 +944,15 @@ public partial class ItemView : UserControl
         var pathStrings = paths.Select(p => p.Value).ToArray();
         data.Set(DataFormats.FileNames, pathStrings);
 
+        // DIAGNOSTIC (bevel-u2x6): log what we're putting on the drag so we can see if
+        // the paths exist and what formats are set.
+        try
+        {
+            var diag = $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storageReady={_dragStorageTask is { IsCompletedSuccessfully: true }}";
+            System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", diag + "\n");
+        }
+        catch { }
+
         // Files (IStorageItem list) when the press-time resolve already finished — richer than
         // plain paths (carries folder semantics, properties). Uri[] under "Files" is silently
         // dropped by the wrapper (it only accepts IEnumerable<IStorageItem>), so it is NOT a
@@ -953,9 +962,10 @@ public partial class ItemView : UserControl
 
         try
         {
-            await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            var result = await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result}\n"); } catch { }
         }
-        catch { /* drag cancelled or platform refused — nothing to clean up */ }
+        catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
     }
 
     // ── DnD ──────────────────────────────────────────────────────────
