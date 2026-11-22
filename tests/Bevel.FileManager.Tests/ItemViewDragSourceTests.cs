@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Avalonia.Input;
 using Xunit;
 
 namespace Bevel.FileManager.Tests;
@@ -66,23 +68,23 @@ public sealed class ItemViewDragSourceTests
 
     /// <summary>A drop whose internal payload did not survive falls back to the file list.
     ///
-    /// This test verifies that ResolveDropPaths helper exists and implements the fallback logic.
-    /// </summary>
+    /// This test verifies that the ResolveDropPaths method correctly falls back from
+    /// FileDropPayload to DataFormats.Files when the payload is unavailable.</summary>
     [Fact]
     public void A_drop_whose_internal_payload_did_not_survive_falls_back_to_the_file_list()
     {
         var src = Source();
         
-        // Verify ResolveDropPaths method exists
+        // Verify ResolveDropPaths method exists with correct signature
         Assert.Contains("internal static List<VfsPath>? ResolveDropPaths(IDataObject data)", src);
         
-        // Verify it checks FileDropPayload.DataFormat
+        // Verify it prioritizes FileDropPayload
         Assert.Contains("data.Contains(FileDropPayload.DataFormat)", src);
         
         // Verify it falls back to DataFormats.Files
         Assert.Contains("data.Contains(DataFormats.Files)", src);
         
-        // Verify it's used in OnDrop
+        // Verify OnDrop uses ResolveDropPaths
         Assert.Contains("paths = ResolveDropPaths(e.Data)", src);
     }
 
@@ -118,5 +120,25 @@ public sealed class ItemViewDragSourceTests
             "_dragStorageTask must be assigned in the pointer-PRESS handler, which precedes "
             + "StartDragAsync in this file. Resolving inside the drag means awaiting inside the "
             + "gesture, which loses it.");
+    }
+
+    /// <summary>AllowDrop must be set on the ItemView — without it Avalonia never routes
+    /// DragOver/Drop events to the control, so every drop is a silent no-op. This was the
+    /// actual root cause of drops never working (bevel-u2x6).</summary>
+    [Fact]
+    public void The_view_accepts_drops()
+    {
+        var src = Source();
+        Assert.Contains("DragDrop.SetAllowDrop(this, true)", src);
+    }
+
+    /// <summary>The drop side must also accept DataFormats.FileNames (plain path strings),
+    /// not only DataFormats.Files (IStorageItem list) — some drag sources only carry strings.</summary>
+    [Fact]
+    public void The_drop_side_also_reads_file_names()
+    {
+        var src = Source();
+        Assert.Contains("DataFormats.FileNames", src);
+        Assert.Contains("GetFileNames()", src);
     }
 }

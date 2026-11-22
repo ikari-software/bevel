@@ -154,6 +154,9 @@ public partial class ItemView : UserControl
         GotFocus += (_, _) => UpdateFocusCue();
         LostFocus += (_, _) => UpdateFocusCue();
         _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
+        // Without AllowDrop the OS never routes drag events here — DragOver/Drop handlers below
+        // would be dead code and every drop would silently do nothing (bevel-u2x6).
+        DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(ContextRequestedEvent, OnContextRequested);
@@ -972,7 +975,8 @@ public partial class ItemView : UserControl
         => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
 
     /// <summary>Attempts to extract file paths from a <see cref="IDataObject">, preferring <see cref="FileDropPayload">
-    /// as the primary source, and falling back to <see cref="DataFormats.Files"> if the payload is missing or empty.</summary>
+    /// as the primary source, then <see cref="DataFormats.Files"/> (IStorageItem list), then
+    /// <see cref="DataFormats.FileNames"/> (plain path strings).</summary>
     internal static List<VfsPath>? ResolveDropPaths(IDataObject data)
     {
         // Try to get the internal payload first.
@@ -985,7 +989,22 @@ public partial class ItemView : UserControl
         // Fall back to the OS file list if the internal payload is missing or empty.
         if (data.Contains(DataFormats.Files))
         {
-            return data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+            var files = data.GetFiles();
+            if (files is not null)
+            {
+                var fromItems = files.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+                if (fromItems.Count > 0) return fromItems;
+            }
+        }
+        // Some sources only carry plain path strings under DataFormats.FileNames.
+        if (data.Contains(DataFormats.FileNames))
+        {
+            var names = data.GetFileNames();
+            if (names is not null)
+            {
+                var fromNames = names.Select(n => new VfsPath("file", n)).ToList();
+                if (fromNames.Count > 0) return fromNames;
+            }
         }
         return null;
     }
