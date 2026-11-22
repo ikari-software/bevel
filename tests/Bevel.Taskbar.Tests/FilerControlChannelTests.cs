@@ -33,7 +33,8 @@ public sealed class FilerControlChannelTests : IDisposable
     public FilerControlChannelTests()
     {
         // Short stem: macOS sun_path is 104 bytes, and the per-pid socket path nests under this dir.
-        _dir = Path.Combine(Path.GetTempPath(), $"bvlex-{Guid.NewGuid():N}"[..12]);
+        // Inside FilersDir: an override outside Bevel's socket dirs is now refused (bevel-zcgd).
+        _dir = Path.Combine(BevelRuntimeDir.FilersDir, $"bvlex-{Guid.NewGuid():N}"[..12]);
         Directory.CreateDirectory(_dir);
     }
 

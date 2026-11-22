@@ -50,25 +50,29 @@ internal static class BevelRuntimeDir
     /// </summary>
     public static string GuardSocketPathInRuntimeDir(string path)
     {
-        var normalizedPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var normalizedRoot = Path.GetFullPath(Root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        // Use appropriate comparison: case-insensitive for Windows/macOS, ordinal otherwise.
-        // Handles paths like /tmp/bevel vs /TMP/BEVEL on case-insensitive filesystems.
-        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        
-        var pathStartsWithRoot = normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison) ||
-                                 normalizedPath.StartsWith(normalizedRoot, comparison);
-
-        if (!pathStartsWithRoot)
-        {
+        if (!IsUnderAllowedDir(path, new[] { CoreDir, FilersDir }, caseInsensitive: OperatingSystem.IsWindows()))
             throw new InvalidOperationException(
-                $"Socket path '{path}' is outside Bevel's runtime directory '{Root}'. " +
-                "Socket paths must be under the runtime dir to be reclaimed. " +
+                $"Socket path '{path}' is outside Bevel's socket directories ('{CoreDir}', '{FilersDir}'). " +
+                "Only paths there are reclaimed on bind. " +
                 "Check environment variables BEVEL_CORE_SOCKET, BEVEL_LAUNCHER_SOCKET, BEVEL_FILER_DIR.");
-        }
         return path;
+    }
+
+    /// <summary>True when <paramref name="path"/> is one of <paramref name="dirs"/> or inside one. The
+    /// comparison is separator-terminated, so a sibling such as <c>bevel-core-evil</c> never passes for
+    /// <c>bevel-core</c>, and case-sensitive except on Windows (an APFS volume may be case-sensitive).
+    /// Lexical only: callers pass paths Bevel built from the same roots. Review fix for bevel-zcgd.</summary>
+    internal static bool IsUnderAllowedDir(string path, IEnumerable<string> dirs, bool caseInsensitive)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathRooted(path)) return false;
+        var cmp = caseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        foreach (var dir in dirs)
+        {
+            var d = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir));
+            if (string.Equals(full, d, cmp) || full.StartsWith(d + Path.DirectorySeparatorChar, cmp))
+                return true;
+        }
+        return false;
     }
 }

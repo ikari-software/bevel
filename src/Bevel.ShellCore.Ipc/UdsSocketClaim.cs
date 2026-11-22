@@ -79,7 +79,18 @@ public static class UdsSocketClaim
             throw new UdsSocketBusyException(socketPath);
 
         if (File.Exists(socketPath))
+        {
+            // Reclaim only what can be a stale socket (review fix for bevel-zcgd): a socket file is a
+            // zero-length non-symlink, so never delete through a symlink or delete a file with content,
+            // whatever path a caller (or an environment override) handed us.
+            if (!OperatingSystem.IsWindows())
+            {
+                var info = new FileInfo(socketPath);
+                if (info.LinkTarget is not null || info.Length > 0)
+                    throw new IOException($"Refusing to reclaim '{socketPath}': it is not a stale socket.");
+            }
             File.Delete(socketPath); // owner is gone — reclaim the path
+        }
 
         if (OperatingSystem.IsWindows())
         {
