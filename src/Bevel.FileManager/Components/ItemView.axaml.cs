@@ -940,11 +940,11 @@ public partial class ItemView : UserControl
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
+        var data = new DataObject();
+        data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
 
-        // VfsPath.Combine(VfsPath("file", "/"), "Users") yields "//Users" (double leading slash
-        // because IsRoot is Value.Length==0 but "/" has length 1). POSIX tolerates it for
-        // File.Exists, but the file:// URI becomes file:////Users/... which Finder rejects.
-        // Collapse leading slashes to a single one (bevel-u2x6).
+        // Collapse double leading slashes: VfsPath.Combine(root, "x") yields "//x" which makes
+        // a malformed file:// URI that Finder rejects (bevel-u2x6).
         static string NormalizeFsPath(string p)
         {
             if (string.IsNullOrEmpty(p)) return p;
@@ -953,7 +953,13 @@ public partial class ItemView : UserControl
             return i > 1 ? "/" + p[i..] : p;
         }
 
+        // FileNames (plain path strings) — DataObjectToDataTransferWrapper converts each string
+        // to a BclStorageItem → DataFormat.File → native public.file-url on macOS.
         var pathStrings = paths.Select(p => NormalizeFsPath(p.Value)).ToArray();
+        data.Set(DataFormats.FileNames, pathStrings);
+
+        // Also set text — iTerm and other text-only targets accept this.
+        data.Set(DataFormats.Text, string.Join("\n", pathStrings));
 
         // DIAGNOSTIC (bevel-u2x6)
         try
@@ -963,41 +969,18 @@ public partial class ItemView : UserControl
                 : _dragStorageTask.IsFaulted ? $"faulted/{_dragStorageTask.Exception?.GetType().Name}"
                 : _dragStorageTask.IsCanceled ? "canceled" : "pending";
             System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log",
-                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] storage={storageInfo}\n");
+                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storage={storageInfo}\n");
         }
         catch { }
 
-        // Build a DataTransfer with one DataTransferItem per file (SetFile → DataFormat.File →
-        // native public.file-url on macOS). Also include the internal payload and plain path
-        // strings so Filer-to-Filer and text targets keep working (bevel-u2x6).
-        var transfer = new DataTransfer();
-
-        // File items from the press-time storage resolve, or from paths via the storage provider.
-        IStorageItem[] storageItems = _dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready
-            ? ready.Result
-            : System.Array.Empty<IStorageItem>();
-        foreach (var item in storageItems)
-        {
-            var fileItem = new DataTransferItem();
-            fileItem.SetFile(item);
-            transfer.Add(fileItem);
-        }
-
-        // Plain path strings as text — iTerm and other text targets accept this.
-        var textItem = new DataTransferItem();
-        textItem.SetText(string.Join("\n", pathStrings));
-        transfer.Add(textItem);
-
-        // Internal payload for Filer-to-Filer (same-process) drops.
-        var payloadItem = new DataTransferItem();
-        var payloadFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
-        payloadItem.Set(payloadFormat, System.Text.Json.JsonSerializer.Serialize(new FileDropPayload { Paths = paths }));
-        transfer.Add(payloadItem);
+        // Files (IStorageItem list) when the press-time resolve already finished.
+        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
+            data.Set(DataFormats.Files, ready.Result);
 
         try
         {
-            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
-            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
+            var result = await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move);
+            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result}\n"); } catch { }
         }
         catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
     }

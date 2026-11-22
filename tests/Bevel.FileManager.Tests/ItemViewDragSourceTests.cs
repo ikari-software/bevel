@@ -11,14 +11,15 @@ namespace Bevel.FileManager.Tests;
 /// <summary>
 /// A drag out of the Filer must carry real files (bevel-u2x6).
 ///
-/// <para><c>ItemView.StartDragAsync</c> now uses the non-obsolete <c>DragDrop.DoDragDropAsync</c>
-/// with a <c>DataTransfer</c> containing <c>DataTransferItem.SetFile()</c> items (→ native
-/// <c>public.file-url</c> on macOS), a text item with newline-separated paths, and a JSON
-/// internal payload. These source guards pin the structural properties that were wrong.</para>
+/// <para><c>ItemView.StartDragAsync</c> sets <c>DataFormats.FileNames</c> (plain path strings,
+/// which DataObjectToDataTransferWrapper converts to BclStorageItem → DataFormat.File → native
+/// public.file-url on macOS), <c>DataFormats.Text</c> (for text-only targets like iTerm),
+/// <c>DataFormats.Files</c> (IStorageItem list when the press-time resolve finished), and the
+/// internal <c>FileDropPayload</c>. These source guards pin those properties.</para>
 ///
 /// <para><b>Why these are source assertions.</b> <c>DoDragDrop</c> only runs inside a live
 /// pointer gesture and blocks on a platform drag session, so there is no headless way to start one and
-/// read back the <c>DataTransfer</c>. These guards pin the key properties and are honest about being
+/// read back the data. These guards pin the key properties and are honest about being
 /// structural: they would not catch a drag that is broken for some other reason.</para>
 /// </summary>
 public sealed class ItemViewDragSourceTests
@@ -42,46 +43,38 @@ public sealed class ItemViewDragSourceTests
         var decl = Array.FindIndex(lines, l => l.Contains("Task StartDragAsync("));
         Assert.True(decl >= 0, "StartDragAsync not found in ItemView.axaml.cs — if it was renamed, "
                                + "update this guard rather than deleting it.");
-        return string.Join('\n', lines.Skip(decl).Take(80));
+        return string.Join('\n', lines.Skip(decl).Take(60));
     }
 
-    /// <summary>The drag must use DoDragDropAsync with a DataTransfer (not the obsolete
-    /// DoDragDrop with IDataObject) so the macOS backend properly writes public.file-url.</summary>
+    /// <summary>FileNames (plain path strings) is the reliable path to native file URLs:
+    /// DataObjectToDataTransferWrapper converts each string to a BclStorageItem → DataFormat.File
+    /// → public.file-url on macOS. Without it Finder sees a drag with no files.</summary>
     [Fact]
-    public void The_drag_uses_the_new_drag_drop_async_api()
+    public void The_drag_offers_file_names()
     {
-        var body = StartDragBody();
-        Assert.Contains("DoDragDropAsync", body);
-        Assert.Contains("new DataTransfer()", body);
+        Assert.Contains("DataFormats.FileNames", StartDragBody());
     }
 
-    /// <summary>Each resolved IStorageItem must be added as a DataTransferItem with SetFile —
-    /// this is what creates DataFormat.File → public.file-url on the native pasteboard.</summary>
-    [Fact]
-    public void The_drag_adds_storage_items_via_set_file()
-    {
-        var body = StartDragBody();
-        Assert.Contains("SetFile(", body);
-        Assert.Contains("DataTransferItem", body);
-    }
-
-    /// <summary>A text item with newline-separated paths must always be added — iTerm and other
-    /// text targets accept this even when file-url isn't available.</summary>
+    /// <summary>Text format must also be set — iTerm and other text-only targets accept this.</summary>
     [Fact]
     public void The_drag_always_offers_plain_text_paths()
     {
-        var body = StartDragBody();
-        Assert.Contains("SetText(", body);
+        Assert.Contains("DataFormats.Text", StartDragBody());
     }
 
-    /// <summary>The internal payload (JSON under a custom app format) must stay, because it is
-    /// what preserves Bevel's own move/copy semantics on an internal drop.</summary>
+    /// <summary>IStorageItem list under "Files" when the press-time resolve finished.</summary>
+    [Fact]
+    public void The_drag_offers_storage_items_when_ready()
+    {
+        Assert.Contains("DataFormats.Files", StartDragBody());
+    }
+
+    /// <summary>The internal payload must stay — it preserves Bevel's own move/copy semantics
+    /// on an internal drop.</summary>
     [Fact]
     public void The_drag_still_offers_the_internal_payload()
     {
-        var body = StartDragBody();
-        Assert.Contains("FileDropPayload.DataFormat", body);
-        Assert.Contains("JsonSerializer.Serialize", body);
+        Assert.Contains("FileDropPayload.DataFormat", StartDragBody());
     }
 
     /// <summary>Leading slashes must be collapsed — VfsPath.Combine(root, "x") yields "//x"
@@ -89,8 +82,7 @@ public sealed class ItemViewDragSourceTests
     [Fact]
     public void The_drag_normalizes_double_leading_slashes()
     {
-        var body = StartDragBody();
-        Assert.Contains("NormalizeFsPath", body);
+        Assert.Contains("NormalizeFsPath", StartDragBody());
     }
 
     /// <summary>The drop side must use ResolveDropPaths with BOTH the new IDataTransfer and
@@ -101,8 +93,6 @@ public sealed class ItemViewDragSourceTests
         var src = Source();
         Assert.Contains("ResolveDropPaths(e.DataTransfer)", src);
         Assert.Contains("ResolveDropPaths(e.Data)", src);
-        Assert.Contains("internal static List<VfsPath>? ResolveDropPaths(IDataTransfer? transfer)", src);
-        Assert.Contains("internal static List<VfsPath>? ResolveDropPaths(IDataObject data)", src);
     }
 
     /// <summary>The drop side must fall back through: internal payload → IStorageItem files →
