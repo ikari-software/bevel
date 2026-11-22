@@ -938,25 +938,18 @@ public partial class ItemView : UserControl
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
 
-        // Always offer plain path strings — the most universally understood form (bevel-u2x6).
+        // FileNames (plain path strings) is the reliable path: DataObjectToDataTransferWrapper
+        // converts each string to a BclStorageItem → DataFormat.File, which the macOS backend
+        // maps to NSPasteboardTypeFileUrl. Without it Finder sees a drag with no files (bevel-u2x6).
         var pathStrings = paths.Select(p => p.Value).ToArray();
         data.Set(DataFormats.FileNames, pathStrings);
 
-        // IStorageItems when the press-time resolve already finished; otherwise file URIs.
-        // Set under BOTH the legacy "Files" format and the new "Universal: File" format —
-        // the macOS backend maps only the latter to NSPasteboardTypeFileUrl, without which
-        // Finder/desktop/other apps see a drag with no files and refuse it silently.
+        // Files (IStorageItem list) when the press-time resolve already finished — richer than
+        // plain paths (carries folder semantics, properties). Uri[] under "Files" is silently
+        // dropped by the wrapper (it only accepts IEnumerable<IStorageItem>), so it is NOT a
+        // fallback — FileNames above already covers that case.
         if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
-        {
             data.Set(DataFormats.Files, ready.Result);
-            data.Set(DataFormat.File.ToString(), ready.Result);
-        }
-        else
-        {
-            var fileUris = paths.Select(p => new UriBuilder { Scheme = "file", Host = string.Empty, Path = p.Value }.Uri).ToArray();
-            data.Set(DataFormats.Files, fileUris);
-            data.Set(DataFormat.File.ToString(), fileUris);
-        }
 
         try
         {

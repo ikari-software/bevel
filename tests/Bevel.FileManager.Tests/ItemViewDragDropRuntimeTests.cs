@@ -140,4 +140,39 @@ public sealed class ItemViewDragDropRuntimeTests
         Assert.Equal("/a/2.txt", result[1].Value);
         Assert.Equal("/a/3.txt", result[2].Value);
     }
+
+    // ── DropEventArgs modifier semantics ─────────────────────────────
+
+    /// <summary>Plain drop (no modifiers) = move. Ctrl = copy. Ctrl+Shift = link.</summary>
+    [Fact]
+    public void DropEventArgs_plain_drop_is_move()
+    {
+        var e = new DropEventArgs(new[] { new VfsPath("file", "/a.txt") }, ctrl: false, shift: false);
+        Assert.False(e.IsCopy);
+        Assert.False(e.IsLink);
+    }
+
+    [Fact]
+    public void DropEventArgs_ctrl_is_copy()
+    {
+        var e = new DropEventArgs(new[] { new VfsPath("file", "/a.txt") }, ctrl: true, shift: false);
+        Assert.True(e.IsCopy);
+        Assert.False(e.IsLink);
+    }
+
+    [Fact]
+    public void DropEventArgs_ctrl_shift_is_link()
+    {
+        var e = new DropEventArgs(new[] { new VfsPath("file", "/a.txt") }, ctrl: true, shift: true);
+        Assert.False(e.IsCopy);
+        Assert.True(e.IsLink);
+    }
+
+    [Fact]
+    public void DropEventArgs_shift_alone_is_move_not_link()
+    {
+        var e = new DropEventArgs(new[] { new VfsPath("file", "/a.txt") }, ctrl: false, shift: true);
+        Assert.False(e.IsCopy);
+        Assert.False(e.IsLink);
+    }
 }

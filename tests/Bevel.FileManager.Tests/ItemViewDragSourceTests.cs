@@ -51,21 +51,30 @@ public sealed class ItemViewDragSourceTests
 
     /// <summary>The OS file list is what every non-Bevel target reads. Without it the drag is a no-op
     /// <summary>The OS file list is what every non-Bevel target reads. Without it the drag is a no-op
-    /// outside Bevel. Both the legacy "Files" and the new "Universal: File" formats must be set —
-    /// the macOS backend maps only the latter to NSPasteboardTypeFileUrl.</summary>
+    /// outside Bevel. IStorageItems under "Files" are only set when the press-time resolve finished;
+    /// FileNames (plain path strings) is always set and is what the wrapper converts to
+    /// DataFormat.File → NSPasteboardTypeFileUrl on macOS.</summary>
     [Fact]
     public void The_drag_offers_the_os_file_list()
     {
         Assert.Contains("DataFormats.Files", StartDragBody());
-        Assert.Contains("DataFormat.File", StartDragBody());
+        Assert.Contains("DataFormats.FileNames", StartDragBody());
     }
 
-    /// <summary>Plain path strings under FileNames are the most universally understood form and
-    /// must always be set, even when storage items aren't ready yet.</summary>
+    /// <summary>FileNames must be set BEFORE the storage-task check — it is the reliable fallback
+    /// that always works, because DataObjectToDataTransferWrapper converts each string to a
+    /// BclStorageItem → DataFormat.File. Uri[] under "Files" is silently dropped by the wrapper.</summary>
     [Fact]
     public void The_drag_always_offers_plain_path_strings()
     {
-        Assert.Contains("DataFormats.FileNames", StartDragBody());
+        var body = StartDragBody();
+        Assert.Contains("DataFormats.FileNames", body);
+        // FileNames must come before the storage-task conditional, not inside its else branch.
+        var fileNamesIdx = body.IndexOf("DataFormats.FileNames", StringComparison.Ordinal);
+        var taskCheckIdx = body.IndexOf("_dragStorageTask is", StringComparison.Ordinal);
+        Assert.True(fileNamesIdx < taskCheckIdx,
+            "DataFormats.FileNames must be set unconditionally, before the storage-task check — "
+            + "it is the only format the wrapper reliably converts to native file URLs.");
     }
 
     /// <summary>...and the internal payload must stay, because it is what preserves Bevel's own
