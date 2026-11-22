@@ -1403,6 +1403,10 @@ public partial class FileManagerWindow : BevelWindow
     {
         try { await System.Threading.Tasks.Task.Delay(250, ct); }
         catch (OperationCanceledException) { return; }
+        // While the search pane is open the list shows search RESULTS, not the folder: a folder
+        // reconcile here would paint the full listing over them (seen as a CI flake once the watcher
+        // attached a beat later, PR #33). Closing the pane refreshes the folder anyway.
+        if (SearchPane.IsVisible) return;
         // Watcher-driven reloads are always of the current directory, so reconcile in place — a
         // spurious event or an unrelated mtime touch leaves the path set unchanged and the list
         // does not flicker.
