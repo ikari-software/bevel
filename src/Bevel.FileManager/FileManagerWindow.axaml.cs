@@ -839,10 +839,15 @@ public partial class FileManagerWindow : BevelWindow
             long totalSize = 0;
             int count = 0;
 
-            // Directory watcher
+            // Directory watcher — CreateWatcher may perform synchronous I/O (Directory.Exists),
+            // so run it off the UI thread (bevel-2vls).
             _watcherSubscription?.Dispose();
             _directoryWatcher?.Dispose();
-            try { _directoryWatcher = _vfsRoot.CreateWatcher(path); } catch { _directoryWatcher = null; }
+            try
+            {
+                _directoryWatcher = await Task.Run(() => _vfsRoot.CreateWatcher(path));
+            }
+            catch { _directoryWatcher = null; }
             if (_directoryWatcher is not null)
                 _watcherSubscription = _directoryWatcher.Changes.Subscribe(OnDirectoryChanged);
 
