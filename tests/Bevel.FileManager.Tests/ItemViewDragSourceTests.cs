@@ -46,7 +46,7 @@ public sealed class ItemViewDragSourceTests
         var decl = Array.FindIndex(lines, l => l.Contains("Task StartDragAsync("));
         Assert.True(decl >= 0, "StartDragAsync not found in ItemView.axaml.cs — if it was renamed, "
                                + "update this guard rather than deleting it.");
-        return string.Join('\n', lines.Skip(decl).Take(30));
+        return string.Join('\n', lines.Skip(decl).Take(50));
     }
 
     /// <summary>The OS file list is what every non-Bevel target reads. Without it the drag is a no-op

@@ -907,7 +907,12 @@ public partial class ItemView : UserControl
         var resolved = new List<IStorageItem>(items.Count);
         foreach (var (path, isFolder) in items)
         {
-            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
+            // Collapse leading slashes: VfsPath.Combine(root, "x") yields "//x" which makes
+            // a malformed file:// URI (bevel-u2x6).
+            var i = 0;
+            while (i < path.Length && path[i] == '/') i++;
+            var normalized = i > 1 ? "/" + path[i..] : path;
+            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = normalized }.Uri;
             IStorageItem? item = isFolder
                 ? await provider.TryGetFolderFromPathAsync(uri).ConfigureAwait(true)
                 : await provider.TryGetFileFromPathAsync(uri).ConfigureAwait(true);
@@ -938,10 +943,22 @@ public partial class ItemView : UserControl
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
 
+        // VfsPath.Combine(VfsPath("file", "/"), "Users") yields "//Users" (double leading slash
+        // because IsRoot is Value.Length==0 but "/" has length 1). POSIX tolerates it for
+        // File.Exists, but the file:// URI becomes file:////Users/... which Finder rejects.
+        // Collapse leading slashes to a single one (bevel-u2x6).
+        static string NormalizeFsPath(string p)
+        {
+            if (string.IsNullOrEmpty(p)) return p;
+            var i = 0;
+            while (i < p.Length && p[i] == '/') i++;
+            return i > 1 ? "/" + p[i..] : p;
+        }
+
         // FileNames (plain path strings) is the reliable path: DataObjectToDataTransferWrapper
         // converts each string to a BclStorageItem → DataFormat.File, which the macOS backend
         // maps to NSPasteboardTypeFileUrl. Without it Finder sees a drag with no files (bevel-u2x6).
-        var pathStrings = paths.Select(p => p.Value).ToArray();
+        var pathStrings = paths.Select(p => NormalizeFsPath(p.Value)).ToArray();
         data.Set(DataFormats.FileNames, pathStrings);
 
         // DIAGNOSTIC (bevel-u2x6): log what we're putting on the drag so we can see if
