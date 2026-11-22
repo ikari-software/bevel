@@ -940,8 +940,6 @@ public partial class ItemView : UserControl
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
-        var data = new DataObject();
-        data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
 
         // VfsPath.Combine(VfsPath("file", "/"), "Users") yields "//Users" (double leading slash
         // because IsRoot is Value.Length==0 but "/" has length 1). POSIX tolerates it for
@@ -955,36 +953,51 @@ public partial class ItemView : UserControl
             return i > 1 ? "/" + p[i..] : p;
         }
 
-        // FileNames (plain path strings) is the reliable path: DataObjectToDataTransferWrapper
-        // converts each string to a BclStorageItem → DataFormat.File, which the macOS backend
-        // maps to NSPasteboardTypeFileUrl. Without it Finder sees a drag with no files (bevel-u2x6).
         var pathStrings = paths.Select(p => NormalizeFsPath(p.Value)).ToArray();
-        data.Set(DataFormats.FileNames, pathStrings);
 
-        // DIAGNOSTIC (bevel-u2x6): log what we're putting on the drag so we can see if
-        // the paths exist and what formats are set.
+        // DIAGNOSTIC (bevel-u2x6)
         try
         {
             var storageInfo = _dragStorageTask is null ? "null"
                 : _dragStorageTask.IsCompletedSuccessfully ? $"ok/{_dragStorageTask.Result.Length}"
                 : _dragStorageTask.IsFaulted ? $"faulted/{_dragStorageTask.Exception?.GetType().Name}"
                 : _dragStorageTask.IsCanceled ? "canceled" : "pending";
-            var diag = $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storage={storageInfo}";
-            System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", diag + "\n");
+            System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log",
+                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] storage={storageInfo}\n");
         }
         catch { }
 
-        // Files (IStorageItem list) when the press-time resolve already finished — richer than
-        // plain paths (carries folder semantics, properties). Uri[] under "Files" is silently
-        // dropped by the wrapper (it only accepts IEnumerable<IStorageItem>), so it is NOT a
-        // fallback — FileNames above already covers that case.
-        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
-            data.Set(DataFormats.Files, ready.Result);
+        // Build a DataTransfer with one DataTransferItem per file (SetFile → DataFormat.File →
+        // native public.file-url on macOS). Also include the internal payload and plain path
+        // strings so Filer-to-Filer and text targets keep working (bevel-u2x6).
+        var transfer = new DataTransfer();
+
+        // File items from the press-time storage resolve, or from paths via the storage provider.
+        IStorageItem[] storageItems = _dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready
+            ? ready.Result
+            : System.Array.Empty<IStorageItem>();
+        foreach (var item in storageItems)
+        {
+            var fileItem = new DataTransferItem();
+            fileItem.SetFile(item);
+            transfer.Add(fileItem);
+        }
+
+        // Plain path strings as text — iTerm and other text targets accept this.
+        var textItem = new DataTransferItem();
+        textItem.SetText(string.Join("\n", pathStrings));
+        transfer.Add(textItem);
+
+        // Internal payload for Filer-to-Filer (same-process) drops.
+        var payloadItem = new DataTransferItem();
+        var payloadFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
+        payloadItem.Set(payloadFormat, System.Text.Json.JsonSerializer.Serialize(new FileDropPayload { Paths = paths }));
+        transfer.Add(payloadItem);
 
         try
         {
-            var result = await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
-            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result}\n"); } catch { }
+            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
         }
         catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
     }
@@ -993,8 +1006,12 @@ public partial class ItemView : UserControl
 
     void OnDragOver(object? _, DragEventArgs e)
     {
+        var jsonFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
         e.DragEffects = e.Data.Contains(DataFormats.Files) || e.Data.Contains(DataFormats.FileNames)
                         || e.Data.Contains(FileDropPayload.DataFormat)
+                        || e.DataTransfer.Contains(DataFormat.File)
+                        || e.DataTransfer.Contains(DataFormat.Text)
+                        || e.DataTransfer.Contains(jsonFormat)
             ? DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link : DragDropEffects.None;
         e.Handled = true;
     }
@@ -1007,30 +1024,52 @@ public partial class ItemView : UserControl
     internal ItemViewModel? DropTargetAt(Point pt)
         => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
 
-    /// <summary>Attempts to extract file paths from a <see cref="IDataObject">, preferring <see cref="FileDropPayload">
-    /// as the primary source, then <see cref="DataFormats.Files"/> (IStorageItem list), then
-    /// <see cref="DataFormats.FileNames"/> (plain path strings).</summary>
-    internal static List<VfsPath>? ResolveDropPaths(IDataObject data)
+    /// <summary>Attempts to extract file paths from drag data, preferring the internal
+    /// <see cref="FileDropPayload"/> (JSON under a custom app format), then <see cref="DataFormat.File"/>
+    /// (IStorageItem list), then <see cref="DataFormats.FileNames"/> (plain path strings),
+    /// then plain text.</summary>
+    internal static List<VfsPath>? ResolveDropPaths(IDataObject data) => ResolveDropPaths(data, null);
+
+    internal static List<VfsPath>? ResolveDropPaths(IDataTransfer? transfer) => ResolveDropPaths(null, transfer);
+
+    private static List<VfsPath>? ResolveDropPaths(IDataObject? data, IDataTransfer? transfer)
     {
-        // Try to get the internal payload first.
-        if (data.Contains(FileDropPayload.DataFormat))
+        // 1. Internal payload — old IDataObject format first, then new JSON app format.
+        if (data is not null && data.Contains(FileDropPayload.DataFormat))
         {
             var payload = data.Get(FileDropPayload.DataFormat) as FileDropPayload;
             if (payload?.Paths is { Count: > 0 } paths)
                 return paths.ToList();
         }
-        // Fall back to the OS file list if the internal payload is missing or empty.
-        if (data.Contains(DataFormats.Files))
+        if (transfer is not null)
         {
-            var files = data.GetFiles();
-            if (files is not null)
+            var jsonFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
+            if (transfer.Contains(jsonFormat))
             {
-                var fromItems = files.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
-                if (fromItems.Count > 0) return fromItems;
+                var json = transfer.TryGetValue(jsonFormat);
+                if (json is not null)
+                {
+                    try
+                    {
+                        var payload = System.Text.Json.JsonSerializer.Deserialize<FileDropPayload>(json);
+                        if (payload?.Paths is { Count: > 0 } paths)
+                            return paths.ToList();
+                    }
+                    catch { }
+                }
             }
         }
-        // Some sources only carry plain path strings under DataFormats.FileNames.
-        if (data.Contains(DataFormats.FileNames))
+
+        // 2. OS file list (IStorageItem) — via old or new API.
+        var files = data?.GetFiles() ?? transfer?.TryGetFiles();
+        if (files is not null)
+        {
+            var fromItems = files.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+            if (fromItems.Count > 0) return fromItems;
+        }
+
+        // 3. Plain path strings under FileNames (old API).
+        if (data is not null && data.Contains(DataFormats.FileNames))
         {
             var names = data.GetFileNames();
             if (names is not null)
@@ -1039,13 +1078,23 @@ public partial class ItemView : UserControl
                 if (fromNames.Count > 0) return fromNames;
             }
         }
+
+        // 4. Plain text (newline-separated paths).
+        var text = data?.GetText() ?? transfer?.TryGetText();
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            var fromText = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                               .Select(n => new VfsPath("file", n)).ToList();
+            if (fromText.Count > 0) return fromText;
+        }
+
         return null;
     }
 
     void OnDrop(object? _, DragEventArgs e)
     {
         var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
-        var paths = ResolveDropPaths(e.Data);
+        var paths = ResolveDropPaths(e.DataTransfer) ?? ResolveDropPaths(e.Data);
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;
