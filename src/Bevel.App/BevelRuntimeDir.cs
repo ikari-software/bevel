@@ -42,4 +42,33 @@ internal static class BevelRuntimeDir
                 "Shorten the runtime dir (BevelRuntimeDir.Root) or the socket name.");
         return path;
     }
+
+    /// <summary>
+    /// Asserts a socket path is inside Bevel's own runtime directory. Only paths under Root are
+    /// reclaimed on bind failure; paths outside (e.g., from a mistyped env var) are rejected to
+    /// prevent data loss (bevel-zcgd). Returns the path unchanged for fluent use.
+    /// </summary>
+    public static string GuardSocketPathInRuntimeDir(string path)
+    {
+        var normalizedPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedRoot = Path.GetFullPath(Root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        // Use appropriate comparison: case-insensitive for Windows/macOS, ordinal otherwise.
+        // Handles paths like /tmp/bevel vs /TMP/BEVEL on case-insensitive filesystems.
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        
+        var pathStartsWithRoot = normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison) ||
+                                 normalizedPath.StartsWith(normalizedRoot, comparison);
+
+        if (!pathStartsWithRoot)
+        {
+            throw new InvalidOperationException(
+                $"Socket path '{path}' is outside Bevel's runtime directory '{Root}'. " +
+                "Socket paths must be under the runtime dir to be reclaimed. " +
+                "Check environment variables BEVEL_CORE_SOCKET, BEVEL_LAUNCHER_SOCKET, BEVEL_FILER_DIR.");
+        }
+        return path;
+    }
 }

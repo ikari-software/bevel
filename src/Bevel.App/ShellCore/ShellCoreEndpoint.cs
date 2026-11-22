@@ -20,8 +20,9 @@ public static class ShellCoreEndpoint
     private static string Dir => BevelRuntimeDir.CoreDir;
     private static string TokenPath => Path.Combine(Dir, "core.token");
 
-    public static string SocketPath => BevelRuntimeDir.GuardSocketPath(
-        Environment.GetEnvironmentVariable(SocketEnv) is { Length: > 0 } s ? s : Path.Combine(Dir, "core.sock"));
+    public static string SocketPath => BevelRuntimeDir.GuardSocketPathInRuntimeDir(
+        BevelRuntimeDir.GuardSocketPath(
+            Environment.GetEnvironmentVariable(SocketEnv) is { Length: > 0 } s ? s : Path.Combine(Dir, "core.sock")));
 
     /// <summary>Core side: resolve the socket path + nonce, minting and persisting a nonce (0600 under
     /// a 0700 dir) when the supervisor didn't provide one. UI clients read it back via <see cref="ReadNonce"/>.</summary>
