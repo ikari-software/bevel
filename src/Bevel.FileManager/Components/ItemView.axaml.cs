@@ -940,8 +940,6 @@ public partial class ItemView : UserControl
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
-        var data = new DataObject();
-        data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
 
         // Collapse double leading slashes: VfsPath.Combine(root, "x") yields "//x" which makes
         // a malformed file:// URI that Finder rejects (bevel-u2x6).
@@ -952,14 +950,7 @@ public partial class ItemView : UserControl
             while (i < p.Length && p[i] == '/') i++;
             return i > 1 ? "/" + p[i..] : p;
         }
-
-        // FileNames (plain path strings) — DataObjectToDataTransferWrapper converts each string
-        // to a BclStorageItem → DataFormat.File → native public.file-url on macOS.
         var pathStrings = paths.Select(p => NormalizeFsPath(p.Value)).ToArray();
-        data.Set(DataFormats.FileNames, pathStrings);
-
-        // Also set text — iTerm and other text-only targets accept this.
-        data.Set(DataFormats.Text, string.Join("\n", pathStrings));
 
         // DIAGNOSTIC (bevel-u2x6)
         try
@@ -969,18 +960,38 @@ public partial class ItemView : UserControl
                 : _dragStorageTask.IsFaulted ? $"faulted/{_dragStorageTask.Exception?.GetType().Name}"
                 : _dragStorageTask.IsCanceled ? "canceled" : "pending";
             System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log",
-                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] formats=[{string.Join(", ", data.GetDataFormats())}] storage={storageInfo}\n");
+                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] storage={storageInfo}\n");
         }
         catch { }
 
-        // Files (IStorageItem list) when the press-time resolve already finished.
-        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
-            data.Set(DataFormats.Files, ready.Result);
+        // Use DoDragDropAsync with a DataTransfer containing ONLY SetFile items.
+        // The old DoDragDrop(IDataObject) wraps via DataObjectToDataTransferWrapper which
+        // may not produce the same native pasteboard items. SetFile() creates a direct
+        // DataFormat.File item → public.file-url on macOS (bevel-u2x6).
+        var transfer = new DataTransfer();
+        IStorageItem[] storageItems = _dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready
+            ? ready.Result
+            : System.Array.Empty<IStorageItem>();
+        foreach (var item in storageItems)
+        {
+            var fileItem = new DataTransferItem();
+            fileItem.SetFile(item);
+            transfer.Add(fileItem);
+        }
+
+        // Internal payload for same-process Filer-to-Filer drops.
+        if (paths.Count > 0)
+        {
+            var payloadItem = new DataTransferItem();
+            var fmt = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
+            payloadItem.Set(fmt, System.Text.Json.JsonSerializer.Serialize(new FileDropPayload { Paths = paths }));
+            transfer.Add(payloadItem);
+        }
 
         try
         {
-            var result = await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move);
-            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result}\n"); } catch { }
+            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
         }
         catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
     }

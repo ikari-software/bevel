@@ -46,27 +46,24 @@ public sealed class ItemViewDragSourceTests
         return string.Join('\n', lines.Skip(decl).Take(60));
     }
 
-    /// <summary>FileNames (plain path strings) is the reliable path to native file URLs:
-    /// DataObjectToDataTransferWrapper converts each string to a BclStorageItem → DataFormat.File
-    /// → public.file-url on macOS. Without it Finder sees a drag with no files.</summary>
+    /// <summary>Uses DoDragDropAsync with a DataTransfer — the non-obsolete API that gives
+    /// direct control over DataFormat.File items → native public.file-url on macOS.</summary>
     [Fact]
-    public void The_drag_offers_file_names()
+    public void The_drag_uses_drag_drop_async_with_data_transfer()
     {
-        Assert.Contains("DataFormats.FileNames", StartDragBody());
+        var body = StartDragBody();
+        Assert.Contains("DoDragDropAsync", body);
+        Assert.Contains("new DataTransfer()", body);
     }
 
-    /// <summary>Text format must also be set — iTerm and other text-only targets accept this.</summary>
+    /// <summary>Each resolved IStorageItem must be added via SetFile() — this creates a direct
+    /// DataFormat.File item that the macOS backend maps to public.file-url.</summary>
     [Fact]
-    public void The_drag_always_offers_plain_text_paths()
+    public void The_drag_adds_storage_items_via_set_file()
     {
-        Assert.Contains("DataFormats.Text", StartDragBody());
-    }
-
-    /// <summary>IStorageItem list under "Files" when the press-time resolve finished.</summary>
-    [Fact]
-    public void The_drag_offers_storage_items_when_ready()
-    {
-        Assert.Contains("DataFormats.Files", StartDragBody());
+        var body = StartDragBody();
+        Assert.Contains("SetFile(", body);
+        Assert.Contains("DataTransferItem", body);
     }
 
     /// <summary>The internal payload must stay — it preserves Bevel's own move/copy semantics
