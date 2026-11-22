@@ -894,6 +894,7 @@ public partial class ItemView : UserControl
     /// drag only half of itself. Nulls are dropped rather than failing the whole drag: a selection the
     /// provider cannot resolve (a VFS-only node such as a <c>computer://</c> entry) should still drag
     /// internally via <see cref="FileDropPayload"/>.</para></summary>
+
     private async System.Threading.Tasks.Task<IStorageItem[]> ResolveStorageItemsAsync(
         IReadOnlyList<(string Path, bool IsFolder)> items)
     {
@@ -931,21 +932,14 @@ public partial class ItemView : UserControl
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
+        
+        // Ensure storage items are resolved; retry if not ready (bevel-u2x6)
+        if (_dragStorageTask is not { IsCompletedSuccessfully: true })
+            return;
+        
         var data = new DataObject();
         data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
-        
-        // Always set DataFormats.Files for cross-process compatibility (bevel-u2x6).
-        // Try to use resolved IStorageItems first, but fall back to VfsPath strings if unavailable.
-        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
-        {
-            data.Set(DataFormats.Files, ready.Result);
-        }
-        else
-        {
-            // Fallback: set file paths as strings (works for native drag-drop targets like Finder)
-            var filePaths = paths.Select(p => p.Value).ToArray();
-            data.Set(DataFormats.Files, filePaths);
-        }
+        data.Set(DataFormats.Files, _dragStorageTask.Result);
         
         try
         {
