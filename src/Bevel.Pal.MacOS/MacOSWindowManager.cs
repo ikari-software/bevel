@@ -356,7 +356,7 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     }
 
     private Grpc.Core.Metadata AuthHeader()
-        => HelperClient.BuildAuthMetadata(_helperLifecycle.NonceToken, "window");
+        => _helperLifecycle.AuthFor("window");
 
     private static ForeignWindow Map(TaskbarWindow tw)
     {

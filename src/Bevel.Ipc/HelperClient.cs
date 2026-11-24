@@ -20,7 +20,6 @@ public sealed class HelperClient : IDisposable
     private GrpcChannel? _channel;
     private SupervisionService.SupervisionServiceClient? _client;
     private string? _token;
-    private IReadOnlySet<string> _capabilities = new HashSet<string>();
 
     /// <summary>True if currently connected to a helper instance.</summary>
     public bool IsConnected => _channel is not null;
@@ -31,14 +30,14 @@ public sealed class HelperClient : IDisposable
     /// <summary>
     /// Connects to the helper's gRPC server over a Unix domain socket. The optional
     /// <paramref name="token"/> is the per-session nonce used as the HMAC key for
-    /// capability-scoped authentication. If <paramref name="capabilities"/> is provided,
-    /// only those capabilities are enabled for this client.
+    /// capability-scoped authentication. Callers mint per-capability headers via
+    /// <see cref="BuildAuthMetadata"/> (allowlisted upstream, bevel-l3o) — this client
+    /// deliberately holds no capability set of its own.
     /// </summary>
-    public void Connect(string socketPath, string? token = null, IReadOnlySet<string>? capabilities = null)
+    public void Connect(string socketPath, string? token = null)
     {
         Disconnect();
         _token = token;
-        _capabilities = capabilities ?? new HashSet<string>();
 
         // Grpc.Net.Client cannot dial a "unix://" address on its own — it needs a
         // SocketsHttpHandler whose ConnectCallback opens the Unix domain socket. The

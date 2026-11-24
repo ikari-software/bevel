@@ -28,7 +28,7 @@ public class HelperLifecycleTests
         public HelperClient? Client => null;
         public bool IsAlive => _alive;
 
-        public Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
+        public Task LaunchAndConnectAsync(CancellationToken ct)
         {
             Interlocked.Increment(ref LaunchCount);
             if (FailLaunch)
@@ -101,13 +101,42 @@ public class HelperLifecycleTests
         }
     }
 
-    private static (HelperLifecycle Lifecycle, FakeHost Host, ManualClock Clock) Build(bool failLaunch = false)
+    private static (HelperLifecycle Lifecycle, FakeHost Host, ManualClock Clock) Build(
+        bool failLaunch = false, IReadOnlySet<string>? capabilities = null)
     {
         var host = new FakeHost { FailLaunch = failLaunch };
         var clock = new ManualClock();
         var lifecycle = new HelperLifecycle(
-            NullLogger<HelperLifecycle>.Instance, host, clock, pollInterval: TimeSpan.FromSeconds(1));
+            NullLogger<HelperLifecycle>.Instance, host, clock, pollInterval: TimeSpan.FromSeconds(1),
+            capabilities);
         return (lifecycle, host, clock);
+    }
+
+    // ── capability-scoped auth (bevel-l3o) ───────────────────────────────────
+
+    [Fact]
+    public void AuthFor_returns_only_the_requested_capability_header()
+    {
+        var (h, _, _) = Build(capabilities: new HashSet<string> { "supervision", "window", "tray" });
+        using var _ = h;
+
+        var md = h.AuthFor("window");
+
+        var value = md.GetValue(HelperClient.TokenHeader);
+        Assert.NotNull(value);
+        Assert.StartsWith("window:", value);
+        // The MAC is keyed by the nonce and bound to the capability: another capability's header differs.
+        Assert.NotEqual(HelperClient.BuildAuthMetadata("test-nonce", "tray").GetValue(HelperClient.TokenHeader), value);
+    }
+
+    [Fact]
+    public void AuthFor_refuses_a_capability_that_was_not_granted()
+    {
+        var (h, _, _) = Build(capabilities: new HashSet<string> { "supervision" });
+        using var _ = h;
+
+        Assert.Throws<InvalidOperationException>(() => h.AuthFor("input"));
+        Assert.Throws<InvalidOperationException>(() => h.AuthFor("window"));
     }
 
     // ── relaunch policy ─────────────────────────────────────────────────────

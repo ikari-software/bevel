@@ -10,8 +10,8 @@ import GRPCCore
 ///     x-bevel-token: <capability>:<HMAC-SHA256(key, capability)>
 ///
 /// - The HMAC key is the per-session nonce passed via `BEVEL_HELPER_TOKEN`.
-/// - Each capability (e.g. "supervision", "windows") produces a different HMAC.
-/// - A token valid for "supervision" is not valid for "windows" and vice versa.
+/// - Each capability (e.g. "supervision", "window") produces a different HMAC.
+/// - A token valid for "supervision" is not valid for "window" and vice versa.
 final class AuthInterceptor: ServerInterceptor, Sendable {
     private let expectedKey: String
 
@@ -30,7 +30,7 @@ final class AuthInterceptor: ServerInterceptor, Sendable {
 
         // Extract the expected capability from the method path.
         // e.g. "bevel.helper.v1.SupervisionService/Ping" → "supervision"
-        //      "bevel.helper.v1.WindowService/ListWindows" → "windows"
+        //      "bevel.helper.v1.WindowService/ListWindows" → "window"
         guard let expectedCapability = Self.capabilityFromMethod(methodPath) else {
             throw RPCError(
                 code: .unauthenticated,
@@ -87,7 +87,7 @@ final class AuthInterceptor: ServerInterceptor, Sendable {
 
     /// Derives the expected capability name from a gRPC method path.
     /// e.g. "bevel.helper.v1.SupervisionService/Ping" → "supervision"
-    ///      "bevel.helper.v1.WindowService/ListWindows" → "windows"
+    ///      "bevel.helper.v1.WindowService/ListWindows" → "window"
     static func capabilityFromMethod(_ fullyQualifiedMethod: String) -> String? {
         // Split on the last "/" to get the service name
         guard let slashIndex = fullyQualifiedMethod.lastIndex(of: "/") else { return nil }

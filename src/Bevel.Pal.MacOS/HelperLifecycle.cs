@@ -27,8 +27,16 @@ public class HelperLifecycle : IHostedService, IDisposable
     private Task? _monitorTask;
     private bool _disposed;
 
-    /// <summary>Nonce token generated per session for helper authentication.</summary>
-    public string NonceToken => _host.NonceToken;
+    /// <summary>bevel-l3o: the ONLY way to mint helper auth metadata — a per-capability HMAC header
+    /// (<c>x-bevel-token: &lt;capability&gt;:&lt;hmac&gt;</c>) for a capability granted at construction.
+    /// Callers never see the raw nonce, so no type outside <see cref="HelperProcessHost"/> can forge
+    /// a MAC for a capability it was not granted. Throws for any other capability.</summary>
+    public Grpc.Core.Metadata AuthFor(string capability)
+    {
+        if (!_capabilities.Contains(capability))
+            throw new InvalidOperationException($"Capability '{capability}' was not granted to this client.");
+        return HelperClient.BuildAuthMetadata(_host.NonceToken, capability);
+    }
 
     /// <summary>Unix domain socket path for the current helper instance.</summary>
     public string SocketPath => _host.SocketPath;
@@ -41,7 +49,7 @@ public class HelperLifecycle : IHostedService, IDisposable
 
     public HelperLifecycle(ILogger<HelperLifecycle> logger)
         : this(logger, new HelperProcessHost(logger), SystemClock.Instance, pollInterval: TimeSpan.FromSeconds(1),
-              capabilities: new HashSet<string> { "supervision" })
+              capabilities: new HashSet<string> { "supervision", "window", "tray" })
     {
     }
 
@@ -119,7 +127,7 @@ public class HelperLifecycle : IHostedService, IDisposable
 
                 try
                 {
-                    await _host.LaunchAndConnectAsync(ct, _capabilities);
+                    await _host.LaunchAndConnectAsync(ct);
                     _logger.LogInformation("HelperLifecycle: helper (re)established");
                     retryDelay = _pollInterval; // healthy again — reset backoff
                 }
