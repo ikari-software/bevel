@@ -305,8 +305,8 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Measure first; budget = one colourway switch ≤ 50 ms wall on the UI thread with one Filer window + taskbar realized (THM-03's 500 ms is for a full theme swap). Only if over budget: build a fresh `ResourceDictionary` off-tree and swap it as ONE entry in `Application.Resources.MergedDictionaries`, tracking the dictionary instead of `_injected`. Risk to check in that case: a merged dictionary has LOWER precedence than direct Application keys and than `Application.Styles` resources — `FontService`/`ThemeOptions` top-level writes still win (good), but confirm the variant still outranks the theme's `Styles`-level `Bevel.Brush.*` (render tests are the proof).
 - **Test first:** BenchmarkDotNet `ThemeSwitchBenchmarks.Blue2001_colourway_switch` (headless app, alternate Blue↔Silver) — records the baseline.
 - **Steps:**
-  - [ ] Add the benchmark; run it; write the number into `docs/perf.md`.
-  - [ ] If ≤ budget: `bd close bevel-yd2n --reason "measured <n> ms, under 50 ms budget; no rewrite"`.
+  - [x] Add the benchmark; run it; write the number into `docs/perf.md`.
+  - [x] If ≤ budget: `bd close bevel-yd2n --reason "measured <n> ms, under 50 ms budget; no rewrite"`.
   - [ ] If over: implement the single-dictionary swap for Blue2001 then Flat; all `RenderBlue2001*` and `Blue2001GlossRampTests` must stay byte-identical; re-run the benchmark.
 - **Verify:** `dotnet run -c Release --project benchmarks/Bevel.Benchmarks -- --filter "*ThemeSwitch*"` → mean reported; `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderBlue2001"` → pass
 - **Done when:** a measured number is in `docs/perf.md` and the switch is under budget; then close as above.
