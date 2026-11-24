@@ -78,7 +78,7 @@ public class StartMenuSearchTests
     // ── Classic (Win2000) layout ───────────────────────────────────────
 
     [AvaloniaFact]
-    public async Task Typing_filters_the_classic_programs_cascade_and_opens_it()
+    public async Task Typing_shows_the_sectioned_results_view_in_place_of_the_classic_menu()
     {
         using var h = await Harness.OpenAsync();
 
@@ -90,9 +90,16 @@ public class StartMenuSearchTests
         Assert.Equal("cal", h.Menu.SearchQuery);
         Assert.Equal(["Calculator", "Calendar"], h.Menu.SearchResults.Select(p => p.DisplayName));
 
-        var programs = h.Menu.FindControl<MenuItem>("ProgramsItem")!;
-        Assert.Same(h.Menu.SearchResults, programs.ItemsSource);
-        Assert.True(programs.IsSubMenuOpen);   // the results are on screen without a click
+        // bevel-6sk6: the results view replaces the item column; the cascade is NEVER re-pointed at results.
+        var results = h.Menu.FindControl<StartSearchResultsView>("ClassicResultsView")!;
+        var menu = h.Menu.FindControl<Menu>("ItemsMenu")!;
+        Assert.True(results.IsVisible);
+        Assert.False(menu.IsVisible);
+        Assert.Same(h.Model.Programs, h.Menu.FindControl<MenuItem>("ProgramsItem")!.ItemsSource);
+
+        // Rows: a "Programs" section header + the two ranked hits.
+        Assert.Equal("Programs", Assert.IsType<Bevel.Core.Search.SearchSectionHeader>(results.Rows[0]).Title);
+        Assert.Equal(["Calculator", "Calendar"], results.Rows.OfType<Bevel.Core.Search.SearchHit>().Select(x => x.Title));
 
         // The search strip shows the live query + match count for the classic layout only.
         Assert.True(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
@@ -102,17 +109,16 @@ public class StartMenuSearchTests
     }
 
     [AvaloniaFact]
-    public async Task A_query_with_no_hits_shows_a_disabled_no_matches_row()
+    public async Task A_query_with_no_hits_shows_a_no_matches_placeholder_row()
     {
         using var h = await Harness.OpenAsync();
 
         Type(h.Menu, "zzz");
 
         Assert.Empty(h.Menu.SearchResults);
-        var programs = h.Menu.FindControl<MenuItem>("ProgramsItem")!;
-        var row = Assert.Single(programs.Items.OfType<MenuItem>());
-        Assert.Equal("(No matches)", row.Header);
-        Assert.False(row.IsEnabled);
+        var results = h.Menu.FindControl<StartSearchResultsView>("ClassicResultsView")!;
+        var row = Assert.Single(results.Rows);
+        Assert.Equal("(No matches)", Assert.IsType<Bevel.Core.Search.SearchSectionHeader>(row).Title);
         Assert.Equal("no matches", h.Menu.FindControl<TextBlock>("ClassicSearchCount")!.Text);
     }
 
@@ -133,7 +139,9 @@ public class StartMenuSearchTests
         Press(h.Menu, Key.Back);
         Press(h.Menu, Key.Back);
         Assert.False(h.Menu.IsSearchActive);
-        Assert.Same(h.Model.Programs, programs.ItemsSource);            // back to the whole index
+        Assert.Same(h.Model.Programs, programs.ItemsSource);            // never re-pointed, still the whole index
+        Assert.True(h.Menu.FindControl<Menu>("ItemsMenu")!.IsVisible);
+        Assert.False(h.Menu.FindControl<StartSearchResultsView>("ClassicResultsView")!.IsVisible);
         Assert.False(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
         Assert.True(h.Menu.IsOpen);                                     // clearing never closes the menu
     }
@@ -169,8 +177,9 @@ public class StartMenuSearchTests
         Assert.True(h.Menu.EnterShouldLaunchTopMatch(PopupRoot(h.Menu)));
 
         // …but with focus arrowed onto the SECOND match, the row's own activation must win, or Enter would
-        // silently launch a different app than the highlighted one.
-        var secondRow = new MenuItem { DataContext = h.Menu.SearchResults[1] };
+        // silently launch a different app than the highlighted one. (Rows carry SearchHit as DataContext.)
+        var hits = h.Menu.FindControl<StartSearchResultsView>("ClassicResultsView")!.Rows.OfType<Bevel.Core.Search.SearchHit>().ToList();
+        var secondRow = new MenuItem { DataContext = hits[1] };
         Assert.False(h.Menu.EnterShouldLaunchTopMatch(secondRow));
 
         // A row that is NOT part of the result set (a leaf like Run…) is no reason to skip the top hit.
@@ -255,7 +264,12 @@ public class StartMenuSearchTests
 
             Type(h.Menu, "cal");
 
-            Assert.Same(h.Menu.SearchResults, pinned.ItemsSource);       // …the ranked results while typing
+            // bevel-6sk6: the results view replaces the pinned column; the pinned list is never re-pointed.
+            var results = h.Menu.FindControl<StartSearchResultsView>("Blue2001ResultsView")!;
+            Assert.True(results.IsVisible);
+            Assert.False(h.Menu.FindControl<ScrollViewer>("Blue2001PinnedScroll")!.IsVisible);
+            Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);
+            Assert.Equal(["Calculator", "Calendar"], results.Rows.OfType<Bevel.Core.Search.SearchHit>().Select(x => x.Title));
             Assert.Equal(["Calculator", "Calendar"], h.Menu.SearchResults.Select(p => p.DisplayName));
             Assert.True(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
             Assert.False(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
@@ -264,6 +278,8 @@ public class StartMenuSearchTests
 
             Press(h.Menu, Key.Escape);
             Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);   // …and back to curated on clear
+            Assert.False(results.IsVisible);
+            Assert.True(h.Menu.FindControl<ScrollViewer>("Blue2001PinnedScroll")!.IsVisible);
             Assert.False(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
         }
         finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
@@ -305,12 +321,14 @@ public class StartMenuSearchTests
             Text = text,
             Source = root,
         });
+        Dispatcher.UIThread.RunJobs();   // search publishes are posted to the UI thread (bevel-6sk6)
     }
 
     private static void Press(StartMenu menu, Key key)
     {
         var root = PopupRoot(menu);
         root.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, Source = root });
+        Dispatcher.UIThread.RunJobs();
     }
 
     /// <summary>An opened Start menu over a populated program index, hosted in a window so the popup has a

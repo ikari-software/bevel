@@ -104,6 +104,9 @@
                         </Border>
                     </Border>
 
+                    <!-- bevel-6sk6: while a search is active the sectioned results panel replaces the
+                         item column; the Menu itself is never re-pointed at results. -->
+                    <Grid>
                     <Menu x:Name="ItemsMenu"
                           MinWidth="180"
                           Background="{DynamicResource Bevel.Brush.Menu}"
@@ -138,6 +141,8 @@
                         <MenuItem x:Name="RestartItem" Header="_Restart Bevel" Click="OnRestartClick" />
                         <MenuItem x:Name="QuitItem" Header="_Quit Bevel" Click="OnQuitClick" />
                     </Menu>
+                    <tb:StartSearchResultsView x:Name="ClassicResultsView" IsVisible="False" />
+                    </Grid>
                     </DockPanel>
                 </Grid>
             </classic:ClassicBorderDecorator>
@@ -312,17 +317,8 @@
                         <DockPanel LastChildFill="True">
                             <Border DockPanel.Dock="Top" Height="2"
                                     Background="{DynamicResource Bevel.Brush.StartMenuFooterRule}" />
-                            <Border x:Name="FlatFooterSearch" DockPanel.Dock="Left" Margin="8,0,0,0" Height="24" Width="160"
-                                    Background="White" BorderBrush="{DynamicResource Bevel.Brush.Border}" BorderThickness="1"
-                                    CornerRadius="2" VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="6,0">
-                                    <Canvas Width="12" Height="12" VerticalAlignment="Center">
-                                        <Ellipse Canvas.Left="1" Canvas.Top="1" Width="7" Height="7" Stroke="#68799A" StrokeThickness="1.4" />
-                                        <Path Data="M7,7 L11,11" Stroke="#68799A" StrokeThickness="1.5" StrokeLineCap="Round" />
-                                    </Canvas>
-                                    <TextBlock Text="Search" FontSize="11" Foreground="#8A8598" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Border>
+                            <!-- bevel-6sk6: the dead fake search box is gone — real search lives in the
+                                 search strip + results panel at the top of the menu. -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"
                                         VerticalAlignment="Center" Margin="0,0,10,0">
                             <Button Classes="footer-round" Click="OnBlue2001LogOffClick" ToolTip.Tip="Log Off">
@@ -373,7 +369,9 @@
                                 </StackPanel>
                             </Button>
                             <Border DockPanel.Dock="Bottom" Height="1" Background="{DynamicResource Bevel.Brush.StartMenuDivider}" Margin="12,0" />
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <!-- bevel-6sk6: the results panel replaces the pinned column while searching. -->
+                            <Grid>
+                            <ScrollViewer x:Name="Blue2001PinnedScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <ItemsControl x:Name="Blue2001Pinned">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="tb:ProgramItemViewModel">
@@ -407,6 +405,8 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
+                            <tb:StartSearchResultsView x:Name="Blue2001ResultsView" IsVisible="False" />
+                            </Grid>
                             </DockPanel>
                         </Border>
 

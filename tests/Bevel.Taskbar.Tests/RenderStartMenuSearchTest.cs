@@ -54,6 +54,7 @@ public class RenderStartMenuSearchTest
                 RoutedEvent = Avalonia.Input.InputElement.TextInputEvent,
                 Text = "cal",
             });
+            Dispatcher.UIThread.RunJobs();   // search publishes are posted (bevel-6sk6)
             Assert.Equal(3, menu.SearchResults.Count);
 
             // Detach WITHOUT closing (closing would clear the query) and host the content for capture.
