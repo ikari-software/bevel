@@ -102,8 +102,14 @@ public class AppleEventBridgeTests
     private sealed class QueryAutomation : IShellAutomation
     {
         public BevelStateSnapshot Snapshot { get; set; } = new();
+        public CancellationToken LastQueryCt { get; private set; }
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
-            => Task.FromResult(Snapshot);
+        {
+            LastQueryCt = ct;
+            return ct.IsCancellationRequested
+                ? Task.FromCanceled<BevelStateSnapshot>(ct)
+                : Task.FromResult(Snapshot);
+        }
         public Task<WindowRef> OpenAsync(VfsPath containerOrFile, OpenOptions opts, CancellationToken ct) => throw new NotSupportedException();
         public Task<RevealResult> RevealAsync(IReadOnlyList<VfsPath> items, RevealOptions opts, CancellationToken ct) => throw new NotSupportedException();
         public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) => throw new NotSupportedException();
@@ -209,5 +215,40 @@ public class AppleEventBridgeTests
         var result = await AppleEventBridge.AnswerAsync(query, known, new QueryAutomation(), resolver);
 
         Assert.Equal(new AeCount(0), result);
+    }
+
+    // ce-code-review bevel-odf: the PAL's 10 s suspended-query timeout is a CancellationToken wired
+    // into AnswerAsync — these pin the bridge side of that contract (the PAL CTS itself needs a live
+    // macOS AE target to exercise end-to-end).
+
+    [Fact]
+    public async Task AnswerAsync_forwards_the_timeout_token_to_the_automation_query()
+    {
+        var (resolver, known, _) = MakeResolver();
+        var automation = new QueryAutomation();
+        var query = new AeQuery(AeQueryKind.WindowCount, null, QueryOp.Count);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => AppleEventBridge.AnswerAsync(query, known, automation, resolver, cts.Token));
+        Assert.True(automation.LastQueryCt.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task AnswerAsync_forwards_the_timeout_token_into_the_resolver_walk()
+    {
+        var (resolver, known, home) = MakeResolver();
+        var big = Path.Combine(home, "big");
+        Directory.CreateDirectory(big);
+        for (var i = 0; i < 10; i++) File.WriteAllText(Path.Combine(big, $"f{i}.txt"), "x");
+        var query = new AeQuery(AeQueryKind.ResolvePaths,
+            new AeEvery("item", new AeByName("folder", "big", new AeProperty("home")), null), QueryOp.Count);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // A cancelled token must abort the directory walk, not just the await.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => AppleEventBridge.AnswerAsync(query, known, new QueryAutomation(), resolver, cts.Token));
     }
 }

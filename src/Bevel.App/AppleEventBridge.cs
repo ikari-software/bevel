@@ -38,7 +38,7 @@ public static class AppleEventBridge
         // bevel-odf: path/window/selection queries arrive on a SUSPENDED event and are answered
         // asynchronously (off the UI thread) — windows/selection via the automation query, which
         // reaches live Filers in their own process through SpawningShellSurface.
-        AppleEventInbound.AsyncQueryHandler = query => AnswerAsync(query, known, automation, resolver);
+        AppleEventInbound.AsyncQueryHandler = (query, ct) => AnswerAsync(query, known, automation, resolver, ct);
         AppleEventInbound.Install();
     }
 

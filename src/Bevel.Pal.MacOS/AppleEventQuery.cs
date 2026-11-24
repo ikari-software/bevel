@@ -37,25 +37,39 @@ public static partial class AppleEventInbound
 
     /// <summary>bevel-odf: wired by the app to answer the queries that may block (path resolution,
     /// window count, selection) on a SUSPENDED event. Runs on a thread-pool thread; the reply is
-    /// posted back to the main thread and the event resumed there.</summary>
-    public static Func<AeQuery, Task<AeResult?>>? AsyncQueryHandler;
+    /// posted back to the main thread and the event resumed there. The <see cref="CancellationToken"/>
+    /// carries the query timeout — honoring it actually abandons the work (ce-code-review bevel-odf).</summary>
+    public static Func<AeQuery, CancellationToken, Task<AeResult?>>? AsyncQueryHandler;
+
+    /// <summary>How long a suspended-event query may run before it is cancelled and answered -1712.</summary>
+    static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(10);
 
     [DllImport(Frameworks.LibDispatch)] static extern IntPtr dispatch_get_main_queue();
-    [DllImport(Frameworks.LibDispatch)] static extern void dispatch_async(IntPtr queue, IntPtr block);
-    private delegate void DispatchBlockNative();
+    // dispatch_async takes a BLOCK, not a raw function pointer — passing
+    // Marshal.GetFunctionPointerForDelegate(...) there is UB (ce-code-review bevel-odf). Use the
+    // function+context form dispatch_async_f instead.
+    [DllImport(Frameworks.LibDispatch)] static extern void dispatch_async_f(IntPtr queue, IntPtr context, IntPtr work);
+    private delegate void DispatchWorkNative(IntPtr context);
+
+    // Rooted for the process lifetime so the function pointer below stays valid.
+    static readonly DispatchWorkNative MainWork = RunMainWork;
+    static readonly IntPtr MainWorkPtr = Marshal.GetFunctionPointerForDelegate(MainWork);
+
+    static void RunMainWork(IntPtr context)
+    {
+        var handle = GCHandle.FromIntPtr(context);
+        try { if (handle.Target is Action action) action(); }
+        finally { handle.Free(); }
+    }
 
     /// <summary>Runs <paramref name="action"/> on the main thread (the AE dispatch thread), where
-    /// reply/resume must happen. The block delegate is pinned until it runs.</summary>
+    /// reply/resume must happen. The action is pinned BEFORE the dispatch and handed over as the
+    /// context argument, so the work fn can never run against an unallocated handle (leak per query,
+    /// ce-code-review bevel-odf).</summary>
     static void PostToMain(Action action)
     {
-        GCHandle handle = default;
-        DispatchBlockNative block = () =>
-        {
-            try { action(); }
-            finally { if (handle.IsAllocated) handle.Free(); }
-        };
-        handle = GCHandle.Alloc(block);
-        dispatch_async(dispatch_get_main_queue(), Marshal.GetFunctionPointerForDelegate(block));
+        var handle = GCHandle.Alloc(action);
+        dispatch_async_f(dispatch_get_main_queue(), GCHandle.ToIntPtr(handle), MainWorkPtr);
     }
 
     /// <summary>bevel-odf: which queries may be answered inline on the UI thread. The five property
@@ -96,9 +110,14 @@ public static partial class AppleEventInbound
         _ = Task.Run(async () =>
         {
             AeResult? result = null;
+            // The 10 s bound is a real CANCELLATION, not an abandoned wait: the token reaches
+            // AsyncQueryHandler → AnswerAsync → the resolver walk, so an unbounded AE enumeration is
+            // actually stopped instead of running to completion in the background (ce-code-review
+            // bevel-odf).
+            using var cts = new CancellationTokenSource(QueryTimeout);
             try
             {
-                result = await handler(query).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                result = await handler(query, cts.Token).ConfigureAwait(false);
             }
             catch (Exception ex) { Trace($"QUERY async failed: {ex.Message}"); }
             PostToMain(() =>
