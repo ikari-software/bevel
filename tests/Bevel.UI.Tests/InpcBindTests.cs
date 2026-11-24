@@ -79,4 +79,42 @@ public sealed class InpcBindTests
         Assert.Equal(9, host.Tag);                 // matching name still applies
         w.Close();
     }
+
+    [AvaloniaFact]
+    public void Reattach_on_same_host_leaves_exactly_one_subscription()
+    {
+        // Recycled containers stay attached in the virtualizing panel, so PrepareContainerForItemOverride
+        // re-attaches on an already-attached host — that must not stack a second handler (leak regression).
+        var vm = new Vm { Count = 1 };
+        var host = new Border();
+        var w = new Window { Content = host, Width = 100, Height = 100 };
+        w.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        int applied = 0;
+        InpcBind.Attach(host, vm, nameof(Vm.Count), () => applied++);
+        InpcBind.Attach(host, vm, nameof(Vm.Count), () => applied++);   // re-attach on the attached host
+        Assert.Equal(1, vm.HandlerCount);                              // exactly one subscription
+
+        vm.Count = 7;
+        Assert.Equal(3, applied);                                      // 2 applies on attach + 1 per change, not 2 per change
+        w.Close();
+    }
+
+    [AvaloniaFact]
+    public void Returned_handle_unsubscribes_while_still_attached()
+    {
+        var vm = new Vm();
+        var host = new Border();
+        var w = new Window { Content = host, Width = 100, Height = 100 };
+        var handle = InpcBind.Attach(host, vm, nameof(Vm.Count), () => { });
+        w.Show();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, vm.HandlerCount);
+
+        handle.Dispose();                          // explicit teardown while the host is still in the tree
+        Assert.Equal(0, vm.HandlerCount);
+        vm.Count = 3;                              // no handler left to run
+        w.Close();
+    }
 }
