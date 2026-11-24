@@ -268,11 +268,11 @@ MET-02 large-fonts (×1.25) applies to `MenuItemHeight`/`CaptionHeight` as elsew
 **Use the two-column layout** (the modern XP-style panel already in
 `StartMenu.axaml` — header + pinned/places columns + footer). Its airy, welcoming shape
 suits watercolor far better than the austere Win2000 single column with the rotated navy
-banner. But do **not** reuse the Luna one as-is: that tree hardcodes `Blue2001.Brush.StartMenu*`
+banner. But do **not** reuse the Luna one as-is: that tree hardcodes `Bevel.Brush.StartMenu*`
 keys, which are XP-blue-coded.
 
 Recommended (on-architecture, least duplication): **promote the start-menu palette to a
-theme-neutral contract** — rename the `Blue2001.Brush.StartMenu*` keys used by the two-column
+theme-neutral contract** — rename the `Bevel.Brush.StartMenu*` keys used by the two-column
 tree to `Bevel.Brush.StartMenu*` (per ENG-01/ENG-03), have both Luna and Flat provide
 values, and let the `StartMenu` code-behind show the two-column layout whenever
 `ThemeService.Current` is `luna` **or** `flat`. Flat's values:

@@ -72,7 +72,7 @@ public sealed class ToolbarThemeTests
         Dispatcher.UIThread.RunJobs();
 
         var resources = Application.Current!.Resources;
-        const string key = "Blue2001.Brush.InfoPaneHeader";
+        const string key = "Bevel.Brush.InfoPaneHeader";
         bool had = resources.TryGetValue(key, out var old);
         var red = new SolidColorBrush(Colors.Red);
         resources[key] = red;

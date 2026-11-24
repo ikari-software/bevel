@@ -169,6 +169,36 @@ public class ThemeVariantRegistryTests
             + string.Join("\n  ", offenders.Distinct()));
     }
 
+    /// <summary>bevel-lqot: a resource key referenced from OUTSIDE its own theme project is contract
+    /// and must be named Bevel.* — shared surfaces (Taskbar, FileManager, Desktop) may not reference
+    /// theme-scoped (Blue2001|Flat|Pastel).* keys. Scans axaml AND C# (DynamicResource lookups happen in
+    /// code too, e.g. StartMenu.axaml.cs).</summary>
+    [Fact]
+    public void No_shared_surface_references_a_theme_scoped_key()
+    {
+        var sharedDirs = new[] { "Bevel.Taskbar", "Bevel.FileManager", "Bevel.Desktop" };
+        var src = Path.Combine(RepoRoot(), "src");
+        var offenders = new List<string>();
+        foreach (var dir in sharedDirs)
+        {
+            var root = Path.Combine(src, dir);
+            if (!Directory.Exists(root)) continue;
+            foreach (var file in Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
+                         .Where(p => (p.EndsWith(".axaml") || p.EndsWith(".cs"))
+                                     && !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                                     && !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")))
+            {
+                var text = file.EndsWith(".axaml") ? StripComments(file) : File.ReadAllText(file);
+                foreach (Match m in Regex.Matches(text, @"(?:Blue2001|Flat|Pastel)\.(?:Brush|Metric|Color)\.[A-Za-z0-9_.]+"))
+                    offenders.Add($"{dir}/{Path.GetFileName(file)}: {m.Value}");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Shared surfaces still reference theme-scoped keys (rename them to Bevel.*):\n  "
+            + string.Join("\n  ", offenders.Distinct().OrderBy(x => x)));
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────────────────
 
     /// <summary>Reads an AXAML file with its XML comments removed.

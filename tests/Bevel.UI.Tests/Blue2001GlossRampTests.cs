@@ -38,8 +38,8 @@ public class Blue2001GlossRampTests
         {
             Blue2001VariantService.Apply("Blue", gloss);
 
-            var resting = Ends("Blue2001.Brush.TaskButton");
-            var active = Ends("Blue2001.Brush.TaskButtonChecked");
+            var resting = Ends("Bevel.Brush.TaskButton");
+            var active = Ends("Bevel.Brush.TaskButtonChecked");
 
             Assert.True(resting.First > resting.Last,
                 $"{gloss}: resting button should be lit from above (top {resting.First:F3} > bottom {resting.Last:F3})");
@@ -61,7 +61,7 @@ public class Blue2001GlossRampTests
         try
         {
             Blue2001VariantService.Apply(color, "Matte");
-            var active = Ends("Blue2001.Brush.TaskButtonChecked");
+            var active = Ends("Bevel.Brush.TaskButtonChecked");
             Assert.True(active.First < active.Last,
                 $"Matte/{color}: active button inverted — top {active.First:F3}, bottom {active.Last:F3}");
         }

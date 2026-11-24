@@ -88,32 +88,32 @@ public static class Blue2001VariantService
             (0.0,"4E95F2"),(0.02,"3A84EA"),(0.10,"2358C6"),(0.5,"2054BE"),(0.90,"2358C6"),(0.98,"3A84EA"),(1.0,"4E95F2")}),
         new("Bevel.Brush.TrayWell", true, GlossRole.Chrome, new[]{
             (0.0,"1E9AE8"),(0.5,"1585DF"),(1.0,"1F97E6")}),
-        new("Blue2001.Brush.StartMenuHeader", true, GlossRole.Chrome, new[]{
+        new("Bevel.Brush.StartMenuHeader", true, GlossRole.Chrome, new[]{
             (0.0,"4F97EE"),(0.5,"2F7EE6"),(1.0,"1E63D6")}),
-        new("Blue2001.Brush.StartMenuFooter", true, GlossRole.Chrome, new[]{
+        new("Bevel.Brush.StartMenuFooter", true, GlossRole.Chrome, new[]{
             (0.0,"3F8CE8"),(0.5,"245EDC"),(1.0,"1A4FBE")}),
         // Right "places" column stays a LIGHT panel across every variant (XP keeps it light regardless of
         // the blue/silver/black/purple chrome) so the dark place-text always reads. It must NOT be re-hued:
         // the colour axis darkens (Purple/Black use LightMul<1), which turned it into a dark purple panel
         // with unreadable dark text. chromatic:false pins it to these pale stops.
-        new("Blue2001.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
+        new("Bevel.Brush.StartMenuPlacesColumn", false, GlossRole.Inert, new[]{ (0.0,"E7F0FC"),(1.0,"D6E4F7") }, Horizontal: true),
 
         // Filer info-pane (XP task pane), derived through per-role transforms (see TransformInfoPane).
         // Blue is the semantic source; each variant independently tunes surfaces, borders, text, links and
         // arrows so the hierarchy survives Silver/Black/Purple instead of inheriting the harsher chrome math.
-        new("Blue2001.Brush.InfoPaneWatermark", true, GlossRole.Inert, new[]{ (0.0,"6787D9"),(0.5,"5075CE"),(1.0,"4A6FC9") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneHeader",    true, GlossRole.Inert, new[]{ (0.0,"EBF2FD"),(1.0,"C7D9F4") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneBorder",    true, GlossRole.Inert, new[]{ (0.0,"D6E3F5") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneHeadingText", true, GlossRole.Inert, new[]{ (0.0,"24437A") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneBodyText",    true, GlossRole.Inert, new[]{ (0.0,"3F5278") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneLinkText",    true, GlossRole.Inert, new[]{ (0.0,"1B3E86") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneArrow",       true, GlossRole.Inert, new[]{ (0.0,"315F9D") }, LightLocked: true),
-        new("Blue2001.Brush.InfoPaneMutedText",   true, GlossRole.Inert, new[]{ (0.0,"68799A") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneWatermark", true, GlossRole.Inert, new[]{ (0.0,"6787D9"),(0.5,"5075CE"),(1.0,"4A6FC9") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneHeader",    true, GlossRole.Inert, new[]{ (0.0,"EBF2FD"),(1.0,"C7D9F4") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneBorder",    true, GlossRole.Inert, new[]{ (0.0,"D6E3F5") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneHeadingText", true, GlossRole.Inert, new[]{ (0.0,"24437A") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneBodyText",    true, GlossRole.Inert, new[]{ (0.0,"3F5278") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneLinkText",    true, GlossRole.Inert, new[]{ (0.0,"1B3E86") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneArrow",       true, GlossRole.Inert, new[]{ (0.0,"315F9D") }, LightLocked: true),
+        new("Bevel.Brush.InfoPaneMutedText",   true, GlossRole.Inert, new[]{ (0.0,"68799A") }, LightLocked: true),
 
         // Glossy chrome controls (bead in Gloss/Hybrid, flattened under Matte)
-        new("Blue2001.Brush.TaskButton", true, GlossRole.Control, new[]{
+        new("Bevel.Brush.TaskButton", true, GlossRole.Control, new[]{
             (0.0,"5A97F0"),(0.5,"2F6FE0"),(0.5,"215FD8"),(1.0,"4483EC")}),
-        new("Blue2001.Brush.TaskButtonHover", true, GlossRole.Control, new[]{
+        new("Bevel.Brush.TaskButtonHover", true, GlossRole.Control, new[]{
             (0.0,"79ABF2"),(0.5,"4384E4"),(1.0,"5695EC")}),
         // Active window's task button: XP-authentic PRESSED-IN (bevel-zk4a) — the darker inset
         // gradient, darker than both the resting and the hover button, matching the Win2000 sunken
@@ -121,9 +121,9 @@ public static class Blue2001VariantService
         // that read as "hovered", indistinguishable from the pointer state — the user-facing symptom
         // that reopened the bead. Dark variants keep readability via the checked BORDER + the Band
         // contrast machinery; the bar stays visibly lighter than the pressed-in button.)
-        new("Blue2001.Brush.TaskButtonChecked", true, GlossRole.Control, new[]{
+        new("Bevel.Brush.TaskButtonChecked", true, GlossRole.Control, new[]{
             (0.0,"1B4EA8"),(0.5,"2559BC"),(0.5,"2559BC"),(1.0,"2E63C8")}),
-        new("Blue2001.Brush.CaptionButton", true, GlossRole.Control, new[]{
+        new("Bevel.Brush.CaptionButton", true, GlossRole.Control, new[]{
             (0.0,"5AA6FF"),(0.5,"1E70EF"),(0.5,"0D57E6"),(1.0,"3F8BF3")}),
 
         // Beige control face (neutral colour, but glossy in Gloss/Hybrid, concave under Matte)
@@ -142,16 +142,16 @@ public static class Blue2001VariantService
 
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
-        Surface.Solid("Blue2001.Brush.TaskButtonBorder", true, "1C4D9C"),
-        Surface.Solid("Blue2001.Brush.TaskButtonCheckedBorder", true, "0B2456"),
-        Surface.Solid("Blue2001.Brush.CaptionButtonBorder", true, "0A3EA8"),
+        Surface.Solid("Bevel.Brush.TaskButtonBorder", true, "1C4D9C"),
+        Surface.Solid("Bevel.Brush.TaskButtonCheckedBorder", true, "0B2456"),
+        Surface.Solid("Bevel.Brush.CaptionButtonBorder", true, "0A3EA8"),
         Surface.Solid("Blue2001.Brush.ButtonBorder", true, "7B9EBD", maxLight: 0.62),
         Surface.Solid("Blue2001.Brush.ButtonBorderDefault", true, "2C628B"),
         Surface.Solid("Blue2001.Brush.Arrow", true, "1B3A6B"),
-        Surface.Solid("Blue2001.Brush.StartMenuBorder", true, "1857C9"),
-        Surface.Solid("Blue2001.Brush.StartMenuFooterHover", true, "4E93EC"),
-        Surface.Solid("Blue2001.Brush.StartMenuDivider", true, "C9D2E4"),
-        Surface.Solid("Blue2001.Brush.StartMenuPlacesDivider", true, "AEBFDB"),
+        Surface.Solid("Bevel.Brush.StartMenuBorder", true, "1857C9"),
+        Surface.Solid("Bevel.Brush.StartMenuFooterHover", true, "4E93EC"),
+        Surface.Solid("Bevel.Brush.StartMenuDivider", true, "C9D2E4"),
+        Surface.Solid("Bevel.Brush.StartMenuPlacesDivider", true, "AEBFDB"),
         // StartMenuComputerIcon / StartMenuHelpIcon deliberately NOT re-hued: their inner glyphs (monitor
         // screen, "?", Search/Run) are hardcoded blue and don't follow the variant, so a re-hued tile would
         // fight them (and wash the white glyph out under Silver). Shell icons are theme-independent in XP —
@@ -252,8 +252,8 @@ public static class Blue2001VariantService
         res["Blue2001.Brush.Gloss"] = VSheen((sheenTop, 0.0), (sheenMid, 0.5), ((byte)0x00, 1.0));
         _injected.Add("Blue2001.Brush.Gloss");
         var capTop = g switch { Blue2001Gloss.Matte => (byte)0x28, Blue2001Gloss.Gloss => (byte)0xCE, _ => (byte)0xA0 };
-        res["Blue2001.Brush.CaptionButtonGloss"] = VSheen((capTop, 0.0), ((byte)0x10, 1.0));
-        _injected.Add("Blue2001.Brush.CaptionButtonGloss");
+        res["Bevel.Brush.CaptionButtonGloss"] = VSheen((capTop, 0.0), ((byte)0x10, 1.0));
+        _injected.Add("Bevel.Brush.CaptionButtonGloss");
 
         _appliedColor = color;
         _appliedGloss = gloss;
@@ -367,13 +367,13 @@ public static class Blue2001VariantService
 
         var tone = resourceKey switch
         {
-            "Blue2001.Brush.InfoPaneWatermark" => InfoPaneTone.Watermark,
-            "Blue2001.Brush.InfoPaneHeader" => InfoPaneTone.Header,
-            "Blue2001.Brush.InfoPaneBorder" => InfoPaneTone.Border,
-            "Blue2001.Brush.InfoPaneHeadingText" => InfoPaneTone.Heading,
-            "Blue2001.Brush.InfoPaneBodyText" => InfoPaneTone.Body,
-            "Blue2001.Brush.InfoPaneLinkText" => InfoPaneTone.Link,
-            "Blue2001.Brush.InfoPaneArrow" => InfoPaneTone.Arrow,
+            "Bevel.Brush.InfoPaneWatermark" => InfoPaneTone.Watermark,
+            "Bevel.Brush.InfoPaneHeader" => InfoPaneTone.Header,
+            "Bevel.Brush.InfoPaneBorder" => InfoPaneTone.Border,
+            "Bevel.Brush.InfoPaneHeadingText" => InfoPaneTone.Heading,
+            "Bevel.Brush.InfoPaneBodyText" => InfoPaneTone.Body,
+            "Bevel.Brush.InfoPaneLinkText" => InfoPaneTone.Link,
+            "Bevel.Brush.InfoPaneArrow" => InfoPaneTone.Arrow,
             _ => InfoPaneTone.Muted,
         };
         // Hue is a separate axis: today it comes from the selected variant; a free accent picker can feed

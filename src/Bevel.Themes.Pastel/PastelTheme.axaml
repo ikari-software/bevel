@@ -53,9 +53,9 @@
       <SolidColorBrush x:Key="Bevel.Brush.TrayText" Color="#3A3550" />
       <SolidColorBrush x:Key="Bevel.Brush.ActiveTitleText" Color="#3A3550" />
       <SolidColorBrush x:Key="Bevel.Brush.InactiveTitleText" Color="#716C80" />
-      <SolidColorBrush x:Key="Flat.Brush.ColumnHeader" Color="#EDE7F2" />
-      <SolidColorBrush x:Key="Flat.Brush.ColumnHeaderLight" Color="#FBF7F1" />
-      <SolidColorBrush x:Key="Flat.Brush.ColumnSeparator" Color="#C9BFD6" />
+      <SolidColorBrush x:Key="Bevel.Brush.ColumnHeader" Color="#EDE7F2" />
+      <SolidColorBrush x:Key="Bevel.Brush.ColumnHeaderLight" Color="#FBF7F1" />
+      <SolidColorBrush x:Key="Bevel.Brush.ColumnSeparator" Color="#C9BFD6" />
 
       <LinearGradientBrush x:Key="Pastel.Brush.CaptionActive" StartPoint="0%,0%" EndPoint="0%,100%">
         <GradientStop Offset="0" Color="#D6EEF7"/><GradientStop Offset=".30" Color="#B4DEEE"/>
@@ -134,13 +134,13 @@
       <Thickness x:Key="Bevel.Metric.TrayWellBorder">0</Thickness>
       <Thickness x:Key="Bevel.Metric.StartButtonMargin">0</Thickness>
       <x:Double x:Key="Bevel.Metric.StartBadgeSize">20</x:Double>
-      <x:Double x:Key="Flat.Metric.StartMenuWidth">360</x:Double>
-      <x:Double x:Key="Flat.Metric.StartMenuHeight">460</x:Double>
-      <x:Double x:Key="Flat.Metric.StartMenuHeaderHeight">56</x:Double>
-      <x:Double x:Key="Flat.Metric.StartMenuFooterHeight">44</x:Double>
-      <CornerRadius x:Key="Flat.Metric.StartMenuCornerRadius">8,8,5,5</CornerRadius>
-      <CornerRadius x:Key="Flat.Metric.StartMenuRowCornerRadius">3</CornerRadius>
-      <CornerRadius x:Key="Flat.Metric.StartMenuIconCornerRadius">4</CornerRadius>
+      <x:Double x:Key="Bevel.Metric.StartMenuWidth">360</x:Double>
+      <x:Double x:Key="Bevel.Metric.StartMenuHeight">460</x:Double>
+      <x:Double x:Key="Bevel.Metric.StartMenuHeaderHeight">56</x:Double>
+      <x:Double x:Key="Bevel.Metric.StartMenuFooterHeight">44</x:Double>
+      <CornerRadius x:Key="Bevel.Metric.StartMenuCornerRadius">8,8,5,5</CornerRadius>
+      <CornerRadius x:Key="Bevel.Metric.StartMenuRowCornerRadius">3</CornerRadius>
+      <CornerRadius x:Key="Bevel.Metric.StartMenuIconCornerRadius">4</CornerRadius>
 
       <SolidColorBrush x:Key="Pastel.Brush.StartMenuBorder" Color="#B9C7D6" />
       <SolidColorBrush x:Key="Pastel.Brush.StartMenuPinned" Color="#FBF7F1" />
@@ -181,11 +181,11 @@
       <SolidColorBrush x:Key="Blue2001.Brush.ButtonBorderDefault" Color="#8FBFD8" />
       <SolidColorBrush x:Key="Blue2001.Brush.ButtonBorderHover" Color="#E8C98F" />
       <LinearGradientBrush x:Key="Blue2001.Brush.Field" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#F4EFF8"/><GradientStop Offset=".15" Color="#FCFAF6"/><GradientStop Offset="1" Color="#FFFFFF"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#F6F2FA"/><GradientStop Offset="1" Color="#EAE3F2"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FFFDF3"/><GradientStop Offset="1" Color="#F6E7C8"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BCE3F2"/><GradientStop Offset="1" Color="#A0D2E8"/></LinearGradientBrush>
-      <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonBorder" Color="#C7BBD8" />
-      <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonCheckedBorder" Color="#8FBFD8" />
+      <LinearGradientBrush x:Key="Bevel.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#F6F2FA"/><GradientStop Offset="1" Color="#EAE3F2"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FFFDF3"/><GradientStop Offset="1" Color="#F6E7C8"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BCE3F2"/><GradientStop Offset="1" Color="#A0D2E8"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Bevel.Brush.TaskButtonBorder" Color="#C7BBD8" />
+      <SolidColorBrush x:Key="Bevel.Brush.TaskButtonCheckedBorder" Color="#8FBFD8" />
       <LinearGradientBrush x:Key="Blue2001.Brush.Start" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#C7E7C4"/><GradientStop Offset=".5" Color="#A6D6A8"/><GradientStop Offset="1" Color="#8FC79A"/></LinearGradientBrush>
       <LinearGradientBrush x:Key="Blue2001.Brush.StartHover" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#D6EFCF"/><GradientStop Offset="1" Color="#B6E0B2"/></LinearGradientBrush>
       <SolidColorBrush x:Key="Blue2001.Brush.StartPressed" Color="#A6D6A8" />
@@ -200,29 +200,29 @@
       <SolidColorBrush x:Key="Blue2001.Brush.MenuGutter" Color="#EDE7F2" />
       <SolidColorBrush x:Key="Blue2001.Brush.MenuSeparator" Color="#E0D8EA" />
       <SolidColorBrush x:Key="Blue2001.Brush.TabPanel" Color="#FBF7F1" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuBorder" Color="#B9C7D6" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinnedColumn" Color="#FBF7F1" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinTitle" Color="#3A3550" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinSub" Color="#8A8598" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceText" Color="#3A3550" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuDivider" Color="#E0D8EA" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlacesDivider" Color="#D0C6DA" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterHover" Color="#F4C9CE" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterRule" Color="#A6D6A8" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRule" Color="#F4C9CE" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRuleLight" Color="#FBE4E7" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconFolder" Color="#FBEFC4" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuComputerIcon" Color="#BFE0F0" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconGeneric" Color="#EDE7F2" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinIconFallback" Color="#E7DFF0" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconBorder" Color="#C9BFD6" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHelpIcon" Color="#86C3DA" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuLogOffIcon" Color="#BFE3C4" />
-      <SolidColorBrush x:Key="Blue2001.Brush.StartMenuTurnOffIcon" Color="#F4C9CE" />
-      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BFE0F0"/><GradientStop Offset="1" Color="#86C3DA"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BFE3C4"/><GradientStop Offset="1" Color="#8FC79A"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%"><GradientStop Offset="0" Color="#FBEFC4"/><GradientStop Offset="1" Color="#F4C9CE"/></LinearGradientBrush>
-      <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%"><GradientStop Offset="0" Color="#EDE7F2"/><GradientStop Offset="1" Color="#E3DAF0"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuBorder" Color="#B9C7D6" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinnedColumn" Color="#FBF7F1" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinTitle" Color="#3A3550" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinSub" Color="#8A8598" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceText" Color="#3A3550" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuDivider" Color="#E0D8EA" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlacesDivider" Color="#D0C6DA" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterHover" Color="#F4C9CE" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterRule" Color="#A6D6A8" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuHeaderRule" Color="#F4C9CE" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuHeaderRuleLight" Color="#FBE4E7" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconFolder" Color="#FBEFC4" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuComputerIcon" Color="#BFE0F0" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconGeneric" Color="#EDE7F2" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinIconFallback" Color="#E7DFF0" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconBorder" Color="#C9BFD6" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuHelpIcon" Color="#86C3DA" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuLogOffIcon" Color="#BFE3C4" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuTurnOffIcon" Color="#F4C9CE" />
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BFE0F0"/><GradientStop Offset="1" Color="#86C3DA"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#BFE3C4"/><GradientStop Offset="1" Color="#8FC79A"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%"><GradientStop Offset="0" Color="#FBEFC4"/><GradientStop Offset="1" Color="#F4C9CE"/></LinearGradientBrush>
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%"><GradientStop Offset="0" Color="#EDE7F2"/><GradientStop Offset="1" Color="#E3DAF0"/></LinearGradientBrush>
 
       <x:Double x:Key="Bevel.Metric.CaptionHeight">26</x:Double>
       <x:Double x:Key="Bevel.Metric.CaptionButtonWidth">20</x:Double>
