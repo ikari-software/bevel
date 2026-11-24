@@ -12,6 +12,16 @@ internal static class Program
 {
     public static void Main(string[] args)
     {
+        // Theme-apply measurement is NOT a BDN benchmark: constructing brushes VerifyAccess()es the
+        // UI thread and BDN's engine thread isn't it. This mode brings the headless app up on this
+        // (main = UI) thread and times the colourway switch directly — see ThemeSwitchBenchmarks.
+        if (args.Length > 0 && args[0] == "--measure-theme-switch")
+        {
+            AvaloniaHarness.Ensure();
+            ThemeSwitchBenchmarks.Run();
+            return;
+        }
+
         // Bring up the headless Skia platform ONCE for this process. Several hot paths decode or
         // rasterize an Avalonia Bitmap (TrayIconTint, the vector glyphs), and BenchConfig pins an
         // in-process toolchain so every benchmark runs in this same, already-initialized process
