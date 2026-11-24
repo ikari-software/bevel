@@ -29,6 +29,8 @@ public sealed class WindowsPermissionBroker : IPermissionBroker
     public Task<PermissionState> RequestAsync(ShellPermission permission, CancellationToken ct = default)
         => Task.FromResult(PermissionState.NotApplicable);
 
+    // bevel-sdss: never raised — Windows reports NotApplicable for every permission, so there is
+    // no state to change. Left declared to satisfy the interface.
     public event EventHandler<ShellPermission>? PermissionChanged;
 }
 

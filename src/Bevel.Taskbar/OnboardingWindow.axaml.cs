@@ -27,7 +27,6 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     private readonly IShellSession? _shellSession;
     private readonly IDockController? _dock;
     private readonly ISystemTrayHost? _tray;
-    private DispatcherTimer? _permPollTimer;
 
     // Guards the run-at-login checkbox against feedback: when we set IsChecked programmatically
     // (initial load, OS-status reconcile) we must NOT let OnRunAtLoginChanged re-register the OS.
@@ -268,15 +267,16 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     {
         if (_permissionBroker is null) return;
 
-        _permPollTimer = new DispatcherTimer(
-            TimeSpan.FromSeconds(2),
-            DispatcherPriority.Background,
-            async (_, _) => await PollPermissionAsync());
-        _permPollTimer.Start();
+        // bevel-sdss: the broker owns the poll (subscriber-gated inside the broker) and raises
+        // PermissionChanged when a state flips — subscribe instead of running a private timer.
+        _permissionBroker.PermissionChanged += OnPermissionChanged;
 
         // Immediate first poll.
         _ = PollPermissionAsync();
     }
+
+    private void OnPermissionChanged(object? sender, ShellPermission permission)
+        => Dispatcher.UIThread.Post(() => _ = PollPermissionAsync());
 
     private async Task PollPermissionAsync()
     {
@@ -842,7 +842,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        _permPollTimer?.Stop();
-        _permPollTimer = null;
+        if (_permissionBroker is not null)
+            _permissionBroker.PermissionChanged -= OnPermissionChanged;
     }
 }

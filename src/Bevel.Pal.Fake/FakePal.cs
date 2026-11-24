@@ -254,8 +254,18 @@ public sealed class FakePermissionBroker : IPermissionBroker
 {
     // The fake environment grants everything so zero-permission code paths and
     // granted code paths both exercise cleanly.
+    private readonly Dictionary<ShellPermission, PermissionState> _states = new();
+
     public ValueTask<PermissionState> GetStateAsync(ShellPermission permission, CancellationToken ct = default)
-        => ValueTask.FromResult(PermissionState.Granted);
+        => ValueTask.FromResult(_states.TryGetValue(permission, out var state) ? state : PermissionState.Granted);
+
+    /// <summary>bevel-sdss: flips a permission state and raises <see cref="PermissionChanged"/>,
+    /// so consumers of the live-update contract are testable through the fake.</summary>
+    public void SetState(ShellPermission permission, PermissionState state)
+    {
+        _states[permission] = state;
+        PermissionChanged?.Invoke(this, permission);
+    }
 
     public Task<PermissionState> RequestAsync(ShellPermission permission, CancellationToken ct = default)
         => Task.FromResult(PermissionState.Granted);
