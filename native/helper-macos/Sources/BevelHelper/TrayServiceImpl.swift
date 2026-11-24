@@ -85,6 +85,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     // rather than showing black/wrong frames. Guarded because enumerateWithCapture runs concurrently.
     private let selfTestLock = NSLock()
     private var selfTestDone = false
+    // bevel-yg7h: a detached self-test task owns the run while set, so every poll's kick-off is a
+    // no-op except the one that actually starts it (guarded by selfTestLock).
+    private var selfTestRunning = false
     private var liveMirroringEnabled = true
     // The grant state the self-test last observed (bevel-qcd9). On a normal cold start Screen Recording
     // is usually absent, so the ONE self-test run takes runSelfTest's granted=false branch — it proves
@@ -716,11 +719,17 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// enumerations, so a ticking clock or a live graph keeps up without re-walking Accessibility.
     /// `axOnly` (the fast tick) skips window-backed items: they refresh with the full enumeration.
     func captureGlyphs(into items: inout [Bevel_Helper_V1_TrayItem], axOnly: Bool = false) async {
-        await ensureSelfTested()
-        // Limited mode (§5.5) when Screen Recording isn't granted OR the self-test disabled live
-        // mirroring on this OS build (§5.10) — never show black/wrong frames.
+        // bevel-yg7h: NEVER block an enumeration on the self-test. Kick it off once, detached at
+        // utility priority; the first poll returns limited-mode (app icon) items immediately and
+        // the next tick upgrades them to live capture through the existing Updated path.
+        Task.detached(priority: .utility) { [weak self] in await self?.ensureSelfTested() }
+        // Limited mode (§5.5) until the self-test has completed AND enabled live mirroring AND
+        // Screen Recording is granted (§5.10) — never show black/wrong frames.
         let granted = CGPreflightScreenCaptureAccess()
-        guard isLiveMirroringEnabled, granted else {
+        let capture = selfTestLock.withLock {
+            Self.shouldCaptureLive(selfTestDone: selfTestDone, liveEnabled: liveMirroringEnabled, granted: granted)
+        }
+        guard capture else {
             // Say so in the log, once per state (bevel-yduf): from the taskbar, limited mode is
             // indistinguishable from a broken capture — both show app icons (or nothing, for items
             // whose owner has no bundle). The grant is keyed to THIS binary's path + cdhash, so a
@@ -870,9 +879,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let run = Self.selfTestShouldRun(
                 granted: granted, selfTestDone: selfTestDone, grantPreviouslySeen: grantSeenBySelfTest)
             grantSeenBySelfTest = granted
+            // bevel-yg7h: once-only — while a detached task owns the run, later callers exit here.
+            if run && selfTestRunning { return false }
+            if run { selfTestRunning = true }
             return run
         }
         guard shouldRun else { return }
+        defer { selfTestLock.withLock { selfTestRunning = false } }
         let now = DispatchTime.now().uptimeNanoseconds
         if selfTestLock.withLock({ !selfTestDone && now < selfTestRetryAfter }) { return }
         guard let ok = await runSelfTest() else {
@@ -882,6 +895,13 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return
         }
         selfTestLock.withLock { liveMirroringEnabled = ok; selfTestDone = true }
+    }
+
+    /// bevel-yg7h: pure gate for `captureGlyphs`, unit-testable like `selfTestShouldRun`. Live
+    /// capture only once the self-test has COMPLETED and enabled it and the grant is present —
+    /// before the verdict, enumerations return limited-mode items without waiting.
+    static func shouldCaptureLive(selfTestDone: Bool, liveEnabled: Bool, granted: Bool) -> Bool {
+        selfTestDone && liveEnabled && granted
     }
 
     /// Pure decision for `ensureSelfTested` (bevel-qcd9), extracted so the re-arm rule is unit-testable

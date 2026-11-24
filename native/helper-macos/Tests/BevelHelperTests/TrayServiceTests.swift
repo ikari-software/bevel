@@ -43,22 +43,33 @@ final class TrayServiceTests: XCTestCase {
                       "the helper's own process must never appear as a tray item")
     }
 
-    /// M3-B: the capture path. With Screen Recording granted, at least one item should carry live
-    /// pixels (isLive); without it, everything stays limited-mode (isLive == false) — both are valid.
+    /// M3-B + bevel-yg7h: the capture path. The FIRST enumeration never waits for the self-test —
+    /// it returns limited-mode items immediately; once the detached self-test completes, a later
+    /// poll upgrades to live pixels (isLive) when Screen Recording is granted. Without the grant,
+    /// everything stays limited-mode — both are valid.
     /// Establishes the WindowServer connection first (SCK aborts otherwise, CGS_REQUIRE_INIT).
     @MainActor
     func testCapturePathIsLiveWhenGrantedElseLimited() async {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         let svc = TrayServiceImpl(expectedKey: "test-key")
-        let items = await svc.enumerateWithCapture()
 
-        if CGPreflightScreenCaptureAccess() {
-            XCTAssertTrue(items.contains { $0.isLive },
-                          "with Screen Recording granted, some items should be live-captured")
-        } else {
+        let first = await svc.enumerateWithCapture()
+        XCTAssertTrue(first.allSatisfy { !$0.isLive },
+                      "the first enumeration must not await the self-test — limited-mode items immediately (bevel-yg7h)")
+
+        guard CGPreflightScreenCaptureAccess() else {
+            let items = await svc.enumerateWithCapture()
             XCTAssertTrue(items.allSatisfy { !$0.isLive }, "without the grant, all items are limited-mode")
+            return
         }
+        // Granted: poll until the detached self-test lands and the capture upgrades to live.
+        for _ in 0..<20 {
+            let items = await svc.enumerateWithCapture()
+            if items.contains(where: { $0.isLive }) { return }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        XCTFail("with Screen Recording granted, a later poll should live-capture some items")
     }
 
     /// forwardClick returns false (and posts no event) for a malformed or vanished item id — the
@@ -117,6 +128,19 @@ final class TrayServiceTests: XCTestCase {
     /// forever, so `captureOk` was NEVER actually exercised for this session. This is the pure decision
     /// `ensureSelfTested` now consults — no real self-test or real grant needed to prove the state
     /// machine, as a pure static seam.
+    }
+    /// machine, same seam style as `trayGlyphLayout`.
+    func testEnumerationDoesNotWaitForTheSelfTest() {
+        // bevel-yg7h: while the self-test has not completed, live capture is gated OFF regardless
+        // of the grant — the first enumeration returns limited-mode (app icon) items immediately
+        // instead of awaiting the self-test. Only a completed, enabling, granted verdict captures.
+        XCTAssertFalse(TrayServiceImpl.shouldCaptureLive(selfTestDone: false, liveEnabled: true, granted: true))
+        XCTAssertFalse(TrayServiceImpl.shouldCaptureLive(selfTestDone: false, liveEnabled: false, granted: false))
+        XCTAssertFalse(TrayServiceImpl.shouldCaptureLive(selfTestDone: true, liveEnabled: false, granted: true))
+        XCTAssertFalse(TrayServiceImpl.shouldCaptureLive(selfTestDone: true, liveEnabled: true, granted: false))
+        XCTAssertTrue(TrayServiceImpl.shouldCaptureLive(selfTestDone: true, liveEnabled: true, granted: true))
+    }
+
     func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
         // 1. Never run yet → always run (first capture attempt triggers it, granted or not).
         XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: false, selfTestDone: false, grantPreviouslySeen: false))
