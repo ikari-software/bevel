@@ -985,7 +985,7 @@ public partial class ItemView : UserControl
 
         try
         {
-            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy);
             try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
         }
         catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
