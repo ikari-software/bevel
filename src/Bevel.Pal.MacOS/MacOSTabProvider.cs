@@ -65,18 +65,29 @@ public sealed class MacOSTabProvider : ITabProvider
         return Array.Empty<AppTab>();
     }
 
-    public async Task ActivateAsync(AppTab tab, CancellationToken ct = default)
+    public async Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default)
     {
-        if (!TryWindowRef(tab, out var windowRef)) return;
+        if (!TryWindowRef(tab, out var windowRef)) return TabActivationResult.NotFound;
 
         if (GeckoTabEngine.Supports(tab.BundleId))
-        {
-            await GeckoTabEngine.ActivateAsync(tab, windowRef, ct).ConfigureAwait(false);
-            return;
-        }
+            return await GeckoTabEngine.ActivateAsync(tab, windowRef, ct).ConfigureAwait(false);
+
+        // bevel-bw1v: the script already answers "ok"/"none"/"gone" — surface it instead of
+        // swallowing it, so a stale row can trigger a list refresh.
         if (ActivationStartInfo(tab) is { } psi)
-            await RunOsaScriptAsync(psi, ct).ConfigureAwait(false);
+            return ParseOutcome(await RunOsaScriptAsync(psi, ct).ConfigureAwait(false));
+        return TabActivationResult.NotFound;   // no script possible (e.g. iTerm row without session id)
     }
+
+    /// <summary>bevel-bw1v: maps the activation script's output to an outcome (internal for tests).
+    /// "ok" activated; "none" (no unique identity match) and "gone" (app not running) mean the row is
+    /// stale → NotFound; an empty/garbage result is a failed spawn or timeout → Failed.</summary>
+    internal static TabActivationResult ParseOutcome(string output) => output.Trim() switch
+    {
+        "ok" => TabActivationResult.Activated,
+        "none" or "gone" => TabActivationResult.NotFound,
+        _ => TabActivationResult.Failed,
+    };
 
     /// <summary>Validates the row's refs. WindowRef/TabIndex round-trip from our own enumeration, but
     /// they cross a process boundary as strings — re-validate as integers so nothing non-numeric can
@@ -345,8 +356,8 @@ public sealed class MacOSTabProvider : ITabProvider
     /// selects it; else searches EVERY window (window indexes are z-order and go stale too); exactly
     /// one match is selected, zero or 2+ do nothing. Browsers match by url (title when the url is
     /// empty); iTerm2 by session unique id. `activate` runs last, only after a successful select.
-    /// Returns "ok" / "none" / "gone" (informational; the caller ignores it). The decision is mirrored
-    /// by <see cref="TabIdentity.Resolve"/>.</summary>
+    /// Returns "ok" / "none" / "gone" (bevel-bw1v: mapped to a TabActivationResult by
+    /// <see cref="ParseOutcome"/>). The decision is mirrored by <see cref="TabIdentity.Resolve"/>.</summary>
     internal static string ActivationScript(string bundleId, Dialect dialect, int windowRef, int tabIndex) =>
         ActivationScriptRaw(bundleId, dialect, windowRef, tabIndex).ReplaceLineEndings("\n");
 

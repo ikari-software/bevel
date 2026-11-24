@@ -87,6 +87,14 @@ internal sealed class TabPrefetch : IDisposable
         return work;
     }
 
+    /// <summary>bevel-bw1v: drops the slot for <paramref name="bundleId"/> so the next
+    /// <see cref="Warm"/> re-enumerates. Called when an activation reported NotFound/Failed — the
+    /// cached list no longer reflects the app, and the next menu open must show the truth.</summary>
+    public void Invalidate(string? bundleId)
+    {
+        if (bundleId is not null) _slots.Remove(bundleId);
+    }
+
     private async Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>> FetchAsync(string bundleId)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -51,7 +51,8 @@ public sealed class TabPrefetchTests
             return Tabs.ToArray();
         }
 
-        public Task ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default)
+            => Task.FromResult(TabActivationResult.Activated);
     }
 
     private static AppTab Tab(int index, byte[]? icon = null) =>
@@ -69,6 +70,19 @@ public sealed class TabPrefetchTests
     /// window returns the SAME task and starts no second enumeration. This is the whole mechanism — if
     /// it regressed, every right-click would pay for osascript again.</summary>
     [Fact]
+    public async Task Invalidate_drops_the_slot_so_the_next_warm_re_enumerates()
+    {
+        var tabs = new CountingTabs { Tabs = [Tab(1)] };
+        var prefetch = new TabPrefetch(tabs, Budget, Freshness);
+        await prefetch.Warm(App)!;
+        Assert.Equal(1, prefetch.Fetches);
+
+        prefetch.Invalidate(App);   // bevel-bw1v: a stale activation result drops the cached list
+        await prefetch.Warm(App)!;
+        Assert.Equal(2, prefetch.Fetches);
+        Assert.Equal(2, tabs.Calls);
+    }
+
     public async Task A_warm_slot_is_reused_instead_of_re_enumerating()
     {
         var provider = new CountingTabs { Tabs = [Tab(1), Tab(2)] };

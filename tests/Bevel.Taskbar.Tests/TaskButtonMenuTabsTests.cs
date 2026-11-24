@@ -114,6 +114,33 @@ public class TaskButtonMenuTabsTests
         Assert.Null(items[1].Icon);
     }
 
+    // ── bevel-bw1v: activation outcome reporting ────────────────────────────
+
+    [AvaloniaFact]
+    public void A_not_found_activation_invokes_the_refresh_callback()
+    {
+        var provider = new FakeTabProvider { NextOutcome = TabActivationResult.NotFound };
+        var failed = 0;
+        var menu = TabsMenu(TaskButtonMenu.Build(BrowserVm(), MakeTabs(2), provider,
+            onActivationFailed: () => failed++))!;
+        menu.Items.OfType<MenuItem>().First().Command!.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, failed);
+    }
+
+    [AvaloniaFact]
+    public void A_successful_activation_does_not_invoke_the_refresh_callback()
+    {
+        var provider = new FakeTabProvider();   // Activated by default
+        var failed = 0;
+        var menu = TabsMenu(TaskButtonMenu.Build(BrowserVm(), MakeTabs(2), provider,
+            onActivationFailed: () => failed++))!;
+        menu.Items.OfType<MenuItem>().First().Command!.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, failed);
+        Assert.NotNull(provider.LastActivated);
+    }
+
     [AvaloniaFact]
     public void No_tabs_or_no_provider_omits_the_section()
     {

@@ -44,12 +44,12 @@ public static class TaskButtonMenu
 
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
-        Action? onActivateForeign = null)
+        Action? onActivateForeign = null, Action? onActivationFailed = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider, onActivateForeign) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -63,7 +63,7 @@ public static class TaskButtonMenu
     // to the front is chosen (window Activate, a Tab, or Quit/Force Quit) — the taskbar uses it to cancel
     // the key-focus handback so the menu's Closed doesn't re-raise the prior app over the new front.
     internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
-        Action? onActivateForeign = null)
+        Action? onActivateForeign = null, Action? onActivationFailed = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -117,7 +117,11 @@ public static class TaskButtonMenu
                     Command = new AsyncRelayCommand(async () =>
                     {
                         using var cts = new System.Threading.CancellationTokenSource(TabActivateBudget);
-                        await tabProvider.ActivateAsync(captured, cts.Token);
+                        var outcome = await tabProvider.ActivateAsync(captured, cts.Token);
+                        // bevel-bw1v: a non-activated outcome means the row was stale or the press
+                        // failed — tell the caller so it can drop the prefetched list. The open
+                        // popup never repaints, so the refresh lands on the NEXT menu open.
+                        if (outcome != TabActivationResult.Activated) onActivationFailed?.Invoke();
                     }),
                 };
                 // Activating a tab raises its window + activates the app — a foreign front change, so

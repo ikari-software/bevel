@@ -292,8 +292,11 @@ public interface ITabProvider
     /// remembered window — the remembered index if it still carries the title, else a unique title
     /// match in that window, else nothing.</item>
     /// </list>
-    /// "Selects nothing" is silent: the method completes normally and no tab is touched.</summary>
-    Task ActivateAsync(AppTab tab, CancellationToken ct = default);
+    /// "Selects nothing" is reported, not silent (bevel-bw1v): the returned
+    /// <see cref="TabActivationResult"/> tells the caller whether the tab was activated, the row was
+    /// stale (<see cref="TabActivationResult.NotFound"/> — refresh the list), or the attempt failed
+    /// (<see cref="TabActivationResult.Failed"/>). The method still never throws for those.</summary>
+    Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default);
 }
 
 /// <summary>TCC / permission brokering — macOS-heavy, no-op elsewhere.</summary>

@@ -44,5 +44,8 @@ public sealed class WindowsTabProvider : ITabProvider
     public ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
         => ValueTask.FromResult<IReadOnlyList<AppTab>>(Array.Empty<AppTab>());
 
-    public Task ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.CompletedTask;
+    // bevel-bw1v: tab activation is not implemented on Windows — report Failed honestly rather than
+    // implying success.
+    public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default)
+        => Task.FromResult(TabActivationResult.Failed);
 }

@@ -111,15 +111,18 @@ public sealed class FakeTabProvider : ITabProvider
 
     public AppTab? LastActivated { get; private set; }
 
+    /// <summary>bevel-bw1v: the outcome the next ActivateAsync reports (tests flip it to NotFound).</summary>
+    public TabActivationResult NextOutcome { get; set; } = TabActivationResult.Activated;
+
     public bool SupportsApp(string? bundleId) => bundleId == TabApp;
 
     public ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
         => ValueTask.FromResult(SupportsApp(bundleId) ? Tabs : Array.Empty<AppTab>());
 
-    public Task ActivateAsync(AppTab tab, CancellationToken ct = default)
+    public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default)
     {
         LastActivated = tab;
-        return Task.CompletedTask;
+        return Task.FromResult(NextOutcome);
     }
 }
 
