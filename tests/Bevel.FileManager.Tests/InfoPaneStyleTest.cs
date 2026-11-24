@@ -25,10 +25,10 @@ public class InfoPaneStyleTest
     // Tag is the SHOT FILENAME, so it follows the renamed theme, not the enum. The InfoPaneStyle
     // enum member keeps its name for now: it is a separately-persisted settings value and needs its
     // own migration (see the follow-up bead) — renaming it here would reset users' Folder Options.
-    [InlineData(InfoPaneStyle.Win2000, "industrial1999")]
-    [InlineData(InfoPaneStyle.WinXP, "winxp")]
-    [InlineData(InfoPaneStyle.Modern, "modern")]
-    [InlineData(InfoPaneStyle.Win9x, "win9x")]
+    [InlineData(InfoPaneStyle.WebView1999, "industrial1999")]
+    [InlineData(InfoPaneStyle.Tasks2001, "tasks2001")]
+    [InlineData(InfoPaneStyle.Navigation2006, "navigation2006")]
+    [InlineData(InfoPaneStyle.Minimal1995, "minimal1995")]
     public void Each_style_renders(InfoPaneStyle style, string tag)
     {
         var pane = new InfoPane { Style = style, Width = 200, Height = 380 };
@@ -58,7 +58,7 @@ public class InfoPaneStyleTest
     public void Modern_rows_are_backed_by_real_navigation_and_command_actions()
     {
         var invoked = new System.Collections.Generic.List<string>();
-        var pane = new InfoPane { Style = InfoPaneStyle.Modern, Width = 200, Height = 380 };
+        var pane = new InfoPane { Style = InfoPaneStyle.Navigation2006, Width = 200, Height = 380 };
         pane.AddLink("My Documents", () => invoked.Add("place"));
         pane.AddTask("Make a new folder", () => invoked.Add("command"));
 
@@ -119,7 +119,7 @@ public class InfoPaneStyleTest
 [AvaloniaFact]
     public async System.Threading.Tasks.Task WinXP_chevrons_are_centered_functional_and_animated()
     {
-        var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
+        var pane = new InfoPane { Style = InfoPaneStyle.Tasks2001, Width = 200, Height = 380 };
         pane.AddTask("Make a new folder", () => { });
         pane.AddLink("My Documents", () => { });
         var win = new Window { SystemDecorations = SystemDecorations.None, Width = 200, Height = 380, Content = pane };
@@ -180,7 +180,7 @@ public class InfoPaneStyleTest
             AssertContrast("Blue2001.Brush.InfoPaneLinkText", 4.5);
             AssertContrast("Blue2001.Brush.InfoPaneMutedText", 3.0);
 
-            var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
+            var pane = new InfoPane { Style = InfoPaneStyle.Tasks2001, Width = 200, Height = 380 };
             pane.Title = "ikari";
             pane.Description = "Displays the files and folders in this location.";
             pane.ObjectCount = "265 object(s)";
@@ -236,7 +236,7 @@ public class InfoPaneStyleTest
     public void Open_WinXP_pane_tracks_live_variant_changes_and_restores_its_fallback()
     {
         Bevel.UI.Blue2001.Blue2001VariantService.Clear();
-        var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
+        var pane = new InfoPane { Style = InfoPaneStyle.Tasks2001, Width = 200, Height = 380 };
         var win = new Window { SystemDecorations = SystemDecorations.None, Width = 200, Height = 380, Content = pane };
         win.Show();
         Dispatcher.UIThread.RunJobs();

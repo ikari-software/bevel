@@ -1040,24 +1040,25 @@ public sealed class BevelSettings
 /// code-drawn vector template — not HTML — selectable in Folder Options.</summary>
 public enum InfoPaneStyle
 {
-    /// <summary>No info pane (Win95-era Explorer had none).</summary>
+    /// <summary>No info pane (1995-era Explorer had none).</summary>
     Off,
 
-    /// <summary>Flat, minimal panel — Win9x "Web View" era, understated.</summary>
-    Win9x,
+    /// <summary>Flat, minimal panel — 1995 "Web View" era, understated.</summary>
+    Minimal1995,
 
-    /// <summary>Sky-gradient banner + vector illustration + metadata/links (current default).</summary>
-    Win2000,
+    /// <summary>Sky-gradient banner + vector illustration + metadata/links (1999 web view, current default style).</summary>
+    WebView1999,
 
-    /// <summary>XP Luna task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
-    WinXP,
+    /// <summary>2001 task-pane: pastel rounded group boxes (Tasks / Other Places / Details).</summary>
+    Tasks2001,
 
-    /// <summary>Vista/Windows 7-inspired navigation pane: favorites, places, and contextual details.</summary>
-    Modern,
+    /// <summary>2006 navigation pane: favorites, places, and contextual details.</summary>
+    Navigation2006,
 
-    /// <summary>Match the active theme: the XP Luna task-pane under Luna, the Win2000 banner under Win2000.
+    /// <summary>Match the active theme: the 2001 task-pane under the 2001 skin, the 1999 banner under the 1999 skin.
     /// The default — a fresh install shows the pane that fits whatever skin it boots in. Resolved to a
-    /// concrete style at apply time (never handed to the InfoPane control directly).</summary>
+    /// concrete style at apply time (never handed to the InfoPane control directly).
+    /// bevel-zvo0: members are named by era, not vendor; old persisted names fall back to Auto.</summary>
     Auto,
 }
 

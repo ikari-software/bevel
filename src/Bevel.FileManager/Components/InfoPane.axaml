@@ -202,7 +202,7 @@
 
         <!-- Windows XP Common Tasks: strong colored watermark, stacked collapsible-style cards,
              pale gradient headers, tiny vector task arrows, and contextual Details last. -->
-        <ScrollViewer x:Name="WinXPView" IsVisible="False" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer x:Name="Tasks2001View" IsVisible="False" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource InfoPane.Xp.Watermark}">
             <StackPanel Margin="8,9,8,12" Spacing="9">
                 <Border CornerRadius="6" Background="#F8FAFF" BorderBrush="{DynamicResource InfoPane.Xp.Border}" BorderThickness="1">
@@ -327,7 +327,7 @@
 
         <!-- Vista / 7 Navigation: favorite places first, contextual commands second, and a compact details
              footer. Every visible row is backed by a real callback; there are no decorative dead targets. -->
-        <Grid x:Name="ModernView" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto"
+        <Grid x:Name="Navigation2006View" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto"
               Background="{DynamicResource InfoPane.Modern.Background}">
             <Border Grid.Row="0" Padding="11,9,8,6" BorderBrush="{DynamicResource InfoPane.Modern.Divider}" BorderThickness="0,0,0,1">
                 <Grid ColumnDefinitions="*,Auto">
@@ -357,7 +357,7 @@
 
         <!-- Windows 95 / NT4: intentionally no Web View furniture. It remains useful as the austere,
              low-distraction metadata preset rather than pretending to be a navigation sidebar. -->
-        <Border x:Name="Win9xView" IsVisible="False" Background="{DynamicResource Bevel.Brush.ButtonFace}">
+        <Border x:Name="Minimal1995View" IsVisible="False" Background="{DynamicResource Bevel.Brush.ButtonFace}">
             <StackPanel Margin="10,12,10,10" Spacing="6">
                 <TextBlock x:Name="Win9xTitle" FontWeight="Bold" FontSize="12"
                            Foreground="{DynamicResource Bevel.Brush.WindowText}" TextWrapping="Wrap" />

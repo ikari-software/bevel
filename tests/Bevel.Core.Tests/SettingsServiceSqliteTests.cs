@@ -103,17 +103,41 @@ public sealed class SettingsServiceSqliteTests : IDisposable
     }
 
     [Fact]
+    public async Task InfoPaneStyle_unknown_persisted_value_falls_back_to_Auto()
+    {
+        // bevel-zvo0: the enum members are renamed by era, so a persisted OLD name ("WinXP") no
+        // longer parses — the read must fall back to Auto, never crash.
+        using (var writer = new SettingsService(_dir))
+        {
+            await writer.LoadAsync();
+            await writer.UpdateAsync(s => s.TaskbarRows = 4);   // creates the row
+        }
+
+        await using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={System.IO.Path.Combine(_dir, "settings.db")}"))
+        {
+            await conn.OpenAsync();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE settings SET json = '{\"infoPaneStyle\":\"WinXP\"}' WHERE id = 1;";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        using var reader = new SettingsService(_dir);
+        await reader.LoadAsync();
+        Assert.Equal(InfoPaneStyle.Auto, reader.Current.InfoPaneStyle);
+    }
+
+    [Fact]
     public async Task InfoPaneStyle_Modern_round_trips_across_instances()
     {
         using (var writer = new SettingsService(_dir))
         {
             await writer.LoadAsync();
-            await writer.UpdateAsync(s => s.InfoPaneStyle = InfoPaneStyle.Modern);
+            await writer.UpdateAsync(s => s.InfoPaneStyle = InfoPaneStyle.Navigation2006);
         }
 
         using var reader = new SettingsService(_dir);
         await reader.LoadAsync();
-        Assert.Equal(InfoPaneStyle.Modern, reader.Current.InfoPaneStyle);
+        Assert.Equal(InfoPaneStyle.Navigation2006, reader.Current.InfoPaneStyle);
     }
 
     [Fact]
