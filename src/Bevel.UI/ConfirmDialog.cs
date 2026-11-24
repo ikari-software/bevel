@@ -4,19 +4,20 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Bevel.UI;
 
-namespace Bevel.App;
+namespace Bevel.UI;
 
-/// <summary>Minimal Win2000-style modal confirmation (Allow / Cancel). Used to authorize inbound
-/// destructive Apple Events before they execute (bevel-twq): a same-user process can script the shell
+/// <summary>Minimal Win2000-style modal confirmation (confirm / Cancel). Moved from Bevel.App to
+/// Bevel.UI so Filer can use it too (bevel-j905 — the Trash's Empty confirmation); App's inbound
+/// Apple Event authorization uses it unchanged (bevel-twq): a same-user process can script the shell
 /// into trashing/moving files, and macOS does not TCC-gate events inbound to our own app, so the user
-/// must approve. Defaults to Cancel (Escape / close = deny).</summary>
+/// must approve. Defaults to Cancel (Escape / close = deny); <paramref name="destructive"/> makes the
+/// confirm button the non-default one and Cancel the default, for irreversible actions.</summary>
 public sealed class ConfirmDialog : BevelWindow
 {
     private readonly TaskCompletionSource<bool> _tcs = new();
 
-    public ConfirmDialog(string title, string message)
+    public ConfirmDialog(string title, string message, string confirmLabel = "Allow", bool destructive = false)
     {
         Title = title;
         Width = 400;
@@ -24,9 +25,20 @@ public sealed class ConfirmDialog : BevelWindow
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        var allow = new Button { Content = "Allow", MinWidth = 80, IsDefault = true };
-        var cancel = new Button { Content = "Cancel", MinWidth = 80, IsCancel = true };
-        allow.Click += (_, _) => Complete(true);
+        var confirm = new Button
+        {
+            Content = confirmLabel,
+            MinWidth = 80,
+            IsDefault = !destructive,   // destructive actions must not be one keystroke away
+        };
+        var cancel = new Button
+        {
+            Content = "Cancel",
+            MinWidth = 80,
+            IsCancel = true,
+            IsDefault = destructive,   // destructive: Cancel is the default button
+        };
+        confirm.Click += (_, _) => Complete(true);
         cancel.Click += (_, _) => Complete(false);
 
         var buttons = new StackPanel
@@ -35,7 +47,7 @@ public sealed class ConfirmDialog : BevelWindow
             Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        buttons.Children.Add(allow);
+        buttons.Children.Add(confirm);
         buttons.Children.Add(cancel);
 
         var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 16, 16, 8) };

@@ -18,6 +18,7 @@ public partial class MenuBar : UserControl
     public MenuItem CreateShortcut => CreateShortcutItem;
     public MenuItem Delete => DeleteItem;
     public MenuItem Rename => RenameItem;
+    public MenuItem EmptyTrash => EmptyTrashItem;   // bevel-j905: enabled only inside the Trash
     public MenuItem Properties => PropertiesItem;
     public MenuItem CloseWindow => CloseWindowItem;
 

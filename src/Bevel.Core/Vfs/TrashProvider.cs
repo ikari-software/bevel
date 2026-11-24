@@ -173,6 +173,19 @@ public sealed class TrashProvider : IVfsProvider
     /// would surface <c>.DS_Store</c> and lose the trash-specific capabilities).</summary>
     public string? ResolveEffectivePath(VfsPath path)
         => path.IsRoot ? null : NativePath(path);
+
+    /// <summary>bevel-j905: a restore (move trash:// → file://) is a native atomic rename when the
+    /// destination is a local path on the same volume as the Trash itself — same path-root comparison
+    /// as LocalFsProvider, except the source side resolves through the trash directory (a trash://
+    /// path has no local meaning to GetFullPath). Without this, a same-disk restore took the
+    /// copy+delete branch.</summary>
+    public bool CanFastMoveWithin(VfsPath source, VfsPath destination)
+    {
+        if (destination.Scheme != "file") return false;
+        var srcRoot = Path.GetPathRoot(_trashDirectory);
+        var dstRoot = Path.GetPathRoot(destination.Value);
+        return string.Equals(srcRoot, dstRoot, StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>

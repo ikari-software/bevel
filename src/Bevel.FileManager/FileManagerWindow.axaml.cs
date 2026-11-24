@@ -319,6 +319,7 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.CopyToFolder.Click += (_, _) => _ = CopyToFolderAsync();
         MenuBar.Delete.Click += (_, _) => _ = DeleteSelectionAsync(toTrash: true);
         MenuBar.Rename.Click += (_, _) => ItemView.BeginRenameSelected();
+        MenuBar.EmptyTrash.Click += (_, _) => _ = EmptyTrashAsync();   // bevel-j905
         MenuBar.Properties.Click += (_, _) => ShowProperties();
         MenuBar.CloseWindow.Click += (_, _) => Close();
 
@@ -841,6 +842,7 @@ public partial class FileManagerWindow : BevelWindow
         UpdateTitle(path);
         AddressBar.SetAddress(path.Value);
         if (_activeTab is { } tab) TabStrip.SetHeader(tab.StripId, LabelFor(path));
+        MenuBar.EmptyTrash.IsEnabled = path.Scheme == "trash";   // bevel-j905: only inside the Trash
         // Re-landing on the directory already shown (F5, or a controller Refresh) is a
         // differential update — reconcile in place rather than clearing and rebuilding, so the
         // list doesn't flash. A genuine navigation streams a fresh listing.
@@ -1134,6 +1136,42 @@ public partial class FileManagerWindow : BevelWindow
     async System.Threading.Tasks.Task MoveToFolderAsync() => await MoveOrCopyToFolderAsync(isCopy: false);
     async System.Threading.Tasks.Task CopyToFolderAsync() => await MoveOrCopyToFolderAsync(isCopy: true);
 
+    /// <summary>bevel-j905: Empty Trash — count first so the confirm text can name N and an empty Trash
+    /// no-ops with a status message, then confirm DESTRUCTIVELY (Cancel is the default button) and run the
+    /// permanent delete through the normal progress/cancel pipeline.</summary>
+    private async System.Threading.Tasks.Task EmptyTrashAsync()
+    {
+        if (_controller is null || _vfsRoot is null) return;
+        var count = 0;
+        await foreach (var _ in _vfsRoot.EnumerateAsync(VfsPath.Root("trash"),
+            new EnumerateOptions { IncludeHidden = true }, System.Threading.CancellationToken.None))
+            count++;
+        if (count == 0)
+        {
+            StatusBar.ShowMessage("The Trash is already empty.");
+            return;
+        }
+        var ok = await new Bevel.UI.ConfirmDialog("Empty Trash",
+            $"Permanently delete all {count} item(s) in the Trash?\n\nThis cannot be undone.",
+            confirmLabel: "Empty Trash", destructive: true).ConfirmAsync(this);
+        if (!ok) return;
+        await RunOpAsync(() => _controller.EmptyTrashAsync());
+    }
+
+    /// <summary>bevel-j905: Restore… — pick a destination folder, then move the selection out of the
+    /// Trash (a same-volume restore is a native rename via TrashProvider.CanFastMoveWithin).</summary>
+    private async System.Threading.Tasks.Task RestoreSelectionAsync()
+    {
+        if (_controller is null || _vfsRoot is null) return;
+        SyncSelection();
+        if (_controller.Selection.Count == 0) return;
+
+        var dialog = new FolderPickerDialog(_vfsRoot, _controller.CurrentDirectory, "Restore Items");
+        if (await dialog.PickAsync(this) is not { } destination) return;
+
+        await RunOpAsync(() => _controller.MoveAsync(_controller.Selection, destination));
+    }
+
     async System.Threading.Tasks.Task MoveOrCopyToFolderAsync(bool isCopy)
     {
         if (_controller is null || _vfsRoot is null) return;
@@ -1234,6 +1272,9 @@ public partial class FileManagerWindow : BevelWindow
         Paste = () => _ = PasteAsync(),
         Delete = () => _ = DeleteSelectionAsync(toTrash: true),
         Rename = () => ItemView.BeginRenameSelected(),
+        EmptyTrash = () => _ = EmptyTrashAsync(),          // bevel-j905
+        Restore = () => _ = RestoreSelectionAsync(),       // bevel-j905
+        InTrash = () => CurrentPath.Scheme == "trash",     // bevel-j905
         Properties = ShowProperties,
         Undo = () => _ = UndoFromUiAsync(),
         Refresh = () => _controller?.Refresh(),

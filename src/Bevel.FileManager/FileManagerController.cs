@@ -168,6 +168,18 @@ public sealed class FileManagerController : IDisposable
     public Task<FileOpResult> DeleteAsync(IReadOnlyList<VfsPath> paths, bool toTrash, CancellationToken ct = default)
         => RunAsync(new DeleteRequest { Timestamp = DateTimeOffset.UtcNow, Paths = paths, ToTrash = toTrash }, ct);
 
+    /// <summary>bevel-j905: permanently delete EVERY item in the Trash (hidden entries included) through
+    /// the normal delete pipeline — so it runs with progress + cancel like any other op. toTrash: false
+    /// because the items are already in the Trash. Returns the op result; reachable by an agent too.</summary>
+    public async Task<FileOpResult> EmptyTrashAsync(CancellationToken ct = default)
+    {
+        var paths = new List<VfsPath>();
+        await foreach (var node in _vfs.EnumerateAsync(VfsPath.Root("trash"),
+            new EnumerateOptions { IncludeHidden = true }, ct))
+            paths.Add(node.Path);
+        return await DeleteAsync(paths, toTrash: false, ct);
+    }
+
     public Task<FileOpResult> RenameAsync(VfsPath path, string newName, CancellationToken ct = default)
         => RunAsync(new RenameRequest { Timestamp = DateTimeOffset.UtcNow, Path = path, NewName = newName }, ct);
 

@@ -18,6 +18,7 @@
             <MenuItem Header="Create _Shortcut" x:Name="CreateShortcutItem" />
             <MenuItem Header="_Delete" x:Name="DeleteItem" InputGesture="Delete" />
             <MenuItem Header="R_name" x:Name="RenameItem" InputGesture="F2" />
+            <MenuItem Header="Empty _Trash…" x:Name="EmptyTrashItem" />
             <Separator />
             <MenuItem Header="Pr_operties" x:Name="PropertiesItem" InputGesture="Alt+Enter" />
             <Separator />

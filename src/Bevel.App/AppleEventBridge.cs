@@ -7,6 +7,7 @@ using Bevel.Interop;
 using Bevel.Interop.AppleEvents;
 using Bevel.Interop.Cli;
 using Bevel.Pal.MacOS;
+using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Bevel.App;
