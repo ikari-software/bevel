@@ -81,7 +81,10 @@ public sealed class OrganizeFavoritesDialog : BevelWindow
     private void Refresh()
     {
         _list.ItemsSource = Current
-            .Select(p => Navigation.HistoryEntry.LabelFor(Core.Vfs.VfsPath.Parse(p)))
+            .Select(p => Core.Vfs.VfsPath.TryParse(p, out var path)
+                ? Navigation.HistoryEntry.LabelFor(path)
+                : null)
+            .Where(label => label is not null)
             .ToList();
         UpdateButtons();
     }

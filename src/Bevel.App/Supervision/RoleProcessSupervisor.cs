@@ -142,7 +142,9 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
                 await Task.WhenAll(uiKills).ConfigureAwait(false);
             foreach (var p in _processes)
                 if (p.Role == ShellRole.Core)
-                    p.Kill();
+                {
+                    try { p.Kill(); } catch { /* best-effort */ }
+                }
             _cooldown.Clear();
             _backoffTicks.Clear();
             _alerted.Clear();
@@ -164,7 +166,7 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             var core = _processes.FirstOrDefault(p => p.Role == ShellRole.Core);
             if (core is null) { _log?.Invoke("supervisor: no core process to restart"); return; }
             _log?.Invoke("supervisor: restarting shell-core owner");
-            core.Kill();
+            try { core.Kill(); } catch { /* best-effort */ }
             _health?.Reset(ShellRole.Core);
             _alerted.Remove(ShellRole.Core);
             if (_health is not null) RoleHeartbeatStore.Clear(ShellRole.Core);
@@ -232,7 +234,7 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             _backoffTicks.Remove(role);
             _alerted.Remove(role);
             _health?.Reset(role);
-            proc.Kill();
+            try { proc.Kill(); } catch { /* best-effort */ }
             proc.Dispose();
             if (_health is not null) RoleHeartbeatStore.Clear(role);
         }
@@ -282,7 +284,9 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         try
         {
             for (var i = _processes.Count - 1; i >= 0; i--)
-                _processes[i].Kill();
+            {
+                try { _processes[i].Kill(); } catch { /* best-effort */ }
+            }
         }
         finally { if (haveGate) _gate.Release(); }
     }
