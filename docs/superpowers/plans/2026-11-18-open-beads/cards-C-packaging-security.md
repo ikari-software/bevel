@@ -63,11 +63,11 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **State today:** No description, no formal children (children only say "Parent: bevel-m5" in text). Blocked by `bevel-m4` (open: 1 child left, `bevel-4qr` AppleScript corpus) which is blocked by `bevel-m3` (open: 5 tray beads). That chain is a milestone-ordering convention, not a technical dependency: no M5 child touches tray or Apple Event code; packaging already shipped a signed v0.1.0 by hand. `bevel-ytn` (M5-A bundle) is closed.
 - **Depends on:** none real. Recommended edits (human runs): `bd dep remove bevel-m5 bevel-m4`. Keep `bevel-m4 → bevel-m3` as is. Add real edges: `bd dep add bevel-ym0 bevel-9po`; `bd dep add bevel-ym0 bevel-ka6c`; `bd dep add bevel-gsz bevel-ka6c`; `bd dep add bevel-gsz bevel-q3l`; `bd dep add bevel-cp2 bevel-q3l`; `bd dep add bevel-cp2 bevel-tak`; `bd dep add bevel-ct7 bevel-tak`.
 - **Children, in order:** bevel-9po → bevel-nsk (close) → bevel-ka6c → bevel-ayf (close) → bevel-ym0 → bevel-rkxb (close) → bevel-q3l → bevel-tak → bevel-ct7 → bevel-gsz → bevel-cp2. Outside this cluster, also M5 by text: `bevel-ti3` (Win2000 theme completion), `bevel-b8t` (100k-entry perf validation).
-- **New beads to create:**
-  - "Surface update availability: Start-menu badge + 'Restart to update'" — reads the core's `UpdateCheckService.Latest` over shell-core; nothing reads it today and no "Restart to upgrade" label exists in `src/`.
-  - "Release lane: build + attach Windows/Linux zips" — v0.1.0's `Bevel-0.1.0-win-x64.zip` / `-linux-x64.zip` were hand-uploaded; `release-macos.yml` publishes only the DMG.
-  - "HUMAN: update-from-(n-1) acceptance on a real Mac" — 09-engineering-plan M5 acceptance 3 (helper relaunch + TCC grants survive); needs real TCC grants.
-  - "Site: /downloads/ 404s" — `https://bevel.run/downloads/Bevel-0.1.0.dmg` returns 404 (binaries are gitignored, CI deploy has none); the page links GitHub assets, so either delete the `/downloads/` route + `site/downloads/` or stop advertising it in `site/main.ts`.
+- **New beads to create:** (created 2026-11-24 by the executor; rows added to waves.txt in the W3 block)
+  - `bevel-dgd7` — "Surface update availability: Start-menu badge + 'Restart to update'" — reads the core's `UpdateCheckService.Latest` over shell-core; nothing reads it today and no "Restart to upgrade" label exists in `src/`.
+  - `bevel-oedd` — "Release lane: build + attach Windows/Linux zips" — v0.1.0's `Bevel-0.1.0-win-x64.zip` / `-linux-x64.zip` were hand-uploaded; `release-macos.yml` publishes only the DMG.
+  - `bevel-0bcd` — "HUMAN: update-from-(n-1) acceptance on a real Mac" — 09-engineering-plan M5 acceptance 3 (helper relaunch + TCC grants survive); needs real TCC grants.
+  - `bevel-ncey` — "Site: /downloads/ 404s" — `https://bevel.run/downloads/Bevel-0.1.0.dmg` returns 404 (binaries are gitignored, CI deploy has none); the page links GitHub assets, so either delete the `/downloads/` route + `site/downloads/` or stop advertising it in `site/main.ts`.
 - **Done when:** every child above is closed and a tagged release produced entirely by `release-macos.yml` installs, updates from the previous version, and uninstalls cleanly on a Mac that has no Homebrew; then `bd close bevel-m5 --reason "mac v1 shipped via CI lane"`
 
 ### bevel-nsk — Configure CI secrets for signing + notarization
