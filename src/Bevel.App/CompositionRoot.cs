@@ -363,6 +363,10 @@ public static class CompositionRoot
         // Supervised opens go through the launcher's SpawnFiler verb (bevel-t48y); the registration
         // self-degrades to the in-process spawner when unsupervised, so one registration covers both.
         services.AddSingleton<IFilerSpawner>(sp => new LauncherFilerSpawner());
+        // bevel-hsvx: the taskbar stack's "Open folder" routes through the SAME supervised Filer
+        // spawn as the Start menu (App.SpawnFilerSupervised), not Finder. TaskbarViewModel takes it
+        // as an optional constructor parameter, so tests/hosts without the registration get null.
+        services.AddSingleton<Action<string>>(sp => path => App.SpawnFilerSupervised(sp, path));
 
         // Taskbar↔Filer automation channel (bevel-uldj). The Filer process REGISTERS by hosting a
         // control server that answers forwarded select/query against its own in-process

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
 using Xunit;
 
@@ -65,6 +66,50 @@ public class StackTests : IDisposable
     [Fact]
     public void RecentEntries_missing_folder_is_empty()
         => Assert.Empty(StackViewModel.RecentEntries(Path.Combine(_dir, "nope", "gone"), 16));
+
+    // ── "Open folder" routing (bevel-hsvx): an injected Filer opener wins over LaunchAsync ──
+
+    [AvaloniaFact]
+    public async Task Open_folder_uses_the_injected_filer_opener_when_present()
+    {
+        var env = new RecordingAppEnvironment();
+        var opened = new List<string>();
+        using var stack = new StackViewModel(_dir, env, new IconLoader(null), openFolder: opened.Add);
+
+        stack.OpenFolderCommand.Execute(null);
+        Assert.True(await WaitUntil(() => opened.Count == 1), "the injected Filer opener should fire");
+
+        Assert.Equal(new[] { _dir }, opened);
+        Assert.Empty(env.Launched);   // Finder/LaunchAsync must NOT be used when the opener is set
+    }
+
+    [AvaloniaFact]
+    public async Task Open_folder_falls_back_to_launch_async_without_an_injected_opener()
+    {
+        var env = new RecordingAppEnvironment();
+        using var stack = new StackViewModel(_dir, env, new IconLoader(null));
+
+        stack.OpenFolderCommand.Execute(null);
+        Assert.True(await WaitUntil(() => env.Launched.Count == 1), "LaunchAsync should fire");
+
+        Assert.Equal(new[] { _dir }, env.Launched);
+    }
+
+    private sealed class RecordingAppEnvironment : IAppEnvironment
+    {
+        public List<string> Launched { get; } = new();
+        public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<InstalledApp>>([]);
+        public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<RunningApp>>([]);
+        public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default)
+        { Launched.Add(appIdOrPath); return Task.CompletedTask; }
+#pragma warning disable CS0067
+        public event EventHandler<RunningApp>? AppLaunched;
+        public event EventHandler<RunningApp>? AppTerminated;
+        public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
+#pragma warning restore CS0067
+    }
 
     [AvaloniaFact]
     public async Task Refresh_populates_items_newest_first_and_clears_new_cue()
