@@ -70,10 +70,21 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         // Permission state is async; resolve off the UI thread and hide on the dispatcher. Defaulting to
         // VISIBLE while unknown keeps macOS correct if the probe is slow — a briefly-shown real control
-        // beats a permanently-hidden one.
-        _ = HideInapplicablePermissionAsync(ShellPermission.Accessibility, AccessibilitySection);
-        _ = HideInapplicablePermissionAsync(ShellPermission.ScreenRecording, ScreenRecordingSection);
+        // beats a permanently-hidden one. One row per ShellPermission (bevel-ct7).
+        foreach (var (permission, row) in PermRows)
+            _ = HideInapplicablePermissionAsync(permission, row);
     }
+
+    /// <summary>Every permission row on the General tab, keyed by the permission it shows (bevel-ct7).</summary>
+    private IReadOnlyDictionary<ShellPermission, PermissionRow> PermRows => _permRows ??= new Dictionary<ShellPermission, PermissionRow>
+    {
+        [ShellPermission.Accessibility] = PermRowAccessibility,
+        [ShellPermission.ScreenRecording] = PermRowScreenRecording,
+        [ShellPermission.FullDiskAccess] = PermRowFullDiskAccess,
+        [ShellPermission.AppleEvents] = PermRowAppleEvents,
+        [ShellPermission.InputMonitoring] = PermRowInputMonitoring,
+    };
+    private Dictionary<ShellPermission, PermissionRow>? _permRows;
 
     private async Task HideInapplicablePermissionAsync(ShellPermission permission, Control section)
     {
@@ -148,8 +159,9 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         LockCheck.IsCheckedChanged += OnBehaviorChanged;
         AlwaysOnTopCheck.IsCheckedChanged += OnBehaviorChanged;
         ShowDesktopCheck.IsCheckedChanged += OnBehaviorChanged;
-        GrantAccessibilityBtn.Click += OnGrantAccessibility;
-        GrantScreenRecBtn.Click += OnGrantScreenRecording;
+        foreach (var (permission, row) in PermRows)
+            row.GrantRequested += (_, _) => OnGrantPermission(permission);
+        UpdateIntervalHours.ValueChanged += OnUpdateIntervalChanged;
 
         // OK / Cancel / Apply. Snapshot now (state is clean here — handlers just got wired, no changes yet).
         _baseline = _settings.Current.Clone();
@@ -191,6 +203,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     {
         var s = _settings.Current;
         RunAtLoginCheck.IsChecked = s.RunAtLogin;
+        UpdateIntervalHours.Value = s.UpdateCheckIntervalHours;
+        RefreshUpdateStatus();
 
         WASNudge.IsChecked = s.WorkAreaStrategy == WorkAreaStrategy.Nudge;
         WASDockShim.IsChecked = s.WorkAreaStrategy == WorkAreaStrategy.DockShim;
@@ -269,9 +283,15 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
 
         try
         {
-            var ax = await _permissionBroker.GetStateAsync(ShellPermission.Accessibility);
-            var sr = await _permissionBroker.GetStateAsync(ShellPermission.ScreenRecording);
-            Dispatcher.UIThread.Post(() => { UpdatePermissionUI(ax); UpdateScreenRecUI(sr); });
+            // Query every permission off the UI thread, then post all results back (bevel-ct7).
+            var states = new Dictionary<ShellPermission, PermissionState>();
+            foreach (var permission in PermRows.Keys)
+                states[permission] = await _permissionBroker.GetStateAsync(permission).ConfigureAwait(false);
+            Dispatcher.UIThread.Post(() =>
+            {
+                foreach (var (permission, state) in states)
+                    PermRows[permission].ApplyState(state, GrantedHint(permission), DeniedHint(permission));
+            });
         }
         catch
         {
@@ -279,46 +299,25 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         }
     }
 
-    private void UpdatePermissionUI(PermissionState state)
-        => ApplyPermUI(PermStatusDot, PermStatusGlyph, PermStatusText, GrantAccessibilityBtn, PermHint, state,
-            grantedHint: "Window management is enabled.",
-            deniedHint: "Grant Accessibility (to BevelHelper) in System Settings to enable window management. No restart required.");
-
-    private void UpdateScreenRecUI(PermissionState state)
-        => ApplyPermUI(ScreenRecStatusDot, ScreenRecStatusGlyph, ScreenRecStatusText, GrantScreenRecBtn, ScreenRecHint, state,
-            grantedHint: "Live window titles and tray icon mirroring are enabled.",
-            deniedHint: "Grant Screen Recording (to BevelHelper) for live window titles and tray icon mirroring. Takes effect after a relaunch.");
-
-    // Shared status renderer for the Accessibility + Screen Recording rows (dot colour + glyph + label +
-    // Grant button + hint), so both stay visually consistent.
-    private static void ApplyPermUI(Border dot, Avalonia.Controls.Shapes.Path glyph, TextBlock text, Button btn, TextBlock hint,
-        PermissionState state, string grantedHint, string deniedHint)
+    private static string GrantedHint(ShellPermission p) => p switch
     {
-        switch (state)
-        {
-            case PermissionState.Granted:
-                dot.Background = new SolidColorBrush(Color.Parse("#3FA23F"));
-                glyph.Data = Geometry.Parse("M0,3.5 L2.6,6 L7,0.5");   // check
-                text.Text = "Granted";
-                btn.IsVisible = false;
-                hint.Text = grantedHint;
-                break;
-            case PermissionState.Denied:
-                dot.Background = new SolidColorBrush(Color.Parse("#E24A2E"));
-                glyph.Data = Geometry.Parse("M0,0 L6,6 M6,0 L0,6");     // cross
-                text.Text = "Not Granted";
-                btn.IsVisible = true;
-                hint.Text = deniedHint;
-                break;
-            default:
-                dot.Background = new SolidColorBrush(Color.Parse("#9AA0A6"));
-                glyph.Data = Geometry.Parse("M0,3 L7,3");                // dash
-                text.Text = "Unknown";
-                btn.IsVisible = true;
-                hint.Text = "Checking permission status...";
-                break;
-        }
-    }
+        ShellPermission.Accessibility => "Window management is enabled.",
+        ShellPermission.ScreenRecording => "Live window titles and tray icon mirroring are enabled.",
+        ShellPermission.FullDiskAccess => "The Filer can list and organize files across your disks.",
+        ShellPermission.AppleEvents => "Other apps can drive Bevel (bevel:// automation).",
+        ShellPermission.InputMonitoring => "The idle Ctrl/Option+Esc hotkey works.",
+        _ => "",
+    };
+
+    private static string DeniedHint(ShellPermission p) => p switch
+    {
+        ShellPermission.Accessibility => "Grant Accessibility (to BevelHelper) in System Settings to enable window management. No restart required.",
+        ShellPermission.ScreenRecording => "Grant Screen Recording (to BevelHelper) for live window titles and tray icon mirroring. Takes effect after a relaunch.",
+        ShellPermission.FullDiskAccess => "Grant Full Disk Access (to BevelHelper) so the Filer can read every folder it shows.",
+        ShellPermission.AppleEvents => "Grant Apple Events (to BevelHelper) so other apps can script Bevel.",
+        ShellPermission.InputMonitoring => "Grant Input Monitoring (to BevelHelper) for the idle Ctrl/Option+Esc hotkey.",
+        _ => "Checking permission status...",
+    };
 
     private async void OnWorkAreaChanged(object? sender, RoutedEventArgs e)
     {
@@ -791,30 +790,45 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         });
     }
 
-    private void OnGrantAccessibility(object? sender, RoutedEventArgs e)
+    private void OnGrantPermission(ShellPermission permission)
     {
-        if (OperatingSystem.IsMacOS())
+        if (!OperatingSystem.IsMacOS()) return;
+
+        var pane = permission switch
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "open",
-                Arguments = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-                UseShellExecute = true,
-            });
-        }
+            ShellPermission.Accessibility => "Privacy_Accessibility",
+            ShellPermission.ScreenRecording => "Privacy_ScreenCapture",
+            ShellPermission.FullDiskAccess => "Privacy_AllFiles",
+            ShellPermission.AppleEvents => "Privacy_AppleEvents",
+            ShellPermission.InputMonitoring => "Privacy_ListenEvent",
+            _ => "Privacy",
+        };
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "open",
+            Arguments = $"x-apple.systempreferences:com.apple.preference.security?{pane}",
+            UseShellExecute = true,
+        });
     }
 
-    private void OnGrantScreenRecording(object? sender, RoutedEventArgs e)
+    // ── Updates (bevel-ct7): cadence only; the feed URL stays owner-controlled ──
+
+    private async void OnUpdateIntervalChanged(object? sender, NumericUpDownValueChangedEventArgs e)
     {
-        if (OperatingSystem.IsMacOS())
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "open",
-                Arguments = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-                UseShellExecute = true,
-            });
-        }
+        if (UpdateIntervalHours.Value is not { } v) return;
+
+        // Clamp through the policy so a mistyped value cannot become a hot loop (1h floor, 1 week cap).
+        var clamped = (int)Bevel.Core.Updates.UpdateCheckPolicy.ClampInterval((int)v).TotalHours;
+        await _settings.UpdateAsync(s => s.UpdateCheckIntervalHours = clamped);
+        RefreshUpdateStatus();
+    }
+
+    private void RefreshUpdateStatus()
+    {
+        var s = _settings.Current;
+        UpdateStatusText.Text = Bevel.Core.Updates.UpdateCheckPolicy.IsEnabled(s.UpdateFeedUrl)
+            ? $"Update checks run every {Bevel.Core.Updates.UpdateCheckPolicy.ClampInterval(s.UpdateCheckIntervalHours).TotalHours:0} h. Updates apply on the next restart."
+            : "Automatic update checks are off in this build.";
     }
 
     protected override void OnClosed(EventArgs e)
