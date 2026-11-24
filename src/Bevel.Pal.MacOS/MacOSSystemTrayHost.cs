@@ -26,6 +26,10 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     private Task? _streamTask;
     private bool _disposed;
 
+    /// <summary>What this adapter has raised and not yet removed, by id (bevel-voqo / bevel-35r9).
+    /// Touched only by the stream loop (and by tests through the same two methods), so it needs no lock.</summary>
+    private readonly Dictionary<string, AbstractionsTrayItem> _raised = new(StringComparer.Ordinal);
+
     private static readonly Capabilities TrayCapabilities = new(
         Available: true,
         TrayMode: TrayCapability.Mirrored,
@@ -155,23 +159,14 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                 var tray = GetTrayClient();
                 using var call = tray.Changes(new TrayChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
 
+                // Subscribe FIRST, then list: a removal that happens after the list is already on
+                // its way down the stream. The other order loses it.
+                await ReconcileAfterResubscribeAsync(TrySeedItemsAsync, ct).ConfigureAwait(false);
+
                 await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
                 {
                     if (change.Item is null) continue;
-                    var item = Map(change.Item);
-                    switch (change.Kind)
-                    {
-                        case TrayChange.Types.Kind.Snapshot:
-                        case TrayChange.Types.Kind.Added:
-                            ItemAdded?.Invoke(this, item);
-                            break;
-                        case TrayChange.Types.Kind.Updated:
-                            ItemUpdated?.Invoke(this, item);
-                            break;
-                        case TrayChange.Types.Kind.Removed:
-                            ItemRemoved?.Invoke(this, item);
-                            break;
-                    }
+                    Apply(change.Kind, Map(change.Item));
                 }
             }
             catch (OperationCanceledException) { break; }
@@ -185,6 +180,61 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                 _logger.LogWarning(ex, "Tray Changes stream failed");
                 await _clock.Delay(_streamRetryInterval, ct);
             }
+        }
+    }
+
+    /// <summary>How long the reconcile's one list may take before the stream is read without it.</summary>
+    internal static readonly TimeSpan ReconcileListDeadline = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Removes what vanished while the stream was down (bevel-voqo, the tray half of bevel-35r9). The
+    /// stream's snapshot burst is upsert-only and has no end marker, so it can never say "this item is
+    /// gone"; without this an item that quit during a helper restart stays in the core's projection,
+    /// and on the taskbar, for good. One list per (re)subscribe, never periodic.
+    /// <para>A null list means the helper could not be asked. That is not an empty tray: nothing is
+    /// removed, and the next resubscribe tries again. A list that fails or does not answer within
+    /// <see cref="ReconcileListDeadline"/> is the same: this is a cleanup, and it must never cost
+    /// the subscription it runs in front of.</para>
+    /// </summary>
+    internal async ValueTask ReconcileAfterResubscribeAsync(
+        Func<CancellationToken, ValueTask<IReadOnlyList<AbstractionsTrayItem>?>> list, CancellationToken ct)
+    {
+        if (_raised.Count == 0) return; // first subscribe: nothing raised, nothing to take back
+        IReadOnlyList<AbstractionsTrayItem>? listed;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bounded.CancelAfter(ReconcileListDeadline);
+        try
+        {
+            listed = await list(bounded.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Tray reconcile list failed, nothing removed: {Message}", ex.Message);
+            return;
+        }
+        if (listed is null) return;
+        foreach (var gone in SnapshotReconcile.Absent(_raised, listed, i => i.Id.Value))
+            Apply(TrayChange.Types.Kind.Removed, gone);
+    }
+
+    /// <summary>One stream change: raise its event and keep <see cref="_raised"/> in step.</summary>
+    internal void Apply(TrayChange.Types.Kind kind, AbstractionsTrayItem item)
+    {
+        switch (kind)
+        {
+            case TrayChange.Types.Kind.Snapshot:
+            case TrayChange.Types.Kind.Added:
+                _raised[item.Id.Value] = item;
+                ItemAdded?.Invoke(this, item);
+                break;
+            case TrayChange.Types.Kind.Updated:
+                _raised[item.Id.Value] = item;
+                ItemUpdated?.Invoke(this, item);
+                break;
+            case TrayChange.Types.Kind.Removed:
+                _raised.Remove(item.Id.Value);
+                ItemRemoved?.Invoke(this, item);
+                break;
         }
     }
 
