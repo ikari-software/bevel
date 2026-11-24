@@ -232,6 +232,60 @@ public class TaskbarAccessibilityTests
         public event EventHandler<TrayItem>? ItemUpdated { add { } remove { } }
     }
 
+    // ── bevel-psro: type-ahead on the task-button strip ────────────────
+
+    private static ToggleButton? FindToggle(Control c)
+        => c as ToggleButton ?? c.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault();
+
+    [AvaloniaFact]
+    public void Typing_on_the_strip_in_menu_scope_focuses_the_matching_task_button()
+    {
+        using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
+        var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+        var wm = new NoopWindowManager();
+        var view = new TaskbarView { DataContext = vm };
+        view.Initialize(TestSettings.NoStacks(new BevelSettings
+        {
+            TaskbarButtonWidth = 150,
+            TaskbarGrouping = TaskbarGroupingMode.Never,
+        }));
+        var window = new TaskbarWindow(null, rows: 1) { Content = view };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        foreach (var (id, title, app) in new[] { ("a", "Alpha", "com.a"), ("b", "Beta", "com.b"), ("c", "Calendar", "com.c") })
+            model.Windows.Add(new TaskItemViewModel(
+                new ForeignWindow(new ForeignWindowId(id), title, app, false, false, default), wm)
+            { Width = 150, Opacity = 1 });
+        Dispatcher.UIThread.RunJobs();
+
+        List<ToggleButton> Buttons() => view.WindowButtonAreaControl.GetRealizedContainers()
+            .Select(FindToggle).OfType<ToggleButton>().ToList();
+        void Type(string text) => view.RaiseEvent(new TextInputEventArgs
+        {
+            RoutedEvent = InputElement.TextInputEvent,
+            Text = text,
+            Source = view,
+        });
+
+        // At idle (no menu-scoped key focus) typing on the strip does nothing.
+        Type("c");
+        Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain(Buttons(), b => b.IsFocused);
+
+        // In menu scope with no Start menu open, typing jumps focus to the match after the current button.
+        view.EnterMenuScope();
+        var beta = Buttons().Single(b => (b.DataContext as TaskItemViewModel)?.Title == "Beta");
+        beta.Focus();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(beta.IsFocused);
+
+        Type("c");
+        Dispatcher.UIThread.RunJobs();
+        var focused = Buttons().Single(b => b.IsFocused);
+        Assert.Equal("Calendar", (focused.DataContext as TaskItemViewModel)?.Title);
+        window.Close();
+    }
+
     /// <summary>No-op window manager so a TaskItemViewModel's commands have a target.</summary>
     private sealed class NoopWindowManager : IWindowManager
     {

@@ -91,6 +91,9 @@ public partial class TaskbarView : UserControl
     // open. A depth counter lets nested/overlapping menus (Start menu + a task menu) coexist without one
     // closing dropping key focus the other still needs. Flyouts are wired once each (deduped).
     private int _menuScopeDepth;
+    // bevel-psro: type-ahead on the task-button strip (menu-scoped key focus only).
+    private readonly Stopwatch _stripTypeClock = Stopwatch.StartNew();
+    private Bevel.Core.Input.TypeToFind _stripTypeToFind = null!;
     private readonly HashSet<Avalonia.Controls.Primitives.FlyoutBase> _scopedFlyouts = new();
     private IntPtr _startHotkeyMonitor;   // native global Ctrl+Esc / Option+Esc monitor token (macOS)
 
@@ -721,6 +724,8 @@ public partial class TaskbarView : UserControl
 
             StartButton.Click += OnStartButtonClick;
             AddHandler(KeyDownEvent, OnTaskbarKeyDown, RoutingStrategies.Tunnel);
+            _stripTypeToFind = new Bevel.Core.Input.TypeToFind(() => _stripTypeClock.ElapsedMilliseconds);
+            AddHandler(InputElement.TextInputEvent, OnStripTextInput, RoutingStrategies.Bubble);
 
             // Menu-scoped key focus (bevel-vk4n): the Start menu's popup opening/closing drives the
             // become-key flip, so its arrow-key navigation and Escape actually reach the bar. The menu
@@ -1431,7 +1436,31 @@ public partial class TaskbarView : UserControl
 
     /// <summary>Marks a menu/popover the taskbar owns as open: on the first one, flip the window to allow
     /// key focus so its keystrokes (arrows / Enter / Escape) land on the bar.</summary>
-    private void EnterMenuScope()
+    /// <summary>
+    /// bevel-psro: typing while the bar holds menu-scoped key focus jumps to the matching task button.
+    /// Ignored while the Start menu is open — its search filter owns typing then. Real text input only,
+    /// never a Key-enum decode.
+    /// </summary>
+    private void OnStripTextInput(object? sender, TextInputEventArgs e)
+    {
+        if (_menuScopeDepth == 0 || _startMenu is { IsOpen: true }) return;
+        var text = e.Text;
+        if (string.IsNullOrEmpty(text) || text.Any(char.IsControl)) return;
+
+        var buttons = WindowButtonAreaControl.GetRealizedContainers()
+            .Select(FindTaskButton).OfType<ToggleButton>().ToList();
+        if (buttons.Count == 0) return;
+
+        var current = buttons.FindIndex(b => b.IsFocused);
+        var idx = _stripTypeToFind.Match(text, buttons,
+            static b => (b.DataContext as TaskItemViewModel)?.Title ?? (b.DataContext as TaskGroupViewModel)?.DisplayName ?? "",
+            current);
+        if (idx < 0) return;
+        buttons[idx].Focus();
+        e.Handled = true;
+    }
+
+    internal void EnterMenuScope()
     {
         if (_menuScopeDepth++ == 0)
             _window?.SetKeyFocusAllowed(true);
