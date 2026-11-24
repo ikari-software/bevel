@@ -33,6 +33,17 @@ internal static class Program
             Environment.Exit(ok ? 0 : 1);
         }
 
+        // bevel-q3l (ENG-040): `Bevel --uninstall [--dry-run] [--keep-settings]`. Handled here, before
+        // role dispatch, because it must work when the shell is DEAD — no DI, no PAL, no bevelctl verb.
+        // This is pre-UI Main, so the blocking wait is fine (the UI thread does not exist yet).
+        if (args.Contains("--uninstall"))
+        {
+            var env = Uninstall.UninstallEnvironment.Production(keepSettings: args.Contains("--keep-settings"));
+            var plan = Uninstall.UninstallPlan.Build(env);
+            Uninstall.Uninstaller.RunAsync(plan, dryRun: args.Contains("--dry-run")).GetAwaiter().GetResult();
+            Environment.Exit(0);
+        }
+
         // Last-ditch crash forensics. An unhandled exception in a peer process abandons the managed stack
         // entirely: the OS crash report shows only IL_Throw -> DispatchManagedException -> PROCAbort with
         // the managed frames unsymbolicated, so "which exception, from where" is unrecoverable unless the

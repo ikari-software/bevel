@@ -164,9 +164,9 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **Decision:** `Bevel --uninstall [--dry-run] [--keep-settings]`, handled in `Program.Main` before role dispatch (same place as `--selftest-bus`), because it must work when the shell is dead — so no `bevelctl` verb. `UninstallPlan.Build(UninstallEnvironment env)` is PURE and returns an ordered `IReadOnlyList<UninstallAction>` (record: `Kind`, `Target`, `Description`); `Uninstaller.RunAsync(plan, dryRun)` executes and prints one line per action. Order: stop the running shell (SIGTERM the launcher pid from `shell.lock.pid`, wait ≤10 s — never SIGKILL) → restore the Dock only if `dock-claimed.json` still exists → login item off → `lsregister -u <bundle>` → `tccutil reset All` for both bundle ids → delete the directories above → print "Now move Bevel.app to the Trash". The app does not delete its own bundle.
 - **Test first:** `UninstallPlanTests.Plan_lists_every_location_bevel_writes_in_order` (assert kinds + targets against a fake env rooted in a temp dir), `Keep_settings_omits_the_config_dir`, `Dry_run_executes_nothing` (temp files still exist after `RunAsync(plan, dryRun: true)`).
 - **Steps:**
-  - [ ] Write the three tests against a temp-dir `UninstallEnvironment` (never `BevelConfigDir.Path` — it throws in a test host).
-  - [ ] Implement `UninstallPlan` + `Uninstaller`; wire the flag in `Program.Main`.
-  - [ ] Dock step: UNVERIFIED whether a fresh `MacOSDockController.SetAutoHideAsync(false)` restores from the marker; if not, port the marker-read from `packaging/macos/bevel-recover.sh`.
+  - [x] Wrote 4 tests (3 card + no-marker variant) against a temp-dir `UninstallEnvironment` (never `BevelConfigDir.Path` — it throws in a test host).
+  - [x] Implemented UninstallPlan + Uninstaller; --uninstall/--dry-run/--keep-settings wired in Program.Main before role dispatch.
+  - [x] Dock step: ported the marker-read from `packaging/macos/bevel-recover.sh` into Uninstaller.RestoreDock (honours the captured autohide value).
   - [ ] HUMAN-VERIFY on a real install: run it, then check System Settings ▸ Login Items, the Dock, and `ls ~/.config/bevel ~/.bevel`.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~UninstallPlanTests"` → pass
 - **Done when:** `Bevel --uninstall --dry-run` lists every item in State today and the real run leaves none; then `bd close bevel-q3l --reason "Bevel --uninstall: plan+executor, dry-run, human-verified clean leave"`
