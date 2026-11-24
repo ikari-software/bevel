@@ -85,4 +85,23 @@ public sealed class ShellInstanceLockTests : IDisposable
         Assert.False(File.Exists(LockPath + ".pid"));
         Assert.Equal(0, ShellInstanceLock.ReadIncumbentPid(LockPath));
     }
+
+    // bevel-glnc: a lock directory that cannot be created is "the lock is unavailable", not "another
+    // shell holds it". It must not surface as an IOException (the launcher lets those through and
+    // would abort), and it must not be reported as an incumbent after burning the whole wait.
+    [Fact]
+    public void A_lock_directory_that_cannot_be_created_is_unavailable_not_held()
+    {
+        Directory.CreateDirectory(_dir);
+        var blocker = Path.Combine(_dir, "not-a-dir");
+        File.WriteAllText(blocker, "a file where the config directory should be");
+        var lockPath = Path.Combine(blocker, "shell.lock");
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<ShellInstanceLockUnavailableException>(
+            () => ShellInstanceLock.TryAcquire(lockPath, TimeSpan.FromSeconds(30), out _));
+
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), "it waited as if the lock were contended");
+    }
 }

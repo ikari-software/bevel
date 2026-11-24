@@ -45,17 +45,33 @@ internal sealed class ShellInstanceLock : IDisposable
     /// Tries to become THE shell. Retries for up to <paramref name="wait"/> (poll 100 ms) so a launch
     /// that lands while the previous shell is still exiting succeeds instead of reporting a ghost.
     /// Returns the held lock, or <c>null</c> with <paramref name="incumbentPid"/> set to the running
-    /// shell's pid (0 when unknown).
+    /// shell's pid (0 when unknown). Throws <see cref="ShellInstanceLockUnavailableException"/> when
+    /// the lock cannot exist at all (its directory cannot be created); never an <see cref="IOException"/>.
     /// </summary>
     public static ShellInstanceLock? TryAcquire(string path, TimeSpan wait, out int incumbentPid)
     {
+        // The directory is created OUTSIDE the retry loop, and its IOException is not allowed out as
+        // one (bevel-glnc). Inside this method an IOException means exactly one thing, "somebody else
+        // holds the lock", and the launcher's caller relies on that: it lets IOException through
+        // because none is supposed to escape. A config dir that cannot be created (its path is a
+        // file, a read-only volume) is a different fact: no shell holds anything, the lock is
+        // simply unavailable. Raised as an IOException it would abort the launcher; caught by the
+        // loop below it would be reported, after the full wait, as a running shell that is not there.
         var dir = System.IO.Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
         {
-            if (OperatingSystem.IsWindows())
-                Directory.CreateDirectory(dir);
-            else
-                Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                    Directory.CreateDirectory(dir);
+                else
+                    Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            catch (IOException ex)
+            {
+                throw new ShellInstanceLockUnavailableException(
+                    $"cannot create the lock directory '{dir}': {ex.Message}", ex);
+            }
         }
 
         var deadline = Environment.TickCount64 + (long)wait.TotalMilliseconds;
@@ -113,3 +129,11 @@ internal sealed class ShellInstanceLock : IDisposable
         _lock.Dispose();
     }
 }
+
+/// <summary>
+/// The single-instance lock could not be set up, as opposed to being held by another shell
+/// (bevel-glnc). Deliberately NOT an <see cref="IOException"/>: the launcher treats this as "run
+/// unguarded", and treats a held lock as "exit".
+/// </summary>
+internal sealed class ShellInstanceLockUnavailableException(string message, Exception inner)
+    : Exception(message, inner);
