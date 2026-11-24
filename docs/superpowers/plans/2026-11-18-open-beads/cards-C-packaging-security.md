@@ -179,10 +179,10 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **Decision:** Keep `RestartDiag` untouched (CLAUDE.md and `bevel-recover.sh` document that path). Add `CrashLog` in `Bevel.Core`: `static string DefaultDir` = `~/Library/Logs/Bevel` on macOS, `%LOCALAPPDATA%\bevel\logs` on Windows, `~/.local/state/bevel/logs` elsewhere; `static void Write(string dir, string role, int pid, string version, Exception? ex, string? text)` writes one file `crash-<utcStamp>-<role>-<pid>.txt` (sync, swallow-all — the process is dying); keep the newest 50 files. `static Task<string> ExportAsync(string dir, string destZip, IEnumerable<string> extraFiles, CancellationToken)` zips crash files + `bevel-restart.log` + `bevel-filer-*.log` off the UI thread. No network, no consent prompt.
 - **Test first:** `CrashLogTests.Write_creates_one_file_per_crash_with_role_pid_and_stack`, `Write_prunes_to_the_newest_fifty`, `Export_zips_crash_files_and_extras`, `Write_never_throws_on_an_unwritable_dir`.
 - **Steps:**
-  - [ ] Tests first, all against a temp dir.
-  - [ ] In `Program.Main`, call `CrashLog.Write` from the existing handler (after `RestartDiag.Log`) and add a `TaskScheduler.UnobservedTaskException` handler that writes too (and calls `SetObserved`).
-  - [ ] General tab: add a "Diagnostics" `HeaderedContentControl` with a "Export crash logs…" button; handler awaits a save-file picker then `CrashLog.ExportAsync` on a thread-pool thread; disabled-with-text "No crashes recorded" state when the dir is empty (a real state, not a hidden control).
-  - [ ] Re-harvest the Onboarding render if `RenderOnboardingTest` pixels change.
+  - [x] Tests first (4 CrashLogTests, temp dir), all against a temp dir.
+  - [x] In Program.Main (UnhandledException + new UnobservedTaskException with SetObserved), call `CrashLog.Write` from the existing handler (after `RestartDiag.Log`) and add a `TaskScheduler.UnobservedTaskException` handler that writes too (and calls `SetObserved`).
+  - [x] General tab Diagnostics section + export handler (picker, thread-pool ExportAsync, disabled-with-text empty state): add a "Diagnostics" `HeaderedContentControl` with a "Export crash logs…" button; handler awaits a save-file picker then `CrashLog.ExportAsync` on a thread-pool thread; disabled-with-text "No crashes recorded" state when the dir is empty (a real state, not a hidden control).
+  - [x] RenderOnboardingTest passes unchanged — no shot re-harvest needed (no onboarding shot in site/shots) the Onboarding render if `RenderOnboardingTest` pixels change.
 - **Verify:** `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter "FullyQualifiedName~CrashLogTests"` → pass
 - **Done when:** a forced crash leaves a file under `~/Library/Logs/Bevel` that survives reboot and the button produces a zip; then `bd close bevel-tak --reason "Durable per-crash files + offline zip export in Settings"`
 

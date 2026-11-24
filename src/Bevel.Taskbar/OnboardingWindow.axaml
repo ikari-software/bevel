@@ -115,6 +115,19 @@
                         </StackPanel>
                     </HeaderedContentControl>
 
+                    <!-- Diagnostics (bevel-tak): durable crash logs + offline zip export -->
+                    <HeaderedContentControl Header="Diagnostics" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="6">
+                            <Button x:Name="ExportCrashLogsBtn"
+                                    Content="Export crash logs…"
+                                    FontSize="11" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="CrashLogStatus"
+                                       Text="No crashes recorded"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </HeaderedContentControl>
+
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>

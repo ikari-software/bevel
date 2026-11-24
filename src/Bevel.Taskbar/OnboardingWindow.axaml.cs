@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Avalonia.Platform.Storage;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
@@ -109,6 +110,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         LoadSettings();
         StartPermissionPoll();
         _ = ReconcileRunAtLoginAsync();
+        ExportCrashLogsBtn.Click += OnExportCrashLogs;
+        _ = RefreshCrashLogStateAsync();
 
         WASNudge.IsCheckedChanged += OnWorkAreaChanged;
         WASDockShim.IsCheckedChanged += OnWorkAreaChanged;
@@ -338,6 +341,54 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         // Actually (un)register with the OS (SMAppService via the PAL) — not just persist the flag.
         if (_shellSession is not null)
             await _shellSession.SetRunAtLoginAsync(enabled);
+    }
+
+    // ── Diagnostics: durable crash-log export (bevel-tak) ────────────────
+
+    /// <summary>Sets the export button's enabled state + status line from the crash-log dir, off the
+    /// UI thread. "No crashes recorded" is a real state, shown as disabled-with-text — not a hidden
+    /// control.</summary>
+    private async Task RefreshCrashLogStateAsync()
+    {
+        var count = await Task.Run(() => Bevel.Core.Diagnostics.CrashLog.Count(Bevel.Core.Diagnostics.CrashLog.DefaultDir));
+        Dispatcher.UIThread.Post(() =>
+        {
+            ExportCrashLogsBtn.IsEnabled = count > 0;
+            CrashLogStatus.Text = count > 0
+                ? $"{count} crash log{(count == 1 ? "" : "s")} recorded — export them for a bug report."
+                : "No crashes recorded";
+        });
+    }
+
+    private async void OnExportCrashLogs(object? sender, RoutedEventArgs e)
+    {
+        var top = TopLevel.GetTopLevel(this);
+        var file = top is null ? null : await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export crash logs",
+            SuggestedFileName = $"Bevel-crash-logs-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            FileTypeChoices = new[] { new FilePickerFileType("Zip archive") { Patterns = new[] { "*.zip" } } },
+        });
+        var path = file?.TryGetLocalPath();
+        if (path is null) return;
+
+        ExportCrashLogsBtn.IsEnabled = false;
+        try
+        {
+            // Crash files live in the durable log dir; the restart/filer logs are the temp extras.
+            var extras = new List<string> { Path.Combine(Path.GetTempPath(), "bevel-restart.log") };
+            try { extras.AddRange(Directory.GetFiles(Path.GetTempPath(), "bevel-filer-*.log")); } catch { }
+            await Task.Run(() => Bevel.Core.Diagnostics.CrashLog.ExportAsync(Bevel.Core.Diagnostics.CrashLog.DefaultDir, path, extras));
+            CrashLogStatus.Text = $"Exported to {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            CrashLogStatus.Text = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            ExportCrashLogsBtn.IsEnabled = true;
+        }
     }
 
     /// <summary>
