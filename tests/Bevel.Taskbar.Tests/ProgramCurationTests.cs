@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -138,6 +141,118 @@ public sealed class ProgramCurationTests
 
             Assert.Equal(5, model.Programs.Count);       // full list unaffected
             Assert.Equal(3, model.FrequentPrograms.Count); // curated list capped
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    // ── bevel-xrx6 Part A: exclude-open apps from the frequent column ──
+
+    private sealed class RaisableWm : IWindowManager
+    {
+        private readonly List<ForeignWindow> _windows = new();
+        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
+        public event EventHandler<ForeignWindow>? WindowOpened;
+        public event EventHandler<ForeignWindow>? WindowClosed;
+        public event EventHandler<ForeignWindow>? WindowChanged;
+        public event EventHandler<ForeignWindow>? ForegroundChanged;
+        public void Open(ForeignWindow w)
+        {
+            _windows.Add(w);
+            WindowOpened?.Invoke(this, w);
+            Dispatcher.UIThread.RunJobs();
+        }
+        public void Close(ForeignWindowId id)
+        {
+            var w = _windows.First(x => x.Id == id);
+            _windows.Remove(w);
+            WindowClosed?.Invoke(this, w);
+            Dispatcher.UIThread.RunJobs();
+        }
+    }
+
+    private static ForeignWindow Win(string id, string appId) =>
+        new(new ForeignWindowId(id), $"Window of {appId}", appId, false, false, new PalRect(0, 0, 800, 600));
+
+    private static (ShellModel Model, RaisableWm Wm) ModelWithApps(ProgramUsageStore store, int appCount, int cap)
+    {
+        var t = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var apps = new InstalledApp[appCount];
+        for (var i = 0; i < appCount; i++)
+        {
+            var id = $"com.app{i}";
+            store.Set(id, launchCount: appCount - i, t);   // app0 most-used
+            apps[i] = new InstalledApp(id, $"App{i}", null);
+        }
+        var wm = new RaisableWm();
+        var model = new ShellModel(wm, new StubAppEnvironment(apps), null, usage: store) { FrequentCap = cap };
+        LoadPrograms(model, appCount);
+        return (model, wm);
+    }
+
+    private static string[] Column(ShellModel m) => m.FrequentPrograms.Select(p => p.DisplayName).ToArray();
+
+    [AvaloniaFact]
+    public void Open_apps_are_excluded_and_the_column_backfills_to_the_cap()
+    {
+        var dir = TempDir();
+        try
+        {
+            var store = new ProgramUsageStore(dir);
+            var (model, wm) = ModelWithApps(store, 4, cap: 3);
+            using (model)
+            {
+                Assert.Equal(new[] { "App0", "App1", "App2" }, Column(model));   // raw frequency order
+
+                wm.Open(Win("w1", "com.app0"));   // the most-used app opens a window
+                Bevel.TestSupport.Settle.Until(() => Column(model).SequenceEqual(new[] { "App1", "App2", "App3" }),
+                    "open app excluded, column backfilled to the cap");
+            }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [AvaloniaFact]
+    public void Exclude_open_off_keeps_raw_frequency_order()
+    {
+        var dir = TempDir();
+        try
+        {
+            var store = new ProgramUsageStore(dir);
+            var (model, wm) = ModelWithApps(store, 4, cap: 3);
+            using (model)
+            {
+                model.FrequentExcludeOpen = false;
+                wm.Open(Win("w1", "com.app0"));
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal(new[] { "App0", "App1", "App2" }, Column(model));   // open app still listed
+            }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [AvaloniaFact]
+    public void Closing_the_last_window_returns_the_app_to_the_column()
+    {
+        var dir = TempDir();
+        try
+        {
+            var store = new ProgramUsageStore(dir);
+            var (model, wm) = ModelWithApps(store, 4, cap: 3);
+            using (model)
+            {
+                wm.Open(Win("w1", "com.app0"));
+                Bevel.TestSupport.Settle.Until(() => !Column(model).Contains("App0"), "App0 excluded while open");
+
+                wm.Close(new ForeignWindowId("w1"));
+                Bevel.TestSupport.Settle.Until(() => Column(model)[0] == "App0", "App0 back on top after close");
+            }
         }
         finally { Directory.Delete(dir, true); }
     }

@@ -533,6 +533,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("runAtLogin", _settings.RunAtLogin, d.RunAtLogin, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarButtonWidth", _settings.TaskbarButtonWidth, d.TaskbarButtonWidth, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarStartMenuFrequentCount", _settings.TaskbarStartMenuFrequentCount, d.TaskbarStartMenuFrequentCount, SettingsJsonContext.Default.Int32);
+        SetOrPrune("taskbarStartMenuFrequentExcludeOpen", _settings.TaskbarStartMenuFrequentExcludeOpen, d.TaskbarStartMenuFrequentExcludeOpen, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarButtonWidthMode", _settings.TaskbarButtonWidthMode.ToString(), d.TaskbarButtonWidthMode.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarMinButtonWidth", _settings.TaskbarMinButtonWidth, d.TaskbarMinButtonWidth, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarButtonSize", _settings.TaskbarButtonSize.ToString(), d.TaskbarButtonSize.ToString(), SettingsJsonContext.Default.String);
@@ -700,6 +701,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             RunAtLogin = GetBool("runAtLogin") ?? false,
             TaskbarButtonWidth = GetInt("taskbarButtonWidth") ?? 160,
             TaskbarStartMenuFrequentCount = GetInt("taskbarStartMenuFrequentCount") ?? 6,
+            TaskbarStartMenuFrequentExcludeOpen = GetBool("taskbarStartMenuFrequentExcludeOpen") ?? true,
             TaskbarButtonWidthMode = Enum.TryParse<TaskbarButtonWidthMode>(GetString("taskbarButtonWidthMode"), out var twm)
                 ? twm : TaskbarButtonWidthMode.ShrinkToFit,
             TaskbarMinButtonWidth = GetInt("taskbarMinButtonWidth") ?? 80,
@@ -885,6 +887,10 @@ public sealed class BevelSettings
 
     /// <summary>How many entries the Start menu's curated left column shows (newest + most-used). Default 6.</summary>
     public int TaskbarStartMenuFrequentCount { get; set; } = 6;
+
+    /// <summary>bevel-xrx6: exclude apps that already have a taskbar button from the Start menu's
+    /// frequent column (the column backfills to the cap). Default true.</summary>
+    public bool TaskbarStartMenuFrequentExcludeOpen { get; set; } = true;
 
     /// <summary>bevel-m2.10: how button width is chosen — shrink-to-fit (default) or fixed at the max.</summary>
     public TaskbarButtonWidthMode TaskbarButtonWidthMode { get; set; } = TaskbarButtonWidthMode.ShrinkToFit;
