@@ -1,5 +1,6 @@
 using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -177,6 +178,34 @@ public class StartMenuTests
         // Populated → cascade binds the live reconciled collection; the placeholder is gone.
         Assert.Same(model.Programs, programsItem.ItemsSource);
         Assert.Empty(programsItem.Items.OfType<MenuItem>());
+    }
+
+    // bevel-ujx8(3): an All-Programs row that survives a Programs change must keep its Control
+    // instance (no Clear+rebuild dropping scroll/hover state).
+    [AvaloniaFact]
+    public void A_programs_change_keeps_existing_all_programs_rows()
+    {
+        var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
+        model.Start();
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
+
+        var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));
+        menu.WireAllProgramsFlyoutForTest();
+        Dispatcher.UIThread.RunJobs();
+        var list = menu.AllProgramsList!;
+        Assert.Single(list.Children);
+        var rowA = list.Children[0];
+
+        appEnv.RaiseInstalledAppsChanged(new[]
+        {
+            new InstalledApp("com.a", "Alpha", null),
+            new InstalledApp("com.b", "Beta", null),
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(2, list.Children.Count);
+        Assert.Same(rowA, list.Children[0]);   // surviving row kept its Control
     }
 
     [Fact]
