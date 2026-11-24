@@ -1,6 +1,7 @@
 using Avalonia;
 using Bevel.App.Supervision;
 using Bevel.ShellCore.Ipc;
+using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Diagnostics;
@@ -365,6 +366,12 @@ internal static class Program
                 }
                 stop.Set();
             }));
+
+        // bevel-web5: reclaim a nearly-full shared icon pool at launcher boot — the one moment no
+        // reader can be mapped (instance lock held above, no children spawned yet). A pool ≥80% full
+        // is deleted here; the writer recreates it empty on first use.
+        MmfBgraPool.DeleteIfNearlyFull(
+            CompositionRoot.IconPoolPath, CompositionRoot.IconPoolSlotCapacity, CompositionRoot.IconPoolMaxBgraBytes, threshold: 0.8);
 
         // Stand down BEFORE anything is spawned or cleared (bevel-9790). The lock above and a live socket
         // are independent detectors — an orphaned core can still serve core.sock (2026-10-12). The gate

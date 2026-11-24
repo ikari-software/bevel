@@ -397,6 +397,47 @@ public sealed class MmfBgraPool : IDisposable
         return unchecked((long)h);
     }
 
+    /// <summary>
+    /// Launcher-boot reset (bevel-web5): if a pool file exists at <paramref name="path/>, matches the
+    /// expected geometry (magic/version/capacity/maxBgra and exact file size), and its published count is
+    /// at or past <paramref name="threshold"/> of capacity, the file is deleted and true is returned. This
+    /// is safe only at the one moment no reader can be mapped — the launcher calls it after the instance
+    /// lock and before any child process spawns. Missing or foreign files are left untouched (false).
+    /// </summary>
+    public static bool DeleteIfNearlyFull(string path, int slotCapacity, int maxBgraBytes, double threshold)
+    {
+        long fileSize = HeaderSize
+            + (long)slotCapacity * EntrySize
+            + (long)slotCapacity * maxBgraBytes;
+
+        try
+        {
+            if (!File.Exists(path)) return false;
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (fs.Length != fileSize) return false;
+
+            using var mmf = MemoryMappedFile.CreateFromFile(
+                fs, mapName: null, fileSize, MemoryMappedFileAccess.Read,
+                HandleInheritability.None, leaveOpen: true);
+            using var acc = mmf.CreateViewAccessor(0, fileSize, MemoryMappedFileAccess.Read);
+            if (acc.ReadInt32(OffMagic) != Magic
+                || acc.ReadInt32(OffVersion) != FormatVersion
+                || acc.ReadInt32(OffCapacity) != slotCapacity
+                || acc.ReadInt32(OffMaxBgra) != maxBgraBytes)
+                return false;   // foreign file: never delete what we don't recognize
+
+            long published = acc.ReadInt64(OffPublished);
+            if (published < threshold * slotCapacity) return false;
+        }
+        catch
+        {
+            return false;
+        }
+
+        try { File.Delete(path); return true; }
+        catch { return false; }
+    }
+
     public void Dispose()
     {
         _accessor?.Dispose();   // null on a detached reader
