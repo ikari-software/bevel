@@ -233,6 +233,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         RefreshCrispBevels();
         StartBadgeDetailCheck.IsChecked = s.StartBadgeFullDetail;
 
+        RefreshStacksList();
+
         ShowStartCheck.IsChecked = s.TaskbarShowStart;
         StartLabelBox.Text = s.TaskbarStartLabel;
         FrequentCountSlider.Value = s.TaskbarStartMenuFrequentCount;
@@ -420,6 +422,68 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
     /// <summary>Persist a settings mutation and push it live, guarding the disk/SQLite I/O so a write
     /// failure logs instead of crashing the process out of one of these async-void handlers (review:
     /// reliability). Single seam for every dialog handler's persist-then-apply (was duplicated ~9x).</summary>
+    // ── Stacks tab (bevel-dw5) ──────────────────────────────────────
+
+    private void RefreshStacksList()
+    {
+        StacksList.ItemsSource = _settings.Current.TaskbarStacks.ToArray();
+        UpdateStackButtons();
+    }
+
+    private void UpdateStackButtons()
+    {
+        var count = StacksList.Items.Count;
+        var i = StacksList.SelectedIndex;
+        StackRemoveButton.IsEnabled = i >= 0 && i < count;
+        StackUpButton.IsEnabled = i > 0;
+        StackDownButton.IsEnabled = i >= 0 && i < count - 1;
+    }
+
+    private void OnStacksSelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateStackButtons();
+
+    private async void OnStackAdd(object? sender, RoutedEventArgs e)
+    {
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null) return;
+        var picked = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Add a stack folder",
+            AllowMultiple = false,
+        });
+        var path = picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
+        if (path is null) return;
+        var current = _settings.Current.TaskbarStacks;
+        var next = StackListEditor.Add(current, path);
+        if (ReferenceEquals(next, current)) return;   // duplicate/blank — nothing to persist
+        await PersistAndApply(s => s.TaskbarStacks = next);
+        RefreshStacksList();
+        StacksList.SelectedIndex = StacksList.Items.Count - 1;
+    }
+
+    private async void OnStackRemove(object? sender, RoutedEventArgs e)
+    {
+        var i = StacksList.SelectedIndex;
+        var current = _settings.Current.TaskbarStacks;
+        var next = StackListEditor.Remove(current, i);
+        if (ReferenceEquals(next, current)) return;
+        await PersistAndApply(s => s.TaskbarStacks = next);
+        RefreshStacksList();
+    }
+
+    private async void OnStackMoveUp(object? sender, RoutedEventArgs e) => await MoveStack(-1);
+    private async void OnStackMoveDown(object? sender, RoutedEventArgs e) => await MoveStack(1);
+
+    private async System.Threading.Tasks.Task MoveStack(int delta)
+    {
+        var i = StacksList.SelectedIndex;
+        var current = _settings.Current.TaskbarStacks;
+        var next = StackListEditor.Move(current, i, delta);
+        if (ReferenceEquals(next, current)) return;
+        await PersistAndApply(s => s.TaskbarStacks = next);
+        RefreshStacksList();
+        StacksList.SelectedIndex = i + delta;
+    }
+
     private async System.Threading.Tasks.Task PersistAndApply(Action<BevelSettings> mutate)
     {
         try

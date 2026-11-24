@@ -147,10 +147,10 @@ Target: one live-apply funnel with section diffs; stacks reconciled incrementall
 - **Decision:** New `TabItem Header="Stacks"` after "Tray": a `ListBox x:Name="StacksList"` of folder paths plus buttons Add…, Remove, Move Up, Move Down (disabled when they cannot act — a disabled-with-reason button is wired, not hidden). Add… uses `StorageProvider.OpenFolderPickerAsync` (already async; no blocking). Pure logic in `public static class StackListEditor` with `string[] Add(string[] list, string path)` (trim trailing slash, reject duplicates by `StringComparison.Ordinal`), `Remove(string[] list, int index)`, `Move(string[] list, int index, int delta)`. Persist with `PersistAndApply(s => s.TaskbarStacks = next)`. Source of truth stays `TaskbarStacks` because that is what the bar renders today; `TaskbarComponents`' `run.bevel.stack` instances are NOT rewritten (nothing reads them yet). File a new bead: "When the Stack component renderer lands, make TaskbarComponents the single source and retire TaskbarStacks".
 - **Test first:** `StackListEditorTests.Add_rejects_a_duplicate_and_normalises_a_trailing_slash`, `Move_clamps_at_both_ends`, `Remove_out_of_range_is_a_no_op`.
 - **Steps:**
-  - [ ] Tests + `StackListEditor`.
-  - [ ] XAML tab + four handlers; fill the list in `LoadSettings`.
-  - [ ] Confirm `OnCancel`'s `CopyFrom(baseline)` restores the list (it clones `TaskbarStacks`, `SettingsService.cs:1034`).
-  - [ ] Extend `RenderOnboardingTest` to render the new tab; re-harvest the shot for `site/` if the page shows the dialog.
+  - [x] Tests + `StackListEditor`.
+  - [x] XAML tab + four handlers; fill the list in `LoadSettings`.
+  - [x] Confirm `OnCancel`'s `CopyFrom(baseline)` restores the list (it clones `TaskbarStacks`, `SettingsService.cs:1034`).
+  - [x] Extend `RenderOnboardingTest` to render the new tab; re-harvest the shot for `site/` if the page shows the dialog.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~StackListEditorTests|FullyQualifiedName~RenderOnboardingTest"` → pass
 - **Done when:** adding/removing/reordering a folder in Properties changes the running bar immediately; then `bd close bevel-dw5 --reason "Stacks tab in Taskbar Properties; live via StacksViewModel.Reconcile"`
 
