@@ -377,7 +377,17 @@ struct SpaceContext {
     /// window reports []). Unknown never claims it — otherwise a SkyLight miss would drop every
     /// hidden app's buttons (bevel-0mur).
     func isOnNoSpace(_ window: CGWindowID) -> Bool {
-        guard !current.isEmpty, let spaces = spacesOf(window) else { return false }
+        isOnNoSpace(spaces: spacesOf(window))
+    }
+
+    /// The window's Spaces, or nil when UNKNOWN (SkyLight miss) — the nil/[] distinction is what
+    /// keeps `isOnNoSpace` from claiming "no Space" on a lookup failure.
+    func knownSpaceIDs(of window: CGWindowID) -> [Int]? { spacesOf(window) }
+
+    /// `isOnNoSpace` against an already-fetched Space list, so a caller needing both Space
+    /// predicates pays one WindowServer round trip instead of two.
+    func isOnNoSpace(spaces: [Int]?) -> Bool {
+        guard !current.isEmpty, let spaces = spaces else { return false }
         return spaces.isEmpty
     }
 

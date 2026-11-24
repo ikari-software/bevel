@@ -24,10 +24,26 @@ final class OffscreenWindowTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var streak: [CGWindowID: Int] = [:]
     private var confirmed = Set<CGWindowID>()
+    /// Highest alpha ever observed per window. A window that was EVER seen opaque was rendered;
+    /// a later alpha=0 is then an app-level opacity hide (setAlphaValue: 0), not an ordered-out
+    /// window — so the alpha=0 drop gate must not fire for it (bevel-j48j hardening).
+    private var maxAlpha: [CGWindowID: CGFloat] = [:]
 
     /// Read-only: has this window earned trust?
     func isConfirmedLive(_ window: CGWindowID) -> Bool {
         lock.withLock { confirmed.contains(window) }
+    }
+
+    /// Records the alpha a window was observed with this pass. A missing alpha key is NOT an
+    /// observation (older macOS) — fail open, keep whatever was seen before.
+    func noteObservedAlpha(_ window: CGWindowID, _ alpha: CGFloat?) {
+        guard let alpha = alpha else { return }
+        lock.withLock { maxAlpha[window] = Swift.max(maxAlpha[window, default: 0], alpha) }
+    }
+
+    /// The highest alpha ever observed for the window; 0 when never observed opaque.
+    func maxObservedAlpha(_ window: CGWindowID) -> CGFloat {
+        lock.withLock { maxAlpha[window, default: 0] }
     }
 
     /// One reconcile pass. `candidates` = windows off-screen with no AX element this pass;
@@ -47,6 +63,7 @@ final class OffscreenWindowTracker: @unchecked Sendable {
             streak = streak.filter { candidates.contains($0.key) }
             // Gone from the CG list entirely → forget it (the closed-diff owns the button).
             confirmed.formIntersection(listed)
+            maxAlpha = maxAlpha.filter { listed.contains($0.key) }
         }
     }
 }
