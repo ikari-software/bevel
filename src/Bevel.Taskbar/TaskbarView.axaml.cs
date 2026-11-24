@@ -1162,20 +1162,17 @@ public partial class TaskbarView : UserControl
     /// 100–300 ms regardless.</summary>
     private static readonly TimeSpan TabPrefetchBudget = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>How old a prefetched tab list may be and still open a menu (bevel-1fy8).
+    /// <summary>How old a prefetched tab list may be and still open a menu (bevel-1fy8, widened by
+    /// bevel-8zx2 to 10 s).
     ///
-    /// <para>This bound matters for CORRECTNESS, not just freshness: <see cref="AppTab"/>'s refs are
-    /// POSITIONAL — the Chromium/Safari/iTerm activation scripts do <c>set active tab index of
-    /// window N to K</c> — so a row whose tab has since closed does not no-op, it selects whatever
-    /// tab now sits at that index. Serving arbitrarily old rows would therefore risk activating the
-    /// WRONG page, which is worse than a slow menu. (bevel-6asm tracks making activation verify the
-    /// row before selecting it, which is what would allow a longer-lived cache.)</para>
-    ///
-    /// <para>Deliberately equal to <see cref="TabPrefetchBudget"/>, which is the staleness the menu
-    /// ALREADY tolerates: a fetch started at right-click may take the full budget, so the first rows
-    /// enumerated are already up to 1.5 s old by the time they are shown. Reusing a result up to
-    /// 1.5 s old introduces no staleness the current design did not already accept.</para></summary>
-    private static readonly TimeSpan TabPrefetchFreshness = TabPrefetchBudget;
+    /// <para>Wider than <see cref="TabPrefetchBudget"/> is now SAFE, not just tolerable: activation
+    /// re-resolves the row by identity and reports its outcome (bevel-6asm/bw1v), so a stale row
+    /// reports NotFound and invalidates this cache instead of pressing whatever tab now sits at the
+    /// remembered index. A fetch started at right-click may take the full budget, so the first rows
+    /// enumerated are already up to 1.5 s old when shown — reusing a result up to 10 s old adds no
+    /// risk the verified-activation path does not already cover, and makes the hover-warmed list
+    /// reusable across several menu opens.</para></summary>
+    private static readonly TimeSpan TabPrefetchFreshness = TimeSpan.FromSeconds(10);
 
     private void ApplyRowLayout()
     {
