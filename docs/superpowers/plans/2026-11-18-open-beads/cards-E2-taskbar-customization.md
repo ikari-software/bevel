@@ -162,11 +162,11 @@ Target: one live-apply funnel with section diffs; stacks reconciled incrementall
 - **Decision:** This bead = phase 1, no new PAL verbs. (a) Group menu: after the Windows submenu add Minimize All / Restore All / Close All bound to the three existing commands (only when `dc is TaskGroupViewModel` with 2+ windows); per-window submenu gains Restore. Extend the private `MenuModel` record with those three commands. (b) Bar menu: Cascade Windows, Tile Windows Horizontally, Tile Windows Vertically. Pure geometry in `public static class WindowArranger`: `IReadOnlyList<PalRect> Cascade(PalRect area, int count)`, `TileHorizontally(PalRect area, int count)`, `TileVertically(PalRect area, int count)`. `area` = primary monitor rect minus the taskbar band (`TaskbarWindow.GetWorkAreaBand`), in the same coordinate space `WorkAreaMitigator` uses. `ShellModel` gets `Task ArrangeAsync(Func<PalRect,int,IReadOnlyList<PalRect>> layout, PalRect area)` that takes non-minimized, non-fullscreen, non-other-Space, non-app-presence windows from the projection and calls `RepositionAsync` per window off the UI thread, continuing past per-window failures. Phase 2 = new beads (file them): "Window verb: Maximize/Zoom (proto + helper AXZoomButton press)", "App verb: Hide app (NSRunningApplication hide)", "Show in Finder for a task button (needs bundle path on ForeignWindow)", "Pin/Unpin apps to the taskbar", "SPIKE: Move window to Space (private SkyLight only)". Move/Size keyboard modes are dropped: macOS has no equivalent and a mouse-less resize mode is not worth a helper verb.
 - **Test first:** `WindowArrangerTests.Tile_vertically_splits_the_area_into_equal_columns_with_no_gap_or_overlap`, `Cascade_offsets_each_window_and_keeps_all_inside_the_area`, `Zero_windows_returns_empty`; `TaskButtonMenuTabsTests.Group_menu_offers_minimize_restore_close_all` (via `TaskButtonMenu.Build`).
 - **Steps:**
-  - [ ] Arranger tests + implementation.
-  - [ ] `ShellModel.ArrangeAsync` + three commands on `TaskbarViewModel` (next to `ShowDesktopCommand`).
-  - [ ] Three `MenuItem`s in `Grid.ContextFlyout`.
-  - [ ] Group verbs + Restore in `TaskButtonMenu`.
-  - [ ] File the five phase-2 beads.
+  - [x] Arranger tests + implementation.
+  - [x] `ShellModel.ArrangeAsync` + three commands on `TaskbarViewModel` (next to `ShowDesktopCommand`).
+  - [x] Three `MenuItem`s in `Grid.ContextFlyout`.
+  - [x] Group verbs + Restore in `TaskButtonMenu`.
+  - [x] File the five phase-2 beads.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~WindowArrangerTests|FullyQualifiedName~TaskButtonMenuTabsTests"` → pass. HUMAN: with 3 windows open, Tile Vertically → three columns above the bar.
 - **Done when:** phase-1 items work on device and phase-2 beads exist; then `bd close bevel-apm --reason "Cascade/Tile + group verbs shipped; remaining verbs split into beads"`
 

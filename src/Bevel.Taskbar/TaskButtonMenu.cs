@@ -84,11 +84,21 @@ public static class TaskButtonMenu
                 if (onActivateForeign is not null) activate.Click += (_, _) => onActivateForeign();
                 per.Items.Add(activate);
                 per.Items.Add(new MenuItem { Header = "Mi_nimize", Command = win.MinimizeCommand });
+                per.Items.Add(new MenuItem { Header = "_Restore", Command = win.RestoreCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
                 windows.Items.Add(per);
             }
             items.Add(windows);
             items.Add(new Separator());
+            // bevel-apm: app-scoped verbs, only for a real group with something to act on. The commands
+            // already exist on TaskGroupViewModel; this menu was the missing caller.
+            if (model.IsGroup && model.Windows.Count >= 2)
+            {
+                items.Add(new MenuItem { Header = "Minimize _All", Command = model.MinimizeAllCommand });
+                items.Add(new MenuItem { Header = "R_estore All", Command = model.RestoreAllCommand });
+                items.Add(new MenuItem { Header = "Close A_ll", Command = model.CloseAllCommand });
+                items.Add(new Separator());
+            }
         }
 
         // Tabs (bevel-a40b): prefetched by the caller BEFORE the flyout opens — an open MenuFlyout
@@ -172,15 +182,17 @@ public static class TaskButtonMenu
 
     // ── Adapt either button VM to a common menu shape ────────────────────────
 
-    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand CloseCommand);
-    private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand);
+    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand CloseCommand);
+    private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
+        bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null);
 
     private static MenuModel? Describe(object? dc) => dc switch
     {
         TaskGroupViewModel g => new MenuModel(
             g.DisplayName, g.IconSource,
             g.Windows.Select(Row).ToList(),
-            g.QuitCommand, g.ForceQuitCommand),
+            g.QuitCommand, g.ForceQuitCommand,
+            IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand),
 
         // App-presence has no windows → the Windows section is omitted (Windows is empty).
         TaskItemViewModel t => new MenuModel(
@@ -192,7 +204,7 @@ public static class TaskButtonMenu
     };
 
     private static WindowRow Row(TaskItemViewModel w) =>
-        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.CloseCommand);
+        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.RestoreCommand, w.CloseCommand);
 
     /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
     /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>

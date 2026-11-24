@@ -182,3 +182,8 @@ H|bevel-tned|HUMAN|S|cards-G-tray-interop-windows.md|On-device QA: tray adaptive
 H|bevel-7qdi|A+H|S|cards-G-tray-interop-windows.md|Intermittent: tray icons render too small (not reproduced)
 H|bevel-injy|A+H|S|cards-G-tray-interop-windows.md|Quit leaves the Windows taskbar hidden (no restore / no crash-heal)
 H|bevel-h0sr|A+H|S|cards-G-tray-interop-windows.md|Windows taskbar sits too high and ignores display-size changes
+W5|bevel-kpkx|AGENT|S|-|Window verb: Maximize/Zoom (proto + helper AXZoomButton press) (filed by bevel-apm)
+W5|bevel-d2j9|AGENT|S|-|App verb: Hide app (NSRunningApplication hide) (filed by bevel-apm)
+W5|bevel-4nct|AGENT|S|-|Show in Finder for a task button (needs bundle path on ForeignWindow) (filed by bevel-apm)
+W5|bevel-be86|AGENT|M|-|Pin/Unpin apps to the taskbar (filed by bevel-apm)
+W5|bevel-44vg|AGENT|S|-|SPIKE: Move window to Space (private SkyLight only) (filed by bevel-apm)

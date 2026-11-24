@@ -100,6 +100,29 @@ public sealed class ShellModel : IDisposable
         }
     }
 
+    /// <summary>Repositions the arrangeable windows — not minimized, fullscreen, on another Space, or
+    /// app-presence — into the rects <paramref name="layout"/> produces for <paramref name="area"/>
+    /// (bevel-apm Cascade/Tile). Repositioning runs off the UI thread via Task.Run; per-window failures
+    /// are swallowed so one stuck window doesn't abort the rest (same discipline as MinimizeAllAsync).</summary>
+    public async System.Threading.Tasks.Task ArrangeAsync(
+        Func<PalRect, int, IReadOnlyList<PalRect>> layout, PalRect area)
+    {
+        if (_windows is null) return;
+        var targets = Windows
+            .Where(w => !w.IsMinimized && !w.IsFullscreen && !w.IsOnOtherSpace && !w.IsAppPresence)
+            .ToList();
+        if (targets.Count == 0) return;
+        var rects = layout(area, targets.Count);
+        await System.Threading.Tasks.Task.Run(async () =>
+        {
+            for (var i = 0; i < targets.Count && i < rects.Count; i++)
+            {
+                try { await _windows.RepositionAsync(targets[i].Id, rects[i]); }
+                catch { /* best-effort */ }
+            }
+        });
+    }
+
     /// <summary>PNG thumbnail of a window for hover previews (bevel-cust); null if unavailable. The
     /// token lets the caller bound a hung capture with a timeout (review: reliability).</summary>
     public System.Threading.Tasks.Task<byte[]?> CaptureWindowAsync(

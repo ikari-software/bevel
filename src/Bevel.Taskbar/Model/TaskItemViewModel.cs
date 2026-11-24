@@ -23,6 +23,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     private string _title = "";
     private bool _isFocused;
     private bool _isMinimized;
+    private bool _isFullscreen;
+    private bool _isOnOtherSpace;
     private double _width;
     private double _lastLiveWidth;
     private double _opacity;
@@ -105,6 +107,15 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
             OnPropertyChanged(nameof(StatusText));
         }
     }
+
+    /// <summary>Native fullscreen (own Space) — arrange actions must skip it (bevel-apm). False when
+    /// unknown, never guessed.</summary>
+    public bool IsFullscreen { get => _isFullscreen; private set => SetProperty(ref _isFullscreen, value); }
+
+    /// <summary>Window's Space is known and not on the current display (bevel-apm arrange filter).
+    /// False when unknown.</summary>
+    public bool IsOnOtherSpace { get => _isOnOtherSpace; private set => SetProperty(ref _isOnOtherSpace, value); }
+
     public Bitmap? IconSource { get => _iconSource; set => SetProperty(ref _iconSource, value); }
 
     /// <summary>
@@ -232,6 +243,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     {
         Title = string.IsNullOrEmpty(w.Title) ? w.AppId ?? "" : w.Title;
         IsMinimized = w.IsMinimized;
+        IsFullscreen = w.IsFullscreen;
+        IsOnOtherSpace = w.IsOnOtherSpace;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
     }
