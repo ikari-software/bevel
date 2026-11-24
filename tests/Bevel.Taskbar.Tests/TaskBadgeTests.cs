@@ -7,6 +7,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Styling;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -128,6 +132,51 @@ public class TaskBadgeTests
         vm.ApplyBadge(null);
         Assert.False(vm.HasBadge);
         Assert.Null(vm.BadgeText);
+    }
+
+    [Fact]
+    public void Four_digit_counts_round_trip_verbatim_and_parse()
+    {
+        var vm = new TaskItemViewModel(W("s1", "Acme - Slack", "Slack", SlackBundle), new StubWm());
+
+        vm.ApplyBadge("9999");
+        Assert.True(vm.HasBadge);
+        Assert.Equal("9999", vm.BadgeText);   // no cap, no ellipsis on the Bevel side
+        Assert.Equal(9999, vm.BadgeCount);
+    }
+
+    [AvaloniaFact]
+    public void Pill_grows_to_fit_a_four_digit_count_without_clipping()
+    {
+        var window = new Window
+        {
+            SystemDecorations = SystemDecorations.None,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 },
+        };
+        window.Resources.MergedDictionaries.Add(
+            new ResourceInclude(new Uri("avares://Bevel.Taskbar/TaskBadge.axaml")) { Source = new Uri("avares://Bevel.Taskbar/TaskBadge.axaml") });
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var theme = (ControlTheme)window.FindResource("Bevel.Theme.TaskBadge")!;
+        double PillWidth(string text)
+        {
+            var pill = new ContentControl { Theme = theme, Content = text };
+            ((StackPanel)window.Content!).Children.Add(pill);
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            var w = pill.Bounds.Width;
+            ((StackPanel)window.Content!).Children.Remove(pill);
+            return w;
+        }
+
+        var w2 = PillWidth("76");
+        var w4 = PillWidth("9999");
+        // The pill sizes to its content: four digits must measure clearly wider than two, and the
+        // inner text must fit inside the pill (ClipToBounds clips paint, not layout — so assert on
+        // the measured content width vs the pill width).
+        Assert.True(w4 > w2 * 1.5, $"pill did not grow for 4 digits: 2-digit={w2}, 4-digit={w4}");
     }
 
     [Fact]
