@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -32,6 +33,12 @@ public sealed class ContextMenuActions
     public Action? Delete { get; init; }
     public Action? Rename { get; init; }
     public Action? Properties { get; init; }
+    /// <summary>bevel-j905: "Empty Trash…" — folder-background menu, offered only while InTrash().</summary>
+    public Action? EmptyTrash { get; init; }
+    /// <summary>bevel-j905: "Restore…" — item menu, offered only for trash:// items.</summary>
+    public Action? Restore { get; init; }
+    /// <summary>bevel-j905: true while the current folder is inside the Trash.</summary>
+    public Func<bool>? InTrash { get; init; }
     public Action? Undo { get; init; }
     public Action? Refresh { get; init; }
     public Func<bool>? CanPaste { get; init; }
@@ -66,6 +73,10 @@ public static class ContextMenuBuilder
         var defaultItem = MakeItem(defaultVerb, actions.Open, bold: true);
         defaultItem.IsEnabled = actions.Open is not null;
         menu.Items.Add(defaultItem);
+
+        // bevel-j905: trash items get "Restore…" right after the default verb.
+        if (node.Path.Scheme == "trash" && actions.Restore is not null)
+            menu.Items.Add(MakeItem("_Restore…", actions.Restore));
 
         // 2) Open With submenu (FM-080 / bevel-wxt) — the handler list is enumerated lazily the first
         //    time the submenu opens, so the LaunchServices query never delays showing the context menu.
@@ -161,6 +172,13 @@ public static class ContextMenuBuilder
     public static ContextMenu BuildFolderBackgroundMenu(ContextMenuActions actions)
     {
         var menu = new ContextMenu();
+
+        // bevel-j905: inside the Trash the background menu leads with Empty Trash.
+        if (actions.InTrash?.Invoke() == true && actions.EmptyTrash is not null)
+        {
+            menu.Items.Add(MakeItem("_Empty Trash…", actions.EmptyTrash));
+            menu.Items.Add(new Separator());
+        }
 
         // 1) View submenu
         var view = new MenuItem { Header = "_View" };

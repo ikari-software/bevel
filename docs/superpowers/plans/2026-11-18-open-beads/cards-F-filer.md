@@ -299,10 +299,10 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
   - Deferred, file a new bead: "Trash: write .trashinfo sidecars at trash time so Put Back can restore to the original location" (touches `LocalTrash.MoveToTrash`).
 - **Test first:** `TrashUiTests.EmptyTrashAsync_deletes_every_item_including_hidden_and_nothing_outside` (new): temp trash dir with a file, a dotfile and a folder, plus a sibling directory that must survive. Then `Folder_menu_offers_empty_trash_only_inside_the_trash` and `Item_menu_offers_restore_only_for_trash_items`.
 - **Steps:**
-  - [ ] Move/extend `ConfirmDialog`; fix the `AppleEventBridge` using.
-  - [ ] `EmptyTrashAsync` + test (constructor-injected temp `TrashProvider`, never `~/.Trash`).
-  - [ ] Menu entries, File menu item, enable logic, tests.
-  - [ ] Restore flow + `CanFastMoveWithin` + `TrashUiTests.Restore_moves_the_item_to_the_chosen_folder`.
+  - [x] Move/extend `ConfirmDialog`; fix the `AppleEventBridge` using.
+  - [x] `EmptyTrashAsync` + test (constructor-injected temp `TrashProvider`, never `~/.Trash`).
+  - [x] Menu entries, File menu item, enable logic, tests.
+  - [x] Restore flow + `CanFastMoveWithin` + `TrashUiTests.Restore_moves_the_item_to_the_chosen_folder`.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~TrashUi"` and `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter "FullyQualifiedName~TrashProvider"` → pass
 - **Done when:** Empty Trash asks, defaults to Cancel, empties on confirm and shows progress; Restore puts an item in the picked folder; neither entry appears outside the Trash; then `bd close bevel-j905 --reason "Empty Trash + Restore shipped; Put Back sidecars tracked separately"`
 
