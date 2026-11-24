@@ -24,6 +24,7 @@ namespace Bevel.FileManager;
 /// </summary>
 public partial class FileManagerWindow : BevelWindow
 {
+    private readonly System.Diagnostics.Stopwatch _treeTypeClock = System.Diagnostics.Stopwatch.StartNew();
     private VfsRoot? _vfsRoot;
     private FileManagerController? _controller;
     private Core.ISettingsService? _settings;
@@ -119,6 +120,8 @@ public partial class FileManagerWindow : BevelWindow
 
         // Tree selection
         TreeView.SelectionChanged += TreeView_SelectedItemChanged;
+        // Type-ahead in the folder tree (bevel-psro): shared TypeToFind over the visible nodes.
+        Components.TreeTypeAhead.Attach(TreeView, new Bevel.Core.Input.TypeToFind(() => _treeTypeClock.ElapsedMilliseconds));
 
         // Item activation (double-click / Enter on folder)
         ItemView.ItemActivated += OnItemActivated;

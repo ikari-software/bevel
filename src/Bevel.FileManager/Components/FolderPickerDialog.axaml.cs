@@ -16,6 +16,7 @@ namespace Bevel.FileManager.Components;
 /// </summary>
 public partial class FolderPickerDialog : BevelWindow
 {
+    private readonly System.Diagnostics.Stopwatch _typeClock = System.Diagnostics.Stopwatch.StartNew();
     private readonly VfsRoot _vfsRoot;
     private VfsPath? _selectedPath;
     private readonly CancellationTokenSource _cts = new();   // cancels in-flight tree expansion on close
@@ -34,6 +35,8 @@ public partial class FolderPickerDialog : BevelWindow
         OkButton.Click += (_, _) => Close(ConfirmSelection());
         CancelButton.Click += (_, _) => Close(null);
         TreeView.SelectionChanged += (_, _) => SelectNode(TreeView.SelectedItem as TreeViewItem);
+        // Type-ahead in the picker tree (bevel-psro): same shared matcher as the Filer sidebar.
+        TreeTypeAhead.Attach(TreeView, new Bevel.Core.Input.TypeToFind(() => _typeClock.ElapsedMilliseconds));
 
         var start = rootPath ?? new VfsPath("file", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         BuildTree(start);

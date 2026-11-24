@@ -212,10 +212,10 @@ dead fake search box with hardcoded `White` / `#68799A` / `#8A8598`; `StartMenu.
 - **Decision:** Scope = three surfaces, one commit each. For both trees add one shared helper `internal static class TreeTypeAhead { public static void Attach(TreeView tree, TypeToFind matcher); }` that on `TextInputEvent` flattens the VISIBLE (expanded) `TreeViewItem`s in display order, calls `matcher.Match(text, visible, static i => i.Header?.ToString() ?? "", currentIndex)` and sets `tree.SelectedItem` + `BringIntoView()`. Construct `TypeToFind` with a `Stopwatch`-based clock as `ItemView` does. Taskbar: handle `TextInputEvent` on the strip only while the bar is in menu-scoped key focus (`EnterMenuScope`, `TaskbarView.axaml.cs:1321`), match over the realized task items' titles and move keyboard focus; do nothing when a Start menu is open (its filter owns typing). Never decode `Key` enums.
 - **Test first:** `TreeTypeAheadTests`: `Typing_a_letter_selects_the_next_visible_node_with_that_prefix`, `Repeating_the_letter_cycles`, `Collapsed_children_are_not_matched`, `Digits_and_accented_characters_match`.
 - **Steps:**
-  - [ ] `TreeTypeAhead` + tests; attach in `FileManagerWindow` (one commit).
-  - [ ] Attach in `FolderPickerDialog` (one commit); while there replace `Background="White"` with `{DynamicResource Bevel.Brush.Window}`.
-  - [ ] Taskbar strip handler + a test in `tests/Bevel.Taskbar.Tests/TaskbarAccessibilityTests.cs` (one commit).
-  - [ ] Update the CODEMAP "Type-ahead is a shared service" note: Start menu = filter, desktop grid = not built.
+  - [x] `TreeTypeAhead` + tests; attach in `FileManagerWindow` (one commit).
+  - [x] Attach in `FolderPickerDialog` (one commit); while there replace `Background="White"` with `{DynamicResource Bevel.Brush.Window}`.
+  - [x] Taskbar strip handler + a test in `tests/Bevel.Taskbar.Tests/TaskbarAccessibilityTests.cs` (one commit).
+  - [x] Update the CODEMAP "Type-ahead is a shared service" note: Start menu = filter, desktop grid = not built.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~TreeTypeAhead"` → all pass; `grep -rn "TypeToFind" src --include='*.cs' | grep -v /obj/` lists FileManagerWindow, FolderPickerDialog (via TreeTypeAhead) and TaskbarView.
 - **Done when:** the three surfaces jump on typing; then `bd close bevel-psro --reason "TypeToFind wired to folder tree, folder picker, task strip; Start menu uses the search filter; desktop grid not built yet"`
 

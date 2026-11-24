@@ -17,7 +17,7 @@
         </StackPanel>
 
         <ui:BevelBorder BevelStyle="Sunken" Face="White">
-            <TreeView x:Name="TreeView" Background="White" BorderThickness="0" />
+            <TreeView x:Name="TreeView" Background="{DynamicResource Bevel.Brush.Window}" BorderThickness="0" />
         </ui:BevelBorder>
     </DockPanel>
 </ui:BevelWindow>
