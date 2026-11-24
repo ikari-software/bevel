@@ -383,6 +383,10 @@ public partial class App : Application
             desktopRunning: Supervision.LauncherControl.QueryDesktopRunning,
             // Tab enumeration for the task-button menu's Tabs section (bevel-a40b).
             tabProvider: services.GetService<Bevel.Pal.Abstractions.ITabProvider>(),
+            // Start-menu Log Off / Shut Down dialog OS entries (bevel-4vce).
+            session: services.GetService<Bevel.Pal.Abstractions.IShellSession>() is { } shellSession
+                ? (Func<Bevel.Pal.Abstractions.LogoutKind, Task>)(kind => shellSession.LogOutAsync(kind))
+                : null,
             // A peer's settings.Current can be stale at this exact moment (a cold/stale on-disk cache,
             // or the core connect still in flight) — handing the service itself lets TaskbarView catch
             // up on its OWN ISettingsService.Changed the moment the real snapshot lands, instead of
