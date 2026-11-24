@@ -61,6 +61,94 @@ final class WindowServiceTests: XCTestCase {
         XCTAssertFalse(svc.isShellChrome(pid: 9999, title: "Bevel Desktop"))
     }
 
+    // MARK: - offscreenGhostReason (bevel-0mur / bevel-j48j)
+
+    /// bevel-j48j: Beeper's ordered-out Electron window now lands on the CURRENT Space
+    /// (CGSCopySpacesForWindows → [1]), so the no-Space gate no longer catches it. The remaining
+    /// tell is kCGWindowAlpha == 0: a never-shown window is fully transparent, while a Cmd-H
+    /// hidden window keeps alpha=1 (measured 2026-11-24: HideTest cg=9848 hidden → alpha=1,
+    /// spaces=[1], still in AX; Beeper phantom cg=4719 → alpha=0, spaces=[1], no AX).
+    func testOffscreenGhostDropsAlphaZeroWindowOnCurrentSpace() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { [4719: [1]][$0] ?? [] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: false,
+            kCGWindowAlpha as String: CGFloat(0),
+        ]
+        let reason = svc.offscreenGhostReason(cgID: 4719, hasAX: false, entry: entry, spaces: spaces)
+        XCTAssertNotNil(reason, "off-screen AX-less alpha=0 window on the current Space is ordered out — drop")
+        XCTAssertTrue(reason?.contains("alpha=0") == true, "reason names the alpha signal, got: \(reason ?? "nil")")
+    }
+
+    /// bevel-0mur, extended: a window known to be on NO Space is ordered out even WITH an AX
+    /// element — minimized/hidden windows keep their Space, so they never hit this.
+    func testOffscreenGhostDropsNoSpaceWindowEvenWithAX() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { [236: []][$0] ?? [] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: false,
+            kCGWindowAlpha as String: CGFloat(1),
+        ]
+        let reason = svc.offscreenGhostReason(cgID: 236, hasAX: true, entry: entry, spaces: spaces)
+        XCTAssertNotNil(reason, "on-no-space window is ordered out regardless of AX")
+        XCTAssertTrue(reason?.contains("no-space") == true, "reason names the no-space signal, got: \(reason ?? "nil")")
+    }
+
+    /// The tracker population must be untouched by the new alpha gate: a hidden AX-less window
+    /// keeps alpha=1, so it falls through to the tombstone/tracker decision, not the alpha drop.
+    func testOffscreenGhostDoesNotAlphaDropHiddenWindowWithAlphaOne() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { [1895: [1]][$0] ?? [] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: false,
+            kCGWindowAlpha as String: CGFloat(1),
+        ]
+        let reason = svc.offscreenGhostReason(cgID: 1895, hasAX: false, entry: entry, spaces: spaces)
+        XCTAssertEqual(reason, "offscreen-no-ax (unconfirmed tombstone)",
+                       "alpha=1 off-screen window must reach the tracker, not the alpha drop (got: \(reason ?? "nil"))")
+    }
+
+    /// A missing alpha key (older macOS) must fail OPEN — fall through to the tracker, never drop.
+    func testOffscreenGhostTreatsMissingAlphaAsNotOrderedOut() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { [1895: [1]][$0] ?? [] })
+        let entry: [String: Any] = [kCGWindowIsOnscreen as String: false]
+        let reason = svc.offscreenGhostReason(cgID: 1895, hasAX: false, entry: entry, spaces: spaces)
+        XCTAssertEqual(reason, "offscreen-no-ax (unconfirmed tombstone)")
+    }
+
+    func testOffscreenGhostKeepsOnScreenWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { _ in [1] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: true,
+            kCGWindowAlpha as String: CGFloat(0),   // even a transparent ON-screen window is visible territory
+        ]
+        XCTAssertNil(svc.offscreenGhostReason(cgID: 4717, hasAX: false, entry: entry, spaces: spaces))
+    }
+
+    func testOffscreenGhostKeepsOtherSpaceWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { [5: [459]][$0] ?? [] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: false,
+            kCGWindowAlpha as String: CGFloat(1),
+        ]
+        XCTAssertNil(svc.offscreenGhostReason(cgID: 5, hasAX: false, entry: entry, spaces: spaces),
+                     "a live window on another Space stays listed so activation can switch to it")
+    }
+
+    func testOffscreenGhostKeepsAXCorrelatedWindowOnCurrentSpace() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        let spaces = SpaceContext(current: [1], spacesOf: { _ in [1] })
+        let entry: [String: Any] = [
+            kCGWindowIsOnscreen as String: false,
+            kCGWindowAlpha as String: CGFloat(1),
+        ]
+        XCTAssertNil(svc.offscreenGhostReason(cgID: 4717, hasAX: true, entry: entry, spaces: spaces),
+                     "AX-correlated (e.g. minimized/hidden) windows carry a live signal")
+    }
+
     func testBevelTransientDropsShellPopupsWithoutAX() {
         let parent: pid_t = 4242
         let svc = WindowServiceImpl(expectedKey: "test-key", parentPID: parent)

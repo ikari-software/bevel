@@ -813,20 +813,33 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// 1. On a Space no display is showing → definitely live (a tombstone stays on the Space it died
     ///    on). Keep it, and activation will switch Spaces.
     /// 2. On NO Space at all → definitely not a user window: it was never shown (ordered out). Drop.
-    /// 3. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
+    /// 3. Off-screen, AX-less and fully transparent (alpha == 0) → also never shown: an Electron
+    ///    `show: false` window reports alpha=0, and current macOS places it on the CURRENT Space,
+    ///    so gate 2 no longer catches it (bevel-j48j). A Cmd-H hidden window keeps alpha=1
+    ///    (measured 2026-11-24), so it is unaffected.
+    /// 4. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
     ///    (hidden AX-less apps); until then treat it as a tombstone.
     ///
-    /// On-screen windows and AX-correlated windows (incl. minimized) carry a live signal and are
-    /// never affected.
-    private func offscreenGhostReason(
+    /// On-screen windows carry a live signal and are never affected. Gate 2 runs before the AX
+    /// guard so an AX-correlated ordered-out window is dropped too — minimized/hidden windows keep
+    /// their Space, so they never hit it.
+    ///
+    /// Internal for focused unit coverage via `@testable import BevelHelper`.
+    func offscreenGhostReason(
         cgID: CGWindowID, hasAX: Bool, entry: [String: Any], spaces: SpaceContext
     ) -> String? {
-        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return nil }
-        if spaces.isOnOtherSpace(cgID) { return nil }
         // Never placed on any Space = ordered out, not hidden (Cmd-H / minimize keep their Space).
         // Time can't tell these apart — an unshown window outlives the tracker's window forever —
-        // so this is decided before the tracker ever gets a vote (bevel-0mur).
-        if spaces.isOnNoSpace(cgID) { return "offscreen-no-ax on-no-space (ordered out)" }
+        // so this is decided before the tracker ever gets a vote (bevel-0mur). Checked even WITH an
+        // AX element: a shown-then-hidden window keeps its Space, so only an ordered-out window
+        // can be on no Space.
+        if spaces.isOnNoSpace(cgID) { return "on-no-space (ordered out)" }
+        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return nil }
+        if spaces.isOnOtherSpace(cgID) { return nil }
+        // Fully transparent = never rendered = ordered out (bevel-j48j). A missing alpha key
+        // (older macOS) reads as nil and falls through to the tracker — fails open, never drops a
+        // live window on a KeyAVL miss.
+        if (entry[kCGWindowAlpha as String] as? CGFloat) == 0 { return "offscreen-no-ax alpha=0 (ordered out)" }
         return offscreenTracker.isConfirmedLive(cgID) ? nil : "offscreen-no-ax (unconfirmed tombstone)"
     }
 
