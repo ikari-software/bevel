@@ -416,6 +416,54 @@ public sealed class RoleProcessSupervisorTests
         Assert.True(taskbar.IsAlive);
     }
 
+    // bevel-hprc: RestartAll on a stale launcher (rebuild-while-running) must escalate straight to
+    // ONE whole-shell relaunch — not kill+respawn every child first (two blackouts).
+    [Fact]
+    public async Task RestartAll_on_a_stale_launcher_relaunches_once_and_kills_no_child()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var stale = 0;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            onLauncherStale: () => Interlocked.Increment(ref stale),
+            launcherIsStale: () => true);
+        await sup.StartAsync();
+
+        var relaunching = await sup.RestartAllAsync();
+
+        Assert.True(relaunching);               // the handler skips the filer restart on this path
+        Assert.Equal(1, stale);                 // relaunch hook fired exactly once
+        Assert.Equal(0, core.KillCount);
+        Assert.Equal(0, taskbar.KillCount);    // nothing killed — the relaunch teardown owns that
+        Assert.Equal(1, core.StartCount);       // and nothing respawned either
+        Assert.Equal(1, taskbar.StartCount);
+    }
+
+    [Fact]
+    public async Task RestartAll_on_a_current_launcher_restarts_children_in_place()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var stale = 0;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            onLauncherStale: () => Interlocked.Increment(ref stale),
+            launcherIsStale: () => false);
+        await sup.StartAsync();
+
+        var relaunching = await sup.RestartAllAsync();
+
+        Assert.False(relaunching);
+        Assert.Equal(0, stale);                 // no relaunch hook on a current launcher
+        Assert.Equal(2, core.StartCount);
+        Assert.Equal(2, taskbar.StartCount);
+        Assert.True(core.KillCount >= 1);
+        Assert.True(taskbar.KillCount >= 1);
+    }
+
     [Fact]
     public async Task VersionSkew_with_a_relaunch_hook_relauunches_the_whole_shell_once()
     {

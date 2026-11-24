@@ -283,13 +283,16 @@ internal static class Program
         var coreToken = Convert.ToHexString(coreNonce);
         var (controlSocket, controlNonce) = LauncherControl.CreateServerEndpoint();
 
+        // bevel-hprc: the stamp this launcher started with — RestartAll compares it against the
+        // on-disk bundle to decide "stale launcher → whole-shell relaunch" vs "restart children".
+        var startStamp = BuildStamp.Current();
         var childEnv = new Dictionary<string, string>
         {
             ["BEVEL_CORE_SOCKET"] = coreSocket,
             ["BEVEL_CORE_TOKEN"] = coreToken,
             [LauncherControl.SocketEnv] = controlSocket,
             [LauncherControl.TokenEnv] = Convert.ToHexString(controlNonce),
-            [BuildStamp.EnvVar] = BuildStamp.Current(),
+            [BuildStamp.EnvVar] = startStamp,
         };
 
         // The launcher is ALSO a spawn parent (bevel-t48y: Filer windows it opens via SpawnFiler inherit
@@ -342,6 +345,7 @@ internal static class Program
                 supervisor.RequestStop();   // halt child respawns: the whole shell is about to quit
                 stop.Set();                 // wake the main thread for the ordered teardown below
             },
+            launcherIsStale: () => BuildStamp.Current() != startStamp,
             // bevel-hprv: process-alive is not "serving". A core that lost core.sock stays up in ps
             // while every peer shows the disconnected indicator. And (bevel-wio0) a socket that
             // EXISTS — even one that accepts connections — is not proof it is OUR core: the probe is
@@ -386,9 +390,16 @@ internal static class Program
                 {
                     case LauncherControl.Command.RestartAll:
                         RestartDiag.Log("launcher: received RestartAll → supervisor.RestartAllAsync");
-                        await supervisor.RestartAllAsync(ct).ConfigureAwait(false);
-                        await filerSupervisor.RestartAllAsync(ct).ConfigureAwait(false);
-                        RestartDiag.Log("launcher: RestartAllAsync completed (children respawned in-place)");
+                        var relaunching = await supervisor.RestartAllAsync(ct).ConfigureAwait(false);
+                        if (relaunching)
+                            // bevel-hprc: stale launcher — the whole-shell relaunch hook fired; skip the
+                            // filer restart too, the relaunch teardown owns all child teardown.
+                            RestartDiag.Log("launcher: RestartAll escalated to whole-shell relaunch");
+                        else
+                        {
+                            await filerSupervisor.RestartAllAsync(ct).ConfigureAwait(false);
+                            RestartDiag.Log("launcher: RestartAllAsync completed (children respawned in-place)");
+                        }
                         break;
                     case LauncherControl.Command.RestartCore:
                         await supervisor.RestartCoreAsync(ct).ConfigureAwait(false); break;

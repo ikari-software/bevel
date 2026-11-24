@@ -269,9 +269,9 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** Add ctor parameter `Func<bool>? launcherIsStale = null` to `RoleProcessSupervisor`. `RestartAllAsync` checks it first: if true and `_onLauncherStale` is set, fire the hook once (same `_launcherStaleFired` latch) and return without killing anything — the launcher's existing teardown + `Relaunch(args)` does the rest. `Program` passes `() => BuildStamp.Current() != startStamp` where `startStamp` is the value put into `childEnv[BuildStamp.EnvVar]`. Then make the UI-role kills parallel (`Task.WhenAll` over `Task.Run(p.Kill)` for non-core roles, core last). Rejected: "taskbar back before core" — the core-first start order is the dependency the ready probe guards. `filerSupervisor.RestartAllAsync` must be skipped on the stale path too (`Program.cs:340-341`).
 - **Test first:** `RoleProcessSupervisorTests.RestartAll_on_a_stale_launcher_relaunches_once_and_kills_no_child` (new; model on `VersionSkew_with_a_relaunch_hook_relauunches_the_whole_shell_once`), `RestartAll_on_a_current_launcher_restarts_children_in_place` (new).
 - **Steps:**
-  - [ ] Add the parameter and early return; make `RestartAllAsync` return a bool "relaunching" so the verb handler skips the filer restart.
-  - [ ] Wire `startStamp` in `RunLauncher`.
-  - [ ] Parallelise UI kills; existing ordering tests still pass.
+  - [x] Add the parameter and early return; make `RestartAllAsync` return a bool "relaunching" so the verb handler skips the filer restart.
+  - [x] Wire `startStamp` in `RunLauncher`.
+  - [x] Parallelise UI kills; existing ordering tests still pass.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RoleProcessSupervisorTests"` → 0 failed
 - **Done when:** RestartAll after a rebuild produces exactly one relaunch in `$TMPDIR/bevel-restart.log`; then `bd close bevel-hprc --reason "RestartAll escalates straight to a whole-shell relaunch when the launcher is stale; UI kills parallel"`
 
