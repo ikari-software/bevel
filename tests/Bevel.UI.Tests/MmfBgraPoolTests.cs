@@ -285,4 +285,69 @@ public sealed class MmfBgraPoolTests
         try { if (File.Exists(path)) File.Delete(path); }
         catch { /* best-effort temp cleanup */ }
     }
+
+    // bevel-web5: the launcher-boot reset — a pool at/over the capacity threshold is dropped before
+    // any reader can be mapped; missing or foreign files are left alone.
+    [Fact]
+    public void DeleteIfNearlyFull_removes_a_pool_past_the_threshold()
+    {
+        var path = TempPath();
+        try
+        {
+            using (var pool = MmfBgraPool.CreateOrOpen(path, slotCapacity: 10, maxBgraBytes: 8 * 1024))
+            {
+                for (int i = 0; i < 9; i++)   // 9/10 = 90% >= 80%
+                    Assert.True(pool.TryAdd($"/app{i}.app|32", MakeImage(8, 8, (byte)i)));
+                Assert.Equal(9, pool.PublishedCount);
+            }
+            Assert.True(MmfBgraPool.DeleteIfNearlyFull(path, slotCapacity: 10, maxBgraBytes: 8 * 1024, threshold: 0.8));
+            Assert.False(File.Exists(path));
+        }
+        finally { TryDelete(path); }
+    }
+
+    [Fact]
+    public void DeleteIfNearlyFull_keeps_a_pool_below_the_threshold()
+    {
+        var path = TempPath();
+        try
+        {
+            using (var pool = MmfBgraPool.CreateOrOpen(path, slotCapacity: 10, maxBgraBytes: 8 * 1024))
+            {
+                for (int i = 0; i < 5; i++)   // 50% < 80%
+                    Assert.True(pool.TryAdd($"/app{i}.app|32", MakeImage(8, 8, (byte)i)));
+            }
+            Assert.False(MmfBgraPool.DeleteIfNearlyFull(path, slotCapacity: 10, maxBgraBytes: 8 * 1024, threshold: 0.8));
+            Assert.True(File.Exists(path));
+        }
+        finally { TryDelete(path); }
+    }
+
+    [Fact]
+    public void DeleteIfNearlyFull_ignores_a_missing_or_foreign_file()
+    {
+        var missing = TempPath();
+        Assert.False(MmfBgraPool.DeleteIfNearlyFull(missing, slotCapacity: 10, maxBgraBytes: 8 * 1024, threshold: 0.8));
+
+        // Foreign file with the right SIZE but a garbage header must be kept.
+        var foreignPath = TempPath();
+        try
+        {
+            long size = 64 + 10L * 280 + 10L * 8 * 1024;   // header + dir + blobs for the same geometry
+            File.WriteAllBytes(foreignPath, new byte[size]);
+            Assert.False(MmfBgraPool.DeleteIfNearlyFull(foreignPath, slotCapacity: 10, maxBgraBytes: 8 * 1024, threshold: 0.8));
+            Assert.True(File.Exists(foreignPath));
+
+            // Wrong size entirely: also kept.
+            var wrong = TempPath();
+            try
+            {
+                File.WriteAllBytes(wrong, new byte[123]);
+                Assert.False(MmfBgraPool.DeleteIfNearlyFull(wrong, slotCapacity: 10, maxBgraBytes: 8 * 1024, threshold: 0.8));
+                Assert.True(File.Exists(wrong));
+            }
+            finally { TryDelete(wrong); }
+        }
+        finally { TryDelete(foreignPath); }
+    }
 }

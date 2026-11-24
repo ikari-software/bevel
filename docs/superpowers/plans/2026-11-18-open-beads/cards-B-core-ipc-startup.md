@@ -225,11 +225,11 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** Options (a) + a boot-time reset; reject (b) and (c) (both need readers to re-map or break the frozen-entry invariant). (1) Raise capacity to 2048 (file is sparse; a geometry change already re-initialises it at `MmfBgraPool.cs:163-176`). (2) Reclaim at the one moment no reader can be mapped: in `Program.RunLauncher`, after the instance lock and the bevel-9790 probe and before any spawn, open the pool read-only, and if `PublishedCount >= 0.8 * SlotCapacity` delete the file. Put this in `internal static bool MmfBgraPool.DeleteIfNearlyFull(string path, int slotCapacity, int maxBgraBytes, double threshold)` (new). (3) Measure: the writer logs `PublishedCount` once to `RestartDiag` 60 s after start. Expose `IconPoolPath`/capacity constants as `internal` so the launcher uses the same values.
 - **Test first:** `MmfBgraPoolTests`: `DeleteIfNearlyFull_removes_a_pool_past_the_threshold`, `DeleteIfNearlyFull_keeps_a_pool_below_it`, `DeleteIfNearlyFull_ignores_a_missing_or_foreign_file`.
 - **Steps:**
-  - [ ] Add `DeleteIfNearlyFull` + tests.
-  - [ ] Raise the capacity; update the "512 slots … ≈ 19 MB" comment (2048 × 36,864 B ≈ 75 MB sparse).
-  - [ ] Call the reset in `RunLauncher` before `supervisor.StartAsync`.
-  - [ ] Add the one-shot `PublishedCount` log line in the writer branch.
-  - [ ] Update the pool paragraph in `CODEMAP.md`.
+  - [x] Add `DeleteIfNearlyFull` + tests.
+  - [x] Raise the capacity; update the "512 slots … ≈ 19 MB" comment (2048 × 36,864 B ≈ 75 MB sparse).
+  - [x] Call the reset in `RunLauncher` before `supervisor.StartAsync`.
+  - [x] Add the one-shot `PublishedCount` log line in the writer branch.
+  - [x] Update the pool paragraph in `CODEMAP.md`.
 - **Verify:** `dotnet test tests/Bevel.UI.Tests/Bevel.UI.Tests.csproj --filter "FullyQualifiedName~MmfBgraPool"` → 0 failed
 - **Done when:** a pool at ≥80 % is dropped on the next launcher boot and the count is logged; then `bd close bevel-web5 --reason "capacity 2048 + launcher-boot reset when nearly full; published count logged"`
 

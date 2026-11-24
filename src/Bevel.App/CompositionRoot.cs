@@ -70,11 +70,31 @@ public static class CompositionRoot
     }
 
     // Shared icon-pool geometry (bevel-gww.6). Co-located with the shell-core runtime dir so a
-    // supervisor cleaning that dir clears the pool too. 512 slots × up to 96×96 BGRA (covers 48pt@2x
-    // Retina) ≈ 19 MB, sparse: only pages for actually-published icons ever become resident.
-    private static string IconPoolPath => Path.Combine(BevelRuntimeDir.CoreDir, "icons.pool");
-    private const int IconPoolSlotCapacity = 512;
-    private const int IconPoolMaxBgraBytes = 96 * 96 * 4;
+    // supervisor cleaning that dir clears the pool too. 2048 slots × up to 96×96 BGRA (covers 48pt@2x
+    // Retina) ≈ 75 MB, sparse: only pages for actually-published icons ever become resident
+    // (bevel-web5 raised it from 512 ≈ 19 MB; a full pool silently stops sharing). Internal so the
+    // launcher's boot-time reset uses the same values (Program.RunLauncher).
+    internal static string IconPoolPath => Path.Combine(BevelRuntimeDir.CoreDir, "icons.pool");
+    internal const int IconPoolSlotCapacity = 2048;
+    internal const int IconPoolMaxBgraBytes = 96 * 96 * 4;
+
+    /// <summary>Creates/attaches the pool; the writer also gets a one-shot fill log 60 s after start
+    /// (bevel-web5) so pool pressure is measurable instead of silent.</summary>
+    private static MmfBgraPool CreatePool(bool isWriter)
+    {
+        var pool = MmfBgraPool.CreateOrOpen(
+            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: isWriter);
+        if (isWriter)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(60)).ConfigureAwait(false); }
+                catch { return; }
+                RestartDiag.Log($"icon pool: {pool.PublishedCount}/{pool.SlotCapacity} slots published");
+            });
+        }
+        return pool;
+    }
 
     /// <summary>
     /// Registers the selected concrete PAL's implementation of every abstraction. <paramref name="role"/>
@@ -150,8 +170,7 @@ public static class CompositionRoot
         // geometry mismatches, so a taskbar crash respawn or RestartAll re-attaches to a populated pool
         // instead of re-rendering everything.
         var poolIsWriter = role is ShellRole.Taskbar;
-        services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
-            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
+        services.AddSingleton(_ => CreatePool(poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
             new Pal.MacOS.MacOSIconProvider(),
             sp.GetRequiredService<MmfBgraPool>(),
@@ -252,8 +271,7 @@ public static class CompositionRoot
         // for why this is the taskbar and not the core (bevel-3gad): the core never resolves
         // IIconProvider, so with Core as writer nothing ever wrote a slot and the cache was inert.
         var poolIsWriter = role is ShellRole.Taskbar;
-        services.AddSingleton(_ => MmfBgraPool.CreateOrOpen(
-            IconPoolPath, IconPoolSlotCapacity, IconPoolMaxBgraBytes, isWriter: poolIsWriter));
+        services.AddSingleton(_ => CreatePool(poolIsWriter));
         services.AddSingleton<IIconProvider>(sp => new PooledIconProvider(
             new Pal.Windows.WindowsIconProvider(),
             sp.GetRequiredService<MmfBgraPool>(),
