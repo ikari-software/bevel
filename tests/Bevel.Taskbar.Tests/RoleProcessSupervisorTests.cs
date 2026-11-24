@@ -31,6 +31,7 @@ public sealed class RoleProcessSupervisorTests
         public ShellRole Role { get; }
         public volatile bool Alive;
         public volatile bool FailOnStart;
+        public volatile bool FailOnKill;
         public int StartCount;
         public int KillCount;
 
@@ -62,6 +63,9 @@ public sealed class RoleProcessSupervisorTests
             Interlocked.Increment(ref KillCount);
             lock (_log) _log.Add($"kill:{Role}");
             Alive = false;
+            // RoleProcess.Kill only catches InvalidOperationException, so simulate a throw from a
+            // different failure mode (e.g. WaitForExit/ObjectDisposedException path).
+            if (FailOnKill) throw new ApplicationException("simulated kill failure");
         }
 
         public void Dispose() => Kill();
@@ -114,6 +118,30 @@ public sealed class RoleProcessSupervisorTests
         Assert.Equal(2, taskbar.StartCount);
         Assert.True(core.KillCount >= 1);      // ...after being killed
         Assert.True(taskbar.KillCount >= 1);
+        Assert.True(core.IsAlive);
+        Assert.True(taskbar.IsAlive);
+    }
+
+    [Fact]
+    public async Task RestartAll_survives_a_throwing_ui_kill()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log) { FailOnKill = true };
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core, taskbar }, Poll);
+        await sup.StartAsync();
+
+        // The UI kill runs in a Task.Run fan-out; if it throws, the WhenAll must not fault — the
+        // core kill and the respawn fan-out still have to run (ce-code-review: one throwing Kill
+        // must not abort the whole restart).
+        var relaunching = await sup.RestartAllAsync();
+        taskbar.FailOnKill = false; // let teardown kill cleanly
+
+        Assert.False(relaunching);              // no stale-launcher hook wired
+        Assert.True(core.KillCount >= 1);      // the core was still killed...
+        Assert.True(taskbar.KillCount >= 1);
+        Assert.Equal(2, core.StartCount);       // ...and every role was respawned
+        Assert.Equal(2, taskbar.StartCount);
         Assert.True(core.IsAlive);
         Assert.True(taskbar.IsAlive);
     }

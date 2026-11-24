@@ -131,9 +131,12 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
             _log?.Invoke("supervisor: restarting all role processes");
             // Tear down UIs before the core (reverse dependency order) so no UI briefly talks to a
             // dying core. UI kills run in PARALLEL (each Kill blocks up to GraceMs); the core goes last.
+            // Each kill is wrapped best-effort (like every other kill site): RoleProcess.Kill only
+            // catches InvalidOperationException, so one throwing Kill must not fault the WhenAll and
+            // skip the core kill AND the respawn fan-out (ce-code-review).
             var uiKills = _processes
                 .Where(p => p.Role != ShellRole.Core)
-                .Select(p => Task.Run(p.Kill))
+                .Select(p => Task.Run(() => { try { p.Kill(); } catch { /* best-effort */ } }))
                 .ToArray();
             if (uiKills.Length > 0)
                 await Task.WhenAll(uiKills).ConfigureAwait(false);
