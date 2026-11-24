@@ -80,10 +80,15 @@
     <Grid x:Name="RootGrid" ColumnDefinitions="Auto,*,Auto"
           ClipToBounds="False"
           Background="Transparent">
-        <!-- Right-click the empty taskbar (bevel-cust.ctxmenu). Cascade/Tile join in the superset pass. -->
+        <!-- Right-click the empty taskbar (bevel-cust.ctxmenu); Cascade/Tile are bevel-apm. -->
         <Grid.ContextFlyout>
             <MenuFlyout>
                 <MenuItem Header="Show the _Desktop" Command="{Binding ShowDesktopCommand}" />
+                <Separator />
+                <MenuItem Header="_Cascade Windows" Command="{Binding CascadeCommand}" />
+                <MenuItem Header="Tile Windows _Horizontally" Command="{Binding TileHorizontallyCommand}" />
+                <MenuItem Header="Tile Windows _Vertically" Command="{Binding TileVerticallyCommand}" />
+                <Separator />
                 <MenuItem Header="_Task Manager…" Click="OnTaskManagerClick" />
                 <Separator />
                 <MenuItem x:Name="LockMenuItem" Header="_Lock the Taskbar" Click="OnLockTaskbarClick" />

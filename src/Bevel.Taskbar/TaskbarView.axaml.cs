@@ -650,6 +650,9 @@ public partial class TaskbarView : UserControl
 
         _vm = DataContext as TaskbarViewModel;
         _window = TopLevel.GetTopLevel(this) as TaskbarWindow;
+        // bevel-apm: the Cascade/Tile commands arrange over the bar's display minus the taskbar band.
+        if (_vm is not null && _window is not null)
+            _vm.WorkArea = () => _window.GetZoomArea();
         if (_initialSettings is not null) ApplyStacks(_initialSettings);   // a stacks change that beat OnLoaded (bevel-2ip7)
 
         // Apply the grouping mode before the first layout so Items is already in its final shape

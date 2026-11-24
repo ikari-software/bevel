@@ -35,6 +35,9 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     {
         Model = model;
         ShowDesktopCommand = new AsyncRelayCommand(Model.MinimizeAllAsync);
+        CascadeCommand = new AsyncRelayCommand(() => Arrange(WindowArranger.Cascade));
+        TileHorizontallyCommand = new AsyncRelayCommand(() => Arrange(WindowArranger.TileHorizontally));
+        TileVerticallyCommand = new AsyncRelayCommand(() => Arrange(WindowArranger.TileVertically));
         StartMenu = startMenu;
         _connection = connection;
         _projector = new TaskbarItemsProjector(model.Windows);
@@ -70,6 +73,25 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     /// <summary>Minimizes every window — bound by the far-right "Show desktop" sliver (bevel-cust).</summary>
     public System.Windows.Input.ICommand ShowDesktopCommand { get; }
+
+    /// <summary>Work-area provider (primary display minus the taskbar band), wired by TaskbarView from
+    /// its TaskbarWindow (bevel-apm); null in tests → the arrange commands no-op.</summary>
+    public Func<PalRect?>? WorkArea { get; set; }
+
+    /// <summary>Bar-menu window arrangement commands (bevel-apm): cascade, tile horizontally, tile
+    /// vertically over the work area.</summary>
+    public System.Windows.Input.ICommand CascadeCommand { get; }
+    public System.Windows.Input.ICommand TileHorizontallyCommand { get; }
+    public System.Windows.Input.ICommand TileVerticallyCommand { get; }
+
+    private System.Threading.Tasks.Task Arrange(Func<PalRect, int, IReadOnlyList<PalRect>> layout)
+    {
+        var area = WorkArea?.Invoke();
+        return area is { } a
+            ? Model.ArrangeAsync(layout, a)
+            : System.Threading.Tasks.Task.CompletedTask;
+    }
+
     public StartMenuViewModel StartMenu { get; }
 
     /// <summary>The notification-area tray (mirrored menu-bar status items, bevel-m3.1).</summary>

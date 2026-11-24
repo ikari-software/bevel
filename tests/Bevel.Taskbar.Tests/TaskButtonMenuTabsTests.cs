@@ -187,4 +187,53 @@ public class TaskButtonMenuTabsTests
             if (char.IsHighSurrogate(cut[i]))
                 Assert.True(i + 1 < cut.Length && char.IsLowSurrogate(cut[i + 1]), $"lone high surrogate at {i}");
     }
+
+    private static TaskGroupViewModel GroupVmWithTwoWindows()
+    {
+        var group = new TaskGroupViewModel(App);
+        group.Windows.Add(new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "One", App, false, false, default), new NullWm()));
+        group.Windows.Add(new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w2"), "Two", App, false, false, default), new NullWm()));
+        return group;
+    }
+
+    private static List<MenuItem> TopLevelItems(MenuFlyout? flyout) =>
+        (flyout?.ItemsSource as IEnumerable<object>)!.OfType<MenuItem>().ToList();
+
+    [AvaloniaFact]
+    public void Group_menu_offers_minimize_restore_close_all()
+    {
+        // bevel-apm: the group context menu surfaces the (previously dead) all-window verbs, and each
+        // per-window submenu gains Restore.
+        var flyout = TaskButtonMenu.Build(GroupVmWithTwoWindows(), null, null);
+        var top = TopLevelItems(flyout);
+        var headers = top.Select(m => m.Header as string).ToList();
+
+        Assert.Contains("Minimize _All", headers);
+        Assert.Contains("R_estore All", headers);
+        Assert.Contains("Close A_ll", headers);
+
+        var windows = top.First(m => (m.Header as string) == "_Windows");
+        var per = windows.Items.OfType<MenuItem>().First();
+        var verbs = per.Items.OfType<MenuItem>().Select(m => m.Header as string).ToList();
+        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
+    }
+
+    [AvaloniaFact]
+    public void Single_window_menu_has_restore_but_no_all_verbs()
+    {
+        // The All-verbs are group-only (2+ windows); a lone window button must not offer them.
+        var top = TopLevelItems(TaskButtonMenu.Build(BrowserVm(), null, null));
+        var headers = top.Select(m => m.Header as string).ToList();
+
+        Assert.DoesNotContain("Minimize _All", headers);
+        Assert.DoesNotContain("R_estore All", headers);
+        Assert.DoesNotContain("Close A_ll", headers);
+
+        var windows = top.First(m => (m.Header as string) == "_Windows");
+        var verbs = windows.Items.OfType<MenuItem>().First().Items.OfType<MenuItem>()
+            .Select(m => m.Header as string).ToList();
+        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
+    }
 }
