@@ -291,6 +291,7 @@ public partial class FileManagerWindow : BevelWindow
         // that App handler, e.g. in tests, still applies it). Idempotent.
         Components.ItemViewModel.HideKnownExtensions = _settings?.Current.HideKnownExtensions ?? false;
         UpdateLeftColumn();
+        RefreshFavorites();   // bevel-4pgk: favorites edits fan out to every open Filer window
 
         // Re-list ONLY when an input the listing actually depends on changed — the hidden-file filter and
         // extension hiding (see ReloadWithCurrentOptions). Info-pane style and pure layout writes (left-pane
@@ -350,6 +351,37 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.GoUp.Click += (_, _) => _controller?.GoUp();
         MenuBar.GoHome.Click += (_, _) => NavigateTo(HomePath);
         MenuBar.GoMyComputer.Click += (_, _) => NavigateTo(VfsPath.Root("computer"));
+
+        // Favorites (bevel-4pgk): the saved list rebuilds every time the submenu opens.
+        MenuBar.FavoritesMenu.SubmenuOpened += (_, _) => RebuildFavoritesMenu();
+        MenuBar.AddToFavorites.Click += (_, _) => AddCurrentToFavorites();
+        MenuBar.OrganizeFavorites.Click += async (_, _) =>
+        {
+            if (_settings is null) return;
+            await new Components.OrganizeFavoritesDialog(_settings).ShowDialog(this);
+            RefreshFavorites();
+        };
+    }
+
+    /// <summary>bevel-4pgk: add the active tab's current directory to the favorites.</summary>
+    private void AddCurrentToFavorites()
+    {
+        if (_settings is null || _controller is null) return;
+        var path = _controller.CurrentDirectory.ToString();
+        _ = _settings.UpdateAsync(s => s.FilerFavorites = Core.FilerFavorites.Add(s.FilerFavorites, path));
+        RefreshFavorites();
+    }
+
+    private void RebuildFavoritesMenu()
+        => MenuBar.RebuildFavorites(_settings?.Current.FilerFavorites ?? Array.Empty<string>(),
+            path => NavigateTo(VfsPath.Parse(path)));
+
+    /// <summary>Refresh every favorites surface in this window (menu + info-pane links) — also called from
+    /// <see cref="ApplyFolderOptions"/> so the settings fan-out reaches every open Filer window.</summary>
+    private void RefreshFavorites()
+    {
+        RebuildFavoritesMenu();
+        RefreshInfoPaneLinks();
     }
 
     /// <summary>
@@ -941,9 +973,22 @@ public partial class FileManagerWindow : BevelWindow
         InfoPane.ClearTasks();
         InfoPane.AddTask("Make a new folder", () => _ = NewFolderAsync());
         InfoPane.AddTask("View folder properties", ShowProperties);
+        RefreshInfoPaneLinks();
+    }
+
+    /// <summary>bevel-4pgk: the info pane's link section = the two fixed links + one per favorite
+    /// (clicking navigates). Rebuilt wholesale so repeated refreshes never duplicate.</summary>
+    private void RefreshInfoPaneLinks()
+    {
         InfoPane.ClearLinks();
         InfoPane.AddLink("My Documents", () => NavigateTo(HomePath));
         InfoPane.AddLink("My Computer", () => NavigateTo(VfsPath.Root("computer")));
+        foreach (var fav in _settings?.Current.FilerFavorites ?? Array.Empty<string>())
+        {
+            var captured = fav;
+            InfoPane.AddLink(Navigation.HistoryEntry.LabelFor(VfsPath.Parse(captured)),
+                () => NavigateTo(VfsPath.Parse(captured)));
+        }
     }
 
     /// <summary>Mirror the selection into the info pane — a single item shows its type/size/date,
@@ -1269,6 +1314,11 @@ public partial class FileManagerWindow : BevelWindow
 
             case Key.F when ctrl && !shift && !alt:
                 ToggleSearchPane();
+                e.Handled = true;
+                break;
+
+            case Key.D when ctrl && !shift && !alt:   // bevel-4pgk: Add to Favorites
+                AddCurrentToFavorites();
                 e.Handled = true;
                 break;
 

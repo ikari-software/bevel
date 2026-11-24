@@ -73,13 +73,13 @@
             <MenuItem Header="Recen_t Locations" x:Name="RecentLocationsItem" />
         </MenuItem>
 
-        <!-- Favorites -->
-        <MenuItem Header="Favo_rites">
+        <!-- Favorites (bevel-4pgk): the saved list is rebuilt after the separator on SubmenuOpened.
+             Links/Media were IE web-favourite folders with no Filer meaning — deleted; the real list
+             replaces them. -->
+        <MenuItem Header="Favo_rites" x:Name="FavoritesMenuItem">
             <MenuItem Header="Add to _Favorites" x:Name="AddToFavoritesItem" InputGesture="Ctrl+D" />
             <MenuItem Header="Organize _Favorites..." x:Name="OrganizeFavoritesItem" />
-            <Separator />
-            <MenuItem Header="Links" x:Name="LinksItem" />
-            <MenuItem Header="_Media" x:Name="MediaItem" />
+            <Separator x:Name="FavoritesSeparator" />
         </MenuItem>
 
         <!-- Tools -->
