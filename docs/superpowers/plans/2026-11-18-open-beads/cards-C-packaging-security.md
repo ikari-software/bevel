@@ -239,9 +239,9 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **Decision:** Hand out derived MACs, not the key. Add `Grpc.Core.Metadata HelperLifecycle.AuthFor(string capability)` which throws `InvalidOperationException` for a capability outside the set granted at construction; window manager asks for `"window"`, tray host for `"tray"`. Remove `NonceToken` from the public surface of `HelperLifecycle` (keep it on the host, internal). Delete the dead `_capabilities` field and the `capabilities` parameter chain rather than half-enforcing it. Typed sub-clients for Scripting/Input are deferred to the bead that adds those services.
 - **Test first:** `HelperLifecycleTests.AuthFor_refuses_a_capability_that_was_not_granted` and `AuthFor_returns_only_the_requested_capability_header` (new, in `tests/Bevel.Pal.MacOS.Tests/HelperLifecycleTests.cs`).
 - **Steps:**
-  - [ ] Tests first.
-  - [ ] Add `AuthFor`; switch the two call sites; make `NonceToken` non-public.
-  - [ ] Remove `_capabilities` + parameter; fix the `"windows"` → `"window"` wording in the Swift comment and the C# test.
+  - [x] Tests first (AuthFor_refuses…, AuthFor_returns_only…).
+  - [x] Added AuthFor; both call sites switched; NonceToken removed from the public surface.; switch the two call sites; make `NonceToken` non-public.
+  - [x] Removed _capabilities + the whole capabilities parameter chain; "windows"→"window" fixed in Swift comment + C# test. + parameter; fix the `"windows"` → `"window"` wording in the Swift comment and the C# test.
 - **Verify:** `dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --filter "FullyQualifiedName~Helper"` → pass
 - **Done when:** no type outside `HelperProcessHost` can read the nonce; then `bd close bevel-l3o --reason "Capability HMAC shipped ca00f6e; C# side now hands out per-capability MACs only"`
 

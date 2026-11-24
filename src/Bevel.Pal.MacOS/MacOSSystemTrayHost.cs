@@ -249,7 +249,7 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     }
 
     private Grpc.Core.Metadata AuthHeader()
-        => HelperClient.BuildAuthMetadata(_helperLifecycle.NonceToken, "tray");
+        => _helperLifecycle.AuthFor("tray");
 
     private static AbstractionsTrayItem Map(WireTrayItem w)
         => new(

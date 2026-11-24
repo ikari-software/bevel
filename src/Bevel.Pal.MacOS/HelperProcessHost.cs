@@ -25,11 +25,11 @@ internal interface IHelperProcessHost : IDisposable
     /// <summary>True while the helper process is alive.</summary>
     bool IsAlive { get; }
 
-    /// <summary>Launches the helper and waits until it answers Ping. The
-    /// <paramref name="capabilities"/> set determines which capability-scoped tokens
-    /// the client is authorised to use (U2). Throws on failure — the monitor loop
+    /// <summary>Launches the helper and waits until it answers Ping.
+    /// (Capability allowlisting lives on HelperLifecycle.AuthFor, bevel-l3o.)
+    /// Throws on failure — the monitor loop
     /// owns retry/restart policy.</summary>
-    Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null);
+    Task LaunchAndConnectAsync(CancellationToken ct);
 
     /// <summary>Kills the helper process (if any) and tears down the client connection.
     /// Safe to call at any time, including when nothing is running.</summary>
@@ -64,7 +64,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
         _socketDir = Path.Combine(Path.GetTempPath(), "bevel-helper");
     }
 
-    public async Task LaunchAndConnectAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
+    public async Task LaunchAndConnectAsync(CancellationToken ct)
     {
         // Resolve (and cache) the trusted helper path on first launch. Fail-closed: this throws
         // rather than exec an attacker-controlled binary, and the throw is owned by the monitor's
@@ -129,7 +129,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
 
         // Wait for the helper to be reachable (poll gRPC endpoint).
         _client = new HelperClient();
-        await WaitForReadyAsync(ct, capabilities);
+        await WaitForReadyAsync(ct);
 
         _logger.LogInformation("HelperLifecycle: helper connected, version={Version}", await _client.PingAsync(ct));
     }
@@ -150,7 +150,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
     /// Polls the helper's gRPC Ping until it responds, with exponential backoff.
     /// Times out after 5 seconds.
     /// </summary>
-    private async Task WaitForReadyAsync(CancellationToken ct, IReadOnlySet<string>? capabilities = null)
+    private async Task WaitForReadyAsync(CancellationToken ct)
     {
         var timeout = TimeSpan.FromSeconds(5);
         var sw = Stopwatch.StartNew();
@@ -168,7 +168,7 @@ internal sealed class HelperProcessHost : IHelperProcessHost
                 attemptCts.CancelAfter(TimeSpan.FromSeconds(1));
                 try
                 {
-                    _client!.Connect(SocketPath, NonceToken, capabilities);
+                    _client!.Connect(SocketPath, NonceToken);
                     _ = await _client.PingAsync(attemptCts.Token);
                     return; // Ready.
                 }

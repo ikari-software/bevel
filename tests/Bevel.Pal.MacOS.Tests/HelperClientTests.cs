@@ -84,7 +84,7 @@ public class HelperClientTests
     public void BuildAuthMetadata_different_capabilities_produce_different_tokens()
     {
         var mdSuper = HelperClient.BuildAuthMetadata("key", "supervision");
-        var mdWindows = HelperClient.BuildAuthMetadata("key", "windows");
+        var mdWindows = HelperClient.BuildAuthMetadata("key", "window");
         Assert.NotEqual(mdSuper.GetValue(HelperClient.TokenHeader),
                         mdWindows.GetValue(HelperClient.TokenHeader));
     }
