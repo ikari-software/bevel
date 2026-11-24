@@ -34,12 +34,11 @@ while IFS= read -r -d '' f; do
 		# releases — TCC keys the Accessibility / Screen Recording grants on the DR, so a stable identifier
 		# means the user grants BevelHelper once and every later release inherits it (matches dev-sign.sh).
 		codesign --force --options runtime "${TS[@]}" --identifier pl.ikari.bevel.helper --sign "$IDENTITY" "$f"
-	elif file -b "$f" | grep -q "executable"; then
-		# Secondary executables (bevelctl) need the same entitlements as the main app: the
-		# Homebrew-SDK apphost links /opt/homebrew brotli, which library validation rejects
-		# under the hardened runtime without disable-library-validation.
-		codesign --force --options runtime "${TS[@]}" --entitlements "$ENT" --sign "$IDENTITY" "$f"
 	else
+		# Secondary executables (bevelctl) sign like any other nested Mach-O. The old
+		# --entitlements branch here was a workaround for the Homebrew-SDK apphost linking
+		# /opt/homebrew brotli (bevel-ka6c); build-app.sh now gates against non-system dylibs,
+		# so the workaround is gone.
 		codesign --force --options runtime "${TS[@]}" --sign "$IDENTITY" "$f"
 	fi
 	count=$((count + 1))

@@ -120,6 +120,19 @@ test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
 test -x "$APP/Contents/Resources/bevel-recover.sh"
 
+# Portability gate (bevel-ka6c): every Mach-O in the bundle must link only system dylibs
+# (/usr/lib, /System) or bundle-relative install names (@rpath / @executable_path). A link into
+# /opt/homebrew (e.g. the Homebrew-SDK apphost pulling in brotli) makes the signed build refuse to
+# run on a Mac without Homebrew. Gate, do not bundle: building with the official SDK
+# (/usr/local/share/dotnet) is the fix, and this stops a regression from shipping.
+for f in "$APP"/Contents/MacOS/*; do
+	file -b "$f" | grep -q "Mach-O" || continue
+	if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/)'; then
+		echo "non-system dylib linked by $f — build with the official SDK (/usr/local/share/dotnet), not Homebrew" >&2
+		exit 1
+	fi
+done
+
 # Keep the repo's build output OUT of Spotlight/Launchpad so it doesn't shadow the canonical
 # /Applications/Bevel.app in the "Bevel" app list (bevel-5yx5). A .metadata_never_index marker in
 # OUT (dist/) — NOT inside the .app bundle, which would break the signature — makes Spotlight skip
