@@ -185,7 +185,10 @@ public sealed record AppTab(
     string Title,
     string? Url = null,
     byte[]? IconPng = null,
-    string? SessionId = null);
+    string? SessionId = null,
+    /// <summary>bevel-l17f: iTerm session background colour as "#RRGGBB", shown as a swatch when the row
+    /// has no favicon. Null for browsers.</summary>
+    string? Tint = null);
 
 /// <summary>bevel-bw1v: what <see cref="ITabProvider.ActivateAsync"/> actually did, so the UI can
 /// tell a silent no-op apart from a success. <see cref="NotFound"/> means the re-resolve found nothing

@@ -274,4 +274,23 @@ public class TaskButtonMenuTabsTests
             .Select(m => m.Header as string).ToList();
         Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
     }
+
+    [AvaloniaFact]
+    public void Rows_without_a_favicon_show_the_session_tint_swatch(/* bevel-l17f */)
+    {
+        var tinted = new AppTab(App, "7", 1, "zsh", SessionId: "SID-9", Tint: "#FF0000");
+        var plain = new AppTab(App, "7", 2, "docs", SessionId: "SID-10", Tint: null);
+        var rows = new List<TaskButtonMenu.TabMenuRow>
+        {
+            new(tinted, null),
+            new(plain, null),
+        };
+        var tabs = TabsMenu(TaskButtonMenu.Build(BrowserVm(), rows, new FakeTabProvider()));
+        var icons = tabs!.Items.OfType<MenuItem>().Select(m => m.Icon).ToList();
+
+        var swatch = Assert.IsType<Border>(icons[0]);
+        Assert.Equal(Avalonia.Media.Color.FromRgb(0xFF, 0, 0),
+            (swatch.Background as Avalonia.Media.SolidColorBrush)?.Color);
+        Assert.Null(icons[1]);   // no favicon, no tint → no icon
+    }
 }
