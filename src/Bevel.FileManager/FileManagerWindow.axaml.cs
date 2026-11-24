@@ -1096,7 +1096,9 @@ public partial class FileManagerWindow : BevelWindow
         // Never drop an item onto itself (dragging a folder onto its own row).
         var paths = e.Paths.Where(p => p != dest).ToList();
         if (paths.Count == 0) return;
-        _ = RunOpAsync(() => e.IsCopy ? _controller.CopyAsync(paths, dest) : _controller.MoveAsync(paths, dest));
+        // Ctrl = copy, Ctrl+Shift = link (not yet supported — falls through to copy),
+        // plain = move. Matches Finder/Filer conventions.
+        _ = RunOpAsync(() => e.IsCopy || e.IsLink ? _controller.CopyAsync(paths, dest) : _controller.MoveAsync(paths, dest));
     }
 
     async void OnRenameCommitted(object? sender, RenameCommittedEventArgs e)

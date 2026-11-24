@@ -46,6 +46,25 @@ public class VfsPathTests
         Assert.Equal("Users", VfsPath.Combine(root, "Users").Value);
     }
 
+    [Fact]
+    public void Combine_onto_posix_root_slash_does_not_double_slash()
+    {
+        // VfsPath("file", "/") is the POSIX root; combining must not yield "//Users" (bevel-u2x6).
+        var rootSlash = new VfsPath("file", "/");
+        Assert.True(rootSlash.IsRoot);
+        Assert.Equal("/Users", VfsPath.Combine(rootSlash, "Users").Value);
+        Assert.Equal("/Users/x", VfsPath.Combine(rootSlash, "/Users/x").Value);
+    }
+
+    [Theory]
+    [InlineData("//Users/x", "/Users/x")]   // double leading slash collapsed
+    [InlineData("///a", "/a")]              // triple leading slash collapsed
+    [InlineData("//", "")]                  // only slashes collapses to root
+    public void Constructor_collapses_duplicate_leading_slashes(string input, string expected)
+    {
+        Assert.Equal(expected, new VfsPath("file", input).Value);
+    }
+
     [Theory]
     [InlineData("/a/b/", "docs/")]   // trailing slashes on both sides
     [InlineData("/a/b", "/docs")]    // leading slash on child
@@ -163,3 +182,4 @@ public class VfsPathTests
     public void IsAtOrUnder_is_scheme_scoped()
         => Assert.False(new VfsPath("zip", "/a/b").IsAtOrUnder(new VfsPath("file", "/a")));
 }
+

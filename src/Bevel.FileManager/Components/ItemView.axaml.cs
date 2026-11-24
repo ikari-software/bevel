@@ -154,6 +154,9 @@ public partial class ItemView : UserControl
         GotFocus += (_, _) => UpdateFocusCue();
         LostFocus += (_, _) => UpdateFocusCue();
         _typeToFind = new(() => _typeClock.ElapsedMilliseconds, TypeResetMs);
+        // Without AllowDrop the OS never routes drag events here — DragOver/Drop handlers below
+        // would be dead code and every drop would silently do nothing (bevel-u2x6).
+        DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(ContextRequestedEvent, OnContextRequested);
@@ -891,9 +894,7 @@ public partial class ItemView : UserControl
     ///
     /// <para>Folders need <c>TryGetFolderFromPathAsync</c> and files <c>TryGetFileFromPathAsync</c> —
     /// asking for a file at a directory path yields null, which is how a mixed selection would silently
-    /// drag only half of itself. Nulls are dropped rather than failing the whole drag: a selection the
-    /// provider cannot resolve (a VFS-only node such as a <c>computer://</c> entry) should still drag
-    /// internally via <see cref="FileDropPayload"/>.</para></summary>
+    /// drag only half of itself. Nulls are dropped rather than failing the whole drag.</para></summary>
     private async System.Threading.Tasks.Task<IStorageItem[]> ResolveStorageItemsAsync(
         IReadOnlyList<(string Path, bool IsFolder)> items)
     {
@@ -903,7 +904,9 @@ public partial class ItemView : UserControl
         var resolved = new List<IStorageItem>(items.Count);
         foreach (var (path, isFolder) in items)
         {
-            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
+            // UriBuilder does not escape ?/#/% in the path, so escape each segment (bevel-u2x6).
+            var escaped = string.Join("/", path.Split('/').Select(Uri.EscapeDataString));
+            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = escaped }.Uri;
             IStorageItem? item = isFolder
                 ? await provider.TryGetFolderFromPathAsync(uri).ConfigureAwait(true)
                 : await provider.TryGetFileFromPathAsync(uri).ConfigureAwait(true);
@@ -912,42 +915,58 @@ public partial class ItemView : UserControl
         return resolved.ToArray();
     }
 
-    /// <summary>Begin a drag of the current selection, carrying BOTH the internal
-    /// <see cref="FileDropPayload"/> and the OS <see cref="DataFormats.Files"/> list (bevel-u2x6).
+    /// <summary>Begin a drag of the current selection, carrying the OS <see cref="DataFormat.File"/>
+    /// list via <see cref="DataTransfer"/> (bevel-u2x6).
     ///
-    /// <para>It used to set only the private format. The drop side accepts both (see
-    /// <see cref="OnDrop"/>) and the taskbar's stack flyout has always set Files correctly, so the gap
-    /// was here alone: dragging a file out of Filer onto Finder, the desktop, Mail or a browser did
-    /// NOTHING — silently, because a drag with no format the target understands is simply refused. It
-    /// also meant Filer-to-Filer drags relied on a managed object surviving a trip between two separate
-    /// <c>--role=filer</c> processes, which is not something to count on.</para>
+    /// <para>Uses <see cref="DragDrop.DoDragDropAsync"/> with <see cref="DataTransferItem.SetFile"/>,
+    /// which produces a direct <c>public.file-url</c> pasteboard item on macOS. The legacy
+    /// <c>DoDragDrop(IDataObject)</c> path wraps via <c>DataObjectToDataTransferWrapper</c> and does
+    /// not yield the same native items. Only <c>SetFile</c> items are added — text/JSON payload
+    /// items hang the native drag session on macOS. Internal Filer-to-Filer drops resolve via
+    /// <see cref="DataFormat.File"/> on the drop side.</para>
     ///
-    /// <para>Both formats are set, never one: Files is what every other app reads, while the internal
-    /// payload is what preserves Bevel's own move/copy semantics on an internal drop. The Files list is
-    /// only attached when the press-time resolve has already completed — awaiting it here would yield
-    /// inside the pointer gesture and lose the drag, which is the same reason StackFlyoutView
-    /// pre-resolves on press. If it is not ready the drag still happens, exactly as before.</para></summary>
+    /// <para>The storage resolve is kicked off at pointer-press so it is ready when the drag
+    /// threshold trips; awaiting it here would yield inside the pointer gesture and lose the
+    /// drag. If it has not completed, the drag still proceeds with whatever resolved.</para></summary>
     async System.Threading.Tasks.Task StartDragAsync(PointerEventArgs e)
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
-        var data = new DataObject();
-        data.Set(FileDropPayload.DataFormat, new FileDropPayload { Paths = paths });
-        if (_dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready)
-            data.Set(DataFormats.Files, ready.Result);
+
+        // Use DoDragDropAsync with a DataTransfer containing ONLY SetFile items.
+        // SetFile() creates a direct DataFormat.File item → public.file-url on macOS (bevel-u2x6).
+        var transfer = new DataTransfer();
+        IStorageItem[] storageItems = _dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready
+            ? ready.Result
+            : System.Array.Empty<IStorageItem>();
+        foreach (var item in storageItems)
+        {
+            var fileItem = new DataTransferItem();
+            fileItem.SetFile(item);
+            transfer.Add(fileItem);
+        }
+
+        // NOTE: no text/payload items — adding anything beyond SetFile hangs the native
+        // drag session on macOS (bevel-u2x6). Internal Filer-to-Filer falls back to
+        // DataFormat.File which the drop side resolves via TryGetFiles().
+
         try
         {
-            await DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link);
+            await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy);
         }
-        catch { /* drag cancelled or platform refused — nothing to clean up */ }
+        catch { }
     }
 
     // ── DnD ──────────────────────────────────────────────────────────
 
+    private static readonly DataFormat<string> JsonPayloadFormat =
+        DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
+
     void OnDragOver(object? _, DragEventArgs e)
     {
-        e.DragEffects = e.Data.Contains(DataFormats.Files) || e.Data.Contains(FileDropPayload.DataFormat)
-            ? DragDropEffects.Copy | DragDropEffects.Move | DragDropEffects.Link : DragDropEffects.None;
+        e.DragEffects = e.DataTransfer.Contains(DataFormat.File)
+                        || e.DataTransfer.Contains(JsonPayloadFormat)
+            ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -959,15 +978,42 @@ public partial class ItemView : UserControl
     internal ItemViewModel? DropTargetAt(Point pt)
         => Hit(pt, revealedFirst: false) is { IsFolder: true } over ? over : null;
 
+    /// <summary>Attempts to extract file paths from drag data, preferring the internal
+    /// <see cref="FileDropPayload"/> (JSON under a custom app format), then <see cref="DataFormat.File"/>
+    /// (IStorageItem list).</summary>
+    internal static List<VfsPath>? ResolveDropPaths(IDataTransfer? transfer)
+    {
+        // 1. Internal payload — JSON under a custom app format.
+        if (transfer is not null && transfer.Contains(JsonPayloadFormat))
+        {
+            var json = transfer.TryGetValue(JsonPayloadFormat);
+            if (json is not null)
+            {
+                try
+                {
+                    var payload = System.Text.Json.JsonSerializer.Deserialize<FileDropPayload>(json);
+                    if (payload?.Paths is { Count: > 0 } paths)
+                        return paths.ToList();
+                }
+                catch { }
+            }
+        }
+
+        // 2. OS file list (IStorageItem).
+        var files = transfer?.TryGetFiles();
+        if (files is not null)
+        {
+            var fromItems = files.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
+            if (fromItems.Count > 0) return fromItems;
+        }
+
+        return null;
+    }
+
     void OnDrop(object? _, DragEventArgs e)
     {
-        List<VfsPath>? paths = null;
-        if (e.Data.Contains(FileDropPayload.DataFormat))
-            paths = (e.Data.Get(FileDropPayload.DataFormat) as FileDropPayload)?.Paths.ToList();
-        else if (e.Data.Contains(DataFormats.Files))
-            paths = e.Data.GetFiles()?.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
-        // Dropping onto a folder targets that folder; onto empty space, the current directory.
         var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
+        var paths = ResolveDropPaths(e.DataTransfer);
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;
