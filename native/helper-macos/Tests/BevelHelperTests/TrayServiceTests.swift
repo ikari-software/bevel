@@ -127,9 +127,7 @@ final class TrayServiceTests: XCTestCase {
     /// invisible: the cached verdict (computed when there was nothing to capture) kept gating live mode
     /// forever, so `captureOk` was NEVER actually exercised for this session. This is the pure decision
     /// `ensureSelfTested` now consults — no real self-test or real grant needed to prove the state
-    /// machine, as a pure static seam.
-    }
-    /// machine, same seam style as `trayGlyphLayout`.
+    /// machine, as a pure static seam — same seam style as `trayGlyphLayout`.
     func testEnumerationDoesNotWaitForTheSelfTest() {
         // bevel-yg7h: while the self-test has not completed, live capture is gated OFF regardless
         // of the grant — the first enumeration returns limited-mode (app icon) items immediately
