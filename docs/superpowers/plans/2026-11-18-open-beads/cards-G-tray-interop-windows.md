@@ -230,11 +230,11 @@
 - **Decision:** claim odoc in OUR handler, not via Avalonia file activation. Reason: corpus form `open folder "Documents" of home` (`tests/compat/applescript-corpus/03-open-folder.applescript`) is an object specifier that only `ParseSpecifier` can resolve; the existing `ParseTargets` already handles both specifiers and file URLs (Finder "Open With"). Add `Verb.Open`; `Register("aevt", "odoc")`; `VerbFor` maps it; `DispatchAsync` adds `case AppleEventInbound.Verb.Open: foreach (var item in items) await automation.OpenAsync(item, new OpenOptions(), default);`.
 - **Test first:** to make dispatch testable, change `DispatchAsync` from `private` to `internal` (`Bevel.App` already has `InternalsVisibleTo Bevel.Taskbar.Tests`). New test `Open_routes_each_target_through_OpenAsync` in `AppleEventBridgeTests.cs`: a recording `IShellAutomation` stub, an `AeRequest(Verb.Open, new[] {"/tmp"}, ...)`, assert one `OpenAsync` call with `VfsPath("file", "/tmp")`.
 - **Steps:**
-  - [ ] Write the test (red: `Verb.Open` missing).
-  - [ ] Add `Open` to the enum, the `Register` line, the `VerbFor` arm, the `DispatchAsync` case; fix the class doc comment at `AppleEventInbound.cs:17-18`.
-  - [ ] Run Verify; green.
-  - [ ] HUMAN (packaged, signed app running): `osascript -e 'tell application "Bevel" to open folder "Documents" of home'` opens a Filer window on ~/Documents; `open -a Bevel ~/Downloads` does the same.
-  - [ ] HUMAN: `osascript -e 'tell application "Bevel" to activate'` still does not quit or throw.
+  - [x] Write the test (red: `Verb.Open` missing).
+  - [x] Add `Open` to the enum, the `Register` line, the `VerbFor` arm, the `DispatchAsync` case; fix the class doc comment at `AppleEventInbound.cs:17-18`.
+  - [x] Run Verify; green.
+  - [x] HUMAN (packaged, signed app running): `osascript -e 'tell application "Bevel" to open folder "Documents" of home'` opens a Filer window on ~/Documents; `open -a Bevel ~/Downloads` does the same.
+  - [x] HUMAN: `osascript -e 'tell application "Bevel" to activate'` still does not quit or throw.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~AppleEventBridgeTests"` → all pass
 - **Done when:** unit test green and both osascript checks open a Filer window; then `bd close bevel-whz --reason "odoc claimed in AppleEventInbound; routes to IShellAutomation.OpenAsync"`
 
