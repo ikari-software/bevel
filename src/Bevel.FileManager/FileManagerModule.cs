@@ -23,6 +23,9 @@ public sealed class FileManagerModule : IModule
             // Makes the Trash tree node browsable (bevel-sw3k) — before this, selecting it threw
             // KeyNotFoundException (swallowed) because no "trash" provider was registered.
             root.Register(new TrashProvider());
+            // bevel-lkib: makes the Network tree node browsable the same way — lists mounted network
+            // volumes instead of dying on an unregistered "net" scheme.
+            root.Register(new NetworkProvider());
             return root;
         });
 

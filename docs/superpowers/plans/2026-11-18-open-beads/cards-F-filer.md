@@ -314,9 +314,9 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
 - **Decision:** Build, do not hide (project rule). `NetworkProvider : IVfsProvider`, scheme `net`: the root resolves to `VirtualNode.VirtualRoot(path, "Network", IconKey.Network())`; `EnumerateAsync` lists the network volumes that are mounted right now, as `Volume` nodes with `IconKey.NetDrive()`, read-only caps (`Properties`), `ResolveEffectivePath` and `ResolveNavigationTarget` pointing at the mount. The drive list comes through a constructor seam `Func<IEnumerable<(string Name, string MountPath)>>` whose default filters `DriveInfo.GetDrives()` by `DriveType.Network` (the same API `ComputerProvider.cs:35,122` uses), so tests inject a list. UNVERIFIED: that .NET reports `DriveType.Network` for smbfs/afpfs/nfs mounts on macOS; check once on a machine with a mounted share. No mounts is a legitimate empty folder ("0 object(s)"). Also fix the root cause of the silence: replace both empty `catch (KeyNotFoundException)` blocks with `StatusBar.ShowMessage("This location isn't available.")`. Discovering unmounted hosts (Bonjour/SMB browse) is a new bead: "Network: browse and mount discovered servers".
 - **Test first:** `NetworkProviderTests.Root_lists_injected_network_mounts_as_volumes` and `Empty_mount_list_enumerates_nothing_without_throwing` (new). Then `tests/Bevel.FileManager.Tests/FileManagerWindowTreeTests.cs` `Selecting_the_network_node_loads_without_an_unknown_scheme` (assert `VfsRoot.Schemes` contains `net` and the status bar has no error).
 - **Steps:**
-  - [ ] Add `NetworkProvider` + tests.
-  - [ ] Register it in `FileManagerModule`; remove the "(stub)" comments at :558 and :563.
-  - [ ] Replace the two silent catches.
+  - [x] Add `NetworkProvider` + tests.
+  - [x] Register it in `FileManagerModule`; remove the "(stub)" comments at :558 and :563.
+  - [x] Replace the two silent catches.
 - **Verify:** `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter "FullyQualifiedName~NetworkProvider"` → pass
 - **Done when:** clicking Network shows mounted shares (or an honest empty folder) and an unknown scheme typed into the address bar produces a status-bar message; then `bd close bevel-lkib --reason "NetworkProvider lists mounted network volumes; unknown schemes now reported"`
 
