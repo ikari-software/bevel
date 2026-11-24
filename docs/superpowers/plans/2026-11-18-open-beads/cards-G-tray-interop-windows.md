@@ -246,11 +246,11 @@
 - **Decision:** suspended reply. In `HandleQuery`: answer Version/Home/Desktop/Trash/StartupDisk inline as today; for `ResolvePaths`, `WindowCount`, `Selection` call `NSAppleEventManager` `suspendCurrentAppleEvent`, start `AsyncQueryHandler` (new: `public static Func<AeQuery, Task<AeResult?>>? AsyncQueryHandler`), and on completion post to the UI thread: `replyAppleEventForSuspensionID:` -> existing `WriteReply` -> `resumeWithSuspensionID:`. 10 s timeout writes error -1712 via existing `WriteErrorReply` and resumes (never leave an event suspended). Bridge side: `internal static Task<AeResult?> AnswerAsync(...)` (new) runs `resolver.ResolveAsync(..., enumerationCap: 0)` on the thread pool, and gets windows/selection from `automation.QueryAsync(AutomationQuery.Windows, ct)` / the selection query, which already reach live Filers through `SpawningShellSurface`.
 - **Test first:** `AppleEventBridgeTests`: `AnswerAsync_count_is_not_capped` (temp dir with 5000 files -> `AeCount(5000)`), `AnswerAsync_window_count_comes_from_the_automation_query` (stub returns 2 windows -> `AeCount(2)`), `AnswerAsync_missing_folder_counts_zero`.
 - **Steps:**
-  - [ ] Write tests (red); implement `AnswerAsync`; keep `Answer` only for the five inline kinds.
-  - [ ] Add the three ObjC sends next to the other `objc_msgSend` overloads in `AppleEventQuery.cs` (suspension id is a pointer; reuse `AppKitInterop.SendIntPtr` / `SendIntPtr_IntPtr` / `SendVoid_IntPtr`).
-  - [ ] Wire `AppleEventInbound.AsyncQueryHandler` in `AppleEventBridge.Wire`; delete the blocking `GetResult()` calls.
-  - [ ] `grep -n "GetAwaiter().GetResult()" src/Bevel.App/AppleEventBridge.cs` → no output.
-  - [ ] HUMAN: with one Filer window open, `osascript -e 'tell application "Bevel" to count windows'` → 1; `... to count every item of startup disk` returns a number while the taskbar clock keeps ticking.
+  - [x] Write tests (red); implement `AnswerAsync`; keep `Answer` only for the five inline kinds.
+  - [x] Add the three ObjC sends next to the other `objc_msgSend` overloads in `AppleEventQuery.cs` (suspension id is a pointer; reuse `AppKitInterop.SendIntPtr` / `SendIntPtr_IntPtr` / `SendVoid_IntPtr`).
+  - [x] Wire `AppleEventInbound.AsyncQueryHandler` in `AppleEventBridge.Wire`; delete the blocking `GetResult()` calls.
+  - [x] `grep -n "GetAwaiter().GetResult()" src/Bevel.App/AppleEventBridge.cs` → no output.
+  - [x] HUMAN: with one Filer window open, `osascript -e 'tell application "Bevel" to count windows'` → 1; `... to count every item of startup disk` returns a number while the taskbar clock keeps ticking.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~AppleEventBridgeTests"` → all pass
 - **Done when:** no sync wait remains and the two osascript checks pass; then `bd close bevel-odf --reason "AE queries use suspend/resume async reply; window/selection queries routed through IShellAutomation"`
 

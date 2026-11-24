@@ -35,22 +35,18 @@ public static class AppleEventBridge
 
         AppleEventInbound.Handler = request => _ = DispatchAsync(automation, resolver, known, request);
         AppleEventInbound.QueryHandler = query => Answer(query, known, registry, resolver);
+        // bevel-odf: path/window/selection queries arrive on a SUSPENDED event and are answered
+        // asynchronously (off the UI thread) — windows/selection via the automation query, which
+        // reaches live Filers in their own process through SpawningShellSurface.
+        AppleEventInbound.AsyncQueryHandler = query => AnswerAsync(query, known, automation, resolver);
         AppleEventInbound.Install();
     }
 
-    /// <summary>Synchronously answers a get/count/exists (bevel-3i4). Reads only synchronously-available
-    /// state — known folders, the window registry, the active controller's selection — plus a blocking
-    /// resolve for filesystem specifiers (VFS I/O, no UI-thread round-trip, so no deadlock).
-    ///
-    /// <para>Deadlock-safety is NOT the same as boundedness: this runs on Avalonia's AE dispatch (UI)
-    /// thread, so an unbounded <c>count of every file of folder &lt;hugeDir&gt;</c> would freeze the whole
-    /// shell for the length of the directory walk (bevel-o3sa). The resolve is therefore hard-capped at
-    /// <see cref="AppleEventObjectResolver.UiThreadEnumerationCap"/> entries per container, and
-    /// <c>exists</c> uses the short-circuiting <see cref="AppleEventObjectResolver.ExistsAsync"/>. Net
-    /// semantics under the cap: <c>count</c> returns at most the cap, <c>get</c> returns at most the cap,
-    /// <c>exists</c> short-circuits on the first match (so it is exact whenever the target lies within
-    /// the first cap entries — a match beyond the cap position reads as false). The async command path
-    /// (DispatchAsync) stays unbounded — it doesn't run on the UI thread.</para></summary>
+    /// <summary>Synchronously answers the INLINE get/count/exists kinds only (bevel-3i4/odf): the five
+    /// property reads from synchronously-available state (known folders, version). Path resolution,
+    /// window count and selection are NOT inline — the PAL suspends those events and they are answered
+    /// by <see cref="AnswerAsync"/> off the UI thread, unbounded (no more UiThreadEnumerationCap
+    /// truncation, no more blocking the UI thread on a directory walk).</summary>
     private static AeResult? Answer(AeQuery query, IKnownFolders known, FileManagerWindowRegistry? registry, AppleEventObjectResolver resolver)
     {
         // `exists <application property>` (home/desktop/…) is always true.
@@ -70,23 +66,48 @@ public static class AppleEventBridge
             case AeQueryKind.Selection:
                 var selection = registry?.First()?.ActiveController?.Selection ?? Array.Empty<VfsPath>();
                 return new AePaths(selection.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
+            // bevel-odf: ResolvePaths never arrives here — it is not an inline query, so the PAL
+            // suspends the event and AnswerAsync resolves it unbounded off the UI thread. No
+            // blocking wait remains on the UI thread.
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>bevel-odf: answers a get/count/exists on a SUSPENDED Apple Event, off the UI thread
+    /// (internal for tests). Unlike <see cref="Answer"/> this is unbounded: filesystem specifiers
+    /// resolve with enumerationCap 0 (the walk may be huge — that is the point of suspending), and
+    /// window/selection counts come from <see cref="IShellAutomation.QueryAsync"/>, which reaches the
+    /// live Filers (the local window registry is empty in the taskbar process — the multi-process
+    /// finding). Missing targets still get a defined answer (exists=false / count=0 / get=empty).</summary>
+    internal static async Task<AeResult?> AnswerAsync(
+        AeQuery query, IKnownFolders known, IShellAutomation automation, AppleEventObjectResolver resolver,
+        CancellationToken ct = default)
+    {
+        switch (query.Kind)
+        {
+            case AeQueryKind.WindowCount:
+            {
+                var snap = await automation.QueryAsync(AutomationQuery.Windows, ct).ConfigureAwait(false);
+                return new AeCount(snap.Windows.Count);
+            }
+            case AeQueryKind.Selection:
+            {
+                var snap = await automation.QueryAsync(AutomationQuery.Selection, ct).ConfigureAwait(false);
+                return new AePaths(snap.Selection.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
+            }
             case AeQueryKind.ResolvePaths when query.Specifier is not null:
                 try
                 {
-                    // Bounded on the UI thread (bevel-o3sa): cap the walk, and let exists short-circuit.
-                    const int cap = AppleEventObjectResolver.UiThreadEnumerationCap;
                     if (query.Op == QueryOp.Exists)
-                        return new AeBool(resolver.ExistsAsync(ConvertSpec(query.Specifier), default, cap).GetAwaiter().GetResult());
-                    var paths = resolver.ResolveAsync(ConvertSpec(query.Specifier), default, cap).GetAwaiter().GetResult();
+                        return new AeBool(await resolver.ExistsAsync(ConvertSpec(query.Specifier), ct, 0).ConfigureAwait(false));
+                    var paths = await resolver.ResolveAsync(ConvertSpec(query.Specifier), ct, 0).ConfigureAwait(false);
                     return query.Op == QueryOp.Count
                         ? new AeCount(paths.Count)
                         : new AePaths(paths.Where(p => p.Scheme == "file").Select(p => p.Value).ToArray());
                 }
                 catch (AutomationException)
                 {
-                    // A specifier that doesn't resolve (missing folder/file) gets a DEFINED answer —
-                    // exists=false / count=0 / get=empty — instead of an exception that escapes to
-                    // HandleEvent and drops the reply as an empty success (REL-2 review).
                     return query.Op switch
                     {
                         QueryOp.Exists => new AeBool(false),
@@ -95,7 +116,7 @@ public static class AppleEventBridge
                     };
                 }
             default:
-                return null;
+                return Answer(query, known, null, resolver);   // the five inline property kinds
         }
     }
 
