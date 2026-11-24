@@ -50,6 +50,28 @@ public class TrayViewModelTests
         Assert.DoesNotContain(vm.Items, i => i.Id.Value == "1:10");
     }
 
+    // bevel-ujx8(1): a stream event that lands while the initial pull is in flight must replay
+    // AFTER the (possibly stale) snapshot — otherwise an item removed in between is resurrected.
+    [AvaloniaFact]
+    public void An_item_removed_during_the_initial_pull_is_not_resurrected()
+    {
+        var alpha = Item("1:10", "Alpha");
+        var beta = Item("2:20", "Beta");
+        var host = new StubTray(alpha, beta)
+        {
+            PullGate = new TaskCompletionSource<IReadOnlyList<TrayItem>>(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        var vm = new TrayViewModel(host);
+
+        vm.Start();
+        host.RaiseRemoved(alpha);   // removed on the host while the pull is still in flight
+        host.PullGate!.SetResult(new[] { alpha, beta });   // stale snapshot still lists alpha
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.DoesNotContain(vm.Items, i => i.Id.Value == "1:10");
+        Assert.Contains(vm.Items, i => i.Id.Value == "2:20");
+    }
+
     [AvaloniaFact]
     public void Null_host_yields_an_empty_tray_without_faulting()
     {
@@ -309,8 +331,15 @@ public class TrayViewModelTests
         public List<bool> HiddenCalls { get; } = new();
 
         public Capabilities Capabilities => Capabilities.None;
-        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<TrayItem>>(_items.ToArray());
+        /// <summary>When set, the initial pull completes only when the gate is set — lets a test fire
+        /// stream events while the pull is in flight (bevel-ujx8).</summary>
+        public TaskCompletionSource<IReadOnlyList<TrayItem>>? PullGate { get; set; }
+
+        public async ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
+        {
+            if (PullGate is { } gate) return await gate.Task;
+            return _items.ToArray();
+        }
         public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default)
         {
             HiddenCalls.Add(hidden);

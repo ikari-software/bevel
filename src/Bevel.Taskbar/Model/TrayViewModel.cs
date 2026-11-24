@@ -191,12 +191,16 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Subscribes to the host and pulls the initial snapshot. Idempotent.</summary>
+    /// <summary>Subscribes to the host and pulls the initial snapshot. Idempotent. While the pull is in
+    /// flight (bevel-ujx8), stream events queue instead of posting: the snapshot may be stale by then,
+    /// so the queue is replayed in order AFTER the snapshot is applied — otherwise an item removed in
+    /// between would be resurrected by the upsert.</summary>
     public async void Start()
     {
         if (_started || _tray is null) return;
         _started = true;
 
+        _seeding = true;
         _tray.ItemAdded += OnItemAdded;
         _tray.ItemUpdated += OnItemUpdated;
         _tray.ItemRemoved += OnItemRemoved;
@@ -204,17 +208,48 @@ public sealed class TrayViewModel : ObservableObject, IDisposable
         try
         {
             var items = await _tray.GetItemsAsync();
-            Dispatcher.UIThread.Post(() => { foreach (var i in items) Upsert(i); });
+            Dispatcher.UIThread.Post(() =>
+            {
+                foreach (var i in items) Upsert(i);
+                ReplaySeedQueue();
+            });
         }
         catch
         {
             // Best-effort initial pull; the Changes stream still delivers items as events.
+            Dispatcher.UIThread.Post(ReplaySeedQueue);
         }
     }
 
-    private void OnItemAdded(object? sender, TrayItem item) => Post(() => Upsert(item));
-    private void OnItemUpdated(object? sender, TrayItem item) => Post(() => Upsert(item));
-    private void OnItemRemoved(object? sender, TrayItem item) => Post(() => Remove(item.Id));
+    private bool _seeding;
+    private readonly object _seedGate = new();
+    private List<Action>? _seedReplay;
+
+    /// <summary>Ends the seeding phase and runs the queued stream events in arrival order (UI thread).</summary>
+    private void ReplaySeedQueue()
+    {
+        List<Action> replay;
+        lock (_seedGate)
+        {
+            _seeding = false;
+            replay = _seedReplay ?? new List<Action>();
+            _seedReplay = null;
+        }
+        foreach (var a in replay) a();
+    }
+
+    private void SeedOrPost(Action a)
+    {
+        lock (_seedGate)
+        {
+            if (_seeding) { (_seedReplay ??= new List<Action>()).Add(a); return; }
+        }
+        Post(a);
+    }
+
+    private void OnItemAdded(object? sender, TrayItem item) => SeedOrPost(() => Upsert(item));
+    private void OnItemUpdated(object? sender, TrayItem item) => SeedOrPost(() => Upsert(item));
+    private void OnItemRemoved(object? sender, TrayItem item) => SeedOrPost(() => Remove(item.Id));
 
     private static void Post(Action a) => Dispatcher.UIThread.Post(a);
 
