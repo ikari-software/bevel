@@ -25,10 +25,13 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
 
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
     /// as always connected). Drives the tray disconnected indicator.</param>
+    /// <param name="openFolder">bevel-hsvx: forwarded to every stack, so a stack's "Open folder"
+    /// opens a supervised Filer instead of the platform default. Resolved from DI in the app
+    /// (CompositionRoot registers it next to IFilerSpawner); null in tests.</param>
     public TaskbarViewModel(ShellModel model, StartMenuViewModel startMenu,
         IShellConnectionStatus? connection = null, ISystemTrayHost? tray = null,
         ISettingsService? settings = null, IAppEnvironment? appEnv = null, IIconProvider? icons = null,
-        IThumbnailProvider? thumbnails = null)
+        IThumbnailProvider? thumbnails = null, Action<string>? openFolder = null)
     {
         Model = model;
         ShowDesktopCommand = new AsyncRelayCommand(Model.MinimizeAllAsync);
@@ -38,7 +41,7 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         Tray = new TrayViewModel(tray);
         Tray.Start();
         Stacks = new StacksViewModel(
-            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons, thumbnails);
+            settings?.Current.TaskbarStacks ?? Enumerable.Empty<string>(), appEnv, icons, thumbnails, openFolder);
         if (connection is not null)
         {
             // Subscribe BEFORE reading IsConnected (same discipline as App.axaml.cs's settings.Changed

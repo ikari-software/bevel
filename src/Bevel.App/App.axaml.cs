@@ -495,7 +495,7 @@ public partial class App : Application
     /// degrade), and <see cref="LauncherFilerSpawner"/> falls back to the in-process spawner on a NACK,
     /// so an open can never silently die; the catch is belt-and-braces against an unobserved task
     /// exception if that ever stops being true.</para></summary>
-    private static void SpawnFilerSupervised(IServiceProvider services, string path, bool search = false)
+    internal static void SpawnFilerSupervised(IServiceProvider services, string path, bool search = false)
     {
         var spawner = services.GetService<IFilerSpawner>() ?? new ProcessFilerSpawner();
         _ = Task.Run(() =>

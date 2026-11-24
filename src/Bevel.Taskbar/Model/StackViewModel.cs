@@ -24,6 +24,7 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     public const int MaxItems = 16;
 
     private readonly IAppEnvironment? _appEnv;
+    private readonly Action<string>? _openFolder;
     private readonly IconLoader _icons;
     private readonly PreviewLoader _previews;
     private readonly object _watcherGate = new();
@@ -32,11 +33,15 @@ public sealed class StackViewModel : ObservableObject, IDisposable
     private bool _hasNew;
     private bool _disposed;
 
+    /// <param name="openFolder">bevel-hsvx: when the host supplies a Filer opener, "Open folder"
+    /// calls it (supervised Filer at the stack's folder) instead of <paramref name="appEnv"/>'s
+    /// LaunchAsync, which would open the platform default (Finder). Null in tests / no host.</param>
     public StackViewModel(string folderPath, IAppEnvironment? appEnv, IconLoader icons,
-        PreviewLoader? previews = null)
+        PreviewLoader? previews = null, Action<string>? openFolder = null)
     {
         FolderPath = folderPath;
         _appEnv = appEnv;
+        _openFolder = openFolder;
         _icons = icons;
         // No thumbnail provider (Windows PAL today, or a test) still gets the grid — every cell just
         // resolves to a larger type icon instead of a content preview.
@@ -129,6 +134,14 @@ public sealed class StackViewModel : ObservableObject, IDisposable
 
     private async Task OpenFolderAsync()
     {
+        // bevel-hsvx: an injected opener routes "Open folder" to a supervised Bevel Filer;
+        // only without one does it fall back to LaunchAsync (Finder via LaunchServices).
+        if (_openFolder is not null)
+        {
+            try { _openFolder(FolderPath); }
+            catch (Exception ex) { TaskbarLog.Swallowed("Stack.OpenFolder", ex); }
+            return;
+        }
         if (_appEnv is not null)
         {
             try { await _appEnv.LaunchAsync(FolderPath); }
@@ -277,13 +290,15 @@ public sealed class StackFileViewModel : ObservableObject
 public sealed class StacksViewModel : IDisposable
 {
     private readonly IAppEnvironment? _appEnv;
+    private readonly Action<string>? _openFolder;
     private readonly IconLoader _loader;
     private readonly IThumbnailProvider? _thumbnails;
 
     public StacksViewModel(IEnumerable<string> folders, IAppEnvironment? appEnv, IIconProvider? icons,
-        IThumbnailProvider? thumbnails = null)
+        IThumbnailProvider? thumbnails = null, Action<string>? openFolder = null)
     {
         _appEnv = appEnv;
+        _openFolder = openFolder;
         _loader = new IconLoader(icons);
         _thumbnails = thumbnails;
         Reconcile(folders.ToList());
@@ -301,7 +316,7 @@ public sealed class StacksViewModel : IDisposable
             sourceKeyOf: f => f,
             // One PreviewLoader per stack: its cache is trimmed to that folder's live entries, so
             // stacks never evict each other's cell images.
-            create: f => new StackViewModel(f, _appEnv, _loader, new PreviewLoader(_loader, _thumbnails)),
+            create: f => new StackViewModel(f, _appEnv, _loader, new PreviewLoader(_loader, _thumbnails), _openFolder),
             onRemove: (item, commit) => { item.Dispose(); commit(); });
 
     public ObservableCollection<StackViewModel> Stacks { get; } = new();
