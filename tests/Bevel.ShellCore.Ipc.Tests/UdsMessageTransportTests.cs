@@ -260,49 +260,54 @@ public sealed class UdsMessageTransportTests
         Assert.Equal(new[] { "0-snapshot", "1-delta" }, order.ToArray());
     }
 
-    // bevel-70nw: Events raised between HandshakeOk and connection registration are NOT lost.
-    // A broadcast sent while the client is connecting (after HandshakeOk is queued but before
-    // registration completes) must still be delivered to that client, and must arrive AFTER the
-    // snapshot and AFTER HandshakeOk.
+    // bevel-70nw: the client must not be able to read HandshakeOk before the server has registered it
+    // for broadcasts. Otherwise an event raised after the client believes it is connected, but before
+    // registration, reaches nobody (running apps are not in the Hello snapshot burst, so nothing
+    // repairs it). The ClientConnected handler runs BEFORE registration, so holding it open holds the
+    // server inside that gap.
     [Fact]
-    public async Task HandshakeOk_RegistrationRace_BroadcastNotLost()
+    public async Task Connect_does_not_complete_before_the_server_registers_the_client()
     {
         var path = NewSocketPath();
         var nonce = NewNonce();
         await using var server = StartServer(path, nonce);
-        server.ClientConnected += send => _ = send(Encoding.UTF8.GetBytes("SNAPSHOT"));
 
-        var order = new ConcurrentQueue<string>();
-        var snapshotSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var broadcastSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var inGap = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        server.ClientConnected += send =>
+        {
+            _ = send(Encoding.UTF8.GetBytes("SNAPSHOT"));
+            inGap.Set();
+            release.Wait(Timeout);
+        };
 
+        var received = new ConcurrentQueue<string>();
+        var deltaSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var client = new UdsMessageClient(path, nonce, "shell");
         client.BroadcastReceived += b =>
         {
             var msg = Encoding.UTF8.GetString(b);
-            order.Enqueue(msg);
-            if (msg == "SNAPSHOT") snapshotSeen.TrySetResult();
-            if (msg == "BROADCAST") broadcastSeen.TrySetResult();
+            received.Enqueue(msg);
+            if (msg == "DELTA") deltaSeen.TrySetResult();
         };
 
-        // Start connect - this will trigger ClientConnected and register the connection
-        var connectTask = client.ConnectAsync(Ct);
-        
-        // Wait for the connection to be registered (ClientCount == 1)
-        await WaitFor(() => server.ClientCount == 1);
-        
-        // Send a broadcast IMMEDIATELY after the connection is registered.
-        // With the fix, this broadcast should be queued AFTER the snapshot and delivered to the client.
-        server.Broadcast(Encoding.UTF8.GetBytes("BROADCAST"));
-        
-        // Wait for both snapshot and broadcast to be received
-        await Task.WhenAll(snapshotSeen.Task, broadcastSeen.Task).WaitAsync(Timeout);
-        
-        // Verify the order: snapshot first, then broadcast
-        Assert.Equal(new[] { "SNAPSHOT", "BROADCAST" }, order.ToArray());
-        
-        // Also verify connect completed successfully
-        await connectTask.WaitAsync(Timeout);
+        var connect = client.ConnectAsync(Ct);
+        Assert.True(inGap.Wait(Timeout), "the server never reached the ClientConnected handler");
+
+        // The server is past authentication and not yet registered. The client must still be waiting.
+        Assert.Equal(0, server.ClientCount);
+        var first = await Task.WhenAny(connect, Task.Delay(TimeSpan.FromMilliseconds(300), Ct));
+        Assert.NotSame(connect, first);
+
+        release.Set();
+        await connect.WaitAsync(Timeout);
+
+        // HandshakeOk is written only after registration, so no wait is needed here: an event raised
+        // the moment the client is connected has somewhere to go.
+        Assert.Equal(1, server.ClientCount);
+        server.Broadcast(Encoding.UTF8.GetBytes("DELTA"));
+        await deltaSeen.Task.WaitAsync(Timeout);
+        Assert.Equal(new[] { "SNAPSHOT", "DELTA" }, received.ToArray());
     }
 
     // Review (correctness): IsConnected must go false once the receive loop faults, not stay true
