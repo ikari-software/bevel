@@ -103,6 +103,28 @@ public sealed class TabPrefetchTests
         Assert.Equal(1, prefetch.Fetches);
     }
 
+    /// <summary>bevel-8zx2: the freshness window is WIDER than the fetch budget — a row enumerated at
+    /// the start of a full-budget fetch is already budget-old when shown, so reusing a result up to
+    /// the wider window adds no staleness the design did not already accept. Now safe because
+    /// activation is identity-verified (bevel-6asm/bw1v): a stale row reports NotFound and invalidates
+    /// the slot instead of pressing the wrong tab.</summary>
+    [Fact]
+    public async Task A_result_older_than_the_budget_but_inside_the_freshness_window_is_still_served()
+    {
+        var wideFreshness = TimeSpan.FromSeconds(10);   // bevel-8zx2: TabPrefetchFreshness on the view
+        var provider = new CountingTabs { Tabs = [Tab(1)] };
+        var clock = new FakeClock();
+        using var prefetch = new TabPrefetch(provider, Budget, wideFreshness, decode: _ => null, nowMs: clock.Read);
+
+        await prefetch.Warm(App)!;
+        clock.Now += (long)Budget.TotalMilliseconds + 1;   // older than the budget, well inside 10 s
+
+        var second = prefetch.Warm(App)!;
+        Assert.Equal(1, prefetch.Fetches);
+        Assert.Equal(1, provider.Calls);
+        Assert.Same(second, prefetch.Warm(App));   // still the same slot, no re-enumeration
+    }
+
     /// <summary>Past the window the result is DISCARDED and re-fetched. The bound is correctness, not
     /// tidiness: AppTab refs are positional (<c>set active tab index of window N to K</c>), so a row
     /// whose tab has since closed selects whatever now sits at that index — serving old rows risks
