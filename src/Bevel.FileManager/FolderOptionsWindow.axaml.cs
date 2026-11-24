@@ -27,10 +27,10 @@ public partial class FolderOptionsWindow : UI.BevelWindow
     private static readonly (string Label, InfoPaneStyle Style)[] InfoStyles =
     {
         ("Auto (match theme)", InfoPaneStyle.Auto),
-        ("Windows 2000 / Me (Web View)", InfoPaneStyle.Win2000),
-        ("Windows XP (Common Tasks)", InfoPaneStyle.WinXP),
-        ("Windows Vista / 7 (Navigation)", InfoPaneStyle.Modern),
-        ("Windows 95 / NT 4 (minimal)", InfoPaneStyle.Win9x),
+        ("Web view (1999)", InfoPaneStyle.WebView1999),
+        ("Common tasks (2001)", InfoPaneStyle.Tasks2001),
+        ("Navigation (2006)", InfoPaneStyle.Navigation2006),
+        ("Minimal (1995)", InfoPaneStyle.Minimal1995),
         ("Off (no panel)", InfoPaneStyle.Off),
     };
 

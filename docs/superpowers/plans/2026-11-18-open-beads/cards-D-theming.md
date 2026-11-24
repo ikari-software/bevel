@@ -274,10 +274,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Rename members by era/function: `Win2000`→`WebView1999`, `WinXP`→`Tasks2001`, `Modern`→`Navigation2006`, `Win9x`→`Minimal1995`. No migration (same reasoning as 07e89a3). Labels: "Web view (1999)", "Common tasks (2001)", "Navigation (2006)", "Minimal (1995)". Shot tags `winxp`→`tasks2001`, `win9x`→`minimal1995`, `modern`→`navigation2006`; `git mv` the three PNGs and update `site/index.html`. Also rename the x:Names `WinXPView`/`Win9xView` in `InfoPane.axaml`.
 - **Test first:** `InfoPaneStyleTest` theory rows compile with the new members and write the new filenames; add to `tests/Bevel.Core.Tests` a settings round-trip test `InfoPaneStyle_unknown_persisted_value_falls_back_to_Auto` (feed `"WinXP"`).
 - **Steps:**
-  - [ ] Add the Core test; rename the enum (IDE/`sed -i ''` across `src tests`).
-  - [ ] Update labels, tags, x:Names; `git mv` shots; fix `site/index.html`.
-  - [ ] HUMAN: back up then edit this machine's `~/.config/bevel/settings.db` value if it is not `Auto` (the shell must be stopped; core is the sole writer).
-  - [ ] `grep -rn "Win2000\|WinXP\|Win9x" src site/index.html` → only comments about history remain.
+  - [x] Add the Core test; rename the enum (IDE/`sed -i ''` across `src tests`).
+  - [x] Update labels, tags, x:Names; `git mv` shots; fix `site/index.html`.
+  - [x] HUMAN: back up then edit this machine's `~/.config/bevel/settings.db` value if it is not `Auto` (the shell must be stopped; core is the sole writer).
+  - [x] `grep -rn "Win2000\|WinXP\|Win9x" src site/index.html` → only comments about history remain.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~InfoPaneStyle"` → pass; `ls site/shots | grep infopane` → 4 neutral names
 - **Done when:** no vendor name in the enum, labels, or shot filenames; then `bd close bevel-zvo0 --reason "InfoPaneStyle renamed by era; shots + page updated"`
 

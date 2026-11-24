@@ -66,7 +66,7 @@ public sealed class ToolbarThemeTests
     [AvaloniaFact]
     public void Xp_info_pane_recopies_its_palette_on_the_global_signal()
     {
-        var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
+        var pane = new InfoPane { Style = InfoPaneStyle.Tasks2001, Width = 200, Height = 380 };
         var window = new Window { Content = pane, Width = 200, Height = 380 };
         window.Show();
         Dispatcher.UIThread.RunJobs();

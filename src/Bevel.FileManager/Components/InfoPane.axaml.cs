@@ -36,7 +36,7 @@ public partial class InfoPane : UserControl
     private readonly IBrush _xpDefaultArrow;
     private readonly IBrush _xpDefaultMutedText;
     private readonly Dictionary<Control, int> _xpSectionAnimationVersions = new();
-    private InfoPaneStyle _style = InfoPaneStyle.Win2000;
+    private InfoPaneStyle _style = InfoPaneStyle.WebView1999;
 
     public InfoPane()
     {
@@ -85,11 +85,11 @@ public partial class InfoPane : UserControl
 
     private void ApplyStyle()
     {
-        Industrial1999View.IsVisible = _style == InfoPaneStyle.Win2000;
-        WinXPView.IsVisible = _style == InfoPaneStyle.WinXP;
-        ModernView.IsVisible = _style == InfoPaneStyle.Modern;
-        Win9xView.IsVisible = _style == InfoPaneStyle.Win9x;
-        if (_style == InfoPaneStyle.WinXP)
+        Industrial1999View.IsVisible = _style == InfoPaneStyle.WebView1999;
+        Tasks2001View.IsVisible = _style == InfoPaneStyle.Tasks2001;
+        Navigation2006View.IsVisible = _style == InfoPaneStyle.Navigation2006;
+        Minimal1995View.IsVisible = _style == InfoPaneStyle.Minimal1995;
+        if (_style == InfoPaneStyle.Tasks2001)
             ApplyXpPalette();
         Apply();
     }
@@ -108,7 +108,7 @@ public partial class InfoPane : UserControl
 
     private void OnPaletteChanged()
     {
-        if (_style != InfoPaneStyle.WinXP) return;
+        if (_style != InfoPaneStyle.Tasks2001) return;
         ApplyXpPalette();
         ApplyLinks();
     }
@@ -166,23 +166,23 @@ public partial class InfoPane : UserControl
     {
         switch (_style)
         {
-            case InfoPaneStyle.Win2000:
+            case InfoPaneStyle.WebView1999:
                 TitleLabel.Text = _title;
                 InstructionLabel.Text = _instruction;
                 DescriptionLabel.Text = _description;
                 ObjectCountLabel.Text = _count;
                 break;
-            case InfoPaneStyle.WinXP:
+            case InfoPaneStyle.Tasks2001:
                 XpTitle.Text = _title;
                 XpDescription.Text = _description;
                 XpCount.Text = _count;
                 break;
-            case InfoPaneStyle.Modern:
+            case InfoPaneStyle.Navigation2006:
                 ModernTitle.Text = _title;
                 ModernDescription.Text = _description;
                 ModernCount.Text = _count;
                 break;
-            case InfoPaneStyle.Win9x:
+            case InfoPaneStyle.Minimal1995:
                 Win9xTitle.Text = _title;
                 Win9xDescription.Text = _description;
                 Win9xCount.Text = _count;
@@ -194,15 +194,15 @@ public partial class InfoPane : UserControl
     private void ApplyLinks()
     {
         // Win2000 links (blue underlined "See also"), XP task rows, and Vista/7 favorite rows.
-        if (_style == InfoPaneStyle.Win2000)
+        if (_style == InfoPaneStyle.WebView1999)
             FillLinks(SeeAlsoPanel, new SolidColorBrush(0xFF0000EE), underline: true);
-        else if (_style == InfoPaneStyle.WinXP)
+        else if (_style == InfoPaneStyle.Tasks2001)
         {
             FillTaskLinks();
             FillLinks(XpLinksPanel, XpBrush("InfoPane.Xp.LinkText"), underline: false, withArrow: true,
                 arrowBrush: XpBrush("InfoPane.Xp.Arrow"));
         }
-        else if (_style == InfoPaneStyle.Modern)
+        else if (_style == InfoPaneStyle.Navigation2006)
         {
             var modernText = new SolidColorBrush(0xFF26384B);
             FillLinks(ModernLinksPanel, modernText, underline: false, modernRow: true);
