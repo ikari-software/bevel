@@ -15,6 +15,7 @@ namespace Bevel.Pal.MacOS;
 /// SQLite db at <c>~/Library/Group Containers/group.com.apple.usernoted/db2/db</c>, table
 /// <c>app(identifier, badge)</c>, one row per bundle id with pending notifications. Verified live
 /// on macOS 26: <c>SELECT identifier, badge FROM app</c> returns e.g. <c>net.whatsapp.whatsapp|12</c>.
+/// Note usernoted stores identifiers LOWERCASED, so lookups compare case-insensitively.
 /// The file is owned by the user and readable by them, so no TCC grant is needed for this (the app
 /// is not sandboxed — see Bevel.entitlements; a future sandboxed build would fail this read
 /// silently into the empty-map fallback, which is fail-safe).</para>
@@ -44,8 +45,11 @@ internal static class UserNotedBadgeStore
     internal static TimeSpan MinSnapshotInterval = TimeSpan.FromMinutes(2);
     private const long MaxSourceBytes = 256L * 1024 * 1024;
 
+    // Bundle ids are matched case-INSENSITIVELY: usernoted lowercases every identifier in its db
+    // (verified: 205/205 rows lowercase), while CFBundleGetIdentifier returns the Info.plist's
+    // canonical case (e.g. one.ayugram.AyuGramDesktop) — an Ordinal lookup would miss those.
     private static readonly IReadOnlyDictionary<string, int> Empty =
-        new Dictionary<string, int>(StringComparer.Ordinal);
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
     private static readonly object SnapshotLock = new();
     private static DateTime _lastSnapshotAttemptUtc = DateTime.MinValue;
@@ -122,7 +126,7 @@ internal static class UserNotedBadgeStore
         if (string.IsNullOrEmpty(dbPath) || !File.Exists(dbPath))
             return null;
 
-        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         try
         {
             // Builder, not interpolation: a home path containing ';'/'=' must not be parsed as
