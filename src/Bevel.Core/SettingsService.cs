@@ -549,6 +549,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarReclickMinimize", _settings.TaskbarReclickMinimize.ToString(), d.TaskbarReclickMinimize.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarWindowSort", _settings.TaskbarWindowSort.ToString(), d.TaskbarWindowSort.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("windowlessAppsLast", _settings.WindowlessAppsLast, d.WindowlessAppsLast, SettingsJsonContext.Default.Boolean);
+        SetOrPrune("taskbarShowOtherSpaceWindows", _settings.TaskbarShowOtherSpaceWindows, d.TaskbarShowOtherSpaceWindows, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarFontSize", _settings.TaskbarFontSize, d.TaskbarFontSize, SettingsJsonContext.Default.Int32);
         SetOrPrune("taskbarBackgroundColor", _settings.TaskbarBackgroundColor, d.TaskbarBackgroundColor, SettingsJsonContext.Default.String);
         SetOrPrune("taskbarOpacity", _settings.TaskbarOpacity, d.TaskbarOpacity, SettingsJsonContext.Default.Int32);
@@ -720,6 +721,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarWindowSort = Enum.TryParse<TaskbarWindowSort>(GetString("taskbarWindowSort"), out var tws)
                 ? tws : TaskbarWindowSort.OpenOrder,
             WindowlessAppsLast = GetBool("windowlessAppsLast") ?? false,
+            TaskbarShowOtherSpaceWindows = GetBool("taskbarShowOtherSpaceWindows") ?? true,
             TaskbarFontSize = GetInt("taskbarFontSize") ?? 0,
             TaskbarBackgroundColor = GetString("taskbarBackgroundColor") ?? "",
             TaskbarOpacity = GetInt("taskbarOpacity") ?? 100,
@@ -955,6 +957,9 @@ public sealed class BevelSettings
     /// <summary>Push running-but-windowless "app-presence" buttons (the dock-dot entries) to the end of
     /// the strip, after every window button — independent of, and layered on top of, the sort mode.</summary>
     public bool WindowlessAppsLast { get; set; }
+
+    /// <summary>bevel-jt30: list windows that live on other Spaces as taskbar buttons (default on).</summary>
+    public bool TaskbarShowOtherSpaceWindows { get; set; } = true;
 
     // ── Appearance (bevel-cust.appearance) ──────────────────────────────────────────────────────
 

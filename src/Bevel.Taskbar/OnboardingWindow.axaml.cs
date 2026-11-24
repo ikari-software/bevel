@@ -222,6 +222,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         LabelModeCombo.SelectedIndex = (int)s.TaskbarButtonLabels;   // Auto=0, Always=1, IconOnly=2
         SortModeCombo.SelectedIndex = (int)s.TaskbarWindowSort;      // OpenOrder=0, Name=1
         WindowlessLastCheck.IsChecked = s.WindowlessAppsLast;
+        OtherSpacesCheck.IsChecked = s.TaskbarShowOtherSpaceWindows;
         MiddleClickCloseCheck.IsChecked = s.TaskbarMiddleClickCloses;
         // The chord is named in the host platform's vocabulary (Option on macOS, Alt on Windows) — the
         // live-modifier probe behind it is per-platform too (bevel-au94).
@@ -470,6 +471,13 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         if (WindowlessLastCheck.IsChecked is not { } v) return;
         if (_settings.Current.WindowlessAppsLast == v) return;
         await PersistAndApply(s => s.WindowlessAppsLast = v);
+    }
+
+    private async void OnOtherSpacesChanged(object? sender, RoutedEventArgs e)
+    {
+        if (OtherSpacesCheck.IsChecked is not { } v) return;
+        if (_settings.Current.TaskbarShowOtherSpaceWindows == v) return;
+        await PersistAndApply(s => s.TaskbarShowOtherSpaceWindows = v);
     }
 
     private async void OnLabelModeChanged(object? sender, SelectionChangedEventArgs e)

@@ -40,6 +40,7 @@ public partial class TaskbarView : UserControl
     private TaskbarGroupingMode _grouping = TaskbarGroupingMode.Never;
     private TaskbarWindowSort _sort = TaskbarWindowSort.OpenOrder;
     private bool _windowlessLast;
+    private bool _showOtherSpaces = true;
     private TaskbarButtonLabels _buttonLabels = TaskbarButtonLabels.Auto;
     private bool _middleClickCloses = true;
     private int _trayOverflowCap = 8;
@@ -188,6 +189,7 @@ public partial class TaskbarView : UserControl
         TaskButtonClickPolicy.Shared.Mode = settings.TaskbarReclickMinimize;
         _sort = settings.TaskbarWindowSort;
         _windowlessLast = settings.WindowlessAppsLast;
+        _showOtherSpaces = settings.TaskbarShowOtherSpaceWindows;
         _trayOverflowCap = settings.TaskbarTrayOverflowCap;
         _trayIconSize = settings.TaskbarTrayIconSize;
         _locked = settings.TaskbarLocked;
@@ -421,6 +423,7 @@ public partial class TaskbarView : UserControl
             s.TaskbarGrouping != applied.TaskbarGrouping ||
             s.TaskbarWindowSort != applied.TaskbarWindowSort ||
             s.WindowlessAppsLast != applied.WindowlessAppsLast ||
+            s.TaskbarShowOtherSpaceWindows != applied.TaskbarShowOtherSpaceWindows ||
             s.TaskbarButtonLabels != applied.TaskbarButtonLabels ||
             s.TaskbarMiddleClickCloses != applied.TaskbarMiddleClickCloses;
 
@@ -430,7 +433,9 @@ public partial class TaskbarView : UserControl
             _vm?.SetGrouping(_grouping);
             _sort = s.TaskbarWindowSort;
             _windowlessLast = s.WindowlessAppsLast;
+            _showOtherSpaces = s.TaskbarShowOtherSpaceWindows;
             _vm?.SetSort(_sort, _windowlessLast);
+            _vm?.SetShowOtherSpaces(_showOtherSpaces);
             _buttonLabels = s.TaskbarButtonLabels;
             _middleClickCloses = s.TaskbarMiddleClickCloses;
             TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
@@ -659,6 +664,7 @@ public partial class TaskbarView : UserControl
         // (bevel-m2.10.3). Re-plans in place, so it's safe on a re-attach too.
         _vm?.SetGrouping(_grouping);
         _vm?.SetSort(_sort, _windowlessLast);
+        _vm?.SetShowOtherSpaces(_showOtherSpaces);
         _vm?.Tray.Configure(_trayOverflowCap, _trayIconSize);
         _window?.SetAlwaysOnTop(_alwaysOnTop);
         ResizeGrip.IsVisible = !_locked;

@@ -112,6 +112,8 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     public void SetGrouping(TaskbarGroupingMode mode) => _projector.SetGrouping(mode);
 
     public void SetSort(TaskbarWindowSort sort, bool windowlessLast) => _projector.SetSort(sort, windowlessLast);
+    /// <summary>bevel-jt30: live toggle for listing windows on other Spaces.</summary>
+    public void SetShowOtherSpaces(bool show) => _projector.SetShowOtherSpaces(show);
 
     /// <summary>True while the taskbar has lost its link to the shell core (commands fail and the
     /// strip is stale until it reconnects). Bound to the tray's disconnected indicator.</summary>

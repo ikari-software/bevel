@@ -223,6 +223,10 @@
                                       Content="Show windowless apps (dock-dots) last"
                                       FontSize="11" Margin="0,4,0,0" />
 
+                            <CheckBox x:Name="OtherSpacesCheck" Checked="OnOtherSpacesChanged" Unchecked="OnOtherSpacesChanged"
+                                      Content="List windows on other Spaces"
+                                      FontSize="11" Margin="0,4,0,0" />
+
                             <CheckBox x:Name="MiddleClickCloseCheck"
                                       Content="Middle-click a button to close its window"
                                       FontSize="11" Margin="0,4,0,0" />

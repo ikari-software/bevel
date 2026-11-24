@@ -112,8 +112,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// unknown, never guessed.</summary>
     public bool IsFullscreen { get => _isFullscreen; private set => SetProperty(ref _isFullscreen, value); }
 
-    /// <summary>Window's Space is known and not on the current display (bevel-apm arrange filter).
-    /// False when unknown.</summary>
+    /// <summary>Window's Space is known and not on the current display (bevel-apm arrange filter;
+    /// bevel-jt30 projector filter). Carried so neither has to re-ask the PAL; raising
+    /// PropertyChanged lets the projector re-plan when a window MOVES spaces. False when unknown.</summary>
     public bool IsOnOtherSpace { get => _isOnOtherSpace; private set => SetProperty(ref _isOnOtherSpace, value); }
 
     public Bitmap? IconSource { get => _iconSource; set => SetProperty(ref _iconSource, value); }
