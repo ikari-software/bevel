@@ -108,7 +108,12 @@ public sealed record CoreEvent(
     int? Epoch = null,
     /// <summary>Session stamp (bevel-4zfs): gapless within an epoch. A gap means a lost frame — the client
     /// re-issues Hello (rate-limited) rather than diverging silently.</summary>
-    long? Seq = null);
+    long? Seq = null,
+    /// <summary>TraySnapshot: the core tray host's capabilities, forwarded verbatim (bevel-mhvu).
+    /// Null keeps an older core wire-compatible (WhenWritingNull omits it).</summary>
+    Capabilities? TrayCapabilities = null,
+    /// <summary>WindowSnapshot: the core window manager's capabilities, forwarded verbatim (bevel-mhvu).</summary>
+    Capabilities? WindowCapabilities = null);
 
 /// <summary>Which <c>IWindowManager</c>/<c>IAppEnvironment</c> action a <see cref="CoreCommand"/> requests.</summary>
 public enum CoreCommandKind

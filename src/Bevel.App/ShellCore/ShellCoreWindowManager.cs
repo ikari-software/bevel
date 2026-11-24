@@ -39,9 +39,10 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
         _core.ConnectionChanged += OnConnectionChanged;
     }
 
-    // Reposition is proxied to the core (which owns the helper's reposition capability), so advertise
-    // it — the WorkAreaMitigator feature-detects on this flag.
-    public Capabilities Capabilities { get; } =
+    // bevel-mhvu: the core FORWARDs its window manager's capabilities on the WindowSnapshot; this
+    // proxy reports them verbatim. The literal stays only as the pre-snapshot fallback.
+    private volatile Capabilities? _forwarded;
+    public Capabilities Capabilities => _forwarded ??
         new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
 
     /// <summary>Test seam: awaited after the pull's reply arrives and before it is merged — lets a test land a
@@ -53,8 +54,12 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     {
         switch (e.Kind)
         {
-            case CoreEventKind.WindowSnapshot when e.Windows is not null:
+            case CoreEventKind.WindowSnapshot:
+                if (e.WindowCapabilities is { } caps) _forwarded = caps;   // bevel-mhvu: forward verbatim
+                if (e.Windows is null) break;
             {
+                // (fall through to the snapshot merge below)
+
                 // A snapshot is authoritative (bevel-wheq): close what it omits, then (re)open what it lists.
                 // Opens alone left stale buttons for windows that closed while the link was down. ShellModel
                 // drops its foreground claim on a WindowClosed for the focused id, so a closed foreground

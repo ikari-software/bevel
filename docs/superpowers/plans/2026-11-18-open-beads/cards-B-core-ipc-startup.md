@@ -298,9 +298,9 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** Add two nullable slots to `CoreEvent`: `Capabilities? TrayCapabilities` and `Capabilities? WindowCapabilities` (new), filled by `BuildSnapshotEvents` on `TraySnapshot` / `WindowSnapshot` from `_tray.Capabilities` / `_windows.Capabilities`. Each proxy stores the last received value in a `volatile` field and returns it; the current literal stays only as the pre-snapshot fallback. Nullable slots keep an older core compatible (JSON `WhenWritingNull`). Fix both proxies in one change (same pattern).
 - **Test first:** `ShellCoreIntegrationTests.Proxies_report_the_cores_capabilities_after_the_snapshot` (new): `ControllablePal` reports `TrayMode: Authoritative, SupportsReposition: false`; after Hello the tray proxy and window proxy report exactly that.
 - **Steps:**
-  - [ ] Add the slots (check `CoreJsonContext` generates `Capabilities` — it is reached through `CoreEvent`).
-  - [ ] Fill them in `BuildSnapshotEvents`.
-  - [ ] Store + return in both proxies; shorten the long apology comment in the tray host.
+  - [x] Add the slots (check `CoreJsonContext` generates `Capabilities` — it is reached through `CoreEvent`).
+  - [x] Fill them in `BuildSnapshotEvents`.
+  - [x] Store + return in both proxies; shorten the long apology comment in the tray host.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~Proxies_report_the_cores_capabilities"` → 1 passed
 - **Done when:** neither proxy's post-snapshot value comes from a literal; then `bd close bevel-mhvu --reason "capabilities ride the window/tray snapshots; both proxies forward them"`
 
