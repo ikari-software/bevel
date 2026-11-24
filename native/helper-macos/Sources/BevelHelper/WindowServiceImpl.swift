@@ -94,7 +94,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Current window snapshot keyed by CGWindowID, updated by reconciliation poll.
     private let stateLock = NSLock()
     /// Off-screen + AX-less windows: live (other Space / AX-less app) vs closed-window tombstone.
-    private let offscreenTracker = OffscreenWindowTracker()
+    let offscreenTracker = OffscreenWindowTracker()   // internal for @testable unit coverage
     private var windowStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
 
     /// Running-but-windowless regular apps (bevel-ww71), keyed by bundle id. Each is a synthetic
@@ -808,25 +808,60 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// name and bounds survive for a while, so it sails past every title/frame gate and the button
     /// lingers. A tombstone has no AX element and is off-screen — which is ALSO what a live window
     /// on another Space looks like (AX only lists the current Space). Only those two facts are
-    /// ambiguous, so resolve them in order of certainty:
+    /// ambiguous, so resolve them in order of certainty.
     ///
-    /// 1. On a Space no display is showing → definitely live (a tombstone stays on the Space it died
-    ///    on). Keep it, and activation will switch Spaces.
-    /// 2. On NO Space at all → definitely not a user window: it was never shown (ordered out). Drop.
-    /// 3. Otherwise, live only once `OffscreenWindowTracker` has watched it survive long enough
+    /// EXECUTION ORDER (each gate's reason it can sit where it does):
+    /// 0. Observe the window's alpha every pass — a window ever seen opaque was rendered, so a
+    ///    later alpha=0 is an opacity hide, not an ordered-out window.
+    /// 1. On-screen → always live. FIRST, so a transient known-empty Spaces answer during
+    ///    fullscreen/Space-warp transitions can never drop a visible window.
+    /// 2. On NO Space at all → ordered out, never shown (bevel-0mur). Runs even WITH an AX
+    ///    element — minimized/hidden windows keep their Space, so only an ordered-out window
+    ///    can be on no Space.
+    /// 3. AX-correlated → live signal (minimized/hidden). Keep.
+    /// 4. On a Space no display is showing → definitely live (a tombstone stays on the Space it
+    ///    died on). Keep it, and activation will switch Spaces.
+    /// 5. Off-screen, AX-less, alpha == 0 AND never observed opaque → also never shown: an
+    ///    Electron `show: false` window reports alpha=0, and current macOS places it on the
+    ///    CURRENT Space, so gate 2 no longer catches it (bevel-j48j). A Cmd-H hidden window keeps
+    ///    alpha=1 (measured 2026-11-24), and an opacity-hidden window was once seen alpha>0, so
+    ///    neither hits this gate. A missing alpha key (older macOS) reads as nil and fails open.
+    /// 6. Otherwise live only once `OffscreenWindowTracker` has watched it survive long enough
     ///    (hidden AX-less apps); until then treat it as a tombstone.
     ///
-    /// On-screen windows and AX-correlated windows (incl. minimized) carry a live signal and are
-    /// never affected.
-    private func offscreenGhostReason(
+    /// Internal for focused unit coverage via `@testable import BevelHelper`.
+    func offscreenGhostReason(
         cgID: CGWindowID, hasAX: Bool, entry: [String: Any], spaces: SpaceContext
     ) -> String? {
-        guard !hasAX, (entry[kCGWindowIsOnscreen as String] as? Bool) != true else { return nil }
-        if spaces.isOnOtherSpace(cgID) { return nil }
-        // Never placed on any Space = ordered out, not hidden (Cmd-H / minimize keep their Space).
-        // Time can't tell these apart — an unshown window outlives the tracker's window forever —
-        // so this is decided before the tracker ever gets a vote (bevel-0mur).
-        if spaces.isOnNoSpace(cgID) { return "offscreen-no-ax on-no-space (ordered out)" }
+        // Gate 0: record alpha before any early return, so a window seen opaque on-screen in an
+        // earlier pass is never mistaken for ordered-out later.
+        offscreenTracker.noteObservedAlpha(cgID, entry[kCGWindowAlpha as String] as? CGFloat)
+
+        // Gate 1: on-screen windows are never ghosts.
+        if (entry[kCGWindowIsOnscreen as String] as? Bool) == true { return nil }
+
+        // One WindowServer round trip for both Space predicates (CGSCopySpacesForWindows is
+        // per-window; `spaceIDs(of:)` collapses unknown to [], so use knownSpaceIDs to keep the
+        // nil/[] distinction isOnNoSpace relies on).
+        let sids = spaces.knownSpaceIDs(of: cgID)
+
+        // Gate 2: never placed on any Space = ordered out, not hidden (Cmd-H / minimize keep their
+        // Space). Time can't tell these apart — an unshown window outlives the tracker's window
+        // forever — so this is decided before the tracker ever gets a vote (bevel-0mur).
+        if spaces.isOnNoSpace(spaces: sids) { return "on-no-space (ordered out)" }
+
+        // Gate 3: AX-correlated windows carry a live signal.
+        guard !hasAX else { return nil }
+
+        // Gate 4: a live window on an unshown Space stays listed so activation can switch to it.
+        if spaces.isOnOtherSpace(spaces: sids ?? []) { return nil }
+
+        // Gate 5: fully transparent AND never observed opaque = never rendered = ordered out
+        // (bevel-j48j). Missing alpha key (older macOS) reads as nil → fails open to the tracker.
+        if (entry[kCGWindowAlpha as String] as? CGFloat) == 0,
+           offscreenTracker.maxObservedAlpha(cgID) == 0 {
+            return "offscreen-no-ax alpha=0 (ordered out)"
+        }
         return offscreenTracker.isConfirmedLive(cgID) ? nil : "offscreen-no-ax (unconfirmed tombstone)"
     }
 
