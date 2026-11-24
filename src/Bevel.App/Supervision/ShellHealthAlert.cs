@@ -191,6 +191,13 @@ internal static class ShellHealthAlert
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         var exited = p.WaitForExit(timeout);
+        if (exited)
+        {
+            // WaitForExit(timeout) can return before the async OutputDataReceived handlers have
+            // drained, so stdout could be read missing the trailing "button returned:" line; the
+            // parameterless overload waits for those handlers (ce-code-review, bevel-f4g5).
+            p.WaitForExit();
+        }
         output = stdout.ToString();
         if (exited) return true;
         if (killOnTimeout)

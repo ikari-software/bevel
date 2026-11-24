@@ -39,6 +39,29 @@ public sealed class LaunchGateTests
         return psi;
     }
 
+    /// <summary>Stand-in that bursts lines on stdout and then prints a final marker line, mimicking
+    /// osascript's trailing "button returned:..." output right before it exits.</summary>
+    private static ProcessStartInfo BurstThenEchoChild(string marker)
+    {
+        ProcessStartInfo psi;
+        if (OperatingSystem.IsWindows())
+        {
+            psi = new ProcessStartInfo("powershell.exe");
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-NonInteractive");
+            psi.ArgumentList.Add("-Command");
+            psi.ArgumentList.Add($"$l='x'*100; 1..2000 | ForEach-Object {{ [Console]::Out.WriteLine($l) }}; Write-Output '{marker}'");
+        }
+        else
+        {
+            psi = new ProcessStartInfo("sh");
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add($"i=0; while [ $i -lt 2000 ]; do echo {new string('x', 100)}; i=$((i+1)); done; printf '%s\\n' '{marker}'");
+        }
+        psi.UseShellExecute = false;
+        return psi;
+    }
+
     [Fact]
     public void A_live_socket_returns_3_and_calls_neither_clear_nor_spawn()
     {
@@ -130,6 +153,19 @@ public sealed class LaunchGateTests
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
         Assert.True(ShellHealthAlert.RunBounded(psi, TimeSpan.FromSeconds(30), killOnTimeout: true, out _));
+    }
+
+    [Fact]
+    public void An_exited_dialog_process_has_its_stdout_fully_drained()
+    {
+        // Regression (ce-code-review, bevel-f4g5): WaitForExit(timeout) can return before the async
+        // OutputDataReceived handlers drain, so the trailing "button returned:" line could be read as
+        // missing and the Hold choice parsed as null. A burst right before exit makes the race likely;
+        // the parameterless WaitForExit() after a clean exit must make the marker always visible.
+        var psi = BurstThenEchoChild("button returned:Restart Bevel");
+        var ok = ShellHealthAlert.RunBounded(psi, TimeSpan.FromSeconds(30), killOnTimeout: true, out _, out var output);
+        Assert.True(ok);
+        Assert.Contains("button returned:Restart Bevel", output, StringComparison.Ordinal);
     }
 
     [Fact]
