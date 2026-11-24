@@ -187,6 +187,79 @@ public class RenderBlue2001VariantsTest
         finally { Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999); }
     }
 
+    /// <summary>bevel-quif: the ProgressBar well and the GroupBox frame used to be hardcoded hexes in the
+    /// ControlThemes, so they ignored the colour variant. Real pixels: the well (right of the 62% indicator)
+    /// and the group frame's left edge must differ between Blue and Silver once they are variant surfaces.</summary>
+    [AvaloniaFact]
+    public void Progress_well_and_group_frame_follow_the_colour_variant()
+    {
+        try
+        {
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+            var window = BuildGallery("well");
+            var progress = window.GetVisualDescendants().OfType<ProgressBar>().Single();
+            var group = window.GetVisualDescendants().OfType<HeaderedContentControl>().Single();
+
+            (double Well, double Frame) Sample()
+            {
+                var frame = CaptureStable(window);
+                var pt = progress.TranslatePoint(default, window)!.Value;
+                // right of the 62% indicator, inside the 1px border + 2px padding: pure well background
+                var well = Luminance(frame, (int)(pt.X + progress.Bounds.Width) - 8,
+                                     (int)(pt.Y + progress.Bounds.Height / 2));
+                var gt = group.TranslatePoint(default, window)!.Value;
+                var framePx = Luminance(frame, (int)Math.Round(gt.X),
+                                        (int)(gt.Y + group.Bounds.Height / 2));   // the 1px frame line
+                return (well, framePx);
+            }
+
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Blue", "Hybrid");
+            var blue = Sample();
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply("Silver", "Hybrid");
+            var silver = Sample();
+
+            Assert.True(Math.Abs(blue.Well - silver.Well) > 4,
+                $"ProgressBar well pixel: Blue {blue.Well:F1} vs Silver {silver.Well:F1} — the well ignores the colour variant");
+            Assert.True(Math.Abs(blue.Frame - silver.Frame) > 4,
+                $"GroupBox frame pixel: Blue {blue.Frame:F1} vs Silver {silver.Frame:F1} — the frame ignores the colour variant");
+        }
+        finally
+        {
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+        }
+    }
+
+    /// <summary>Polled capture: the first frame after a variant change can still be the previous composite,
+    /// so capture until two consecutive frames agree (bounded).</summary>
+    private static Avalonia.Media.Imaging.WriteableBitmap CaptureStable(Window window)
+    {
+        byte[]? previous = null;
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            using (var buffer = frame!.Lock())
+            {
+                var bytes = new byte[buffer.RowBytes * frame.PixelSize.Height];
+                System.Runtime.InteropServices.Marshal.Copy(buffer.Address, bytes, 0, bytes.Length);
+                if (previous is not null && bytes.AsSpan().SequenceEqual(previous))
+                    return frame;
+                previous = bytes;
+            }
+        }
+        return window.CaptureRenderedFrame()!;
+    }
+
+    private static double Luminance(Avalonia.Media.Imaging.WriteableBitmap frame, int x, int y)
+    {
+        using var buffer = frame.Lock();
+        var px = new byte[4];
+        System.Runtime.InteropServices.Marshal.Copy(buffer.Address + y * buffer.RowBytes + x * 4, px, 0, 4);
+        return 0.299 * px[2] + 0.587 * px[1] + 0.114 * px[0];   // BGRA
+    }
+
     private static IBrush R(string key)
     {
         Application.Current!.TryGetResource(key, null, out var v);

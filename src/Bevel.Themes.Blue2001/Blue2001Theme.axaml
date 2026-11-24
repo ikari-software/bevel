@@ -116,8 +116,11 @@
                 <GradientStop Offset="0.5" Color="#4384E4" />
                 <GradientStop Offset="1" Color="#5695EC" />
             </LinearGradientBrush>
+            <!-- Static fallback mirrors the engine's Blue+Hybrid output exactly (bevel-quif): the runtime
+                 surface carries a duplicated 0.5 stop, so it must too — the engine is the source of truth. -->
             <LinearGradientBrush x:Key="Bevel.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#1B4EA8" />
+                <GradientStop Offset="0.5" Color="#2559BC" />
                 <GradientStop Offset="0.5" Color="#2559BC" />
                 <GradientStop Offset="1" Color="#2E63C8" />
             </LinearGradientBrush>
@@ -291,6 +294,17 @@
             <!-- XP tab pages are the flat beige window face (NOT a gradient) — matches the group-box header
                  patch and the window body so the section labels' break in the frame reads seamlessly. -->
             <SolidColorBrush x:Key="Blue2001.Brush.TabPanel" Color="#ECE9D8" />
+            <!-- Progress well, group frame and tab faces (bevel-quif): control chrome that must follow the
+                 colour variant — bound via {DynamicResource} at their ControlTheme sites so
+                 Blue2001VariantService can re-hue them; these literals are the unthemed fallback. -->
+            <SolidColorBrush x:Key="Blue2001.Brush.ProgressWell"       Color="#F4F2E9" />
+            <SolidColorBrush x:Key="Blue2001.Brush.ProgressWellBorder" Color="#8A887A" />
+            <SolidColorBrush x:Key="Blue2001.Brush.GroupFrame"         Color="#D0CDBF" />
+            <SolidColorBrush x:Key="Blue2001.Brush.TabFace"            Color="#D7D1BC" />
+            <LinearGradientBrush x:Key="Blue2001.Brush.TabFaceSelected" StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Offset="0" Color="#FFFFFF" />
+                <GradientStop Offset="1" Color="#ECE9D8" />
+            </LinearGradientBrush>
 
             <!-- ── Start menu (Luna two-column panel, docs/design/luna/styleguide.html) ──
                  The Start-menu panel lives in Bevel.Taskbar/StartMenu.axaml (both layouts always in the
@@ -477,8 +491,8 @@
 
             <!-- ── ProgressBar: green Luna sheen in a light well ────────────── -->
             <ControlTheme x:Key="Bevel.Theme.ProgressBar" TargetType="ProgressBar">
-                <Setter Property="Background" Value="#F4F2E9" />
-                <Setter Property="BorderBrush" Value="#8A887A" />
+                <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.ProgressWell}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Blue2001.Brush.ProgressWellBorder}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="MinHeight" Value="16" />
                 <Setter Property="MinWidth" Value="20" />
@@ -573,7 +587,7 @@
             <!-- ── GroupBox: thin Luna frame with the header label breaking the top line ── -->
             <ControlTheme x:Key="Bevel.Theme.HeaderedContentControl" TargetType="HeaderedContentControl">
                 <!-- Soft etched grey frame (XP group box), not the bluer button border. -->
-                <Setter Property="BorderBrush" Value="#D0CDBF" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Blue2001.Brush.GroupFrame}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Padding" Value="10,11,10,9" />
                 <Setter Property="Template">
@@ -605,7 +619,7 @@
                 <Setter Property="Template">
                     <ControlTemplate>
                         <Border Name="Tab" CornerRadius="4,4,0,0"
-                                Background="#D7D1BC"
+                                Background="{DynamicResource Blue2001.Brush.TabFace}"
                                 BorderBrush="{DynamicResource Blue2001.Brush.ButtonBorder}"
                                 BorderThickness="1,1,1,0">
                             <ContentPresenter Name="PART_ContentPresenter"
@@ -626,12 +640,7 @@
                     <!-- Selected tab lifts to white at the top and settles to the page beige at the bottom,
                          so it reads as raised (styleguide tabActive) yet still fuses with the pane edge —
                          ending at #ECE9D8 keeps the seamless bottom the flat fill had. -->
-                    <Setter Property="Background">
-                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                            <GradientStop Offset="0" Color="#FFFFFF" />
-                            <GradientStop Offset="1" Color="#ECE9D8" />
-                        </LinearGradientBrush>
-                    </Setter>
+                    <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TabFaceSelected}" />
                 </Style>
                 <Style Selector="^:disabled">
                     <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.GrayText}" />
