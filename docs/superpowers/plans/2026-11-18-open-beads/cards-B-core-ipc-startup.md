@@ -241,9 +241,9 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** Never block an enumeration on the self-test. While `selfTestDone == false`, `enumerateWithCapture` returns the limited-mode items (app icons) immediately and starts the self-test once in `Task.detached(priority: .utility)`; when it finishes, the next poll tick upgrades items to live capture through the existing `Updated` path. Extract the gate as `static func shouldCaptureLive(selfTestDone: Bool, liveEnabled: Bool, granted: Bool) -> Bool` (new) so it is unit-testable like `selfTestShouldRun`. No fixed delay (a guess); priority + non-blocking is the fix.
 - **Test first:** `TrayServiceTests.testEnumerationDoesNotWaitForTheSelfTest` (new; pure test of `shouldCaptureLive`: false while `selfTestDone` is false regardless of grant) plus keep `testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition` green.
 - **Steps:**
-  - [ ] Add `shouldCaptureLive` + test.
-  - [ ] Replace the `await ensureSelfTested()` at `:624` with a non-awaited, once-only detached start (guard with `selfTestLock`).
-  - [ ] HUMAN: `./packaging/macos/build-app.sh && ./packaging/macos/dev-sign.sh`, cold boot with Screen Recording granted; confirm tray shows app icons within ~1 s of the taskbar and upgrades to live glyphs; check the helper log line `self-test … → liveMirroring=true`.
+  - [x] Add `shouldCaptureLive` + test.
+  - [x] Replace the `await ensureSelfTested()` at `:624` with a non-awaited, once-only detached start (guard with `selfTestLock`).
+  - [x] HUMAN: `./packaging/macos/build-app.sh && ./packaging/macos/dev-sign.sh`, cold boot with Screen Recording granted; confirm tray shows app icons within ~1 s of the taskbar and upgrades to live glyphs; check the helper log line `self-test … → liveMirroring=true`.
 - **Verify:** `cd native/helper-macos && swift test --filter TrayServiceTests` → 0 failures
 - **Done when:** tray items appear before the self-test log line; then `bd close bevel-yg7h --reason "self-test detached at utility priority; first enumeration returns limited-mode items immediately"`
 
