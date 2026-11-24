@@ -88,9 +88,6 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
             try
             {
                 var badges = new List<AppBadge>();
-                // Raw counts from usernoted, used to de-ellipsize wide labels. Read once per poll;
-                // an unavailable db just yields an empty map and every label passes through verbatim.
-                var rawCounts = UserNotedBadgeStore.ReadCounts();
                 // Dock → AXList(s) → dock items. Walk the lists rather than assuming one: the Dock
                 // splits persistent apps, recents and minimized windows across several in newer macOS.
                 var lists = CopyChildren(dock);
@@ -103,12 +100,25 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
                         try
                         {
                             foreach (var item in items)
-                                AddIfBadged(item, badges, rawCounts);
+                                AddIfBadged(item, badges);
                         }
                         finally { ReleaseAll(items); }
                     }
                 }
                 finally { ReleaseAll(lists); }
+
+                // Raw counts from usernoted, used to de-ellipsize wide labels. Read LAZILY — only when
+                // some Dock label actually looks truncated — so the common no-truncation poll costs no
+                // sqlite open at all; an unavailable db yields an empty map and every label stays verbatim.
+                if (badges.Exists(b => LooksTruncated(b.Label)))
+                {
+                    var rawCounts = UserNotedBadgeStore.ReadCounts();
+                    for (var i = 0; i < badges.Count; i++)
+                    {
+                        var b = badges[i];
+                        badges[i] = b with { Label = ResolveLabel(b.Label, b.BundleId, rawCounts) };
+                    }
+                }
 
                 return badges;
             }
@@ -119,7 +129,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         catch (EntryPointNotFoundException) { return Array.Empty<AppBadge>(); }
     }
 
-    private void AddIfBadged(IntPtr item, List<AppBadge> into, IReadOnlyDictionary<string, int> rawCounts)
+    private void AddIfBadged(IntPtr item, List<AppBadge> into)
     {
         // Only real application tiles badge; skip separators, folders, minimized-window and Trash items.
         if (CopyStringAttribute(item, "AXSubrole") is not "AXApplicationDockItem")
@@ -133,7 +143,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         var path = CopyUrlPathAttribute(item, "AXURL");
         var bundleId = path is null ? null : _bundleIdByPath.GetOrAdd(path, BundleIdForAppPath);
 
-        into.Add(new AppBadge(bundleId, name, ResolveLabel(label.Trim(), bundleId, rawCounts)));
+        into.Add(new AppBadge(bundleId, name, label.Trim()));
     }
 
     // ── De-ellipsization ────────────────────────────────────────────────
@@ -143,18 +153,36 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
     /// the app. The Dock truncates wide counts keeping the last digits (<c>"..82"</c> for 1082,
     /// <c>"…82"</c>, or a <c>"99+"</c>-style cap on some versions), so a label that LOOKS truncated and
     /// has a positive raw count behind it is replaced by that count in full — the taskbar pill has no
-    /// digit cap, so 4+ digits render fine. Anything else (plain counts, dots, glyphs, custom string
-    /// badges like Calendar's date) passes through verbatim: only a truncated-looking label is ever
-    /// rewritten, and only when the db actually knows the app.
+    /// digit cap, so 4+ digits render fine. For the "..NN"/"…NN" forms the label's digit tail must
+    /// also be a suffix of the raw count (the Dock keeps the last digits), guarding against a stale
+    /// db row. Anything else (plain counts, dots, glyphs, custom string badges like Calendar's date)
+    /// passes through verbatim: only a truncated-looking label is ever rewritten, and only when the
+    /// db actually knows the app.
     /// </summary>
     internal static string ResolveLabel(string axLabel, string? bundleId, IReadOnlyDictionary<string, int> rawCounts)
     {
         if (bundleId is null || !LooksTruncated(axLabel))
             return axLabel;
-        return rawCounts.TryGetValue(bundleId, out var count) && count > 0
-            ? count.ToString(CultureInfo.InvariantCulture)
-            : axLabel;
+        if (!rawCounts.TryGetValue(bundleId, out var count) || count <= 0)
+            return axLabel;
+
+        var raw = count.ToString(CultureInfo.InvariantCulture);
+        // For the "..NN"/"…NN" forms the Dock keeps the count's LAST digits — if the label's tail
+        // is not a suffix of the raw count, the db row is stale relative to what the Dock is painting;
+        // keep the Dock's label rather than substitute a number that disagrees with it. ("NN+" is a
+        // cap style, not a suffix, so it gets no cross-check.)
+        if (EndsWithEllipsis(axLabel) && !raw.EndsWith(TailDigits(axLabel), StringComparison.Ordinal))
+            return axLabel;
+        return raw;
     }
+
+    /// <summary>Whether the label is the leading-ellipsis truncation form ("..NN" or "…NN").</summary>
+    private static bool EndsWithEllipsis(string label) =>
+        label.StartsWith("..", StringComparison.Ordinal) || label[0] == '…';
+
+    /// <summary>The digit tail of a leading-ellipsis truncation ("..82" → "82").</summary>
+    private static string TailDigits(string label) =>
+        label.StartsWith("..", StringComparison.Ordinal) ? label[2..] : label[1..];
 
     /// <summary>Whether <paramref name="label"/> is a count the Dock truncated rather than a full
     /// label: leading <c>".."</c>/<c>"…"</c> plus digits, or digits plus a <c>'+'</c> cap.</summary>

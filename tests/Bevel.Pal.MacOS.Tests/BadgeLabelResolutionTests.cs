@@ -19,12 +19,15 @@ public class BadgeLabelResolutionTests
         ["org.telegram.Telegram"] = 1082,
         ["net.whatsapp.whatsapp"] = 12,
         ["com.example.capped"] = 143,
+        ["com.example.thousand"] = 1000,
+        ["com.example.zero"] = 0,
+        ["com.example.negative"] = -5,
     };
 
     [Theory]
     [InlineData("..82", "org.telegram.Telegram", "1082")]   // macOS keeps the last digits
     [InlineData("…82", "org.telegram.Telegram", "1082")]    // single-char ellipsis variant
-    [InlineData("..00", "org.telegram.Telegram", "1082")]   // 1000 renders as "..00"
+    [InlineData("..00", "com.example.thousand", "1000")]   // 1000 renders as "..00"
     [InlineData("99+", "com.example.capped", "143")]        // plus-cap variant
     public void Truncated_labels_are_replaced_with_the_raw_count(string axLabel, string bundleId, string expected)
     {
@@ -62,6 +65,25 @@ public class BadgeLabelResolutionTests
         Assert.Equal("..82", MacOSAppBadgeSource.ResolveLabel("..82", "org.telegram.Telegram", empty));
     }
 
+    [Theory]
+    [InlineData("..99", "org.telegram.Telegram", "..99")]   // tail is not a suffix of 1082 → stale row → verbatim
+    [InlineData("..999", "org.telegram.Telegram", "..999")] // neither is a non-matching tail
+    public void Ellipsized_label_whose_tail_does_not_match_the_raw_count_stays_verbatim(
+        string axLabel, string bundleId, string expected)
+    {
+        // The Dock keeps the count's LAST digits; a mismatch means the db row disagrees with what
+        // the Dock is painting, so the Dock's label wins.
+        Assert.Equal(expected, MacOSAppBadgeSource.ResolveLabel(axLabel, bundleId, Counts));
+    }
+
+    [Theory]
+    [InlineData("..10", "com.example.zero")]     // zero count is not a badge
+    [InlineData("..10", "com.example.negative")] // neither is a negative one
+    public void Non_positive_raw_count_never_substitutes(string axLabel, string bundleId)
+    {
+        Assert.Equal(axLabel, MacOSAppBadgeSource.ResolveLabel(axLabel, bundleId, Counts));
+    }
+
     [Fact]
     public void When_the_db_read_fails_the_dock_ellipsis_falls_back_verbatim()
     {
@@ -85,6 +107,7 @@ public class BadgeLabelResolutionTests
     [InlineData("•", false)]
     [InlineData("1+", false)]       // too short to be a truncation marker
     [InlineData("...", false)]
+    [InlineData("..2147483648", false)]  // digit tail overflows int → not a truncation marker
     public void LooksTruncated_recognizes_only_genuine_truncation_markers(string label, bool expected)
     {
         Assert.Equal(expected, MacOSAppBadgeSource.LooksTruncated(label));

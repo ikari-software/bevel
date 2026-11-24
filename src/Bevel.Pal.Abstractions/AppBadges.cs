@@ -13,14 +13,19 @@ namespace Bevel.Pal.Abstractions;
 /// key); null when only a display name is available.</param>
 /// <param name="AppName">Owning app's display name — the fallback key, since a taskbar button's
 /// <c>AppId</c> is the friendly name rather than the bundle id.</param>
-/// <param name="Label">The badge label EXACTLY as the OS shows it. Usually a decimal count ("3",
-/// "11"), but platforms are free to publish anything: macOS ellipsizes wide labels ("..82"), and
-/// an app may badge with a dot or a glyph. Never synthesised — see <see cref="IAppBadgeSource"/>.</param>
+/// <param name="Label">The badge label as the OS shows it, with one macOS refinement: the Dock
+/// ellipsizes wide counts ("..82" for 1082), so on macOS a truncated label is substituted with the
+/// RAW count from usernoted's db when one exists for the bundle id (see MacOSAppBadgeSource /
+/// UserNotedBadgeStore) — still a platform-published value, never inferred. Otherwise the label is
+/// exactly as the OS shows it: usually a decimal count ("3", "11"), but platforms are free to
+/// publish anything — an app may badge with a dot or a glyph. Never synthesised — see
+/// <see cref="IAppBadgeSource"/>.</param>
 public sealed record AppBadge(string? BundleId, string? AppName, string Label)
 {
     /// <summary>
-    /// The label as a plain count, or null when it isn't purely numeric (an ellipsized macOS label,
-    /// a dot badge, a "9+"). Callers that want a number must handle null rather than guess.
+    /// The label as a plain count, or null when it isn't purely numeric (a dot badge, an unresolved
+    /// ellipsized macOS label, a "9+"). Callers that want a number must handle null rather than guess.
+    /// Note a de-ellipsized macOS label IS numeric, so Count is set for it.
     /// </summary>
     public int? Count => int.TryParse(Label, out var n) && n > 0 ? n : null;
 }
