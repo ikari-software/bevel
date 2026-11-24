@@ -14,12 +14,15 @@ namespace Bevel.Pal.MacOS;
 ///
 /// <para>The direct object is parsed into literal file paths AND object specifiers
 /// (<see cref="AeSpecifier"/>, e.g. <c>folder "x" of home</c>, <c>every file … whose …</c>); the app
-/// converts the specifiers to the command model's ObjectSpecifier and resolves them. Only the CUSTOM
-/// verbs are claimed — <c>open</c>/<c>odoc</c> stays with Avalonia's File activation.</para>
+/// converts the specifiers to the command model's ObjectSpecifier and resolves them. The CUSTOM
+/// verbs are claimed here, and <c>open</c>/<c>odoc</c> too (bevel-whz) — claimed in OUR handler
+/// rather than via Avalonia file activation, because corpus forms like
+/// <c>open folder "Documents" of home</c> are object specifiers only <see cref="ParseSpecifier"/>
+/// can resolve.</para>
 /// </summary>
 public static unsafe partial class AppleEventInbound
 {
-    public enum Verb { Reveal, Delete, Duplicate, Make, Move, SetSelection }
+    public enum Verb { Reveal, Delete, Duplicate, Make, Move, SetSelection, Open }
 
     /// <summary>A parsed inbound request. For reveal/delete/duplicate: <see cref="Paths"/> (literal
     /// files) + <see cref="Specifiers"/> (descriptive references) are the targets. For make:
@@ -96,6 +99,7 @@ public static unsafe partial class AppleEventInbound
         Register("core", "cnte");   // count
         Register("core", "doex");   // exists
         Register("core", "setd");   // set    (set selection to …)
+        Register("aevt", "odoc");   // open   (bevel-whz: claimed here, not via Avalonia file activation)
 
         _installed = true;
     }
@@ -138,6 +142,7 @@ public static unsafe partial class AppleEventInbound
         _ when cls == FourCC("core") && id == FourCC("clon") => Verb.Duplicate,
         _ when cls == FourCC("core") && id == FourCC("crel") => Verb.Make,
         _ when cls == FourCC("core") && id == FourCC("move") => Verb.Move,
+        _ when cls == FourCC("aevt") && id == FourCC("odoc") => Verb.Open,
         _ => null,
     };
 

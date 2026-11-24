@@ -97,7 +97,8 @@ public static class AppleEventBridge
         }
     }
 
-    private static async Task DispatchAsync(
+    // internal (not private) so the dispatch is unit-testable from Bevel.Taskbar.Tests (bevel-whz).
+    internal static async Task DispatchAsync(
         IShellAutomation automation, AppleEventObjectResolver resolver, IKnownFolders known, AppleEventInbound.AeRequest request)
     {
         try
@@ -140,6 +141,11 @@ public static class AppleEventBridge
                     var destination = (await resolver.ResolveAsync(ConvertSpec(request.Container))).FirstOrDefault();
                     if (await ConfirmDestructiveAsync("move", items.Count))
                         await automation.MoveAsync(items, destination, default);
+                    break;
+                case AppleEventInbound.Verb.Open:
+                    // bevel-whz: `open <targets>` / odoc — each target opens in the filer, one call each.
+                    foreach (var item in items)
+                        await automation.OpenAsync(item, new OpenOptions(), default);
                     break;
                 case AppleEventInbound.Verb.SetSelection:
                     // `set selection to <items>`: select them in the frontmost window.
