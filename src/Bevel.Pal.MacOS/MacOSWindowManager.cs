@@ -21,7 +21,7 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     private readonly TimeSpan _streamRetryInterval;
     private CancellationTokenSource? _streamCts;
     private Task? _streamTask;
-    private HashSet<string> _knownWindowIds = new();
+    private readonly Dictionary<string, ForeignWindow> _knownWindows = new();
     private bool _disposed;
 
     private static readonly Capabilities MacOSCapabilities = new(
@@ -239,45 +239,12 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                 var ws = GetWindowClient();
                 using var call = ws.Changes(new ChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
 
+                // Subscribe FIRST, then list: a close that happens after the list is already on
+                // its way down the stream. The other order loses it (same discipline as the tray host).
+                await ReconcileAfterResubscribeAsync(c => TrySeedWindowsAsync(skipIcons: true, c), ct).ConfigureAwait(false);
+
                 await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
-                {
-                    var w = change.Window is null ? null : Map(change.Window);
-                    switch (change.Kind)
-                    {
-                        case WindowChange.Types.Kind.Snapshot:
-                            if (w is not null)
-                            {
-                                _knownWindowIds.Add(w.Id.Value);
-                                WindowChanged?.Invoke(this, w);
-                            }
-                            break;
-                        case WindowChange.Types.Kind.Opened:
-                            if (w is not null)
-                            {
-                                _knownWindowIds.Add(w.Id.Value);
-                                WindowOpened?.Invoke(this, w);
-                            }
-                            break;
-                        case WindowChange.Types.Kind.Closed:
-                            if (w is not null) _knownWindowIds.Remove(w.Id.Value);
-                            if (w is not null) WindowClosed?.Invoke(this, w);
-                            break;
-                        case WindowChange.Types.Kind.Focused:
-                            if (w is not null)
-                            {
-                                WindowChanged?.Invoke(this, w);
-                                if (w.IsFocused)
-                                    ForegroundChanged?.Invoke(this, w);
-                            }
-                            break;
-                        case WindowChange.Types.Kind.TitleChanged:
-                        case WindowChange.Types.Kind.Moved:
-                        case WindowChange.Types.Kind.Minimized:
-                        case WindowChange.Types.Kind.Deminimized:
-                            if (w is not null) WindowChanged?.Invoke(this, w);
-                            break;
-                    }
-                }
+                    Apply(change.Kind, change.Window is null ? null : Map(change.Window));
             }
             catch (OperationCanceledException) { break; }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
@@ -294,6 +261,87 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                 _logger.LogWarning(ex, "Changes stream failed");
                 await _clock.Delay(_streamRetryInterval, ct);
             }
+        }
+    }
+
+    /// <summary>
+    /// Removes what vanished while the stream was down (bevel-35r9, the window half; the tray half
+    /// is bevel-voqo in <see cref="MacOSSystemTrayHost"/>). The stream's snapshot burst is
+    /// upsert-only and has no end marker, so it can never say "this window is gone"; without this
+    /// a window that closed during a helper restart stays in the core's projection — and on the
+    /// taskbar — for good. One list per (re)subscribe, never periodic.
+    /// <para>A null list means the helper could not be asked. That is not an empty window list:
+    /// nothing is closed, and the next resubscribe tries again. A list that fails or does not
+    /// answer within the deadline is the same: this is a cleanup, and it must never cost the
+    /// subscription it runs in front of.</para>
+    /// </summary>
+    internal async ValueTask ReconcileAfterResubscribeAsync(
+        Func<CancellationToken, ValueTask<IReadOnlyList<ForeignWindow>?>> list, CancellationToken ct)
+    {
+        if (_knownWindows.Count == 0) return; // first subscribe: nothing raised, nothing to take back
+        IReadOnlyList<ForeignWindow>? listed;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bounded.CancelAfter(MacOSSystemTrayHost.ReconcileListDeadline);
+        try
+        {
+            listed = await list(bounded.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Window reconcile list failed, nothing closed: {Message}", ex.Message);
+            return;
+        }
+        if (listed is null) return;
+        foreach (var gone in SnapshotReconcile.Absent(_knownWindows, listed, w => w.Id.Value))
+            Apply(WindowChange.Types.Kind.Closed, gone);
+    }
+
+    /// <summary>One stream change: raise its event and keep <see cref="_knownWindows"/> in step with
+    /// the core's projection (upsert on every kind that carries a window, forget on Closed).</summary>
+    internal void Apply(WindowChange.Types.Kind kind, ForeignWindow? w)
+    {
+        switch (kind)
+        {
+            case WindowChange.Types.Kind.Snapshot:
+                if (w is not null)
+                {
+                    _knownWindows[w.Id.Value] = w;
+                    WindowChanged?.Invoke(this, w);
+                }
+                break;
+            case WindowChange.Types.Kind.Opened:
+                if (w is not null)
+                {
+                    _knownWindows[w.Id.Value] = w;
+                    WindowOpened?.Invoke(this, w);
+                }
+                break;
+            case WindowChange.Types.Kind.Closed:
+                if (w is not null)
+                {
+                    _knownWindows.Remove(w.Id.Value);
+                    WindowClosed?.Invoke(this, w);
+                }
+                break;
+            case WindowChange.Types.Kind.Focused:
+                if (w is not null)
+                {
+                    _knownWindows[w.Id.Value] = w;
+                    WindowChanged?.Invoke(this, w);
+                    if (w.IsFocused)
+                        ForegroundChanged?.Invoke(this, w);
+                }
+                break;
+            case WindowChange.Types.Kind.TitleChanged:
+            case WindowChange.Types.Kind.Moved:
+            case WindowChange.Types.Kind.Minimized:
+            case WindowChange.Types.Kind.Deminimized:
+                if (w is not null)
+                {
+                    _knownWindows[w.Id.Value] = w;
+                    WindowChanged?.Invoke(this, w);
+                }
+                break;
         }
     }
 
