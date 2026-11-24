@@ -168,6 +168,8 @@ public class TaskbarGroupingTests
         public System.Collections.Generic.List<string> Closed { get; } = new();
         public System.Collections.Generic.List<string> Minimized { get; } = new();
         public System.Collections.Generic.List<string> Restored { get; } = new();
+        /// <summary>bevel-w3jp: hook fired from CloseAsync, so a test can model the shell removing the window from the group mid-loop.</summary>
+        public Action<string>? OnClose { get; set; }
         public Capabilities Capabilities { get; } =
             new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
@@ -175,12 +177,36 @@ public class TaskbarGroupingTests
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) { Restored.Add(id.Value); return Task.CompletedTask; }
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) { Closed.Add(id.Value); return Task.CompletedTask; }
+        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default)
+        {
+            Closed.Add(id.Value);
+            OnClose?.Invoke(id.Value);
+            return Task.CompletedTask;
+        }
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
         public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
         public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
         public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+    }
+
+    // bevel-w3jp: RunOnAll snapshots the group before iterating — the shell removing windows from the
+    // group mid-loop (the reaction to each op) must skip nothing.
+    [Fact]
+    public void CloseAll_survives_membership_mutation_during_the_loop()
+    {
+        var rec = new RecordingWm();
+        var group = new TaskGroupViewModel("com.apple.finder");
+        var f1 = FinderWin("f1", rec); var f2 = FinderWin("f2", rec); var f3 = FinderWin("f3", rec);
+        group.SyncChildren(new[] { f1, f2, f3 });
+
+        // Model the shell reacting to each close by dropping the window from the group.
+        rec.OnClose = id => group.Windows.Remove(group.Windows.First(w => w.Id.Value == id));
+
+        group.CloseAllCommand.Execute(null);
+
+        Assert.Equal(new[] { "f1", "f2", "f3" }, rec.Closed);
+        Assert.Empty(group.Windows);   // every member was visited despite the mutation
     }
 
     private sealed class GroupStubWm : IWindowManager

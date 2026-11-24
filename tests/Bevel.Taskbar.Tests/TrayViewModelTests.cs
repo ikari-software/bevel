@@ -296,6 +296,34 @@ public class TrayViewModelTests
         Assert.Equal(new[] { true, false, true }, host.HiddenCalls);
     }
 
+    // bevel-w3jp: the consolidation reflow repoke — adding/removing a real status item shifts its
+    // neighbours, so while consolidated the hide must be re-applied (the host recomputes the cover
+    // frame from fresh bounds); while not consolidated the reflow must NOT touch the native tray.
+    [AvaloniaFact]
+    public void Consolidation_is_repoked_when_the_menu_bar_reflows()
+    {
+        var host = new StubTray(Item("1:10", "Alpha"));
+        var vm = new TrayViewModel(host);
+        vm.Start();
+        Dispatcher.UIThread.RunJobs();
+
+        host.RaiseAdded(Item("2:20", "Beta"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Empty(host.HiddenCalls);   // not consolidated → no repoke
+
+        vm.SetConsolidated(true);
+        Assert.Equal(new[] { true }, host.HiddenCalls);
+
+        host.RaiseAdded(Item("3:30", "Gamma"));   // reflow while consolidated → repoke the hide
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, host.HiddenCalls.Count);
+        Assert.All(host.HiddenCalls, h => Assert.True(h));
+
+        host.RaiseRemoved(Item("3:30", "Gamma"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(3, host.HiddenCalls.Count);
+    }
+
     private sealed class StubTray : ISystemTrayHost
     {
         private readonly List<TrayItem> _items;
