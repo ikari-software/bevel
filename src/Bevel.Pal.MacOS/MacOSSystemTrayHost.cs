@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Bevel.Ipc;
 using Bevel.Ipc.V1;
 using Bevel.Pal.Abstractions;
@@ -48,13 +49,18 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
     }
 
     internal MacOSSystemTrayHost(HelperLifecycle helperLifecycle, ILogger<MacOSSystemTrayHost> logger,
-        IClock clock, TimeSpan streamRetryInterval)
+        IClock clock, TimeSpan streamRetryInterval,
+        Func<CancellationToken, IAsyncEnumerable<TrayChange>>? changesSource = null)
     {
         _helperLifecycle = helperLifecycle;
         _logger = logger;
         _clock = clock;
         _streamRetryInterval = streamRetryInterval;
+        _changesSource = changesSource;
     }
+
+    // bevel-umgr test seam: null means the real gRPC stream (GrpcChanges); tests inject a fake.
+    private readonly Func<CancellationToken, IAsyncEnumerable<TrayChange>>? _changesSource;
 
     // ── ISystemTrayHost ─────────────────────────────────────────────────
 
@@ -156,14 +162,8 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         {
             try
             {
-                var tray = GetTrayClient();
-                using var call = tray.Changes(new TrayChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
-
-                // Subscribe FIRST, then list: a removal that happens after the list is already on
-                // its way down the stream. The other order loses it.
-                await ReconcileAfterResubscribeAsync(TrySeedItemsAsync, ct).ConfigureAwait(false);
-
-                await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
+                var source = _changesSource ?? GrpcChanges;
+                await foreach (var change in source(ct))
                 {
                     if (change.Item is null) continue;
                     Apply(change.Kind, Map(change.Item));
@@ -181,6 +181,18 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
                 await _clock.Delay(_streamRetryInterval, ct);
             }
         }
+    }
+
+    /// <summary>The production changes source: subscribe to the gRPC stream, then — subscribe FIRST,
+    /// then list, so a removal that happens after the list is already on its way down the stream is
+    /// not lost — reconcile, then yield the live deltas.</summary>
+    private async IAsyncEnumerable<TrayChange> GrpcChanges([EnumeratorCancellation] CancellationToken ct)
+    {
+        var tray = GetTrayClient();
+        using var call = tray.Changes(new TrayChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
+        await ReconcileAfterResubscribeAsync(TrySeedItemsAsync, ct).ConfigureAwait(false);
+        await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
+            yield return change;
     }
 
     /// <summary>How long the reconcile's one list may take before the stream is read without it.</summary>
