@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -34,5 +35,30 @@ enum LegacyWindowCapture {
         guard let windowArray = CFArrayCreate(kCFAllocatorDefault, ptr, 1, nil) else { return nil }
         let option = CGWindowImageOption([.boundsIgnoreFraming, .bestResolution]).rawValue
         return create(.null, windowArray, option)?.takeRetainedValue()
+    }
+
+    /// Downscale-and-encode half of a thumbnail: fits the image within maxW x maxH preserving
+    /// aspect (never upscales past 1.0), PNG-encodes. bevel-tzx: extracted from WindowServiceImpl's
+    /// private cgWindowListThumbnail so every legacy-CG capture path shares ONE encoder.
+    static func png(from image: CGImage, maxW: Double, maxH: Double) -> Data? {
+        let w = Double(image.width), h = Double(image.height)
+        guard w > 1, h > 1 else { return nil }
+        let fit = min(maxW / w, maxH / h, 1.0)
+        let outW = max(2, Int((w * fit).rounded()))
+        let outH = max(2, Int((h * fit).rounded()))
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: outW, pixelsHigh: outH,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        )
+        guard let rep else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSGraphicsContext.current?.imageInterpolation = .medium
+        NSImage(cgImage: image, size: NSSize(width: w, height: h))
+            .draw(in: NSRect(x: 0, y: 0, width: outW, height: outH),
+                  from: .zero, operation: .copy, fraction: 1.0)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
     }
 }

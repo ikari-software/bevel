@@ -366,9 +366,9 @@
 - **Decision:** route the hover thumbnail's fast path through `LegacyWindowCapture.image(windowID:)` and delete the private dlsym in `cgWindowListThumbnail`, keeping only its downscale-and-encode half as `static func png(from image: CGImage, maxW: Double, maxH: Double) -> Data?` (new, in `LegacyWindowCapture.swift`). Leave the SCK fallback as is (the tray will never share it). Do NOT merge the two app-icon caches: they intentionally render different sizes (tray 32pt x scale, window 64 px). Do NOT gate hover previews on the tray self-test: different pipeline now.
 - **Test first:** `native/helper-macos/Tests/BevelHelperTests/WindowServiceTests.swift`: add `testLegacyThumbnailEncoderFitsWithinBounds` (new) - feed a synthetic 400x200 `CGImage` to `LegacyWindowCapture.png(from:maxW:240,maxH:160)`, decode, assert width <= 240 and height <= 160 and aspect 2:1.
 - **Steps:**
-  - [ ] Write the test (red); move the encode half; point `captureWindowThumbnail` at `LegacyWindowCapture.image` + `png(from:)`.
-  - [ ] `grep -n "dlsym" native/helper-macos/Sources/BevelHelper/WindowServiceImpl.swift` → no `CGWindowListCreateImage` line.
-  - [ ] Run Verify.
+  - [x] Write the test (red); move the encode half; point `captureWindowThumbnail` at `LegacyWindowCapture.image` + `png(from:)`.
+  - [x] `grep -n "dlsym" native/helper-macos/Sources/BevelHelper/WindowServiceImpl.swift` → no `CGWindowListCreateImage` line.
+  - [x] Run Verify.
 - **Verify:** `cd native/helper-macos && swift test --filter WindowServiceTests` → all pass
 - **Done when:** one legacy capture entry point remains; then `bd close bevel-tzx --reason "Tray left SCK in p6g4; legacy-CG capture unified in LegacyWindowCapture"`
 

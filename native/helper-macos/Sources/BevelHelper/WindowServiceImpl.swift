@@ -488,10 +488,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         let maxW = maxWidth > 0 ? Double(maxWidth) : 240
         let maxH = maxHeight > 0 ? Double(maxHeight) : 160
 
-        // Fast path (bevel-c04q): CGWindowListCreateImage is ~10–50× cheaper than a cold
-        // SCShareableContent + SCScreenshotManager round-trip for hover thumbnails. Prefer it when
-        // it returns pixels; fall back to ScreenCaptureKit for minimized / complex windows.
-        if let fast = Self.cgWindowListThumbnail(windowID: windowID, maxW: maxW, maxH: maxH), !fast.isEmpty {
+        // Fast path (bevel-c04q, unified in bevel-tzx): the legacy CG capture now lives in ONE place —
+        // LegacyWindowCapture.image(windowID:) + png(from:maxW:maxH:). ~10–50× cheaper than a cold
+        // SCShareableContent + SCScreenshotManager round-trip for hover thumbnails; fall back to
+        // ScreenCaptureKit for minimized / complex windows when it returns no pixels.
+        if let cg = LegacyWindowCapture.image(windowID: windowID),
+           let fast = LegacyWindowCapture.png(from: cg, maxW: maxW, maxH: maxH), !fast.isEmpty {
             return fast
         }
 
@@ -523,45 +525,6 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
         }
         return result ?? Data()
-    }
-
-    /// Best-effort hover thumbnail via the legacy CGWindowList path (dlsym — SDK marks it
-    /// unavailable since macOS 15, but the symbol still exists and is ~10–50× cheaper than SCK for
-    /// on-screen windows). Returns nil/empty when unavailable — caller falls back to SCK.
-    private static func cgWindowListThumbnail(windowID: CGWindowID, maxW: Double, maxH: Double) -> Data? {
-        typealias CreateImageFn = @convention(c) (
-            CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption
-        ) -> Unmanaged<CGImage>?
-        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
-            return nil
-        }
-        let create = unsafeBitCast(sym, to: CreateImageFn.self)
-        guard let unmanaged = create(
-            .null,
-            .optionIncludingWindow,
-            windowID,
-            [.boundsIgnoreFraming, .bestResolution]
-        ) else { return nil }
-        let cgImage = unmanaged.takeRetainedValue()
-        guard cgImage.width > 1, cgImage.height > 1 else { return nil }
-        let w = Double(cgImage.width), h = Double(cgImage.height)
-        let fit = min(maxW / w, maxH / h, 1.0)
-        let outW = max(2, Int((w * fit).rounded()))
-        let outH = max(2, Int((h * fit).rounded()))
-        let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: outW, pixelsHigh: outH,
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        )
-        guard let rep else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSGraphicsContext.current?.imageInterpolation = .medium
-        NSImage(cgImage: cgImage, size: NSSize(width: w, height: h))
-            .draw(in: NSRect(x: 0, y: 0, width: outW, height: outH),
-                  from: .zero, operation: .copy, fraction: 1.0)
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:])
     }
 
     /// Runs `operation` but returns nil if it hasn't finished within `seconds` — a bound around a
