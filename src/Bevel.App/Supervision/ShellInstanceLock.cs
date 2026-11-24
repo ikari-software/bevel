@@ -46,17 +46,17 @@ internal sealed class ShellInstanceLock : IDisposable
     /// that lands while the previous shell is still exiting succeeds instead of reporting a ghost.
     /// Returns the held lock, or <c>null</c> with <paramref name="incumbentPid"/> set to the running
     /// shell's pid (0 when unknown). Throws <see cref="ShellInstanceLockUnavailableException"/> when
-    /// the lock cannot exist at all (its directory cannot be created); never an <see cref="IOException"/>.
+    /// the lock cannot exist at all (its directory cannot be created, or its file cannot be opened
+    /// for a reason other than another holder); never an <see cref="IOException"/>.
     /// </summary>
     public static ShellInstanceLock? TryAcquire(string path, TimeSpan wait, out int incumbentPid)
     {
         // The directory is created OUTSIDE the retry loop, and its IOException is not allowed out as
-        // one (bevel-glnc). Inside this method an IOException means exactly one thing, "somebody else
-        // holds the lock", and the launcher's caller relies on that: it lets IOException through
-        // because none is supposed to escape. A config dir that cannot be created (its path is a
-        // file, a read-only volume) is a different fact: no shell holds anything, the lock is
-        // simply unavailable. Raised as an IOException it would abort the launcher; caught by the
-        // loop below it would be reported, after the full wait, as a running shell that is not there.
+        // one (bevel-glnc). The launcher's caller lets IOException through because none is supposed
+        // to escape this method. A config dir that cannot be created (its path is a file, a
+        // read-only volume) means no shell holds anything: the lock is simply unavailable. Raised
+        // as an IOException it would abort the launcher; caught by the loop below it would be
+        // reported, after the full wait, as a running shell that is not there.
         var dir = System.IO.Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
         {
@@ -85,6 +85,13 @@ internal sealed class ShellInstanceLock : IDisposable
                 incumbentPid = 0;
                 return held;
             }
+            catch (IOException ex) when (!IsHeldByAnother(ex))
+            {
+                // The directory exists but the file cannot be opened, and not because of a holder
+                // (a read-only volume is the usual one). Same fact as an uncreatable directory.
+                throw new ShellInstanceLockUnavailableException(
+                    $"cannot open the lock file '{path}': {ex.Message}", ex);
+            }
             catch (IOException) when (Environment.TickCount64 < deadline)
             {
                 Thread.Sleep(100); // the previous shell may still be releasing
@@ -95,6 +102,19 @@ internal sealed class ShellInstanceLock : IDisposable
                 return null;
             }
         }
+    }
+
+    /// <summary>
+    /// Whether an open failure means "another process holds the lock". .NET reports that as a
+    /// sharing violation: on Windows ERROR_SHARING_VIOLATION (32) or ERROR_LOCK_VIOLATION (33) in the
+    /// HResult; on Unix the raw errno of the failed non-blocking flock, EWOULDBLOCK (11 on Linux,
+    /// 35 on macOS and the BSDs). Every other IOException (EROFS, ENOSPC, EIO) is not contention.
+    /// The held-lock tests in <c>ShellInstanceLockTests</c> pin this on each CI platform.
+    /// </summary>
+    internal static bool IsHeldByAnother(IOException ex)
+    {
+        if (OperatingSystem.IsWindows()) return (ex.HResult & 0xFFFF) is 32 or 33;
+        return ex.HResult == (OperatingSystem.IsLinux() ? 11 : 35);
     }
 
     /// <summary>The pid recorded by whoever holds <paramref name="lockPath"/>, or 0 if unreadable.</summary>
