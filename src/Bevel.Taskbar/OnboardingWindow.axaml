@@ -152,6 +152,9 @@
                             <TextBlock Text="How many programs the left column keeps — your most-used, with newly-installed ones on top."
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="0,2,0,0" />
+                            <CheckBox x:Name="ExcludeOpenCheck"
+                                      Content="Hide apps that are already open (they're on the taskbar)"
+                                      FontSize="11" Margin="0,6,0,0" />
                         </StackPanel>
                     </HeaderedContentControl>
                 </StackPanel>

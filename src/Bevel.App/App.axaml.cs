@@ -320,6 +320,7 @@ public partial class App : Application
         {
             taskbarView.ApplyLiveSettings(s);
             shellModel.FrequentCap = s.TaskbarStartMenuFrequentCount;
+            shellModel.FrequentExcludeOpen = s.TaskbarStartMenuFrequentExcludeOpen;   // bevel-xrx6
         };
         win.Show();
         win.Activate();
@@ -392,7 +393,9 @@ public partial class App : Application
         // captured; then start the poll so events flow into the model.
         var shellModel = services.GetRequiredService<Taskbar.ShellModel>();
         shellModel.FrequentCap = settings.Current.TaskbarStartMenuFrequentCount;
+        shellModel.FrequentExcludeOpen = settings.Current.TaskbarStartMenuFrequentExcludeOpen;   // bevel-xrx6
         settings.Changed += () => shellModel.FrequentCap = settings.Current.TaskbarStartMenuFrequentCount;
+        settings.Changed += () => shellModel.FrequentExcludeOpen = settings.Current.TaskbarStartMenuFrequentExcludeOpen;
         shellModel.Start();
         // Stop the reconcile loop + PAL event subscriptions at exit, before the DI container is
         // torn down — otherwise they keep posting to the dispatcher into the shutdown window

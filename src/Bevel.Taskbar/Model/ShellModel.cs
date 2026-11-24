@@ -60,6 +60,36 @@ public sealed class ShellModel : IDisposable
         set { var v = Math.Max(1, value); if (v == _frequentCap) return; _frequentCap = v; RecomputeFrequent(); }
     }
 
+    /// <summary>bevel-xrx6: when true, apps with an open window are excluded from the frequent column
+    /// (they're already on the taskbar), and the column backfills from the remaining ranking up to the
+    /// cap. Pushed from settings (taskbarStartMenuFrequentExcludeOpen, default true).</summary>
+    public bool FrequentExcludeOpen
+    {
+        get => _frequentExcludeOpen;
+        set { if (value == _frequentExcludeOpen) return; _frequentExcludeOpen = value; RecomputeFrequent(); }
+    }
+    private bool _frequentExcludeOpen = true;
+
+    /// <summary>Cached set of open windows' app keys (bundle id when known, else app name) — compared by
+    /// SetEquals on every window add/remove so a title-only change never triggers a recompute
+    /// (bevel-xrx6).</summary>
+    private HashSet<string>? _openAppKeys;
+
+    private void RecomputeOpenAppKeys()
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var w in Windows)
+        {
+            if (w.BundleId is { } b) keys.Add(b);
+            if (w.AppId is { } a) keys.Add(a);
+        }
+        if (_openAppKeys is null || !_openAppKeys.SetEquals(keys))
+        {
+            _openAppKeys = keys;
+            RecomputeFrequent();
+        }
+    }
+
     /// <summary>
     /// False until the first installed-apps enumeration finishes (success, failure, or no app
     /// environment), then latched true. Lets the Start menu tell "still loading" (empty + not yet
@@ -325,8 +355,9 @@ public sealed class ShellModel : IDisposable
             sourceKeyOf: w => w.Id.Value,
             create: CreateItem,
             update: (vm, w) => { if (EarnsButton(w)) ApplyUpdate(vm, w); },
-            onRemove: BeginExit);
+            onRemove: (vm, commit) => BeginExit(vm, () => { commit(); RecomputeOpenAppKeys(); }));   // bevel-xrx6
 
+        RecomputeOpenAppKeys();   // bevel-xrx6: the reconciled set may have changed
         var liveIds = new HashSet<string>(live.Select(w => w.Id.Value));
         ApplyFocusFromSnapshot(live, liveIds);
     }
@@ -426,6 +457,7 @@ public sealed class ShellModel : IDisposable
             TaskbarLog.Debug($"ADD button (Upsert) {Meta(w)} -> count {Windows.Count + 1}");
             Windows.Add(CreateItem(w));
         }
+        RecomputeOpenAppKeys();   // bevel-xrx6: open-app set may have changed → frequent column
     }
 
     /// <summary>Single-window remove for the instant event path — hands the button to the same
@@ -435,7 +467,7 @@ public sealed class ShellModel : IDisposable
         if (Find(id) is { } vm)
         {
             TaskbarLog.Debug($"REMOVE button (event) id={id} title='{vm.Title}' -> exit-anim");
-            BeginExit(vm, () => Windows.Remove(vm));
+            BeginExit(vm, () => { Windows.Remove(vm); RecomputeOpenAppKeys(); });   // bevel-xrx6
         }
     }
 
@@ -597,7 +629,13 @@ public sealed class ShellModel : IDisposable
         var newly = Programs.Where(IsNewly)
             .OrderByDescending(p => _usage.FirstSeen(p.AppId))
             .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase);
+        // bevel-xrx6: exclude-open filters the FREQUENT sequence (not the newly-added pins) BEFORE the
+        // cap, so closing a window backfills the next-ranked app automatically. Match on the program's
+        // AppId OR DisplayName: on macOS InstalledApp.AppId is the bundle PATH while a window carries the
+        // bundle id + localized name, so the name comparison is what actually matches there.
+        var open = _openAppKeys ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var frequent = Programs.Where(p => !IsNewly(p))
+            .Where(p => !_frequentExcludeOpen || !(open.Contains(p.AppId) || open.Contains(p.DisplayName)))
             .OrderByDescending(p => _usage.LaunchCount(p.AppId))
             .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase);
 

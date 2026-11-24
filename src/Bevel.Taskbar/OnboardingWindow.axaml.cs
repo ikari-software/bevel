@@ -138,6 +138,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
         StartLabelBox.TextChanged += (_, _) => PersistStart();
         FrequentCountSlider.ValueChanged += OnFrequentCountChanged;
+        ExcludeOpenCheck.IsCheckedChanged += OnExcludeOpenChanged;   // bevel-xrx6
         ButtonSizeCombo.SelectionChanged += OnButtonSizeChanged;
         RowsSlider.ValueChanged += OnRowsChanged;
         CrispBevelsCheck.IsCheckedChanged += OnCrispBevelsChanged;
@@ -238,6 +239,7 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         ShowStartCheck.IsChecked = s.TaskbarShowStart;
         StartLabelBox.Text = s.TaskbarStartLabel;
         FrequentCountSlider.Value = s.TaskbarStartMenuFrequentCount;
+        ExcludeOpenCheck.IsChecked = s.TaskbarStartMenuFrequentExcludeOpen;   // bevel-xrx6
         FrequentCountValue.Text = $"{s.TaskbarStartMenuFrequentCount} programs";
 
         ShowClockCheck.IsChecked = s.TaskbarShowClock;
@@ -584,6 +586,14 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         var label = StartLabelBox.Text ?? "";
         if (_settings.Current.TaskbarShowStart == show && _settings.Current.TaskbarStartLabel == label) return;
         await PersistAndApply(s => { s.TaskbarShowStart = show; s.TaskbarStartLabel = label; });
+    }
+
+    private async void OnExcludeOpenChanged(object? sender, RoutedEventArgs e)
+    {
+        var v = ExcludeOpenCheck.IsChecked ?? true;
+        if (_settings.Current.TaskbarStartMenuFrequentExcludeOpen == v) return;
+        // PersistAndApply raises settings.Changed, which App wires to ShellModel.FrequentExcludeOpen.
+        await PersistAndApply(s => s.TaskbarStartMenuFrequentExcludeOpen = v);   // bevel-xrx6
     }
 
     private void OnFrequentCountChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
