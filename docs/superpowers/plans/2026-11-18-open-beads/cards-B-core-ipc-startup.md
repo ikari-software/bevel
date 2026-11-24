@@ -196,10 +196,10 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** (1) `bool _seeding` + `List<Action> _seedReplay` in `TrayViewModel`: while the pull is in flight the three event handlers queue; on the UI thread apply the pulled list, then replay the queue in order. (2) `int _programsBatchDepth` in `ShellModel`: both `ObservableReconciler.Reconcile(Programs, …)` sites (`:150-155`, `:587-…`) run inside a batch scope; the `CollectionChanged` handler returns early while depth > 0 and `RecomputeFrequent()` runs once at scope exit. Also make `RecomputeFrequent` diff into `FrequentPrograms` via `ObservableReconciler.Reconcile` instead of `Clear`. (3) Keep a `Dictionary<string, Control>` row cache keyed by `AppId` in `StartMenu` and reconcile `_allProgramsList.Children` in place. (4) File a separate bead for the listed test gaps.
 - **Test first:** `TrayViewModelTests.An_item_removed_during_the_initial_pull_is_not_resurrected` (use the existing `StubTray`, make `GetItemsAsync` complete after a fired `ItemRemoved`); `ShellModelTests.Populating_programs_recomputes_frequent_once` (count `FrequentPrograms.CollectionChanged` resets); `StartMenuTests.A_programs_change_keeps_existing_all_programs_rows` (same `Control` instance before and after an add).
 - **Steps:**
-  - [ ] Implement (1) and its test.
-  - [ ] Implement (2) and its test.
-  - [ ] Implement (3) and its test.
-  - [ ] File the test-gap bead (consolidation reflow, `WorkAreaMitigator` gate, task-menu race guard, grouped `TaskGroupViewModel` menu branch).
+  - [x] Implement (1) and its test.
+  - [x] Implement (2) and its test.
+  - [x] Implement (3) and its test.
+  - [x] File the test-gap bead (consolidation reflow, `WorkAreaMitigator` gate, task-menu race guard, grouped `TaskGroupViewModel` menu branch).
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~TrayViewModelTests|FullyQualifiedName~ShellModelTests|FullyQualifiedName~StartMenuTests"` → 0 failed
 - **Done when:** three new tests pass; then `bd close bevel-ujx8 --reason "tray seed buffered, Programs population batched, All Programs diffed in place; test gaps refiled"`
 

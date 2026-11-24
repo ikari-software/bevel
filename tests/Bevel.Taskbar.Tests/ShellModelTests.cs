@@ -39,6 +39,29 @@ public sealed class ShellModelTests
         Assert.Equal("Beta", Assert.Single(model.Programs).DisplayName);
     }
 
+    // bevel-ujx8(2): one Programs reconcile batch must recompute FrequentPrograms ONCE, not once per
+    // inserted item (the old Clear+re-add fired hundreds of events for a 300-app first population).
+    [AvaloniaFact]
+    public void Populating_programs_recomputes_frequent_once_per_batch()
+    {
+        var apps = Enumerable.Range(0, 50).Select(i => new InstalledApp($"com.app{i}", $"App {i}", null)).ToArray();
+        var appEnv = new StubAppEnvironment(apps);
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
+        model.Start();
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 50, "50 programs to load");
+
+        int events = 0;
+        model.FrequentPrograms.CollectionChanged += (_, _) => events++;
+        // Re-publish in REVERSE order: every item moves, so the old per-event RecomputeFrequent fired
+        // ~50 times (each a Clear + re-add storm on FrequentPrograms); batched it is once.
+        appEnv.RaiseInstalledAppsChanged(apps.Reverse().ToArray());
+        Dispatcher.UIThread.RunJobs();
+
+        // One recompute of the capped list (default cap 6) diffs in place → a handful of events at most.
+        Assert.True(events <= 12, $"expected one batched recompute, got {events} CollectionChanged events");
+        Assert.Equal(50, model.Programs.Count);
+    }
+
     [AvaloniaFact]
     public async Task Reappearing_window_is_revived_in_place()
     {

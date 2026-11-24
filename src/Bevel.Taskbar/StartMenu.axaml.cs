@@ -178,6 +178,11 @@ public partial class StartMenu : UserControl
     private Flyout? _allProgramsFlyout;
     private StackPanel? _allProgramsList;
 
+    /// <summary>Test hooks (bevel-ujx8): wire the All-Programs flyout and read its list without opening
+    /// the menu (opening needs a hosted popup).</summary>
+    internal void WireAllProgramsFlyoutForTest() => WireAllProgramsFlyout();
+    internal StackPanel? AllProgramsList => _allProgramsList;
+
     /// <summary>Attaches a plain Flyout to the Luna "All Programs" row, with content built entirely in
     /// code. A MenuFlyout's items and an inline-XAML flyout both came up 0×0 in this popup (its items
     /// don't pick up Blue2001Layout's row styles or the app MenuItem theme, and popups don't inherit the
@@ -211,12 +216,41 @@ public partial class StartMenu : UserControl
         _programsVm.Programs.CollectionChanged += (_, _) => RebuildAllProgramsList();
     }
 
+    // bevel-ujx8(3): rows cached by AppId so a Programs change diffs in place — surviving rows keep
+    // their Control (scroll position, hover, loaded icon) instead of a Clear() rebuilding every row.
+    private readonly Dictionary<string, Control> _allProgramsRows = new();
+
     private void RebuildAllProgramsList()
     {
         if (_programsVm is null || _allProgramsList is null) return;
-        _allProgramsList.Children.Clear();
-        foreach (var p in _programsVm.Programs)
-            _allProgramsList.Children.Add(BuildAllProgramsRow(p));
+        var desired = _programsVm.Programs;
+        var children = _allProgramsList.Children;
+
+        // Drop rows whose AppId vanished.
+        for (int i = children.Count - 1; i >= 0; i--)
+        {
+            if (children[i].Tag is string key && desired.All(p => p.AppId != key))
+            {
+                children.RemoveAt(i);
+                _allProgramsRows.Remove(key);
+            }
+        }
+
+        // Insert new rows and move existing ones into place.
+        for (int i = 0; i < desired.Count; i++)
+        {
+            var p = desired[i];
+            if (!_allProgramsRows.TryGetValue(p.AppId, out var row))
+            {
+                row = BuildAllProgramsRow(p);
+                row.Tag = p.AppId;
+                _allProgramsRows[p.AppId] = row;
+            }
+            int current = children.IndexOf(row);
+            if (current == i) continue;
+            if (current >= 0) children.Move(current, i);
+            else children.Insert(i, row);
+        }
     }
 
     private Control BuildAllProgramsRow(ProgramItemViewModel p)
