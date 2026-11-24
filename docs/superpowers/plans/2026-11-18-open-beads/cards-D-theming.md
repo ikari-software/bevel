@@ -182,10 +182,10 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Add theme-local brushes `Blue2001.Brush.ProgressWell`, `ProgressWellBorder`, `GroupFrame`, `TabFace`, `TabFaceSelected` (new) in the theme's resources with today's hexes, bind the five sites with `{DynamicResource}`, and add each to `Blue2001VariantService.Surfaces` as `Surface.Solid(key, true, hex)` so the colourway re-hues them. Make the static `TaskButtonChecked` stops equal the Blue+Hybrid output of the engine (the engine is the source of truth, per commit 04299e3) so the unthemed fallback and the runtime agree.
 - **Test first:** `RenderBlue2001VariantsTest` — add an assertion that a ProgressBar well pixel and a GroupBox frame pixel differ between `Blue` and `Silver`.
 - **Steps:**
-  - [ ] Add the assertion; confirm it fails (same beige in both).
-  - [ ] Introduce the five brushes + bindings; add to `Surfaces`.
-  - [ ] Reconcile the static `TaskButtonChecked` fallback; `RenderPressedTaskButtonTest` must still pass.
-  - [ ] Re-harvest `site/shots` only if the Blue default changed (it should not).
+  - [x] Add the assertion; confirm it fails (same beige in both).
+  - [x] Introduce the five brushes + bindings; add to `Surfaces`.
+  - [x] Reconcile the static `TaskButtonChecked` fallback; `RenderPressedTaskButtonTest` must still pass.
+  - [x] Re-harvest `site/shots` only if the Blue default changed (it should not).
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderBlue2001|FullyQualifiedName~RenderPressedTaskButton|FullyQualifiedName~Blue2001PurpleBandContrast"` → pass
 - **Done when:** progress/group/tab chrome follows Silver/Black/Purple; then `bd close bevel-quif --reason "remaining Blue2001 hexes routed through variant surfaces"`
 

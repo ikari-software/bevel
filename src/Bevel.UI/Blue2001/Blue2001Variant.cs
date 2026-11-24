@@ -140,6 +140,15 @@ public static class Blue2001VariantService
         new("Blue2001.Brush.Progress", false, GlossRole.Control, new[]{
             (0.0,"B6F0A8"),(0.5,"5CC24A"),(0.5,"3BA32F"),(1.0,"63C94E")}),
 
+        // Beige control chrome that must follow the colourway (bevel-quif): the progress well + its border,
+        // the group-box frame, and the tab faces. Chromatic so Silver/Black/Purple re-hue them; gloss-inert.
+        Surface.Solid("Blue2001.Brush.ProgressWell", true, "F4F2E9"),
+        Surface.Solid("Blue2001.Brush.ProgressWellBorder", true, "8A887A"),
+        Surface.Solid("Blue2001.Brush.GroupFrame", true, "D0CDBF"),
+        Surface.Solid("Blue2001.Brush.TabFace", true, "D7D1BC"),
+        new("Blue2001.Brush.TabFaceSelected", true, GlossRole.Inert, new[]{
+            (0.0,"FFFFFF"),(1.0,"ECE9D8")}),
+
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
         Surface.Solid("Bevel.Brush.TaskButtonBorder", true, "1C4D9C"),
