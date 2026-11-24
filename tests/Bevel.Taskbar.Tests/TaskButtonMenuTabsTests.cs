@@ -226,7 +226,6 @@ public class TaskButtonMenuTabsTests
                 Assert.True(i + 1 < cut.Length && char.IsLowSurrogate(cut[i + 1]), $"lone high surrogate at {i}");
     }
 
-<<<<<<< HEAD
     private static TaskGroupViewModel GroupVmWithTwoWindows()
     {
         var group = new TaskGroupViewModel(App);
@@ -276,8 +275,7 @@ public class TaskButtonMenuTabsTests
         Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
     }
 
-=======
->>>>>>> a24492b (feat(taskbar): iTerm session-colour swatch for tab rows without a favicon (bevel-l17f))
+
     [AvaloniaFact]
     public void Rows_without_a_favicon_show_the_session_tint_swatch(/* bevel-l17f */)
     {
