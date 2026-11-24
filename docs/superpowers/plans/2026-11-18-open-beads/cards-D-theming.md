@@ -261,8 +261,8 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Remove the class. Reason: the theme contract for this button is the `Bevel.Theme.StartButton` ControlTheme key; a style class would be a second, competing hook, and nothing has needed it in six weeks.
 - **Test first:** `grep -rn "taskbar-start" src third_party` → empty after the edit.
 - **Steps:**
-  - [ ] Delete ` Classes="taskbar-start"` from line 123.
-  - [ ] Run the Verify command (renders must not change).
+  - [x] Delete ` Classes="taskbar-start"` from line 123.
+  - [x] Run the Verify command (renders must not change).
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~RenderTaskbar|FullyQualifiedName~TaskbarThemeTests"` → pass, no changed PNGs
 - **Done when:** grep is empty and renders are identical; then `bd close bevel-safz --reason "removed; Start button is themed via Bevel.Theme.StartButton"`
 
