@@ -57,12 +57,16 @@ public class VfsPathTests
     }
 
     [Theory]
-    [InlineData("//Users/x", "/Users/x")]   // double leading slash collapsed
-    [InlineData("///a", "/a")]              // triple leading slash collapsed
-    [InlineData("//", "")]                  // only slashes collapses to root
-    public void Constructor_collapses_duplicate_leading_slashes(string input, string expected)
+    [InlineData(@"\\server\share\x", "//server/share/x")]   // Windows UNC, backslash form
+    [InlineData("//server/share/x", "//server/share/x")]      // UNC, already forward-slash
+    public void Constructor_keeps_a_unc_path_a_unc_path(string input, string expected)
     {
-        Assert.Equal(expected, new VfsPath("file", input).Value);
+        // Collapsing the doubled leading separator would turn a network path into the local
+        // "/server/share/x" - a different location (bevel-u2x6 review).
+        var path = new VfsPath("file", input);
+        Assert.Equal(expected, path.Value);
+        Assert.Equal("x", path.FileName);
+        Assert.Equal("//server/share/x/y", VfsPath.Combine(path, "y").Value);
     }
 
     [Theory]

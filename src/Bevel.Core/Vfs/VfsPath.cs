@@ -25,7 +25,6 @@ public readonly record struct VfsPath
     /// <summary>Forward-slash canonical path within the scheme; empty for a scheme root.</summary>
     public string Value { get; }
 
-    [System.Text.Json.Serialization.JsonConstructor]
     public VfsPath(string scheme, string value)
     {
         Scheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
@@ -141,16 +140,9 @@ public readonly record struct VfsPath
         if (normalized.Length > 1)
             normalized = normalized.TrimEnd('/');
 
-        // Collapse duplicate leading separators ("//x" → "/x", "///a" → "/a") so Combine on a
-        // "/"-valued parent can't produce "//x" (bevel-u2x6). A lone "/" stays as the POSIX root.
-        if (normalized.Length > 1 && normalized[0] == '/')
-        {
-            var i = 1;
-            while (i < normalized.Length && normalized[i] == '/') i++;
-            if (i > 1)
-                normalized = "/" + normalized[i..];
-        }
-
+        // Leading separators are NOT collapsed: "//server/share" is a Windows UNC path, and
+        // collapsing it would silently turn it into a local "/server/share". Combine never
+        // produces a doubled separator on its own (it special-cases the "/" root).
         return normalized;
     }
 }
