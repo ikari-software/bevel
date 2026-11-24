@@ -283,9 +283,9 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** (1) `internal static string BuildStamp.Describe(string stamp)` (new): `"1|1.0.0+1f4cc8f…|6392…"` → `"1.0.0 (1f4cc8f, built 2026-09-29 19:23)"` (version before `+`, first 7 of the SHA, ticks → local time; unparseable input returned unchanged). (2) `Format` leads with one plain sentence per `HealthFault` (skew: "Bevel was updated while it was running, so the taskbar and the launcher are from different builds."), then the two described builds, and keeps the full detail under a "Details:" line. (3) Hold dialogs get two buttons: macOS `buttons {"Quit Bevel","Restart Bevel"} default button 2` (read `button returned:` from osascript stdout); Windows `MB_RETRYCANCEL`. New enum `HealthAlertChoice { Restart, Quit }` (new) and `Show(HealthVerdict v, Action<HealthAlertChoice>? onChoice)`. `RunLauncher` wires Restart to the same path as `onLauncherStale`, Quit to `stop.Set()`.
 - **Test first:** `ShellHealthAlertTests`: `Describe_turns_a_stamp_into_version_short_sha_and_build_time`, `Describe_returns_garbage_unchanged`, `Format_for_skew_leads_with_a_sentence_and_hides_the_raw_stamp_below_Details`, `A_Hold_reports_the_users_choice` (inject the native dialog).
 - **Steps:**
-  - [ ] `BuildStamp.Describe` + tests.
-  - [ ] Rewrite `Format`; change the `native` seam to return the pressed button.
-  - [ ] Wire the choice in `RunLauncher`.
+  - [x] `BuildStamp.Describe` + tests.
+  - [x] Rewrite `Format`; change the `native` seam to return the pressed button.
+  - [x] Wire the choice in `RunLauncher`.
   - [ ] HUMAN: force a Hold (run a build whose taskbar fails at startup) and check both buttons on macOS.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~ShellHealthAlert"` → 4 passed
 - **Done when:** a Hold dialog reads as a sentence and both buttons act; then `bd close bevel-f4g5 --reason "health alerts are human-readable with Restart/Quit; skew itself auto-relaunches since 296931f"`
