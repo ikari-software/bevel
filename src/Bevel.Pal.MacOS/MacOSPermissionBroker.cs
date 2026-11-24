@@ -12,7 +12,51 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 public sealed class MacOSPermissionBroker : IPermissionBroker
 {
-    public event EventHandler<ShellPermission>? PermissionChanged;
+    private readonly object _gate = new();
+    private EventHandler<ShellPermission>? _permissionChanged;
+    private System.Threading.Timer? _pollTimer;
+    private readonly PermissionChangeTracker _tracker = new();
+
+    /// <summary>bevel-sdss: raised when a polled permission flips. TCC has no change notification,
+    /// so a 2 s timer runs ONLY while there is at least one subscriber (started on first add,
+    /// stopped on last remove) and each tick raises the event for the permissions whose state
+    /// changed since the previous tick.</summary>
+    public event EventHandler<ShellPermission>? PermissionChanged
+    {
+        add
+        {
+            lock (_gate)
+            {
+                _permissionChanged += value;
+                _pollTimer ??= new System.Threading.Timer(
+                    _ => _ = PollAsync(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+            }
+        }
+        remove
+        {
+            lock (_gate)
+            {
+                _permissionChanged -= value;
+                if (_permissionChanged is null)
+                {
+                    _pollTimer?.Dispose();
+                    _pollTimer = null;
+                }
+            }
+        }
+    }
+
+    private async Task PollAsync()
+    {
+        EventHandler<ShellPermission>? handler;
+        lock (_gate) handler = _permissionChanged;
+        if (handler is null) return;
+
+        var accessibility = await GetStateAsync(ShellPermission.Accessibility).ConfigureAwait(false);
+        var screenRecording = await GetStateAsync(ShellPermission.ScreenRecording).ConfigureAwait(false);
+        foreach (var permission in _tracker.Observe(accessibility, screenRecording))
+            handler.Invoke(this, permission);
+    }
 
     public ValueTask<PermissionState> GetStateAsync(ShellPermission permission, CancellationToken ct = default)
     {

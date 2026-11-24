@@ -309,10 +309,10 @@
 - **Decision:** option (a), give the contract a producer (rule: wire it, don't hide it). TCC has no change notification, so the producer is one subscriber-gated timer inside the broker: custom `add`/`remove` accessors start a 2 s `System.Threading.Timer` on first subscriber and stop it on last. Pure core: `internal sealed class PermissionChangeTracker { IReadOnlyList<ShellPermission> Observe(PermissionState accessibility, PermissionState screenRecording); }` (new) returns the permissions whose state differs from the last call (first call returns none). `FakePermissionBroker` gets `public void SetState(ShellPermission p, PermissionState s)` (new) that raises the event. Windows stays silent (states are `NotApplicable`; say so in a one-line comment). `OnboardingWindow` drops its own timer and subscribes instead.
 - **Test first:** `PermissionChangeTrackerTests`: `First_observation_reports_nothing`, `A_flip_reports_exactly_that_permission`, `No_change_reports_nothing`.
 - **Steps:**
-  - [ ] Write tests (red); add `PermissionChangeTracker`; green.
-  - [ ] Add the gated timer + accessors to `MacOSPermissionBroker`; raise `PermissionChanged` per returned permission.
-  - [ ] `OnboardingWindow`: replace `_permPollTimer` with a `PermissionChanged` subscription (handler must `Dispatcher.UIThread.Post`), keep the immediate first `PollPermissionAsync()`, unsubscribe on close.
-  - [ ] `grep -rn "PermissionChanged?.Invoke" src` → at least 2 hits.
+  - [x] Write tests (red); add `PermissionChangeTracker`; green.
+  - [x] Add the gated timer + accessors to `MacOSPermissionBroker`; raise `PermissionChanged` per returned permission.
+  - [x] `OnboardingWindow`: replace `_permPollTimer` with a `PermissionChanged` subscription (handler must `Dispatcher.UIThread.Post`), keep the immediate first `PollPermissionAsync()`, unsubscribe on close.
+  - [x] `grep -rn "PermissionChanged?.Invoke" src` → at least 2 hits.
 - **Verify:** `dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --filter "FullyQualifiedName~PermissionChangeTrackerTests"` → 3 passed
 - **Done when:** event has a producer and Onboarding has no private timer; then `bd close bevel-sdss --reason "PermissionChanged now raised by a subscriber-gated diff in MacOSPermissionBroker; Onboarding consumes it"`
 
