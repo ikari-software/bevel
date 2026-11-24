@@ -67,6 +67,12 @@
       <direct-parameter type="specifier" description="The item(s) to select."/>
     </command>
 
+    <!-- bevel-vs10: plain `launch` is a reserved AppleScript application verb and never reaches the
+         app, so the command is named `launch program`. Class Bevl, id Lnch (code BevlLnch). -->
+    <command name="launch program" code="BevlLnch" description="Launch an installed application by bundle id.">
+      <direct-parameter type="text" description="The bundle identifier of the application to launch (never a path)."/>
+    </command>
+
     <class name="item" code="cobj" description="An item in the file system.">
       <property name="name" code="pnam" type="text" description="The item's name."/>
       <property name="displayed name" code="dnam" type="text" access="r" description="The name as shown."/>

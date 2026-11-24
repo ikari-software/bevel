@@ -131,8 +131,9 @@ public sealed class AutomationCommandRouter
     }
 
     /// <summary>A launch target that is rooted, contains a path separator, or is a ".app" is a
-    /// filesystem path, not a bundle id — refused so no absolute path reaches the platform launcher.</summary>
-    internal static bool LooksLikePath(string appId) =>
+    /// filesystem path, not a bundle id — refused so no absolute path reaches the platform launcher.
+    /// Public because the Apple Events bridge applies the SAME rule to inbound `launch` (bevel-vs10).</summary>
+    public static bool LooksLikePath(string appId) =>
         System.IO.Path.IsPathRooted(appId)
         || appId.Contains('/') || appId.Contains('\\')
         || appId.StartsWith('~')
