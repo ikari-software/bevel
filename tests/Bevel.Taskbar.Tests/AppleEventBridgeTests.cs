@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-=======
 using System.IO;
 using System.Linq;
->>>>>>> f4c6e98 (fix(pal): answer path/window/selection AE queries on a suspended event, off the UI thread (bevel-odf))
 using System.Threading;
 using System.Threading.Tasks;
 using Bevel.App;
@@ -69,7 +67,6 @@ public class AppleEventBridgeTests
         Assert.Equal(expected, e.Filter!.Op);
     }
 
-<<<<<<< HEAD
     // ── bevel-whz: odoc/open routes each target through IShellAutomation.OpenAsync ──
 
     private sealed class RecordingAutomation : IShellAutomation
@@ -88,6 +85,17 @@ public class AppleEventBridgeTests
             Opens.Add(containerOrFile);
             return Task.FromResult(new WindowRef(1));
         }
+
+        public Task<RevealResult> RevealAsync(IReadOnlyList<VfsPath> items, RevealOptions opts, CancellationToken ct) => throw new NotSupportedException();
+        public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) => throw new NotSupportedException();
+        public Task<VfsPath> MakeAsync(VfsPath parent, NewItemKind kind, string? name, CancellationToken ct) => throw new NotSupportedException();
+        public Task DeleteAsync(IReadOnlyList<VfsPath> items, DeleteMode mode, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<VfsPath>> DuplicateAsync(IReadOnlyList<VfsPath> items, VfsPath? target, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct) => throw new NotSupportedException();
+        public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct) => throw new NotSupportedException();
+        public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
+        public Task QuitAsync(CancellationToken ct) => throw new NotSupportedException();
+    }
 
     // ── bevel-odf: async AE answers (suspended reply) — uncapped count, window/selection via automation ──
 
@@ -117,8 +125,8 @@ public class AppleEventBridgeTests
         public Task DeleteAsync(IReadOnlyList<VfsPath> items, DeleteMode mode, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<VfsPath>> DuplicateAsync(IReadOnlyList<VfsPath> items, VfsPath? target, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct) => throw new NotSupportedException();
-        public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct) => throw new NotSupportedException();
         public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
+        public Task LaunchAsync(string appId, CancellationToken ct) => throw new NotSupportedException();
         public Task QuitAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 
@@ -159,10 +167,6 @@ public class AppleEventBridgeTests
         await AppleEventBridge.DispatchAsync(automation, null!, null!, request);
 
         Assert.Empty(automation.Launches);   // same LooksLikePath guard as bevelctl/bevel://
-    }
-        public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
-        public Task LaunchAsync(string appId, CancellationToken ct) => throw new NotSupportedException();
-        public Task QuitAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 
     private static (AppleEventObjectResolver Resolver, Known Known, string Home) MakeResolver()
