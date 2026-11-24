@@ -16,6 +16,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core.Search;
 using Bevel.Core.Vfs;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
@@ -82,6 +83,23 @@ public partial class StartMenu : UserControl
         WireFixedItemIcons();
         WireHoverToOpen();
         WireTypeToSearch();
+        WireSearchSession();
+    }
+
+    // bevel-6sk6: one SearchSession over the apps provider feeds BOTH layouts' results views; publishes
+    // are marshaled to the UI thread via Dispatcher.Post (background providers answer off-thread).
+    private void WireSearchSession()
+    {
+        if (_programsVm is null) return;
+        _session = new SearchSession(
+            new ISearchProvider[] { new AppsSearchProvider(_programsVm.Model) },
+            a => Dispatcher.UIThread.Post(a));
+        _session.SectionChanged += OnSearchSectionChanged;
+        foreach (var view in new[] { ClassicResultsView, Blue2001ResultsView })
+        {
+            view.RegisterProvider(_session.Providers[0]);
+            view.HitActivated += hit => { _ = hit.ActivateAsync(); Close(); };
+        }
     }
 
     public bool IsOpen => MenuPopup.IsOpen;
@@ -312,6 +330,9 @@ public partial class StartMenu : UserControl
 
     private readonly StartMenuFilter _filter = new();
     private readonly ObservableCollection<ProgramItemViewModel> _searchResults = new();
+    // bevel-6sk6: the sectioned search session + the current Programs-section hits.
+    private SearchSession? _session;
+    private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
 
     /// <summary>True while a typed query is narrowing the menu.</summary>
     public bool IsSearchActive => _filter.IsActive;
@@ -409,72 +430,52 @@ public partial class StartMenu : UserControl
     /// </summary>
     public bool EnterShouldLaunchTopMatch(object? keySource)
     {
-        if (_searchResults.Count == 0) return false;
+        if (_session?.TopHit is null) return false;
         return keySource is not Control c
-            || c.DataContext is not ProgramItemViewModel focused
-            || !_searchResults.Contains(focused);
+            || c.DataContext is not SearchHit focused
+            || !_programHits.Contains(focused);
     }
 
     private bool TryLaunchTopMatch(object? source)
     {
-        if (!EnterShouldLaunchTopMatch(source)) return false;
-        var top = _searchResults[0];
-        if (top.LaunchCommand.CanExecute(null)) top.LaunchCommand.Execute(null);
+        if (!EnterShouldLaunchTopMatch(source) || _session?.TopHit is not { } top) return false;
+        _ = top.ActivateAsync();
         Close();
         return true;
     }
 
     /// <summary>
-    /// Re-ranks the program index against the current query and shows the matches in whichever layout is
-    /// live: the Luna pinned column becomes the result list, the classic Programs cascade becomes the result
-    /// cascade (and opens itself). Ranking is a linear pass over the already-in-memory index — no I/O, no
-    /// enumeration — so it stays on the keystroke; only the matched rows' icons are kicked, and those load
-    /// off-thread as everywhere else.
+    /// Runs the current query through the <see cref="SearchSession"/> (bevel-6sk6) and swaps the live
+    /// layout's body to the sectioned results view. The Programs cascade / pinned column are NEVER
+    /// re-pointed at results — the results view replaces them for the duration of the search.
     /// </summary>
     private void ApplySearch()
     {
-        if (_programsVm is null) return;
         if (!_filter.IsActive) { ClearSearch(); return; }
+        _session?.SetQuery(_filter.Query);
 
-        var ranked = StartMenuFilter.Rank(_programsVm.Programs, static p => p.DisplayName, _filter.Query);
-        _searchResults.Clear();
-        foreach (var p in ranked)
-        {
-            p.EnsureIcon();   // lazy, off-thread, idempotent
-            _searchResults.Add(p);
-        }
-
+        var luna = Blue2001Layout.IsVisible;
+        ItemsMenu.IsVisible = !(_filter.IsActive && !luna);
+        ClassicResultsView.IsVisible = _filter.IsActive && !luna;
+        Blue2001PinnedScroll.IsVisible = !(_filter.IsActive && luna);
+        Blue2001ResultsView.IsVisible = _filter.IsActive && luna;
         UpdateSearchStrip();
-        if (Blue2001Layout.IsVisible)
-            Blue2001Pinned.ItemsSource = _searchResults;
-        else
-            ShowClassicResults();
     }
 
-    /// <summary>Points the Programs cascade at the matches and opens it, so the results are on screen the
-    /// moment they exist. A query with no hits shows a disabled "(No matches)" row rather than an empty
-    /// cascade, which would read as a broken menu.</summary>
-    private void ShowClassicResults()
+    /// <summary>A section's hits arrived (marshaled to the UI thread): feed both results views and keep
+    /// the Programs hits for Enter/arrow semantics.</summary>
+    private void OnSearchSectionChanged(string sectionId, IReadOnlyList<SearchHit> hits)
     {
-        if (_searchResults.Count > 0)
+        ClassicResultsView.SetSection(sectionId, hits);
+        Blue2001ResultsView.SetSection(sectionId, hits);
+        if (sectionId == "programs")
         {
-            if (!ReferenceEquals(ProgramsItem.ItemsSource, _searchResults))
-            {
-                // Avalonia forbids touching Items while an ItemsSource is bound, so detach first — the
-                // cascade may be holding either the full collection or a placeholder row.
-                ProgramsItem.ItemsSource = null;
-                ProgramsItem.Items.Clear();
-                ProgramsItem.ItemsSource = _searchResults;
-            }
+            _programHits = hits;
+            _searchResults.Clear();
+            foreach (var h in hits)
+                if (h.Tag is ProgramItemViewModel p) _searchResults.Add(p);
         }
-        else
-        {
-            ProgramsItem.ItemsSource = null;
-            ProgramsItem.Items.Clear();
-            ProgramsItem.Items.Add(Disabled("(No matches)"));
-        }
-        foreach (var top in ItemsMenu.Items.OfType<MenuItem>())
-            top.IsSubMenuOpen = ReferenceEquals(top, ProgramsItem);
+        UpdateSearchStrip();
     }
 
     private void UpdateSearchStrip()
@@ -489,19 +490,25 @@ public partial class StartMenu : UserControl
         Blue2001SearchStrip.IsVisible = _filter.IsActive && Blue2001Layout.IsVisible;
     }
 
-    /// <summary>Drops the query and puts both layouts back the way they were: Luna's pinned column returns to
-    /// the curated frequent list, the classic cascade to the full program collection.</summary>
+    /// <summary>Drops the query and puts both layouts back the way they were: the results views hide, the
+    /// item column / pinned column show again (Luna's pinned column returns to the curated frequent list).</summary>
     private void ClearSearch()
     {
         _filter.Clear();
+        _session?.Clear();
         _searchResults.Clear();
+        _programHits = Array.Empty<SearchHit>();
         ClassicSearchStrip.IsVisible = false;
         Blue2001SearchStrip.IsVisible = false;
+        ClassicResultsView.IsVisible = false;
+        Blue2001ResultsView.IsVisible = false;
+        ClassicResultsView.ClearSections();
+        Blue2001ResultsView.ClearSections();
+        ItemsMenu.IsVisible = true;
+        Blue2001PinnedScroll.IsVisible = true;
         if (_programsVm is null) return;
         if (_lunaWired) Blue2001Pinned.ItemsSource = _programsVm.FrequentPrograms;
         ProgramsItem.IsSubMenuOpen = false;
-        // Detach the result list before UpdateProgramsPlaceholder reaches for Items (see ShowClassicResults).
-        if (ReferenceEquals(ProgramsItem.ItemsSource, _searchResults)) ProgramsItem.ItemsSource = null;
         UpdateProgramsPlaceholder();
     }
 

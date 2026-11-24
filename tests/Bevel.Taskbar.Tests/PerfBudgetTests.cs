@@ -100,6 +100,15 @@ public class PerfBudgetTests
             Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
+    [Fact]
+    public void Perf_search_rank_500_apps_under_budget()
+    {
+        // bevel-6sk6: one keystroke's ranking pass over the whole program index is a linear scan of
+        // in-memory strings — budget 2 ms (catches an accidental O(n²)/allocation blowup).
+        var names = new List<string>(500);
+        for (var i = 0; i < 500; i++) names.Add($"App {i:000} Suite");
+        var us = AvgMicros(50, 500, () => Bevel.Core.Search.SearchRanker.Rank(names, static s => s, "app 1"));
+        Assert.True(us < 2000, $"SearchRanker.Rank(500) averaged {us:F1}µs (budget 2000µs)");
     }
 
     private static byte[] MakeGlyphPng(int n)

@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:search="using:Bevel.Core.Search"
+             x:Class="Bevel.Taskbar.StartSearchResultsView">
+    <!-- bevel-6sk6: the Start menu's sectioned results panel, shown in place of the menu body while a
+         search is active. A virtualized ListBox over header + hit rows; all brushes are theme tokens so
+         both layouts recolour live. -->
+    <ListBox x:Name="ResultsList"
+             MinWidth="180"
+             Background="{DynamicResource Bevel.Brush.Menu}"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.DataTemplates>
+            <DataTemplate DataType="search:SearchSectionHeader">
+                <TextBlock Text="{Binding Title}"
+                           FontFamily="{DynamicResource Bevel.Font.UI}"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                           Margin="8,6,4,2" />
+            </DataTemplate>
+            <DataTemplate DataType="search:SearchHit">
+                <Button Click="OnHitClick"
+                        HorizontalContentAlignment="Stretch"
+                        Padding="6,3">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <!-- Tag is object? (the source VM); compiled bindings can't see through it, so the
+                             icon slot uses a reflection binding. -->
+                        <Image Source="{ReflectionBinding Tag.IconSource}" Width="16" Height="16"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                        <TextBlock Text="{Binding Title}"
+                                   FontFamily="{DynamicResource Bevel.Font.UI}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Bevel.Brush.MenuText}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </DataTemplate>
+        </ListBox.DataTemplates>
+    </ListBox>
+</UserControl>
