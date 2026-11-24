@@ -75,6 +75,7 @@ W4|bevel-mhvu|AGENT|S|cards-B-core-ipc-startup.md|ShellCoreSystemTrayHost duplic
 W4|bevel-b8t|A+H|M|cards-F-filer.md|M5: 100k-entry file-manager perf validation (06 perf)
 W4|bevel-yd2n|AGENT|M|cards-D-theming.md|PROFILE FIRST: colourway switch does ~140 individual resource writes
 W4|bevel-vw90|AGENT|S|-|Theme-apply perf budget (filed by bevel-zhmr)
+W4|bevel-w3jp|AGENT|S|-|Taskbar test gaps: consolidation reflow, WorkAreaMitigator gate, task-menu race guard, TaskGroupViewModel menu (filed by bevel-ujx8)
 W5|bevel-6sk6|AGENT|L|cards-E1-start-menu-search.md|Start-menu inline search: results panel (apps, files, tabs) — the search foundation
 W5|bevel-vtc6|A+H|M|cards-E1-start-menu-search.md|Start-menu search over tabs: type-to-jump across every ITabProvider app
 W5|bevel-pr4l|AGENT|M|cards-E1-start-menu-search.md|StartMenu.axaml.cs grew 38% absorbing the search UI — extract the search strip
