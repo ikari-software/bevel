@@ -312,10 +312,10 @@ Verified against the tree at `51582c0` (PR #6 `perf/filer-spawn-and-icons` merge
 - **Decision:** One reflection-free helper: `public static class InpcBind { public static void Attach(Control host, INotifyPropertyChanged source, string propertyName, Action apply) }` (new). It calls `apply()` and subscribes on `AttachedToVisualTree`, unsubscribes on `DetachedFromVisualTree` — so a recycled/virtualised row never leaks a handler onto a long-lived view-model. Callers pass a lambda that reads the property and sets the control property directly. `NameCell` and `Row` gain an `ItemViewModel vm` parameter (all call sites are inside templates that have it). Rejected: `CompiledBindingPathBuilder` in code-behind — verbose and still easy to get wrong.
 - **Test first:** `InpcBindTests`: `Apply_runs_on_attach_and_on_each_matching_change`, `Detach_unsubscribes` (assert the source's `PropertyChanged` invocation list is empty after detach), `Other_property_names_are_ignored`.
 - **Steps:**
-  - [ ] Add `InpcBind` + tests.
-  - [ ] Convert the two `StartMenu` sites.
-  - [ ] Convert the three `ItemView` sites; `grep -rn "new Binding\|new Avalonia.Data.Binding" src --include='*.cs'` returns nothing.
-  - [ ] Run the selection and accessibility tests (`ClickSelectionTests`, `MarqueeSelectionTests`, `AccessibilityNamingTests`).
+  - [x] Add `InpcBind` + tests.
+  - [x] Convert the two `StartMenu` sites.
+  - [x] Convert the three `ItemView` sites; `grep -rn "new Binding\|new Avalonia.Data.Binding" src --include='*.cs'` returns nothing.
+  - [x] Run the selection and accessibility tests (`ClickSelectionTests`, `MarqueeSelectionTests`, `AccessibilityNamingTests`).
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~Selection|FullyQualifiedName~AccessibilityNaming"` → 0 failed; `dotnet test tests/Bevel.UI.Tests/Bevel.UI.Tests.csproj --filter "FullyQualifiedName~InpcBind"` → 3 passed
 - **Done when:** zero reflection `Binding` constructions in `src`; then `bd close bevel-gww.9 --reason "5 code-behind bindings replaced by InpcBind"`
 
