@@ -415,6 +415,29 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ── Stacks (bevel-dw5) ──────────────────────────────── -->
+            <TabItem Header="Stacks">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="10" Margin="2,8,2,2">
+                    <HeaderedContentControl Header="Stacked folders" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Folders shown as a stack on the taskbar, in this order. Changes apply immediately."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}" TextWrapping="Wrap" />
+                            <ListBox x:Name="StacksList" MinHeight="120" MaxHeight="220"
+                                     SelectionMode="Single" SelectionChanged="OnStacksSelectionChanged"
+                                     AutomationProperties.Name="Stack folders" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button x:Name="StackAddButton" Content="Add…" Click="OnStackAdd" />
+                                <Button x:Name="StackRemoveButton" Content="Remove" Click="OnStackRemove" />
+                                <Button x:Name="StackUpButton" Content="Move Up" Click="OnStackMoveUp" />
+                                <Button x:Name="StackDownButton" Content="Move Down" Click="OnStackMoveDown" />
+                            </StackPanel>
+                        </StackPanel>
+                    </HeaderedContentControl>
+                </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- ── Behavior (bevel-cust.behavior) ───────────────────────── -->
             <TabItem Header="Behavior">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

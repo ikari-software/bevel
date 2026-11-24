@@ -97,6 +97,7 @@ W5|bevel-9w0h|A+H|M|cards-E2-taskbar-customization.md|Arc tabs menu: prefer live
 W5|bevel-s5x|AGENT|S|cards-E2-taskbar-customization.md|Taskbar grouped-button jump-list: per-app custom actions (New window, etc.)
 W5|bevel-bw1v|AGENT|M|-|Tabs menu: ActivateAsync reports its outcome; failed activation refreshes the list (filed by bevel-6asm)
 W5|bevel-8zx2|AGENT|S|-|Widen TabPrefetch freshness (filed by bevel-6asm)
+W5|bevel-j9y4|AGENT|M|-|When the Stack component renderer lands, make TaskbarComponents the single source for stacks and retire TaskbarStacks (filed by bevel-dw5)
 W6|bevel-7hf4|A+H|M|cards-G-tray-interop-windows.md|Hide mirrored icons from the macOS menu bar when Bevel owns them (Bartender-style)
 W6|bevel-m3|A+H|L|cards-G-tray-interop-windows.md|M3 — Systray mirroring (Ice technique)
 W6|bevel-whz|A+H|M|cards-G-tray-interop-windows.md|Wire AppleScript 'open'/odoc folder-open through IShellAutomation (INT-6)

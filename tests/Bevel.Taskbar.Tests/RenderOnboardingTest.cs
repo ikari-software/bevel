@@ -54,6 +54,51 @@ public class RenderOnboardingTest
         finally { try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ } }
     }
 
+    /// <summary>bevel-dw5: the Stacks tab renders the folder list and wires the four buttons
+    /// (disabled-with-reason until a row is selected).</summary>
+    [AvaloniaFact]
+    public async System.Threading.Tasks.Task Render_stacks_tab_to_png()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "bevel-onb-stacks-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);   // SettingsService initialises lazily; the seed write needs the dir
+            var settings = new SettingsService(dir);
+            _ = settings.Current;             // force the load so the DB exists
+            // Seed two stacks so the Move Down button has somewhere to go.
+            await settings.UpdateAsync(s => s.TaskbarStacks = new[] { "/Users/x/Downloads", "/Users/x/Documents" });
+            var win = new OnboardingWindow(settings) { Width = 470, Height = 440 };
+            win.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            // General=0, Start=1, Buttons=2, Clock=3, Appearance=4, Tray=5, Stacks=6.
+            var tabs = win.GetVisualDescendants().OfType<TabControl>().First();
+            tabs.SelectedIndex = 6;
+            Dispatcher.UIThread.RunJobs();
+
+            var list = win.GetVisualDescendants().OfType<ListBox>().FirstOrDefault(l => l.Name == "StacksList");
+            Assert.NotNull(list);
+            Assert.Equal(2, list!.Items.Count);   // seeded from the setting
+
+            var remove = win.GetVisualDescendants().OfType<Button>().First(b => b.Name == "StackRemoveButton");
+            var up = win.GetVisualDescendants().OfType<Button>().First(b => b.Name == "StackUpButton");
+            Assert.False(remove.IsEnabled);   // nothing selected → cannot act
+            Assert.False(up.IsEnabled);
+
+            list.SelectedIndex = 0;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(remove.IsEnabled);
+            Assert.False(up.IsEnabled);       // already at the top
+            Assert.True(win.GetVisualDescendants().OfType<Button>().First(b => b.Name == "StackDownButton").IsEnabled);
+
+            var frame = win.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            frame!.Save(Environment.GetEnvironmentVariable("BEVEL_ONB_OUT")
+                        ?? Path.Combine(Path.GetTempPath(), "bevel-onboarding-stacks.png"));
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best-effort cleanup */ } }
+    }
+
     /// <summary>
     /// The Appearance tab at the exact size the landing page ships (site/shots/theme-win2000.png).
     /// That shot used to be a one-off hand-run with no test behind it, so it silently went stale: it was
