@@ -321,7 +321,7 @@
                                  search strip + results panel at the top of the menu. -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"
                                         VerticalAlignment="Center" Margin="0,0,10,0">
-                            <Button Classes="footer-round" Click="OnBlue2001LogOffClick" ToolTip.Tip="Log Off">
+                            <Button x:Name="Blue2001LogOffButton" Classes="footer-round" Click="OnBlue2001LogOffClick" ToolTip.Tip="Log Off">
                                 <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource Bevel.Brush.StartMenuFooterButton}"
                                         BorderBrush="{DynamicResource Bevel.Brush.StartMenuFooterButtonBorder}" BorderThickness="1">
                                     <!-- Log Off = exit-through-door, on the shared 24-grid (centred at 12,12); fixed-Canvas render. -->
@@ -333,7 +333,7 @@
                                     </Viewbox>
                                 </Border>
                             </Button>
-                            <Button Classes="footer-round" Click="OnBlue2001TurnOffClick" ToolTip.Tip="Turn Off">
+                            <Button x:Name="Blue2001TurnOffButton" Classes="footer-round" Click="OnBlue2001TurnOffClick" ToolTip.Tip="Turn Off">
                                 <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource Bevel.Brush.StartMenuFooterButton}"
                                         BorderBrush="{DynamicResource Bevel.Brush.StartMenuFooterButtonBorder}" BorderThickness="1">
                                     <!-- Turn Off = power symbol on the shared 24-grid (ring r6 at 12,12). Same glyph as Quit. -->

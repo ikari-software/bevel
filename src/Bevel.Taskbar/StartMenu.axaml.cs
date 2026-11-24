@@ -45,6 +45,9 @@ public partial class StartMenu : UserControl
     private readonly Action _openSearch;
     private readonly Action _toggleDesktop;
     private readonly Func<bool?>? _desktopRunning;
+    /// <summary>bevel-4vce: OS session actions (LogOut/Restart/Shutdown/Lock) from IShellSession.
+    /// Null in tests/all-in-one without a PAL → the OS-level entries are disabled, never dead.</summary>
+    private readonly Func<LogoutKind, Task>? _session;
 
     public StartMenu() : this(null, null) { }
 
@@ -61,7 +64,8 @@ public partial class StartMenu : UserControl
         Action<VfsPath>? openFolder = null,
         Action? openSearch = null,
         Action? toggleDesktop = null,
-        Func<bool?>? desktopRunning = null)
+        Func<bool?>? desktopRunning = null,
+        Func<LogoutKind, Task>? session = null)
     {
         InitializeComponent();
         _programsVm = programs;
@@ -72,6 +76,12 @@ public partial class StartMenu : UserControl
         _openSearch = openSearch ?? (() => { });
         _toggleDesktop = toggleDesktop ?? (() => { });
         _desktopRunning = desktopRunning;
+        _session = session;
+        // bevel-4vce: Log Off needs an OS session behind it; without one the entry is disabled
+        // (visible, not hidden) so it can never look live-but-dead. Shut Down… always opens the
+        // dialog — its Bevel entries work without a session and its OS entries disable inside.
+        LogOffItem.IsEnabled = session is not null;
+        Blue2001LogOffButton.IsEnabled = session is not null;
         // No host wiring for the desktop toggle (parameterless test construction / all-in-one) → disable
         // the item so it never looks live-but-dead: it degrades to a visibly-disabled entry, not a no-op.
         if (toggleDesktop is null)
@@ -667,8 +677,15 @@ public partial class StartMenu : UserControl
 
     private void OnHelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
     private void OnRunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
-    private void OnLogOffClick(object? sender, RoutedEventArgs e) => Close();   // bevel-4vce owns Log Off semantics
-    private void OnShutDownClick(object? sender, RoutedEventArgs e) => Close();  // bevel-4vce owns Shut Down semantics
+    // bevel-4vce: every shell-management item now does what its label says. "Log Off" is the OS
+    // logout (the OS shows its own confirmation); "Shut Down…"/"Turn Off" open the ShutDownDialog.
+    private void OnLogOffClick(object? sender, RoutedEventArgs e)
+    {
+        Close();
+        if (_session is not null) _ = _session(LogoutKind.LogOut);
+    }
+
+    private void OnShutDownClick(object? sender, RoutedEventArgs e) { Close(); OpenShutDownDialog(); }
 
     // ── Real actions for the former dead items (bevel-x6pv) ────────────
 
@@ -745,8 +762,13 @@ public partial class StartMenu : UserControl
     private void OnBlue2001HelpClick(object? sender, RoutedEventArgs e) { Close(); ShowHelp(); }
     private void OnBlue2001SearchClick(object? sender, RoutedEventArgs e) { Close(); _openSearch(); }
     private void OnBlue2001RunClick(object? sender, RoutedEventArgs e) { Close(); ShowRun(); }
-    private void OnBlue2001LogOffClick(object? sender, RoutedEventArgs e) { Close(); _restart(); }
-    private void OnBlue2001TurnOffClick(object? sender, RoutedEventArgs e) { Close(); _quit(); }
+    private void OnBlue2001LogOffClick(object? sender, RoutedEventArgs e)
+    {
+        Close();
+        if (_session is not null) _ = _session(LogoutKind.LogOut);   // bevel-4vce: was _restart() — a lie
+    }
+
+    private void OnBlue2001TurnOffClick(object? sender, RoutedEventArgs e) { Close(); OpenShutDownDialog(); }
     private void OnRestartClick(object? sender, RoutedEventArgs e)
     {
         Close();
@@ -786,6 +808,33 @@ public partial class StartMenu : UserControl
         var text = running ? "Hide Desktop" : "Show Desktop";
         DesktopItem.Header = running ? "Hide _Desktop" : "Show _Desktop";
         Blue2001DesktopText.Text = text;
+    }
+
+    /// <summary>bevel-4vce test seam: when set, called INSTEAD of really opening the ShutDownDialog
+    /// (headless tests can't run a modal).</summary>
+    internal Action? ShutDownDialogRequested { get; set; }
+
+    private async void OpenShutDownDialog()
+    {
+        if (ShutDownDialogRequested is { } hook) { hook(); return; }
+        var dialog = new ShutDownDialog(_session);
+        var choice = await dialog.PickAsync(TopLevel.GetTopLevel(this) as Window);
+        HandleShutDownChoice(choice);
+    }
+
+    /// <summary>Maps a ShutDownDialog choice to its action — Bevel entries run the existing
+    /// quit/restart callbacks, OS entries go through the session seam.</summary>
+    internal void HandleShutDownChoice(ShutDownAction? choice)
+    {
+        switch (choice)
+        {
+            case ShutDownAction.QuitBevel: _quit(); break;
+            case ShutDownAction.RestartBevel: _restart(); break;
+            case ShutDownAction.Lock: if (_session is not null) _ = _session(LogoutKind.Lock); break;
+            case ShutDownAction.LogOff: if (_session is not null) _ = _session(LogoutKind.LogOut); break;
+            case ShutDownAction.RestartComputer: if (_session is not null) _ = _session(LogoutKind.Restart); break;
+            case ShutDownAction.ShutDown: if (_session is not null) _ = _session(LogoutKind.Shutdown); break;
+        }
     }
 
     private void OnQuitClick(object? sender, RoutedEventArgs e)

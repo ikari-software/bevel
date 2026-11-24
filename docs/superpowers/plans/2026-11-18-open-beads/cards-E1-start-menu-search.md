@@ -166,9 +166,9 @@ dead fake search box with hardcoded `White` / `#68799A` / `#8A8598`; `StartMenu.
 - **Decision:** Keep the footer wording and glyphs (owner's "footer unchanged" choice) and make the words true. "Log Off" in BOTH layouts → `IShellSession.LogOutAsync(LogoutKind.LogOut)` (the OS shows its own confirmation). "Shut Down…" (classic) and "Turn Off" (Luna) → open `ShutDownDialog`, the Win2000 "What do you want the computer to do?" list: Quit Bevel (default), Restart Bevel, Lock, Log off, Restart computer, Shut down. Bevel entries call the existing `_quit` / `_restart`; OS entries call `LogOutAsync`. Add ctor parameter `Func<LogoutKind, Task>? session = null` to `StartMenu`; when null the OS entries are disabled (visible, not hidden). macOS `LogOutAsync`: send the loginwindow Apple Event (`kAELogOut`/`kAERestart`/`kAEShutDown` — these show the system confirm) and for `Lock` UNVERIFIED: pick the public mechanism during implementation; run off the UI thread.
 - **Test first:** `StartMenuTests`: `Luna_log_off_calls_session_logout_not_restart`, `Luna_turn_off_opens_the_shut_down_dialog`, `Classic_log_off_and_shut_down_are_wired` (recording fake for `session`, `_restart` counter stays 0).
 - **Steps:**
-  - [ ] Add the `session` seam and rewire the four handlers; tests green.
-  - [ ] Build `ShutDownDialog` on `BevelWindow` with theme tokens only.
-  - [ ] Implement `MacOSShellSession.LogOutAsync`; wire `session:` from `IShellSession` in `App.axaml.cs`.
+  - [x] Add the `session` seam and rewire the four handlers; tests green.
+  - [x] Build `ShutDownDialog` on `BevelWindow` with theme tokens only.
+  - [x] Implement `MacOSShellSession.LogOutAsync`; wire `session:` from `IShellSession` in `App.axaml.cs`.
   - [ ] HUMAN-VERIFY on device: Log Off shows the macOS confirmation and Cancel leaves Bevel running with the Dock state intact.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~StartMenuTests"` → all pass; `grep -n "OnBlue2001LogOffClick" src/Bevel.Taskbar/StartMenu.axaml.cs` shows no `_restart`.
 - **Done when:** no Start-menu item does something other than its label in either theme; then `bd close bevel-4vce --reason "Log Off = OS logout, Turn Off/Shut Down = ShutDownDialog; Restart/Quit Bevel explicit in both themes"`

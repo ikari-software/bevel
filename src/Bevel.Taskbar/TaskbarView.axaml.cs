@@ -24,6 +24,7 @@ public partial class TaskbarView : UserControl
     private ITabProvider? _tabProvider;
     private Action? _quit;
     private Action? _restart;
+    private Func<Bevel.Pal.Abstractions.LogoutKind, Task>? _session;   // bevel-4vce
     /// Targeted repair for a lost core link: respawn only the shell-core process (the launcher owns it).
     /// Null when unsupervised — the repair menu then offers only the whole-shell restart.
     private Action? _restartCore;
@@ -157,14 +158,17 @@ public partial class TaskbarView : UserControl
         Action? toggleDesktop = null,
         Func<bool?>? desktopRunning = null,
         ITabProvider? tabProvider = null,
-        Bevel.Core.ISettingsService? settingsService = null)
+        Bevel.Core.ISettingsService? settingsService = null,
+        Func<Bevel.Pal.Abstractions.LogoutKind, Task>? session = null)   // bevel-4vce
     {
+        // Non-settings wiring
         // Non-settings wiring (PAL services + the shell-command callbacks).
         _appEnv = appEnv;
         _iconProvider = iconProvider;
         _tabProvider = tabProvider;
         _quit = quit;
         _restart = restart;
+        _session = session;
         _restartCore = restartCore;
         // Only offer a repair that can actually run: an unsupervised taskbar has no launcher to ask.
         if (RepairRestartCoreItem is not null) RepairRestartCoreItem.IsEnabled = restartCore is not null;
@@ -683,7 +687,7 @@ public partial class TaskbarView : UserControl
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning);
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning, _session);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.

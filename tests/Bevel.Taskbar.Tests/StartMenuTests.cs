@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -231,5 +233,68 @@ public class StartMenuTests
 
         Assert.Equal("/Applications/Bevel.app/Contents/MacOS/Bevel", startInfo.FileName);
         Assert.Equal(["--pal", "macos"], startInfo.ArgumentList);
+    }
+
+    // ── bevel-4vce: every shell-management item does what its label says ──
+
+    [AvaloniaFact]
+    public void Luna_log_off_calls_session_logout_not_restart()
+    {
+        var kinds = new List<LogoutKind>();
+        var restarts = 0;
+        var menu = new StartMenu(null, quit: () => { }, restart: () => restarts++,
+            session: k => { kinds.Add(k); return Task.CompletedTask; });
+
+        var logOff = menu.FindControl<Button>("Blue2001LogOffButton")!;
+        Assert.True(logOff.IsEnabled);
+        logOff.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(new[] { LogoutKind.LogOut }, kinds);
+        Assert.Equal(0, restarts);   // the old bug: Luna "Log Off" restarted Bevel
+    }
+
+    [AvaloniaFact]
+    public void Luna_turn_off_opens_the_shut_down_dialog_not_a_direct_quit()
+    {
+        var quits = 0;
+        var menu = new StartMenu(null, quit: () => quits++, session: _ => Task.CompletedTask);
+        var opened = 0;
+        menu.ShutDownDialogRequested = () => opened++;
+
+        menu.FindControl<Button>("Blue2001TurnOffButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(1, opened);
+        Assert.Equal(0, quits);   // Turn Off must go through the dialog, not quit directly
+    }
+
+    [AvaloniaFact]
+    public void Classic_log_off_and_shut_down_are_wired()
+    {
+        var kinds = new List<LogoutKind>();
+        var menu = new StartMenu(null, session: k => { kinds.Add(k); return Task.CompletedTask; });
+        var opened = 0;
+        menu.ShutDownDialogRequested = () => opened++;
+
+        menu.FindControl<MenuItem>("LogOffItem")!.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal(new[] { LogoutKind.LogOut }, kinds);   // was a dead Close()
+
+        menu.FindControl<MenuItem>("ShutDownItem")!.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Assert.Equal(1, opened);                            // was a dead Close()
+    }
+
+    [AvaloniaFact]
+    public void Without_a_session_log_off_is_disabled_and_os_choices_are_noops()
+    {
+        var restarts = 0;
+        var menu = new StartMenu(null, restart: () => restarts++);   // no session
+
+        Assert.False(menu.FindControl<MenuItem>("LogOffItem")!.IsEnabled);
+        Assert.False(menu.FindControl<Button>("Blue2001LogOffButton")!.IsEnabled);
+
+        menu.HandleShutDownChoice(ShutDownAction.RestartBevel);   // Bevel entries work without a session
+        Assert.Equal(1, restarts);
+        menu.HandleShutDownChoice(ShutDownAction.ShutDown);       // OS entry: no session → no-op, no throw
+        menu.HandleShutDownChoice(null);
+        Assert.Equal(1, restarts);
     }
 }
