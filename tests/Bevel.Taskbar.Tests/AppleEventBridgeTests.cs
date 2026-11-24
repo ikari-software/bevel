@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+=======
+using System.IO;
+using System.Linq;
+>>>>>>> f4c6e98 (fix(pal): answer path/window/selection AE queries on a suspended event, off the UI thread (bevel-odf))
 using System.Threading;
 using System.Threading.Tasks;
 using Bevel.App;
@@ -65,6 +69,7 @@ public class AppleEventBridgeTests
         Assert.Equal(expected, e.Filter!.Op);
     }
 
+<<<<<<< HEAD
     // ── bevel-whz: odoc/open routes each target through IShellAutomation.OpenAsync ──
 
     private sealed class RecordingAutomation : IShellAutomation
@@ -84,6 +89,28 @@ public class AppleEventBridgeTests
             return Task.FromResult(new WindowRef(1));
         }
 
+    // ── bevel-odf: async AE answers (suspended reply) — uncapped count, window/selection via automation ──
+
+    private sealed class Known(string home) : IKnownFolders
+    {
+        public VfsPath Home => new("file", home);
+        public VfsPath Desktop => new("file", home + "/Desktop");
+        public VfsPath StartupDisk => new("file", "/");
+        public VfsPath Trash => new("file", home + "/.Trash");
+    }
+
+    private sealed class QueryAutomation : IShellAutomation
+    {
+        public BevelStateSnapshot Snapshot { get; set; } = new();
+        public CancellationToken LastQueryCt { get; private set; }
+        public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct)
+        {
+            LastQueryCt = ct;
+            return ct.IsCancellationRequested
+                ? Task.FromCanceled<BevelStateSnapshot>(ct)
+                : Task.FromResult(Snapshot);
+        }
+        public Task<WindowRef> OpenAsync(VfsPath containerOrFile, OpenOptions opts, CancellationToken ct) => throw new NotSupportedException();
         public Task<RevealResult> RevealAsync(IReadOnlyList<VfsPath> items, RevealOptions opts, CancellationToken ct) => throw new NotSupportedException();
         public Task SelectAsync(WindowRef window, IReadOnlyList<VfsPath> items, CancellationToken ct) => throw new NotSupportedException();
         public Task<VfsPath> MakeAsync(VfsPath parent, NewItemKind kind, string? name, CancellationToken ct) => throw new NotSupportedException();
@@ -132,5 +159,96 @@ public class AppleEventBridgeTests
         await AppleEventBridge.DispatchAsync(automation, null!, null!, request);
 
         Assert.Empty(automation.Launches);   // same LooksLikePath guard as bevelctl/bevel://
+    }
+        public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
+        public Task LaunchAsync(string appId, CancellationToken ct) => throw new NotSupportedException();
+        public Task QuitAsync(CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private static (AppleEventObjectResolver Resolver, Known Known, string Home) MakeResolver()
+    {
+        var home = Directory.CreateTempSubdirectory("bevel-ae-odf-").FullName.Replace('\\', '/');
+        var vfs = new VfsRoot();
+        vfs.Register(new LocalFsProvider());
+        var known = new Known(home);
+        return (new AppleEventObjectResolver(vfs, known), known, home);
+    }
+
+    [Fact]
+    public async Task AnswerAsync_count_is_not_capped()
+    {
+        var (resolver, known, home) = MakeResolver();
+        var big = Path.Combine(home, "big");
+        Directory.CreateDirectory(big);
+        for (var i = 0; i < 5000; i++) File.WriteAllText(Path.Combine(big, $"f{i}.txt"), "x");
+        // 5000 > UiThreadEnumerationCap (4096): the async path must walk unbounded.
+        var query = new AeQuery(AeQueryKind.ResolvePaths,
+            new AeEvery("item", new AeByName("folder", "big", new AeProperty("home")), null), QueryOp.Count);
+
+        var result = await AppleEventBridge.AnswerAsync(query, known, new QueryAutomation(), resolver);
+
+        Assert.Equal(new AeCount(5000), result);
+    }
+
+    [Fact]
+    public async Task AnswerAsync_window_count_comes_from_the_automation_query()
+    {
+        var (resolver, known, _) = MakeResolver();
+        var automation = new QueryAutomation
+        {
+            Snapshot = new BevelStateSnapshot { Windows = new[] { new WindowRef(1), new WindowRef(2) } }
+        };
+        var query = new AeQuery(AeQueryKind.WindowCount, null, QueryOp.Count);
+
+        var result = await AppleEventBridge.AnswerAsync(query, known, automation, resolver);
+
+        Assert.Equal(new AeCount(2), result);
+    }
+
+    [Fact]
+    public async Task AnswerAsync_missing_folder_counts_zero()
+    {
+        var (resolver, known, _) = MakeResolver();
+        var query = new AeQuery(AeQueryKind.ResolvePaths,
+            new AeByName("folder", "no-such-folder", new AeProperty("home")), QueryOp.Count);
+
+        var result = await AppleEventBridge.AnswerAsync(query, known, new QueryAutomation(), resolver);
+
+        Assert.Equal(new AeCount(0), result);
+    }
+
+    // ce-code-review bevel-odf: the PAL's 10 s suspended-query timeout is a CancellationToken wired
+    // into AnswerAsync — these pin the bridge side of that contract (the PAL CTS itself needs a live
+    // macOS AE target to exercise end-to-end).
+
+    [Fact]
+    public async Task AnswerAsync_forwards_the_timeout_token_to_the_automation_query()
+    {
+        var (resolver, known, _) = MakeResolver();
+        var automation = new QueryAutomation();
+        var query = new AeQuery(AeQueryKind.WindowCount, null, QueryOp.Count);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => AppleEventBridge.AnswerAsync(query, known, automation, resolver, cts.Token));
+        Assert.True(automation.LastQueryCt.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task AnswerAsync_forwards_the_timeout_token_into_the_resolver_walk()
+    {
+        var (resolver, known, home) = MakeResolver();
+        var big = Path.Combine(home, "big");
+        Directory.CreateDirectory(big);
+        for (var i = 0; i < 10; i++) File.WriteAllText(Path.Combine(big, $"f{i}.txt"), "x");
+        var query = new AeQuery(AeQueryKind.ResolvePaths,
+            new AeEvery("item", new AeByName("folder", "big", new AeProperty("home")), null), QueryOp.Count);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // A cancelled token must abort the directory walk, not just the await.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => AppleEventBridge.AnswerAsync(query, known, new QueryAutomation(), resolver, cts.Token));
     }
 }

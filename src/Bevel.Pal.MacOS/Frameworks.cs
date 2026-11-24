@@ -26,6 +26,9 @@ internal static class Frameworks
 
     public const string LibSystem = "/usr/lib/libSystem.dylib";
     public const string ObjC = "/usr/lib/libobjc.dylib";
+    /// <summary>libdispatch — the main-queue async used to post suspended-AE replies back to the UI
+    /// thread (bevel-odf). Lives under /usr/lib/system/ as part of libSystem.</summary>
+    public const string LibDispatch = "/usr/lib/system/libdispatch.dylib";
 
     // ── Loading ───────────────────────────────────────────────────────────
     // dlopen lives here, private, as the SOLE way to load a framework in this assembly. It used to be

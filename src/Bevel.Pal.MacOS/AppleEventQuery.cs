@@ -5,9 +5,11 @@ using System.Runtime.InteropServices;
 namespace Bevel.Pal.MacOS;
 
 // Inbound AE object-model plumbing (bevel-3i4): get / count / exists resolve a query and write a
-// RESULT into the reply descriptor. These reply synchronously inside the handler, so the app-side
-// QueryHandler must compute from synchronously-readable state (known folders, the window registry,
-// the active controller) — no async surface round-trip.
+// RESULT into the reply descriptor. Property queries (version/home/desktop/trash/startup disk)
+// reply synchronously inside the handler. Path/window/selection queries can block on a directory
+// walk or a surface round-trip, so bevel-odf SUSPENDS the event and replies asynchronously via
+// AsyncQueryHandler — the UI thread never waits (never leave an event suspended: a 10 s timeout
+// writes -1712 and resumes).
 
 /// <summary>What a get/count/exists is asking for. Application-property queries are the common case;
 /// filesystem-specifier get/count/exists is carried as <see cref="Specifier"/>.</summary>
@@ -29,8 +31,53 @@ public sealed record AePaths(IReadOnlyList<string> Values) : AeResult;   // a li
 public static partial class AppleEventInbound
 {
     /// <summary>Wired by the app: synchronously answer a get/count/exists. Runs on the AE dispatch
-    /// (UI) thread; must not await a surface round-trip.</summary>
+    /// (UI) thread; must not await a surface round-trip. Only INLINE queries arrive here (property
+    /// kinds, exists-on-property) — see <see cref="IsInline"/>.</summary>
     public static Func<AeQuery, AeResult?>? QueryHandler;
+
+    /// <summary>bevel-odf: wired by the app to answer the queries that may block (path resolution,
+    /// window count, selection) on a SUSPENDED event. Runs on a thread-pool thread; the reply is
+    /// posted back to the main thread and the event resumed there. The <see cref="CancellationToken"/>
+    /// carries the query timeout — honoring it actually abandons the work (ce-code-review bevel-odf).</summary>
+    public static Func<AeQuery, CancellationToken, Task<AeResult?>>? AsyncQueryHandler;
+
+    /// <summary>How long a suspended-event query may run before it is cancelled and answered -1712.</summary>
+    static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(10);
+
+    [DllImport(Frameworks.LibDispatch)] static extern IntPtr dispatch_get_main_queue();
+    // dispatch_async takes a BLOCK, not a raw function pointer — passing
+    // Marshal.GetFunctionPointerForDelegate(...) there is UB (ce-code-review bevel-odf). Use the
+    // function+context form dispatch_async_f instead.
+    [DllImport(Frameworks.LibDispatch)] static extern void dispatch_async_f(IntPtr queue, IntPtr context, IntPtr work);
+    private delegate void DispatchWorkNative(IntPtr context);
+
+    // Rooted for the process lifetime so the function pointer below stays valid.
+    static readonly DispatchWorkNative MainWork = RunMainWork;
+    static readonly IntPtr MainWorkPtr = Marshal.GetFunctionPointerForDelegate(MainWork);
+
+    static void RunMainWork(IntPtr context)
+    {
+        var handle = GCHandle.FromIntPtr(context);
+        try { if (handle.Target is Action action) action(); }
+        finally { handle.Free(); }
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the main thread (the AE dispatch thread), where
+    /// reply/resume must happen. The action is pinned BEFORE the dispatch and handed over as the
+    /// context argument, so the work fn can never run against an unallocated handle (leak per query,
+    /// ce-code-review bevel-odf).</summary>
+    static void PostToMain(Action action)
+    {
+        var handle = GCHandle.Alloc(action);
+        dispatch_async_f(dispatch_get_main_queue(), GCHandle.ToIntPtr(handle), MainWorkPtr);
+    }
+
+    /// <summary>bevel-odf: which queries may be answered inline on the UI thread. The five property
+    /// kinds (pure known-folder/version reads) and exists-on-a-property are safe; path resolution,
+    /// window count and selection go async.</summary>
+    static bool IsInline(AeQuery q) =>
+        q.Kind is AeQueryKind.Version or AeQueryKind.Home or AeQueryKind.Desktop or AeQueryKind.Trash or AeQueryKind.StartupDisk
+        || (q.Op == QueryOp.Exists && q.Kind != AeQueryKind.ResolvePaths);
 
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_i32(IntPtr r, IntPtr s, int a);
     [DllImport(Frameworks.ObjC, EntryPoint = "objc_msgSend")] static extern IntPtr Send_bool(IntPtr r, IntPtr s, [MarshalAs(UnmanagedType.I1)] bool a);
@@ -40,13 +87,49 @@ public static partial class AppleEventInbound
 
     static IntPtr AeDescClass => Cls("NSAppleEventDescriptor");
 
-    /// <summary>Handles a get/count/exists event: parse the query, ask the app, write the reply.</summary>
+    /// <summary>Handles a get/count/exists event: parse the query, ask the app, write the reply.
+    /// Inline queries reply in-place; the rest suspend the event and reply asynchronously
+    /// (bevel-odf) so a huge enumeration never freezes the UI thread.</summary>
     static void HandleQuery(QueryOp op, IntPtr evt, IntPtr reply)
     {
         var query = ParseQuery(evt, op);
         if (query is null) return;
-        var result = QueryHandler?.Invoke(query);
-        if (result is not null) WriteReply(reply, result);
+
+        if (IsInline(query))
+        {
+            var result = QueryHandler?.Invoke(query);
+            if (result is not null) WriteReply(reply, result);
+            return;
+        }
+
+        var handler = AsyncQueryHandler;
+        if (handler is null) { WriteErrorReply(reply, -1708); return; }   // errAEEventNotHandled
+
+        var mgr = AppKitInterop.SendIntPtr(Cls("NSAppleEventManager"), Sel("sharedAppleEventManager"));
+        var suspensionID = AppKitInterop.SendIntPtr(mgr, Sel("suspendCurrentAppleEvent"));
+        _ = Task.Run(async () =>
+        {
+            AeResult? result = null;
+            // The 10 s bound is a real CANCELLATION, not an abandoned wait: the token reaches
+            // AsyncQueryHandler → AnswerAsync → the resolver walk, so an unbounded AE enumeration is
+            // actually stopped instead of running to completion in the background (ce-code-review
+            // bevel-odf).
+            using var cts = new CancellationTokenSource(QueryTimeout);
+            try
+            {
+                result = await handler(query, cts.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) { Trace($"QUERY async failed: {ex.Message}"); }
+            PostToMain(() =>
+            {
+                // Reply + resume on the main thread. A timeout/fault writes -1712 — the event is
+                // NEVER left suspended.
+                var replyEvt = AppKitInterop.SendIntPtr_IntPtr(mgr, Sel("replyAppleEventForSuspensionID:"), suspensionID);
+                if (result is not null) WriteReply(replyEvt, result);
+                else WriteErrorReply(replyEvt, -1712);
+                AppKitInterop.SendVoid_IntPtr(mgr, Sel("resumeWithSuspensionID:"), suspensionID);
+            });
+        });
     }
 
     static AeQuery? ParseQuery(IntPtr evt, QueryOp op)
