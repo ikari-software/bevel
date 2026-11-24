@@ -46,6 +46,27 @@ public sealed class FileManagerWindowTreeTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Selecting_the_network_node_loads_without_an_unknown_scheme()
+    {
+        // bevel-lkib: the "net" scheme is registered (NetworkProvider), so the tree node is browsable
+        // and a network volume navigates to its file:// mount via ResolveNavigationTarget (bevel-cq7g).
+        var vfs = new VfsRoot();
+        vfs.Register(new LocalFsProvider());
+        vfs.Register(new ComputerProvider());
+        vfs.Register(new TrashProvider());
+        vfs.Register(new NetworkProvider(() => new[] { ("photos", "/Volumes/photos") }));
+        Assert.Contains("net", vfs.Schemes);
+
+        var win = new FileManagerWindow();
+        SetPrivate(win, "_vfsRoot", vfs);
+        SetPrivate(win, "_treeCts", new CancellationTokenSource());
+
+        var volumePath = VfsPath.Combine(VfsPath.Root("net"), Uri.EscapeDataString("/Volumes/photos"));
+        Assert.Equal(new VfsPath("file", "/Volumes/photos"), win.ToNavigablePath(volumePath));
+        Assert.Equal(VfsPath.Root("net"), win.ToNavigablePath(VfsPath.Root("net")));
+    }
+
+    [AvaloniaFact]
     public void Each_window_expands_against_its_own_root()
     {
         var rootA = new VfsRoot();

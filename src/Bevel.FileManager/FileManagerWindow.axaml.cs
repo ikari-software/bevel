@@ -604,12 +604,12 @@ public partial class FileManagerWindow : BevelWindow
         computer.Items.Add(Placeholder());
         desktop.Items.Add(computer);
 
-        // Network (stub)
+        // Network (bevel-lkib: NetworkProvider lists mounted shares)
         var networkPath = VfsPath.Root("net");
         var network = CreateTreeNode("Network", networkPath);
         desktop.Items.Add(network);
 
-        // Trash (stub)
+        // Trash (bevel-sw3k)
         var trashPath = VfsPath.Root("trash");
         var trash = CreateTreeNode("Trash", trashPath);
         desktop.Items.Add(trash);
@@ -926,7 +926,12 @@ public partial class FileManagerWindow : BevelWindow
                     StatusBar.UpdateObjectCount(count);
                 }
             }
-            catch (KeyNotFoundException) { }
+            catch (KeyNotFoundException)
+            {
+                // An unknown scheme (e.g. typed into the address bar) — say so in the status bar
+                // instead of silently emptying the list (bevel-lkib).
+                StatusBar.ShowMessage("This location isn't available.");
+            }
             catch (System.Exception ex) when (
                 ex is System.UnauthorizedAccessException
                    or System.IO.DirectoryNotFoundException
@@ -1525,7 +1530,11 @@ public partial class FileManagerWindow : BevelWindow
             }
         }
         catch (OperationCanceledException) { return; }
-        catch (KeyNotFoundException) { }
+        catch (KeyNotFoundException)
+        {
+            // Unknown scheme — surface it instead of a silent empty list (bevel-lkib).
+            StatusBar.ShowMessage("This location isn't available.");
+        }
         catch (System.Exception ex) when (
             ex is System.UnauthorizedAccessException
                or System.IO.DirectoryNotFoundException
