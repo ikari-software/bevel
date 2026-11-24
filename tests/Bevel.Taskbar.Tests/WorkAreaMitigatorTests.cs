@@ -462,7 +462,7 @@ public class WorkAreaMitigatorTests
         public RecordingWindowManager(params ForeignWindow[] windows) => _windows = windows;
         public void Set(params ForeignWindow[] windows) => _windows = windows;
 
-        public Capabilities Capabilities { get; } = new(
+        public Capabilities Capabilities { get; set; } = new(
             Available: true, TrayMode: TrayCapability.Mirrored,
             Notes: Array.Empty<string>(), SupportsReposition: true);
 
@@ -500,6 +500,38 @@ public class WorkAreaMitigatorTests
     }
 
     /// <summary>A hand-cranked clock so rate-limit windows are deterministic.</summary>
+    // bevel-w3jp: the settle pass gates on BOTH the runtime strategy and the PAL capability — a
+    // strategy other than Nudge, or a PAL that cannot reposition, must never produce a Reposition.
+    [Fact]
+    public async Task Strategy_and_capability_gate_the_settle_pass()
+    {
+        if (OperatingSystem.IsWindows()) return;   // the settle DispatcherTimer never fires under Avalonia's headless Windows dispatch model (framework limit, not Bevel); passes on Linux+macOS
+
+        // Strategy switched away from Nudge at runtime → the pass returns before touching the PAL.
+        var offSettings = ScratchSettings();
+        offSettings.Current.WorkAreaStrategy = WorkAreaStrategy.None;
+        var wm1 = new RecordingWindowManager(Win("w1", Zoomed));
+        using (var m = new WorkAreaMitigator(wm1, offSettings, () => Band, () => ZoomArea))
+        {
+            m.Start();
+            m.RequestMitigation();
+            await Task.Delay(500);   // settle is 100ms — give the pass every chance to (not) run
+            Assert.Empty(wm1.Repositions);
+        }
+
+        // PAL without SupportsReposition → never asked, even with the default Nudge strategy.
+        var wm2 = new RecordingWindowManager(Win("w1", Zoomed));
+        wm2.Capabilities = new(Available: true, TrayMode: TrayCapability.Mirrored,
+            Notes: Array.Empty<string>(), SupportsReposition: false);
+        using (var m = new WorkAreaMitigator(wm2, ScratchSettings(), () => Band, () => ZoomArea))
+        {
+            m.Start();
+            m.RequestMitigation();
+            await Task.Delay(500);
+            Assert.Empty(wm2.Repositions);
+        }
+    }
+
     private sealed class FixedClock : TimeProvider
     {
         private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
