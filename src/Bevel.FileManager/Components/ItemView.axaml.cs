@@ -894,10 +894,7 @@ public partial class ItemView : UserControl
     ///
     /// <para>Folders need <c>TryGetFolderFromPathAsync</c> and files <c>TryGetFileFromPathAsync</c> —
     /// asking for a file at a directory path yields null, which is how a mixed selection would silently
-    /// drag only half of itself. Nulls are dropped rather than failing the whole drag: a selection the
-    /// provider cannot resolve (a VFS-only node such as a <c>computer://</c> entry) should still drag
-    /// internally via <see cref="FileDropPayload"/>.</para></summary>
-
+    /// drag only half of itself. Nulls are dropped rather than failing the whole drag.</para></summary>
     private async System.Threading.Tasks.Task<IStorageItem[]> ResolveStorageItemsAsync(
         IReadOnlyList<(string Path, bool IsFolder)> items)
     {
@@ -907,12 +904,9 @@ public partial class ItemView : UserControl
         var resolved = new List<IStorageItem>(items.Count);
         foreach (var (path, isFolder) in items)
         {
-            // Collapse leading slashes: VfsPath.Combine(root, "x") yields "//x" which makes
-            // a malformed file:// URI (bevel-u2x6).
-            var i = 0;
-            while (i < path.Length && path[i] == '/') i++;
-            var normalized = i > 1 ? "/" + path[i..] : path;
-            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = normalized }.Uri;
+            // UriBuilder does not escape ?/#/% in the path, so escape each segment (bevel-u2x6).
+            var escaped = string.Join("/", path.Split('/').Select(Uri.EscapeDataString));
+            var uri = new UriBuilder { Scheme = "file", Host = string.Empty, Path = escaped }.Uri;
             IStorageItem? item = isFolder
                 ? await provider.TryGetFolderFromPathAsync(uri).ConfigureAwait(true)
                 : await provider.TryGetFileFromPathAsync(uri).ConfigureAwait(true);
@@ -921,53 +915,26 @@ public partial class ItemView : UserControl
         return resolved.ToArray();
     }
 
-    /// <summary>Begin a drag of the current selection, carrying BOTH the internal
-    /// <see cref="FileDropPayload"/> and the OS <see cref="DataFormats.Files"/> list (bevel-u2x6).
+    /// <summary>Begin a drag of the current selection, carrying the OS <see cref="DataFormat.File"/>
+    /// list via <see cref="DataTransfer"/> (bevel-u2x6).
     ///
-    /// <para>It used to set only the private format. The drop side accepts both (see
-    /// <see cref="OnDrop"/>) and the taskbar's stack flyout has always set Files correctly, so the gap
-    /// was here alone: dragging a file out of Filer onto Finder, the desktop, Mail or a browser did
-    /// NOTHING — silently, because a drag with no format the target understands is simply refused. It
-    /// also meant Filer-to-Filer drags relied on a managed object surviving a trip between two separate
-    /// <c>--role=filer</c> processes, which is not something to count on.</para>
+    /// <para>Uses <see cref="DragDrop.DoDragDropAsync"/> with <see cref="DataTransferItem.SetFile"/>,
+    /// which produces a direct <c>public.file-url</c> pasteboard item on macOS. The legacy
+    /// <c>DoDragDrop(IDataObject)</c> path wraps via <c>DataObjectToDataTransferWrapper</c> and does
+    /// not yield the same native items. Only <c>SetFile</c> items are added — text/JSON payload
+    /// items hang the native drag session on macOS. Internal Filer-to-Filer drops resolve via
+    /// <see cref="DataFormat.File"/> on the drop side.</para>
     ///
-    /// <para>Both formats are set, never one: Files is what every other app reads, while the internal
-    /// payload is what preserves Bevel's own move/copy semantics on an internal drop. The Files list is
-    /// only attached when the press-time resolve has already completed — awaiting it here would yield
-    /// inside the pointer gesture and lose the drag, which is the same reason StackFlyoutView
-    /// pre-resolves on press. If it is not ready the drag still happens, exactly as before.</para></summary>
+    /// <para>The storage resolve is kicked off at pointer-press so it is ready when the drag
+    /// threshold trips; awaiting it here would yield inside the pointer gesture and lose the
+    /// drag. If it has not completed, the drag still proceeds with whatever resolved.</para></summary>
     async System.Threading.Tasks.Task StartDragAsync(PointerEventArgs e)
     {
         var paths = _selectedOrder.Select(v => v.Path).ToList();
         if (paths.Count == 0) return;
 
-        // Collapse double leading slashes: VfsPath.Combine(root, "x") yields "//x" which makes
-        // a malformed file:// URI that Finder rejects (bevel-u2x6).
-        static string NormalizeFsPath(string p)
-        {
-            if (string.IsNullOrEmpty(p)) return p;
-            var i = 0;
-            while (i < p.Length && p[i] == '/') i++;
-            return i > 1 ? "/" + p[i..] : p;
-        }
-        var pathStrings = paths.Select(p => NormalizeFsPath(p.Value)).ToArray();
-
-        // DIAGNOSTIC (bevel-u2x6)
-        try
-        {
-            var storageInfo = _dragStorageTask is null ? "null"
-                : _dragStorageTask.IsCompletedSuccessfully ? $"ok/{_dragStorageTask.Result.Length}"
-                : _dragStorageTask.IsFaulted ? $"faulted/{_dragStorageTask.Exception?.GetType().Name}"
-                : _dragStorageTask.IsCanceled ? "canceled" : "pending";
-            System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log",
-                $"DRAG paths=[{string.Join(", ", pathStrings)}] exists=[{string.Join(", ", pathStrings.Select(p => System.IO.File.Exists(p) || System.IO.Directory.Exists(p)))}] storage={storageInfo}\n");
-        }
-        catch { }
-
         // Use DoDragDropAsync with a DataTransfer containing ONLY SetFile items.
-        // The old DoDragDrop(IDataObject) wraps via DataObjectToDataTransferWrapper which
-        // may not produce the same native pasteboard items. SetFile() creates a direct
-        // DataFormat.File item → public.file-url on macOS (bevel-u2x6).
+        // SetFile() creates a direct DataFormat.File item → public.file-url on macOS (bevel-u2x6).
         var transfer = new DataTransfer();
         IStorageItem[] storageItems = _dragStorageTask is { IsCompletedSuccessfully: true, Result.Length: > 0 } ready
             ? ready.Result
@@ -985,22 +952,20 @@ public partial class ItemView : UserControl
 
         try
         {
-            var result = await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy);
-            try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  RESULT={result} items={transfer.Items.Count}\n"); } catch { }
+            await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Copy);
         }
-        catch (Exception ex) { try { System.IO.File.AppendAllText("/tmp/bevel_drag_debug.log", $"  EX={ex.GetType().Name}: {ex.Message}\n"); } catch { } }
+        catch { }
     }
 
     // ── DnD ──────────────────────────────────────────────────────────
 
+    private static readonly DataFormat<string> JsonPayloadFormat =
+        DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
+
     void OnDragOver(object? _, DragEventArgs e)
     {
-        var jsonFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
-        e.DragEffects = e.Data.Contains(DataFormats.Files) || e.Data.Contains(DataFormats.FileNames)
-                        || e.Data.Contains(FileDropPayload.DataFormat)
-                        || e.DataTransfer.Contains(DataFormat.File)
-                        || e.DataTransfer.Contains(DataFormat.Text)
-                        || e.DataTransfer.Contains(jsonFormat)
+        e.DragEffects = e.DataTransfer.Contains(DataFormat.File)
+                        || e.DataTransfer.Contains(JsonPayloadFormat)
             ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
@@ -1015,66 +980,31 @@ public partial class ItemView : UserControl
 
     /// <summary>Attempts to extract file paths from drag data, preferring the internal
     /// <see cref="FileDropPayload"/> (JSON under a custom app format), then <see cref="DataFormat.File"/>
-    /// (IStorageItem list), then <see cref="DataFormats.FileNames"/> (plain path strings),
-    /// then plain text.</summary>
-    internal static List<VfsPath>? ResolveDropPaths(IDataObject data) => ResolveDropPaths(data, null);
-
-    internal static List<VfsPath>? ResolveDropPaths(IDataTransfer? transfer) => ResolveDropPaths(null, transfer);
-
-    private static List<VfsPath>? ResolveDropPaths(IDataObject? data, IDataTransfer? transfer)
+    /// (IStorageItem list).</summary>
+    internal static List<VfsPath>? ResolveDropPaths(IDataTransfer? transfer)
     {
-        // 1. Internal payload — old IDataObject format first, then new JSON app format.
-        if (data is not null && data.Contains(FileDropPayload.DataFormat))
+        // 1. Internal payload — JSON under a custom app format.
+        if (transfer is not null && transfer.Contains(JsonPayloadFormat))
         {
-            var payload = data.Get(FileDropPayload.DataFormat) as FileDropPayload;
-            if (payload?.Paths is { Count: > 0 } paths)
-                return paths.ToList();
-        }
-        if (transfer is not null)
-        {
-            var jsonFormat = DataFormat.CreateStringApplicationFormat(FileDropPayload.DataFormat);
-            if (transfer.Contains(jsonFormat))
+            var json = transfer.TryGetValue(JsonPayloadFormat);
+            if (json is not null)
             {
-                var json = transfer.TryGetValue(jsonFormat);
-                if (json is not null)
+                try
                 {
-                    try
-                    {
-                        var payload = System.Text.Json.JsonSerializer.Deserialize<FileDropPayload>(json);
-                        if (payload?.Paths is { Count: > 0 } paths)
-                            return paths.ToList();
-                    }
-                    catch { }
+                    var payload = System.Text.Json.JsonSerializer.Deserialize<FileDropPayload>(json);
+                    if (payload?.Paths is { Count: > 0 } paths)
+                        return paths.ToList();
                 }
+                catch { }
             }
         }
 
-        // 2. OS file list (IStorageItem) — via old or new API.
-        var files = data?.GetFiles() ?? transfer?.TryGetFiles();
+        // 2. OS file list (IStorageItem).
+        var files = transfer?.TryGetFiles();
         if (files is not null)
         {
             var fromItems = files.Select(f => new VfsPath("file", f.Path.LocalPath)).ToList();
             if (fromItems.Count > 0) return fromItems;
-        }
-
-        // 3. Plain path strings under FileNames (old API).
-        if (data is not null && data.Contains(DataFormats.FileNames))
-        {
-            var names = data.GetFileNames();
-            if (names is not null)
-            {
-                var fromNames = names.Select(n => new VfsPath("file", n)).ToList();
-                if (fromNames.Count > 0) return fromNames;
-            }
-        }
-
-        // 4. Plain text (newline-separated paths).
-        var text = data?.GetText() ?? transfer?.TryGetText();
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            var fromText = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                               .Select(n => new VfsPath("file", n)).ToList();
-            if (fromText.Count > 0) return fromText;
         }
 
         return null;
@@ -1083,7 +1013,7 @@ public partial class ItemView : UserControl
     void OnDrop(object? _, DragEventArgs e)
     {
         var target = DropTargetAt(e.GetPosition(ItemsPresenter))?.Path;
-        var paths = ResolveDropPaths(e.DataTransfer) ?? ResolveDropPaths(e.Data);
+        var paths = ResolveDropPaths(e.DataTransfer);
         if (paths is { Count: > 0 })
             DropRequested?.Invoke(this, new(paths, e.KeyModifiers.HasFlag(KeyModifiers.Control), e.KeyModifiers.HasFlag(KeyModifiers.Shift), target));
         e.Handled = true;

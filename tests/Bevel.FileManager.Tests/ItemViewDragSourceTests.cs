@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Avalonia.Input;
 using Xunit;
 
 namespace Bevel.FileManager.Tests;
@@ -11,15 +9,14 @@ namespace Bevel.FileManager.Tests;
 /// <summary>
 /// A drag out of the Filer must carry real files (bevel-u2x6).
 ///
-/// <para><c>ItemView.StartDragAsync</c> sets <c>DataFormats.FileNames</c> (plain path strings,
-/// which DataObjectToDataTransferWrapper converts to BclStorageItem → DataFormat.File → native
-/// public.file-url on macOS), <c>DataFormats.Text</c> (for text-only targets like iTerm),
-/// <c>DataFormats.Files</c> (IStorageItem list when the press-time resolve finished), and the
-/// internal <c>FileDropPayload</c>. These source guards pin those properties.</para>
+/// <para><c>ItemView.StartDragAsync</c> uses <c>DoDragDropAsync</c> with a <c>DataTransfer</c>
+/// containing only <c>SetFile()</c> items, which maps to native <c>public.file-url</c> on macOS.
+/// The drop side resolves via <c>ResolveDropPaths(IDataTransfer)</c>. These source guards pin
+/// those properties.</para>
 ///
-/// <para><b>Why these are source assertions.</b> <c>DoDragDrop</c> only runs inside a live
-/// pointer gesture and blocks on a platform drag session, so there is no headless way to start one and
-/// read back the data. These guards pin the key properties and are honest about being
+/// <para><b>Why these are source assertions.</b> <c>DoDragDropAsync</c> only runs inside a live
+/// pointer gesture and blocks on a platform drag session, so there is no headless way to start one
+/// and read back the data. These guards pin the key properties and are honest about being
 /// structural: they would not catch a drag that is broken for some other reason.</para>
 /// </summary>
 public sealed class ItemViewDragSourceTests
@@ -37,14 +34,28 @@ public sealed class ItemViewDragSourceTests
         return string.Join('\n', text.Split('\n').Select(l => Regex.Replace(l, @"//.*$", string.Empty)));
     }
 
-    private static string StartDragBody()
+    /// <summary>Extracts the body of a method by brace-matching from its declaration line.</summary>
+    private static string MethodBody(string source, string declarationFragment)
     {
-        var lines = Source().Split('\n');
-        var decl = Array.FindIndex(lines, l => l.Contains("Task StartDragAsync("));
-        Assert.True(decl >= 0, "StartDragAsync not found in ItemView.axaml.cs — if it was renamed, "
+        var lines = source.Split('\n');
+        var decl = Array.FindIndex(lines, l => l.Contains(declarationFragment));
+        Assert.True(decl >= 0, $"{declarationFragment} not found in ItemView.axaml.cs — if it was renamed, "
                                + "update this guard rather than deleting it.");
-        return string.Join('\n', lines.Skip(decl).Take(60));
+        // Find the opening brace, then brace-match to the closing one.
+        var text = string.Join('\n', lines.Skip(decl));
+        var open = text.IndexOf('{');
+        Assert.True(open >= 0, "no opening brace found");
+        var depth = 0;
+        for (var i = open; i < text.Length; i++)
+        {
+            if (text[i] == '{') depth++;
+            else if (text[i] == '}') { depth--; if (depth == 0) return text[..(i + 1)]; }
+        }
+        Assert.Fail("unbalanced braces in method body");
+        return "";
     }
+
+    private static string StartDragBody() => MethodBody(Source(), "Task StartDragAsync(");
 
     /// <summary>Uses DoDragDropAsync with a DataTransfer — the non-obsolete API that gives
     /// direct control over DataFormat.File items → native public.file-url on macOS.</summary>
@@ -66,42 +77,50 @@ public sealed class ItemViewDragSourceTests
         Assert.Contains("DataTransferItem", body);
     }
 
-    /// <summary>The internal payload must stay — it preserves Bevel's own move/copy semantics
-    /// on an internal drop.</summary>
+    /// <summary>No text/payload items — adding anything beyond SetFile hangs the native
+    /// drag session on macOS (bevel-u2x6).</summary>
     [Fact]
-    public void The_drag_still_offers_the_internal_payload()
+    public void The_drag_does_not_add_text_or_payload_items()
     {
-        Assert.Contains("FileDropPayload.DataFormat", StartDragBody());
+        var body = StartDragBody();
+        Assert.DoesNotContain("SetText(", body);
+        Assert.DoesNotContain("FileDropPayload.DataFormat", body);
     }
 
-    /// <summary>Leading slashes must be collapsed — VfsPath.Combine(root, "x") yields "//x"
-    /// which makes a malformed file:// URI that Finder rejects.</summary>
+    /// <summary>The drop side must use ResolveDropPaths with the IDataTransfer API.</summary>
     [Fact]
-    public void The_drag_normalizes_double_leading_slashes()
-    {
-        Assert.Contains("NormalizeFsPath", StartDragBody());
-    }
-
-    /// <summary>The drop side must use ResolveDropPaths with BOTH the new IDataTransfer and
-    /// the old IDataObject, covering drags from both old-API and new-API sources.</summary>
-    [Fact]
-    public void The_drop_uses_resolve_drop_paths_with_both_apis()
+    public void The_drop_uses_resolve_drop_paths()
     {
         var src = Source();
         Assert.Contains("ResolveDropPaths(e.DataTransfer)", src);
-        Assert.Contains("ResolveDropPaths(e.Data)", src);
     }
 
-    /// <summary>The drop side must fall back through: internal payload → IStorageItem files →
-    /// FileNames strings → plain text.</summary>
+    /// <summary>The drop side must resolve OS files via TryGetFiles() (IStorageItem list).</summary>
     [Fact]
-    public void The_drop_falls_back_through_all_formats()
+    public void The_drop_resolves_os_files()
     {
         var src = Source();
         Assert.Contains("TryGetFiles()", src);
-        Assert.Contains("GetFileNames()", src);
-        Assert.Contains("TryGetText()", src);
-        Assert.Contains("GetText()", src);
+    }
+
+    /// <summary>Plain text must NOT be accepted as file paths — dropping selected text from
+    /// another app would fire DropRequested with garbage paths.</summary>
+    [Fact]
+    public void The_drop_does_not_accept_plain_text_as_paths()
+    {
+        var src = Source();
+        Assert.DoesNotContain("TryGetText()", src);
+        Assert.DoesNotContain("GetText()", src);
+    }
+
+    /// <summary>OnDragOver must only accept DataFormat.File and the internal JSON payload —
+    /// not DataFormat.Text.</summary>
+    [Fact]
+    public void The_drag_over_does_not_accept_plain_text()
+    {
+        var body = MethodBody(Source(), "void OnDragOver(");
+        Assert.DoesNotContain("DataFormat.Text", body);
+        Assert.Contains("DataFormat.File", body);
     }
 
     /// <summary>Folders resolve through TryGetFolderFromPathAsync, not TryGetFileFromPathAsync.
@@ -119,9 +138,8 @@ public sealed class ItemViewDragSourceTests
 
     /// <summary>The resolve must be kicked off on PRESS, not inside the drag.
     ///
-    /// <para>DoDragDrop has to run synchronously within the pointer gesture; awaiting a resolve first
-    /// yields and loses the drag. StackFlyoutView pre-resolves for exactly this reason, and its comment
-    /// records that awaiting "would drop the OS drag gesture".</para></summary>
+    /// <para>DoDragDropAsync has to run synchronously within the pointer gesture; awaiting a resolve first
+    /// yields and loses the drag. StackFlyoutView pre-resolves for exactly this reason.</para></summary>
     [Fact]
     public void The_storage_resolve_starts_on_press_not_during_the_drag()
     {
@@ -130,8 +148,7 @@ public sealed class ItemViewDragSourceTests
         var dragDecl = src.IndexOf("Task StartDragAsync(", StringComparison.Ordinal);
 
         Assert.True(assigned >= 0, "_dragStorageTask is never assigned — the OS file list would never "
-                                   + "be ready in time and the drag would silently fall back to "
-                                   + "internal-only.");
+                                   + "be ready in time and the drag would carry nothing.");
         Assert.True(assigned < dragDecl,
             "_dragStorageTask must be assigned in the pointer-PRESS handler, which precedes "
             + "StartDragAsync in this file. Resolving inside the drag means awaiting inside the "
@@ -146,5 +163,14 @@ public sealed class ItemViewDragSourceTests
     {
         var src = Source();
         Assert.Contains("DragDrop.SetAllowDrop(this, true)", src);
+    }
+
+    /// <summary>No debug file I/O in the drag path — it runs on the UI thread and leaks paths.</summary>
+    [Fact]
+    public void The_drag_path_has_no_debug_file_logging()
+    {
+        var src = Source();
+        Assert.DoesNotContain("bevel_drag_debug", src);
+        Assert.DoesNotContain("AppendAllText", src);
     }
 }

@@ -25,6 +25,7 @@ public readonly record struct VfsPath
     /// <summary>Forward-slash canonical path within the scheme; empty for a scheme root.</summary>
     public string Value { get; }
 
+    [System.Text.Json.Serialization.JsonConstructor]
     public VfsPath(string scheme, string value)
     {
         Scheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
@@ -35,7 +36,7 @@ public readonly record struct VfsPath
     public static VfsPath Root(string scheme) => new(scheme, "");
 
     /// <summary>True when this path is the root of its scheme.</summary>
-    public bool IsRoot => Value.Length == 0;
+    public bool IsRoot => Value.Length == 0 || Value == "/";
 
     /// <summary>
     /// Appends a single child segment. Leading/trailing separators on <paramref name="child"/>
@@ -51,7 +52,7 @@ public readonly record struct VfsPath
             return parent;
 
         return parent.IsRoot
-            ? new VfsPath(parent.Scheme, segment)
+            ? new VfsPath(parent.Scheme, parent.Value == "/" ? "/" + segment : segment)
             : new VfsPath(parent.Scheme, parent.Value + "/" + segment);
     }
 
@@ -139,6 +140,16 @@ public readonly record struct VfsPath
         // lone "/" (a rooted absolute path on POSIX) rather than collapsing it to root.
         if (normalized.Length > 1)
             normalized = normalized.TrimEnd('/');
+
+        // Collapse duplicate leading separators ("//x" → "/x", "///a" → "/a") so Combine on a
+        // "/"-valued parent can't produce "//x" (bevel-u2x6). A lone "/" stays as the POSIX root.
+        if (normalized.Length > 1 && normalized[0] == '/')
+        {
+            var i = 1;
+            while (i < normalized.Length && normalized[i] == '/') i++;
+            if (i > 1)
+                normalized = "/" + normalized[i..];
+        }
 
         return normalized;
     }
