@@ -53,12 +53,24 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             RestartDiag.Log($"FATAL unhandled ({role}): {e.ExceptionObject}");
+            // bevel-tak: also drop a durable per-crash file (survives reboot, unlike the temp log above).
+            Bevel.Core.Diagnostics.CrashLog.Write(Bevel.Core.Diagnostics.CrashLog.DefaultDir, role.ToString(),
+                Environment.ProcessId, Supervision.BuildStamp.VersionString(), e.ExceptionObject as Exception, "unhandled exception");
             // Filers skip heartbeat writes entirely (bevel-t48y, supervisor-only liveness): N
             // instances would clobber the single ShellRole.Filer slot — the supervisor's close-vs-
             // crash policy reads the EXIT CODE, so a crashed filer is still fully diagnosed via
             // RestartDiag (pid-stamped above) + its per-child stderr file.
             if (role != ShellRole.Launcher && role != ShellRole.Filer)
                 RoleHeartbeatStore.ReportFailed(role, e.ExceptionObject?.ToString() ?? "unhandled");
+        };
+
+        // bevel-tak: an unobserved task exception is a crash-in-waiting — log it durably, then mark it
+        // observed so the finalizer does not escalate it to an unhandled one (double-counting).
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Bevel.Core.Diagnostics.CrashLog.Write(Bevel.Core.Diagnostics.CrashLog.DefaultDir, role.ToString(),
+                Environment.ProcessId, Supervision.BuildStamp.VersionString(), e.Exception, "unobserved task exception");
+            e.SetObserved();
         };
 
         if (role != ShellRole.Launcher && role != ShellRole.Filer)
