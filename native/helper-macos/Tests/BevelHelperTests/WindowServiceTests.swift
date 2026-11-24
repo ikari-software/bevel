@@ -1,11 +1,33 @@
 import XCTest
 import GRPCCore
+import AppKit
 @testable import BevelHelper
 
 /// U8: WindowService enumeration, AX correlation, and observer logic.
 final class WindowServiceTests: XCTestCase {
 
     // MARK: - Enumeration
+
+    func testLegacyThumbnailEncoderFitsWithinBounds() {
+        // bevel-tzx: the shared encoder (LegacyWindowCapture.png(from:maxW:maxH:)) must fit a
+        // 400x200 image inside 240x160 preserving the 2:1 aspect — 240x120, never upscaled.
+        let provider = CGDataProvider(data: Data(repeating: 0x7F, count: 400 * 200 * 4) as CFData)!
+        let image = CGImage(width: 400, height: 200, bitsPerComponent: 8, bitsPerPixel: 32,
+                            bytesPerRow: 400 * 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                            provider: provider, decode: nil, shouldInterpolate: false,
+                            intent: .defaultIntent)!
+
+        let png = LegacyWindowCapture.png(from: image, maxW: 240, maxH: 160)
+        XCTAssertNotNil(png)
+
+        let decoded = NSBitmapImageRep(data: png!)?.cgImage
+        XCTAssertNotNil(decoded)
+        XCTAssertLessThanOrEqual(decoded!.width, 240)
+        XCTAssertLessThanOrEqual(decoded!.height, 160)
+        XCTAssertEqual(decoded!.width, 240)   // 400*0.6 — the binding constraint is width
+        XCTAssertEqual(decoded!.height, 120)  // aspect preserved at 2:1
+    }
 
     func testEnumerateWindowsReturnsArray() {
         let svc = WindowServiceImpl(expectedKey: "test-key")
