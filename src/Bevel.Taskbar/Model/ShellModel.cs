@@ -81,7 +81,29 @@ public sealed class ShellModel : IDisposable
         _connection = connection;
         _usage = usage ?? new ProgramUsageStore();
         _badges = badges;
-        Programs.CollectionChanged += (_, _) => RecomputeFrequent();
+        Programs.CollectionChanged += (_, _) => { if (_programsBatchDepth == 0) RecomputeFrequent(); };
+    }
+
+    // bevel-ujx8(2): while a Programs batch (one Reconcile) is running, each CollectionChanged event
+    // must NOT trigger a full RecomputeFrequent — one at scope exit is enough.
+    private int _programsBatchDepth;
+
+    private IDisposable BeginProgramsBatch()
+    {
+        _programsBatchDepth++;
+        return new ProgramsBatchScope(this);
+    }
+
+    private sealed class ProgramsBatchScope : IDisposable
+    {
+        private ShellModel? _m;
+        public ProgramsBatchScope(ShellModel m) => _m = m;
+        public void Dispose()
+        {
+            var m = _m; _m = null;
+            if (m is null) return;
+            if (--m._programsBatchDepth == 0) m.RecomputeFrequent();
+        }
     }
 
     /// <summary>The shared off-thread icon loader, for view-models that render their own icons.</summary>
@@ -146,8 +168,10 @@ public sealed class ShellModel : IDisposable
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps) => Post(() =>
     {
         if (_disposed) return;
-        // Batch so CreateProgram's per-app MarkSeen writes collapse to one file write, not one per app.
+        // Batch so CreateProgram's per-app MarkSeen writes collapse to one file write, not one per app,
+        // and so the per-item CollectionChanged events recompute FrequentPrograms once, not per app.
         using (_usage.BeginBatch())
+        using (BeginProgramsBatch())
             ObservableReconciler.Reconcile(
                 Programs, apps,
                 keyOf: vm => vm.AppId,
@@ -556,9 +580,13 @@ public sealed class ShellModel : IDisposable
 
         var ranked = newly.Concat(frequent).Take(Math.Max(1, _frequentCap)).ToList();
 
-        FrequentPrograms.Clear();
-        foreach (var p in ranked)
-            FrequentPrograms.Add(p);
+        // Diff in place (bevel-ujx8): survivors keep their view-model — and therefore their menu
+        // container and loaded icon — instead of a Clear() that rebuilds the whole column.
+        ObservableReconciler.Reconcile(
+            FrequentPrograms, ranked,
+            keyOf: vm => vm.AppId,
+            sourceKeyOf: vm => vm.AppId,
+            create: vm => vm);
     }
 
     private async Task LoadProgramsAsync()
@@ -587,6 +615,7 @@ public sealed class ShellModel : IDisposable
                         // icon and the menu's scroll position — instead of a Clear() that rebuilds them all.
                         // Batch the per-app MarkSeen writes into one file write for the whole populate.
                         using (_usage.BeginBatch())
+                        using (BeginProgramsBatch())
                             ObservableReconciler.Reconcile(
                                 Programs, apps,
                                 keyOf: vm => vm.AppId,
