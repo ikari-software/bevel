@@ -643,16 +643,15 @@ public partial class FileManagerWindow : BevelWindow
     }
 
     /// <summary>
-    /// Translates a virtual node's path to the native mount it stands for (e.g. a computer://
-    /// volume → its file:// mount), so navigation proceeds through the file provider rather
-    /// than the virtual namespace. Paths without an effective native path (the computer root,
-    /// file paths themselves) pass through unchanged. Shared by tree selection and list-item
-    /// activation (bevel-d3b). Internal for tests.
+    /// Asks the provider where navigation into <paramref name="path"/> should go
+    /// (<see cref="IVfsProvider.ResolveNavigationTarget"/>): a computer:// volume → its file:// mount
+    /// (bevel-d3b); everything else — including folders inside the Trash, whose effective native path
+    /// exists for open/copy but must NOT reroute navigation (bevel-cq7g) — passes through unchanged.
+    /// No scheme string checks here; the provider decides. Shared by tree selection and list-item
+    /// activation. Internal for tests.
     /// </summary>
     internal VfsPath ToNavigablePath(VfsPath path)
-        => path.Scheme != "file" && _vfsRoot?.GetProvider(path).ResolveEffectivePath(path) is { } mount
-            ? new VfsPath("file", mount)
-            : path;
+        => _vfsRoot?.GetProvider(path).ResolveNavigationTarget(path) ?? path;
 
     private void OnItemActivated(object? sender, ItemActivatedEventArgs e)
     {
