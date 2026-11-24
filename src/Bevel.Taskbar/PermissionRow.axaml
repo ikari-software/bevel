@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.Taskbar.PermissionRow">
+    <!-- One permission row in the settings General tab (bevel-ct7): status dot + glyph + label,
+         grant button, one-line hint. Instantiated once per ShellPermission — the gating test
+         (Permission_rows_cover_every_ShellPermission_on_macOS) fails if an enum value has no row. -->
+    <StackPanel Spacing="6">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border x:Name="StatusDot" Width="15" Height="15" CornerRadius="3"
+                    Background="#9AA0A6" Margin="0,1,0,0" VerticalAlignment="Center">
+                <!-- Neutral filled dot + dash until the async permission check resolves
+                     (ApplyState swaps in the real colour + check/cross/dash). -->
+                <Path x:Name="StatusGlyph" Stroke="White" StrokeThickness="1.8"
+                      StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L7,3"
+                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock x:Name="StatusText"
+                       Text="Checking..."
+                       FontSize="11" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button x:Name="GrantBtn"
+                Content="Open Settings"
+                FontSize="11" Padding="8,4"
+                IsVisible="False" />
+        <TextBlock x:Name="RowHint"
+                   Text=""
+                   FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                   TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

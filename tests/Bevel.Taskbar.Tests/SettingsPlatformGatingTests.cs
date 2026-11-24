@@ -1,5 +1,7 @@
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Avalonia.LogicalTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
@@ -72,8 +74,8 @@ public class SettingsPlatformGatingTests
         var w = Build(PermissionState.NotApplicable, dockAvailable: false, TrayCapability.Authoritative);
         await Settle();
 
-        Assert.False(w.AccessibilitySection.IsVisible);
-        Assert.False(w.ScreenRecordingSection.IsVisible);
+        Assert.False(w.PermRowAccessibility.IsVisible);
+        Assert.False(w.PermRowScreenRecording.IsVisible);
         Assert.False(w.WorkAreaSection.IsVisible);   // no Dock to have a strategy about
         Assert.False(w.TraySection.IsVisible);       // nothing to consolidate when the tray is ours
     }
@@ -84,8 +86,8 @@ public class SettingsPlatformGatingTests
         var w = Build(PermissionState.Granted, dockAvailable: true, TrayCapability.Mirrored);
         await Settle();
 
-        Assert.True(w.AccessibilitySection.IsVisible);
-        Assert.True(w.ScreenRecordingSection.IsVisible);
+        Assert.True(w.PermRowAccessibility.IsVisible);
+        Assert.True(w.PermRowScreenRecording.IsVisible);
         Assert.True(w.WorkAreaSection.IsVisible);
         Assert.True(w.TraySection.IsVisible);
     }
@@ -98,7 +100,22 @@ public class SettingsPlatformGatingTests
         var w = Build(PermissionState.Denied, dockAvailable: true, TrayCapability.Mirrored);
         await Settle();
 
-        Assert.True(w.AccessibilitySection.IsVisible);
-        Assert.True(w.ScreenRecordingSection.IsVisible);
+        Assert.True(w.PermRowAccessibility.IsVisible);
+        Assert.True(w.PermRowScreenRecording.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public async Task Permission_rows_cover_every_ShellPermission_on_macOS()
+    {
+        // bevel-ct7: a new ShellPermission enum value must not ship without a row — enumerate the enum
+        // and require a PermissionRow for each.
+        var w = Build(PermissionState.Granted, dockAvailable: true, TrayCapability.Mirrored);
+        await Settle();
+
+        // Logical (not visual) tree: the window is never shown in a headless test, so visual
+        // descendants are not materialized — the logical tree is built at InitializeComponent.
+        var rows = w.GetLogicalDescendants().OfType<PermissionRow>().ToDictionary(r => r.Permission);
+        foreach (ShellPermission p in Enum.GetValues<ShellPermission>())
+            Assert.True(rows.ContainsKey(p), $"no PermissionRow for ShellPermission.{p}");
     }
 }

@@ -194,10 +194,10 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **Decision:** Remaining scope is exactly two things. (1) One reusable permission row for the three missing `ShellPermission` values, driven by `IPermissionBroker.GetStateAsync`/`RequestAsync`/`PermissionChanged`, each with a one-line "what this unlocks" hint; rows are macOS-only via the existing platform gating. (2) An "Updates" group on General: interval (hours, clamped by `UpdateCheckPolicy.ClampInterval`) + read-only status line; the feed URL is NOT exposed (owner flips the default). No new window, no rename.
 - **Test first:** `SettingsPlatformGatingTests` — add `Permission_rows_cover_every_ShellPermission_on_macOS` (enumerate the enum, assert a named row exists for each) so a new enum value cannot ship without UI.
 - **Steps:**
-  - [ ] Add the test; fail.
-  - [ ] Extract the existing status-dot + button + hint trio into a small UserControl used five times (colours from theme tokens only).
-  - [ ] Query states off the UI thread; post results back.
-  - [ ] Add the Updates group; write through `ISettingsService.UpdateAsync`.
+  - [x] Added Permission_rows_cover_every_ShellPermission_on_macOS; watched it fail (no rows).
+  - [x] Extracted into PermissionRow UserControl, used 5x. status-dot + button + hint trio into a small UserControl used five times (colours from theme tokens only).
+  - [x] Poll queries all 5 off the UI thread, posts back.; post results back.
+  - [x] Updates group on General (interval clamped via UpdateCheckPolicy, read-only status, feed URL not exposed).; write through `ISettingsService.UpdateAsync`.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~SettingsPlatformGatingTests"` → pass
 - **Done when:** all five permissions show live status and the update interval is editable; then `bd close bevel-ct7 --reason "Permissions dashboard complete (5/5), update interval UI; crash export via bevel-tak"`
 

@@ -1,6 +1,7 @@
 <ui:BevelWindow xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Bevel.UI"
+        xmlns:tb="using:Bevel.Taskbar"
         x:Class="Bevel.Taskbar.OnboardingWindow"
         Title="Taskbar and Start Menu Properties"
         Width="460" Height="480"
@@ -19,53 +20,16 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="10" Margin="2,8,2,2">
 
-                    <HeaderedContentControl x:Name="AccessibilitySection" Header="Accessibility Permission" HorizontalContentAlignment="Stretch">
-                        <StackPanel Spacing="6">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Border x:Name="PermStatusDot" Width="15" Height="15" CornerRadius="3"
-                                        Background="#9AA0A6" Margin="0,1,0,0" VerticalAlignment="Center">
-                                    <!-- Neutral filled dot + dash until the async permission check resolves
-                                         (UpdatePermissionUI swaps in the real colour + check/cross/dash). -->
-                                    <Path x:Name="PermStatusGlyph" Stroke="White" StrokeThickness="1.8"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L7,3"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <TextBlock x:Name="PermStatusText"
-                                           Text="Checking..."
-                                           FontSize="11" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <Button x:Name="GrantAccessibilityBtn"
-                                    Content="Open Security &#38; Privacy Settings"
-                                    FontSize="11" Padding="8,4"
-                                    IsVisible="False" />
-                            <TextBlock x:Name="PermHint"
-                                       Text="Grant Accessibility to enable window management."
-                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                    </HeaderedContentControl>
-
-                    <HeaderedContentControl x:Name="ScreenRecordingSection" Header="Screen Recording Permission" HorizontalContentAlignment="Stretch">
-                        <StackPanel Spacing="6">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Border x:Name="ScreenRecStatusDot" Width="15" Height="15" CornerRadius="3"
-                                        Background="#9AA0A6" Margin="0,1,0,0" VerticalAlignment="Center">
-                                    <Path x:Name="ScreenRecStatusGlyph" Stroke="White" StrokeThickness="1.8"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Data="M0,3 L7,3"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <TextBlock x:Name="ScreenRecStatusText"
-                                           Text="Checking..."
-                                           FontSize="11" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <Button x:Name="GrantScreenRecBtn"
-                                    Content="Open Screen Recording Settings"
-                                    FontSize="11" Padding="8,4"
-                                    IsVisible="False" />
-                            <TextBlock x:Name="ScreenRecHint"
-                                       Text="Grant Screen Recording for live window titles and tray icon mirroring. Takes effect after a relaunch."
-                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
-                                       TextWrapping="Wrap" />
+                    <!-- One row per ShellPermission (bevel-ct7): the gating test fails if an enum
+                         value ships without a row. Rows hide themselves on platforms where the
+                         permission is NotApplicable. -->
+                    <HeaderedContentControl x:Name="PermissionsSection" Header="Permissions" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="12">
+                            <tb:PermissionRow x:Name="PermRowAccessibility" Permission="Accessibility" />
+                            <tb:PermissionRow x:Name="PermRowScreenRecording" Permission="ScreenRecording" />
+                            <tb:PermissionRow x:Name="PermRowFullDiskAccess" Permission="FullDiskAccess" />
+                            <tb:PermissionRow x:Name="PermRowAppleEvents" Permission="AppleEvents" />
+                            <tb:PermissionRow x:Name="PermRowInputMonitoring" Permission="InputMonitoring" />
                         </StackPanel>
                     </HeaderedContentControl>
 
@@ -123,6 +87,24 @@
                                     FontSize="11" HorizontalAlignment="Left" />
                             <TextBlock x:Name="CrashLogStatus"
                                        Text="No crashes recorded"
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </HeaderedContentControl>
+
+                    <!-- Updates (bevel-ct7): cadence only — the feed URL is NOT exposed here (the
+                         owner flips the default). Status line is read-only. -->
+                    <HeaderedContentControl x:Name="UpdatesSection" Header="Updates" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="Check for updates every"
+                                           FontSize="11" VerticalAlignment="Center" />
+                                <NumericUpDown x:Name="UpdateIntervalHours"
+                                               Minimum="1" Maximum="168" Width="64" FontSize="11" />
+                                <TextBlock Text="hours"
+                                           FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock x:Name="UpdateStatusText"
                                        FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
                         </StackPanel>
