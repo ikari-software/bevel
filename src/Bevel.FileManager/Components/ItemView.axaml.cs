@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -1109,7 +1110,7 @@ public partial class ItemView : UserControl
         if (string.IsNullOrEmpty(text)) return;
         if (text.Length == 1 && char.IsControl(text[0])) return;   // ignore Esc/Enter/Tab and friends
         int idx = _typeToFind.Match(text, _viewModels, static vm => vm.DisplayName, _lastClickIdx);
-        if (idx >= 0) { MoveTo(idx, shift: false); e.Handled = true; }
+        if (idx >= 0) { MoveTo(idx, shift: false, smooth: true); e.Handled = true; }   // type-ahead glides (bevel-rzz)
     }
 
     void Navigate(Key key, bool shift)
@@ -1135,14 +1136,15 @@ public partial class ItemView : UserControl
     }
 
     /// <summary>Move the selection cursor to <paramref name="index"/> (clamped), extending the
-    /// range when Shift is held, and scroll it into view.</summary>
-    void MoveTo(int index, bool shift)
+    /// range when Shift is held, and scroll it into view. <paramref name="smooth"/> glides the scroll
+    /// (type-ahead); arrows and friends pass false and jump.</summary>
+    void MoveTo(int index, bool shift, bool smooth = false)
     {
         if (_viewModels.Count == 0) return;
         index = Math.Clamp(index, 0, _viewModels.Count - 1);
         if (shift) RangeTo(_viewModels[index]); else SelectOne(_viewModels[index]);
         _lastClickIdx = index;   // advance the cursor — the old code never did, so arrows stuck
-        ScrollToIndex(index);
+        ScrollToIndex(index, smooth);
     }
 
     /// <summary>The geometry of what is on screen: the wrap panel's last layout, or one row per item for
@@ -1153,8 +1155,11 @@ public partial class ItemView : UserControl
             : WrapLayout.SingleColumn(_viewModels.Count, ItemsScroller.Viewport.Width, CellSize(ViewMode.Details).Height);
 
     /// <summary>Scroll the minimum that reveals item <paramref name="index"/>, on the axis the view
-    /// scrolls: down for the icon views and Details, sideways for List.</summary>
-    void ScrollToIndex(int index)
+    /// scrolls: down for the icon views and Details, sideways for List. <paramref name="smooth"/>
+    /// (bevel-rzz, type-ahead) animates the move as an ease-out over 120 ms via the render loop,
+    /// cancelled by the next scroll request; a target more than three viewports away jumps instead
+    /// of animating across the whole folder.</summary>
+    void ScrollToIndex(int index, bool smooth = false)
     {
         var layout = CurrentLayout();
         if (layout.PerLine <= 0 || ItemsPresenter.ItemsPanelRoot is not { } panel) return;
@@ -1173,8 +1178,52 @@ public partial class ItemView : UserControl
             if (r.X < off.X) x = r.X;
             else if (r.Right > off.X + vp.Width) x = r.Right - vp.Width;
         }
-        if (x != off.X || y != off.Y) ItemsScroller.Offset = new Vector(x, y);
+        if (x == off.X && y == off.Y) return;
+
+        double axisDelta = layout.Horizontal ? Math.Abs(y - off.Y) : Math.Abs(x - off.X);
+        double axisViewport = layout.Horizontal ? vp.Height : vp.Width;
+        if (!smooth)
+        {
+            _scrollAnim?.Cancel();
+            ItemsScroller.Offset = new Vector(x, y);
+            return;
+        }
+
+        _scrollAnim?.Cancel();
+        var cts = _scrollAnim = new CancellationTokenSource();
+        var start = off;
+        var target = new Vector(x, y);
+        if (axisDelta > 3 * axisViewport)
+        {
+            // Far target: jump synchronously to one viewport short (so a 100k jump never animates —
+            // and never realizes — the whole path), then animate the remaining viewport.
+            start = layout.Horizontal
+                ? new Vector(off.X, y - Math.Sign(y - off.Y) * vp.Height)
+                : new Vector(x - Math.Sign(x - off.X) * vp.Width, off.Y);
+            ItemsScroller.Offset = start;
+        }
+        var tl = TopLevel.GetTopLevel(this);
+        int frames = 0;
+        void Tick(TimeSpan _)
+        {
+            if (cts.IsCancellationRequested) return;
+            // Frame-counted progress (~16 ms per frame, i.e. 120 ms at 60 fps): deterministic under a
+            // driven render loop, where frame timestamps do not necessarily advance.
+            double t = Math.Min(1, ++frames * 16.0 / 120.0);
+            double ease = 1 - Math.Pow(1 - t, 3);   // ease-out cubic
+            ItemsScroller.Offset = new Vector(
+                start.X + (target.X - start.X) * ease,
+                start.Y + (target.Y - start.Y) * ease);
+            if (t < 1) tl?.RequestAnimationFrame(Tick);
+        }
+        tl?.RequestAnimationFrame(Tick);
     }
+
+    private CancellationTokenSource? _scrollAnim;
+
+    /// <summary>Test hook (bevel-rzz): true while a smooth scroll animation is in flight — distinguishes
+    /// the animated type-ahead path from the jump path (arrows, distant matches), which cancels and never starts one.</summary>
+    internal bool ScrollAnimationRunning => _scrollAnim is { IsCancellationRequested: false };
 
 
     // ── Rename ────────────────────────────────────────────────────────
@@ -1189,7 +1238,18 @@ public partial class ItemView : UserControl
         Control? host = null;
         foreach (var c in ItemsPresenter.GetRealizedContainers())
             if (c is Control ctl && ctl.DataContext == vm) { host = ctl; break; }
-        if (host is null) return;
+        if (host is null)
+        {
+            // bevel-rzz: the row is outside the realized window (huge folder). Scroll to it, force a
+            // layout pass so the panel realizes it, then look the container up again.
+            int idx = _viewModels.IndexOf(vm);
+            if (idx < 0) return;
+            ScrollToIndex(idx, smooth: false);
+            UpdateLayout();
+            foreach (var c in ItemsPresenter.GetRealizedContainers())
+                if (c is Control ctl && ctl.DataContext == vm) { host = ctl; break; }
+            if (host is null) return;
+        }
         var tb = host.FindDescendantOfType<TextBlock>();
         if (tb is null) return;
         // Rename edits the REAL on-disk name, not the possibly extension-hidden DisplayName, so hiding

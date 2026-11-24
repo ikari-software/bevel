@@ -174,11 +174,11 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
   - `BeginRename`: if the row is not realized, `ScrollToIndex(idx, smooth: false)`, run layout, then look the container up again.
 - **Test first:** `WrapLayoutTests.RangeFor_returns_only_viewport_lines_plus_buffer` (new): 100 000 items, 80x60 cells, 800 px wide, viewport y=6000..6600 gives a range under 400 indices that contains line 100. Then `VirtualizingWrapPanelTests.Large_folder_realizes_only_the_viewport` (new): `ItemView` in `ViewMode.LargeIcons` with 100 000 nodes in a 600x500 headless window has `ItemsControl.GetRealizedContainers().Count() < 400`.
 - **Steps:**
-  - [ ] Add `WrapLayout` + `WrapLayoutTests`; port the four existing `VirtualizingWrapPanelTests` assertions to it (they build the panel with `Children.Add`, which a virtualizing panel no longer supports).
-  - [ ] Rewrite the panel on `VirtualizingPanel`; implement the five abstract members (`ScrollIntoView`, `ContainerFromIndex`, `IndexFromContainer`, `GetRealizedContainers`, `GetControl` returning null because `ItemView` owns keyboard navigation).
-  - [ ] Add `CellSize`, delete the three duplicate switches, set the Details `Grid.Height` from it.
-  - [ ] Rework `ScrollToIndex` (both axes, smooth option) and `BeginRename`; add `ItemViewScrollTests.Type_ahead_scrolls_the_match_into_view_in_details` and `..._in_list_view` (tick frames with `AvaloniaHeadlessPlatform.ForceRenderTimerTick`, no sleeps).
-  - [ ] Remove the `TODO(M2)` comment at `VirtualizingWrapPanel.cs:17`.
+  - [x] Add `WrapLayout` + `WrapLayoutTests`; port the four existing `VirtualizingWrapPanelTests` assertions to it (they build the panel with `Children.Add`, which a virtualizing panel no longer supports).
+  - [x] Rewrite the panel on `VirtualizingPanel`; implement the five abstract members (`ScrollIntoView`, `ContainerFromIndex`, `IndexFromContainer`, `GetRealizedContainers`, `GetControl` returning null because `ItemView` owns keyboard navigation).
+  - [x] Add `CellSize`, delete the three duplicate switches, set the Details `Grid.Height` from it.
+  - [x] Rework `ScrollToIndex` (both axes, smooth option) and `BeginRename`; add `ItemViewScrollTests.Type_ahead_scrolls_the_match_into_view_in_details` and `..._in_list_view` (tick frames with `AvaloniaHeadlessPlatform.ForceRenderTimerTick`, no sleeps).
+  - [x] Remove the `TODO(M2)` comment at `VirtualizingWrapPanel.cs:17`.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~WrapLayout|FullyQualifiedName~VirtualizingWrapPanel|FullyQualifiedName~ItemViewScroll|FullyQualifiedName~MarqueeSelection|FullyQualifiedName~StreamingAndSort"` → all pass
 - **Done when:** every view mode realizes a viewport-bounded number of rows, type-ahead scrolls smoothly to the right row in all five modes, and the owner has scrolled a 10k folder on device without blank cells; then `bd close bevel-rzz --reason "wrap panel on VirtualizingPanel, shared cell metrics, smooth scroll-to-index"`
 

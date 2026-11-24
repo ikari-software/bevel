@@ -117,6 +117,48 @@ public sealed class WrapLayoutTests
         Assert.Equal(3, l.Move(2, 1, 0, rtl: false));   // Details keeps Left/Right = ±1 item
     }
 
+    // bevel-rzz: virtualization realizes only the viewport plus a buffer of lines around it.
+    [Fact]
+    public void RangeFor_returns_only_viewport_lines_plus_buffer()
+    {
+        // 100 000 items, 80x60 cells, 800 px wide → 10 per line; viewport y=6000..6600 (600 px tall).
+        var l = WrapLayout.Compute(100_000, 800, 80, 60, horizontal: true);
+        Assert.Equal(10, l.PerLine);
+
+        var (first, last) = l.RangeFor(new Rect(0, 6000, 800, 600), buffer: 600);
+
+        Assert.True(last - first + 1 < 400, $"range {first}..{last} is {last - first + 1} indices, must be < 400");
+        Assert.True(first <= 1000 && last >= 1009, "line 100 (indices 1000..1009) must be inside the range");
+        Assert.True(first >= 900, "buffer reaches at most one viewport (10 lines) above the viewport");
+    }
+
+    [Fact]
+    public void RangeFor_covers_everything_when_the_buffer_is_the_whole_extent()
+    {
+        var l = WrapLayout.Compute(10, 320, 80, 60, horizontal: true);   // 3 lines
+        var (first, last) = l.RangeFor(new Rect(0, 0, 320, 60), buffer: 10_000);
+        Assert.Equal((0, 9), (first, last));
+    }
+
+    [Fact]
+    public void RangeFor_in_vertical_flow_scrolls_on_x()
+    {
+        var l = WrapLayout.Compute(1000, 200, 180, 18, horizontal: false);  // 11 per column
+        var (first, last) = l.RangeFor(new Rect(400, 0, 200, 180), buffer: 200);
+        // columns are 180 wide: viewport x=400..600 → columns 2..3, buffer ±1 column → 1..4
+        Assert.Equal(11, first);
+        Assert.Equal(5 * 11 - 1, last);   // columns 1..4 → items 11..54
+    }
+
+    [Fact]
+    public void LinesIn_reports_the_rows_a_rect_touches()
+    {
+        var l = WrapLayout.Compute(100, 320, 80, 60, horizontal: true);   // 4 per row, 25 rows
+        Assert.Equal((2, 5), l.LinesIn(new Rect(0, 120, 320, 180)));        // y 120..300 → rows 2..5 (300/60=5)
+        Assert.Equal((0, 0), l.LinesIn(new Rect(0, 0, 320, 30)));
+        Assert.Equal((0, -1), default(WrapLayout).LinesIn(new Rect(0, 0, 10, 10)));
+    }
+
     // Review #1: an empty panel's layout is default (PerLine 0). Keys pressed after the first batch
     // arrives but before the next layout pass reach Move with it and must not divide by zero.
     [Fact]
