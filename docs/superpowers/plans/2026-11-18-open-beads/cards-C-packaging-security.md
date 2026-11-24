@@ -118,11 +118,11 @@ uninstall that keep the helper's TCC identity (`pl.ikari.bevel.helper`, pinned i
 - **Decision:** Token file, same pattern as `ShellCoreEndpoint.ForServer` (`core.token`): the server mints 16 random bytes at `Start()`, writes hex to `<socket path>.token` (0600) BEFORE binding, deletes it on dispose. Wire change: the client's FIRST frame is `Handshake.BuildHelloPayload(nonce, "bevelctl")`, the second is argv; the server validates with `Handshake.ValidateHello` (constant-time) and on failure writes `CommandResult(ExitCodes.ShellNotRunning, "bevel: not authorized")` and closes. Add `AutomationSocket.TokenPathFor(string socketPath)` and `AutomationSocketClient.SendAsync` reads the token itself (signature unchanged, so `bevelctl/Program.cs` needs no edit). `Bevel.Interop` already references `Bevel.ShellCore.Ipc`.
 - **Test first:** `tests/Bevel.Core.Tests/Interop/AutomationSocketTests.cs` — add `Connection_without_a_valid_hello_is_refused_and_runs_nothing` (raw socket sends an argv frame first; assert the handler was never invoked) and `Token_file_is_removed_when_the_server_stops`.
 - **Steps:**
-  - [ ] Write both tests; watch them fail.
-  - [ ] Server: mint + write token in `Start()` before `UdsSocketClaim.BindListener`; delete in `DisposeAsync` only if this instance bound the socket.
-  - [ ] Server: read hello frame, validate, then read argv frame.
-  - [ ] Client: read `TokenPathFor(path)`; missing file → throw `SocketException` equivalent path so `bevelctl` prints "shell isn't running".
-  - [ ] Fix the stale role comment in `AutomationSocketHost.cs`.
+  - [x] Write both tests; watched them fail (CS0117 TokenPathFor).
+  - [x] Server: mint + write token in `Start()` before `UdsSocketClaim.BindListener`; delete in `DisposeAsync` only if this instance bound the socket.
+  - [x] Server: read hello frame, validate, then read argv frame.
+  - [x] Client: read `TokenPathFor(path)`; missing file → throw `SocketException` equivalent path so `bevelctl` prints "shell isn't running".
+  - [x] Fix the stale role comment in `AutomationSocketHost.cs`.
 - **Verify:** `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter "FullyQualifiedName~AutomationSocketTests"` → all pass (existing 5 + 2 new)
 - **Done when:** an unauthenticated frame executes nothing; then `bd close bevel-wcqr --reason "bevelctl socket now requires Handshake hello keyed by a 0600 token file"`
 

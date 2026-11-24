@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Bevel.Core.Vfs;
@@ -104,6 +105,48 @@ public sealed class AutomationSocketTests
 
         var result = await AutomationSocketClient.SendAsync(path, new[] { "query", "version" });
         Assert.Equal(ExitCodes.Ok, result.ExitCode);
+    }
+
+    // ── bevel-wcqr: every connection must open with an HMAC hello keyed by the token file ──
+
+    [Fact]
+    public async Task Connection_without_a_valid_hello_is_refused_and_runs_nothing()
+    {
+        var path = TempSocket();
+        var invoked = 0;
+        var server = new AutomationSocketServer(path, (_, _) =>
+        {
+            invoked++;
+            return Task.FromResult(new CommandResult(ExitCodes.Ok, "ran"));
+        });
+        await using var _ = server;
+        server.Start();
+
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(path));
+        await using var stream = new NetworkStream(socket, ownsSocket: true);
+        // First frame is raw argv, not a hello — the server must refuse before dispatching.
+        await AutomationSocket.WriteFrameAsync(stream,
+            AutomationSocket.EncodeArgs(new[] { "query", "version" }), CancellationToken.None);
+        var response = await AutomationSocket.ReadFrameAsync(stream, CancellationToken.None);
+        var result = AutomationSocket.DecodeResult(response);
+
+        Assert.Equal(ExitCodes.ShellNotRunning, result.ExitCode);
+        Assert.Contains("not authorized", result.Output);
+        Assert.Equal(0, invoked);
+    }
+
+    [Fact]
+    public async Task Token_file_is_written_on_start_and_removed_when_the_server_stops()
+    {
+        var path = TempSocket();
+        var tokenPath = AutomationSocket.TokenPathFor(path);
+        var server = StartServer(path, new StubAutomation());
+        Assert.True(File.Exists(tokenPath), "Start() must drop the token file next to the socket");
+
+        await server.DisposeAsync();
+
+        Assert.False(File.Exists(tokenPath), "Dispose must remove the token file this instance wrote");
     }
 
     private sealed class StubAutomation : IShellAutomation
