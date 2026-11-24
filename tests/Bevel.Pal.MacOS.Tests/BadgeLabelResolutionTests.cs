@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Bevel.Pal.MacOS;
 using Xunit;
 
@@ -58,6 +60,18 @@ public class BadgeLabelResolutionTests
     {
         var empty = new Dictionary<string, int>();
         Assert.Equal("..82", MacOSAppBadgeSource.ResolveLabel("..82", "org.telegram.Telegram", empty));
+    }
+
+    [Fact]
+    public void When_the_db_read_fails_the_dock_ellipsis_falls_back_verbatim()
+    {
+        // The end-to-end fallback chain: a missing/unreadable usernoted db yields an empty map
+        // (never a throw), and the resolver then keeps the Dock's ellipsized label as-is.
+        var missing = Path.Combine(Path.GetTempPath(), "bevel-no-such-" + Guid.NewGuid().ToString("N"));
+        var counts = UserNotedBadgeStore.ReadCounts(missing);
+        Assert.Empty(counts);
+        Assert.Equal("..82", MacOSAppBadgeSource.ResolveLabel("..82", "org.telegram.Telegram", counts));
+        Assert.Equal("12", MacOSAppBadgeSource.ResolveLabel("12", "net.whatsapp.whatsapp", counts));
     }
 
     [Theory]
