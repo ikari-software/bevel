@@ -38,7 +38,8 @@ public sealed class TabPrefetchWiringTests
             return ValueTask.FromResult<IReadOnlyList<AppTab>>(new[] { new AppTab(bundleId, "1", 1, "Tab 1") });
         }
 
-        public Task ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default)
+            => Task.FromResult(TabActivationResult.Activated);
     }
 
     private static (TaskbarView View, TaskbarWindow Window, ShellModel Model, RecordingTabs Tabs) Realize(string appId)

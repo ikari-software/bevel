@@ -377,4 +377,16 @@ public class MacOSTabProviderTests
         await _provider.ActivateAsync(tab);
         Assert.True(sw.ElapsedMilliseconds < 500, $"invalid ref ({windowRef}/{tabIndex}) should short-circuit, not spawn osascript");
     }
+
+    // ── bevel-bw1v: activation outcome mapping ──────────────────────────────
+
+    [Theory]
+    [InlineData("ok", Abstractions.TabActivationResult.Activated)]
+    [InlineData("ok\n", Abstractions.TabActivationResult.Activated)]
+    [InlineData("none", Abstractions.TabActivationResult.NotFound)]
+    [InlineData("gone", Abstractions.TabActivationResult.NotFound)]
+    [InlineData("", Abstractions.TabActivationResult.Failed)]
+    [InlineData("garbage", Abstractions.TabActivationResult.Failed)]
+    public void Activation_script_output_maps_to_an_outcome(string output, Abstractions.TabActivationResult expected)
+        => Assert.Equal(expected, MacOSTabProvider.ParseOutcome(output));
 }

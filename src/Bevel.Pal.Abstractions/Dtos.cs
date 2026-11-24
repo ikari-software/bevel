@@ -187,6 +187,18 @@ public sealed record AppTab(
     byte[]? IconPng = null,
     string? SessionId = null);
 
+/// <summary>bevel-bw1v: what <see cref="ITabProvider.ActivateAsync"/> actually did, so the UI can
+/// tell a silent no-op apart from a success. <see cref="NotFound"/> means the re-resolve found nothing
+/// (tab closed/reordered, refs invalid, app gone) — the prefetched list is stale and should be
+/// refreshed; <see cref="Failed"/> means the attempt itself failed (spawn/timeout); both are reported,
+/// never thrown.</summary>
+public enum TabActivationResult
+{
+    Activated,
+    NotFound,
+    Failed,
+}
+
 /// <summary>The one rule for "is this window still where the caller thinks" (bevel-tm1n). Every PAL's
 /// compare-and-set reposition uses it, and the Swift helper mirrors it (<c>FrameGuard.swift</c>).</summary>
 public static class FrameGuard

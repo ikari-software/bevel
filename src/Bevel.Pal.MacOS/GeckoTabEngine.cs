@@ -33,7 +33,7 @@ internal static class GeckoTabEngine
     public static Task<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct)
         => Task.Run(() => GetTabs(bundleId, ct));
 
-    public static Task ActivateAsync(AppTab tab, int windowRef, CancellationToken ct)
+    public static Task<TabActivationResult> ActivateAsync(AppTab tab, int windowRef, CancellationToken ct)
         => Task.Run(() => Activate(tab, windowRef, ct));
 
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -79,23 +79,24 @@ internal static class GeckoTabEngine
 
     // ── Activation ───────────────────────────────────────────────────────────
 
-    private static void Activate(AppTab tab, int windowRef, CancellationToken ct)
+    private static TabActivationResult Activate(AppTab tab, int windowRef, CancellationToken ct)
     {
-        if (!OperatingSystem.IsMacOS()) return;
+        if (!OperatingSystem.IsMacOS()) return TabActivationResult.Failed;
         var pool = AppKitInterop.objc_autoreleasePoolPush();
-        try { ActivateCore(tab, windowRef, ct); }
-        catch (OperationCanceledException) { /* budget expired — no press is the safe outcome */ }
+        try { return ActivateCore(tab, windowRef, ct); }
+        catch (OperationCanceledException) { return TabActivationResult.Failed; }   // budget expired — no press is the safe outcome
         finally { AppKitInterop.objc_autoreleasePoolPop(pool); }
     }
 
-    private static void ActivateCore(AppTab tab, int windowRef, CancellationToken ct)
+    private static TabActivationResult ActivateCore(AppTab tab, int windowRef, CancellationToken ct)
     {
         var pid = PidFor(tab.BundleId);
-        if (pid <= 0) return;
+        if (pid <= 0) return TabActivationResult.NotFound;   // app gone — the row is stale
 
         EnsureAxTimeout();
         var app = AXUIElementCreateApplication(pid);
-        if (app == IntPtr.Zero) return;
+        if (app == IntPtr.Zero) return TabActivationResult.NotFound;
+        var result = TabActivationResult.NotFound;
         try
         {
             WithWindows(app, (window, wi) =>
@@ -116,11 +117,13 @@ internal static class GeckoTabEngine
                     LogAxError("AXPress", AXUIElementPerformAction(buttons[idx].Element, AxStr("AXPress")));
                     LogAxError("AXRaise", AXUIElementPerformAction(window, AxStr("AXRaise")));
                     ActivateApp(pid);
+                    result = TabActivationResult.Activated;
                 }
                 finally { ReleaseAll(buttons); }
             });
         }
         finally { CFRelease(app); }
+        return result;
     }
 
     /// <summary>Which button to press for a possibly stale menu row. Policy (internal for tests):

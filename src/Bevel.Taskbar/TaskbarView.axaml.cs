@@ -1106,7 +1106,8 @@ public partial class TaskbarView : UserControl
             _openTaskMenu = null;
 
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider,
-                    onActivateForeign: () => _window?.CancelKeyFocusHandback()) is { } menu)
+                    onActivateForeign: () => _window?.CancelKeyFocusHandback(),
+                    onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc))) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
