@@ -822,40 +822,6 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) ?? Data()
     }
 
-    /// Output layout for a trimmed tray glyph — the sizing math, PURE so it can be regression-tested
-    /// without a real capture. This sizing oscillated repeatedly: a 1.35× boost made "one big, others
-    /// tiny", forcing every glyph to one height blew short TEXT up, and scaling by raw trimmed height made
-    /// full-bleed app icons much bigger than padded system glyphs. The shipped rule normalizes each glyph's
-    /// cell-padding against an assumed `standardFill`, so a typical system glyph reaches the full box and
-    /// app icons cap there too (icons UNIFORM, like the real menu bar), while short glyphs stay
-    /// proportionally small. Width is proportional (true width) and clamped so an extreme-aspect strip
-    /// shrinks vertically rather than squashing to full height. Glyph is centred vertically in the box.
-    struct TrayGlyphLayout: Equatable {
-        let canvasW: Int
-        let canvasH: Int
-        let drawnW: CGFloat
-        let drawnH: CGFloat
-        let dstY: CGFloat
-    }
-
-    /// Scales a captured status-item CELL (the whole menu-bar window — pass its width as `gw`, height as
-    /// `gh`) uniformly to the tray box. The caller does NOT trim: the window is a uniform menu-bar cell
-    /// with its glyph/text padded inside exactly as macOS draws it, so scaling the whole cell preserves
-    /// each item's true proportion (icons large, text small with padding) — a faithful shrink of the bar.
-    /// The cell fills the box height; width is proportional (true width) and clamped so an extreme-aspect
-    /// strip shrinks vertically rather than squashing. `fullH` is unused (kept for API/test stability).
-    static func trayGlyphLayout(gw: CGFloat, gh: CGFloat, fullH: CGFloat, boxH: CGFloat = 32) -> TrayGlyphLayout {
-        _ = fullH
-        let glyphH = boxH
-        let glyphW = glyphH * (gw / gh)
-        let canvasW = max(1, min(Int(glyphW.rounded()), 512))
-        let canvasH = Int(boxH)
-        let drawnW = CGFloat(canvasW)
-        let drawnH = min(glyphH, drawnW * (gh / gw))
-        let dstY = (CGFloat(canvasH) - drawnH) / 2
-        return TrayGlyphLayout(canvasW: canvasW, canvasH: canvasH, drawnW: drawnW, drawnH: drawnH, dstY: dstY)
-    }
-
     /// Crops a captured image to the bounding box of its non-transparent pixels, discarding the
     /// menu-bar padding around the glyph. Returns nil (caller keeps the original) if it's fully
     /// transparent or the pixels can't be read.
@@ -919,8 +885,8 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     /// Pure decision for `ensureSelfTested` (bevel-qcd9), extracted so the re-arm rule is unit-testable
-    /// without a real self-test or a real Screen Recording grant (same seam pattern as
-    /// `trayGlyphLayout`). Runs when the self-test has never completed, OR when the grant has just
+    /// without a real self-test or a real Screen Recording grant (a pure static seam). Runs when the
+    /// self-test has never completed, OR when the grant has just
     /// transitioned from absent to present — the only two moments a fresh verdict is worth its cost.
     static func selfTestShouldRun(granted: Bool, selfTestDone: Bool, grantPreviouslySeen: Bool) -> Bool {
         if !selfTestDone { return true }

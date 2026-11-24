@@ -116,7 +116,7 @@ final class TrayServiceTests: XCTestCase {
     /// invisible: the cached verdict (computed when there was nothing to capture) kept gating live mode
     /// forever, so `captureOk` was NEVER actually exercised for this session. This is the pure decision
     /// `ensureSelfTested` now consults — no real self-test or real grant needed to prove the state
-    /// machine, same seam style as `trayGlyphLayout`.
+    /// machine, as a pure static seam.
     func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
         // 1. Never run yet → always run (first capture attempt triggers it, granted or not).
         XCTAssertTrue(TrayServiceImpl.selfTestShouldRun(granted: false, selfTestDone: false, grantPreviouslySeen: false))
@@ -158,42 +158,6 @@ final class TrayServiceTests: XCTestCase {
 
     // MARK: - Tray glyph sizing (regression guard)
 
-    /// The tray sizing oscillated repeatedly before landing on "don't trim": the shipped rule scales the
-    /// whole captured menu-bar CELL uniformly to the tray box (the caller passes the window dims), so each
-    /// item keeps its true menu-bar proportion — icons large, text ("exo") small with its padding. These
-    /// lock the pure scaling math: the cell fills the box height independent of the captured window height
-    /// (fullH — the source of the half-size regression), width stays proportional, and extreme aspect
-    /// shrinks vertically under the 512 clamp.
-    func testTrayGlyphSizing() {
-        let box: CGFloat = 32
-
-        // Every item fills the box at ONE uniform height (matches the menu bar), independent of the
-        // captured window height (fullH varied here to prove it — the half-size regression came from fullH).
-        let squareTight = TrayServiceImpl.trayGlyphLayout(gw: 20, gh: 20, fullH: 22)
-        let squareTall  = TrayServiceImpl.trayGlyphLayout(gw: 20, gh: 20, fullH: 60)
-        XCTAssertEqual(squareTight.drawnH, box, accuracy: 0.6, "a square glyph fills the box")
-        XCTAssertEqual(squareTight.drawnH, squareTall.drawnH, accuracy: 0.001,
-                       "size must NOT depend on captured window height (the half-size regression)")
-
-        // A full-bleed app icon, a padded system glyph, and a wide text strip ("exo") ALL render at the
-        // same height — no "one big, others tiny", no shrunk-then-blown-up oscillation.
-        let app  = TrayServiceImpl.trayGlyphLayout(gw: 30, gh: 30, fullH: 31)
-        let text = TrayServiceImpl.trayGlyphLayout(gw: 42, gh: 12, fullH: 33)
-        XCTAssertEqual(app.drawnH, box, accuracy: 0.6, "app icon fills the box")
-        XCTAssertEqual(text.drawnH, box, accuracy: 0.6, "text ('exo') fills the box too, like the menu bar")
-
-        // Wide items keep their TRUE width (not squashed to a square).
-        XCTAssertGreaterThan(text.drawnW, text.drawnH)
-
-        // An extreme-aspect glyph is clamped at 512px wide and shrinks VERTICALLY, not squashed to full height.
-        let extreme = TrayServiceImpl.trayGlyphLayout(gw: 2000, gh: 20, fullH: 30)
-        XCTAssertEqual(extreme.canvasW, 512)
-        XCTAssertLessThan(extreme.drawnH, box, "extreme aspect shrinks vertically under the 512 width clamp")
-
-        // Canvas is the fixed box; glyph vertically centred.
-        XCTAssertEqual(text.canvasH, 32)
-        XCTAssertEqual(app.dstY, (CGFloat(app.canvasH) - app.drawnH) / 2, accuracy: 0.01)
-    }
 
     // Review (2026-11-21): the Changes stream's cadence. With Accessibility-only items (macOS 27) a
     // 250 ms glyph-only tick runs between full enumerations; without any (macOS 26) the loop must keep

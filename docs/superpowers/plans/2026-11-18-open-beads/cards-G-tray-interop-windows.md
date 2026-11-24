@@ -352,9 +352,9 @@
 - **Decision:** delete the struct, the function, its doc comments (:709-730) and the test; reword the two "same seam pattern as trayGlyphLayout" comments to "a pure static seam". Keep `trimTransparent` and `pngFromCGImage` untouched.
 - **Test first:** non-code: the grep in Verify.
 - **Steps:**
-  - [ ] Delete lines 709-741 of `TrayServiceImpl.swift` (re-read first; line numbers drift).
-  - [ ] Delete `testTrayGlyphSizing` and fix the two comments.
-  - [ ] `cd native/helper-macos && swift test --filter TrayServiceTests` passes.
+  - [x] Delete lines 709-741 of `TrayServiceImpl.swift` (re-read first; line numbers drift).
+  - [x] Delete `testTrayGlyphSizing` and fix the two comments.
+  - [x] `cd native/helper-macos && swift test --filter TrayServiceTests` passes.
 - **Verify:** `grep -rn "rayGlyphLayout\|TrayGlyphSizing" native/helper-macos/Sources native/helper-macos/Tests` → no output
 - **Done when:** grep empty and Swift tests green; then `bd close bevel-aogp --reason "Dead sizing code + test removed"`
 
