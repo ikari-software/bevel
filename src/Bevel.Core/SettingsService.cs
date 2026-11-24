@@ -566,6 +566,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         // Arrays + per-theme overrides: prune when identical to the default / empty.
         if (_settings.TaskbarStacks.SequenceEqual(d.TaskbarStacks)) _raw.Remove("taskbarStacks");
         else _raw["taskbarStacks"] = JsonSerializer.SerializeToElement(_settings.TaskbarStacks, SettingsJsonContext.Default.StringArray);
+        // bevel-4pgk: empty = no favorites yet → prune (an empty array equals the default).
+        if (_settings.FilerFavorites.Length == 0) _raw.Remove("filerFavorites");
+        else _raw["filerFavorites"] = JsonSerializer.SerializeToElement(_settings.FilerFavorites, SettingsJsonContext.Default.StringArray);
         // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
         // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
         if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
@@ -700,6 +703,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarButtonSize = Enum.TryParse<TaskbarButtonSize>(GetString("taskbarButtonSize"), out var tbs)
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
+            FilerFavorites = GetStringArray("filerFavorites") ?? Array.Empty<string>(),
             TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
             TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
@@ -892,6 +896,10 @@ public sealed class BevelSettings
     /// the folder's most-recent contents (the macOS Downloads-stack equivalent). Default: ~/Downloads.</summary>
     public string[] TaskbarStacks { get; set; } = DefaultStacks;
 
+    /// <summary>bevel-4pgk: Filer favorites (Favorites menu + info-pane links), as
+    /// <c>VfsPath.ToString()</c> values in display order. Empty = none.</summary>
+    public string[] FilerFavorites { get; set; } = Array.Empty<string>();
+
     internal static string[] DefaultStacks { get; } = new[]
     {
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
@@ -1037,6 +1045,7 @@ public sealed class BevelSettings
                 && p.PropertyType != typeof(string[]) && p.PropertyType != typeof(ComponentInstance[]))
                 p.SetValue(this, p.GetValue(other));
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
+        FilerFavorites = (string[])other.FilerFavorites.Clone();
         TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }

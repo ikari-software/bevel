@@ -264,10 +264,10 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
   - Not here: the Favorites bar (epic bevel-o6cc) and Start-menu Places (taskbar; its places are hardcoded at `StartMenu.axaml.cs:696-699`).
 - **Test first:** `FilerFavoritesTests.Add_is_idempotent_and_keeps_order` (new). Then `FavoritesTests.Ctrl_D_adds_the_current_folder_and_the_menu_lists_it` (new, `[AvaloniaFact]`, real `SettingsService` on a temp DB as other window tests do).
 - **Steps:**
-  - [ ] Setting + pure helper + tests.
-  - [ ] Menu accessors, dynamic list, Ctrl+D.
-  - [ ] `OrganizeFavoritesDialog` + `FavoritesTests.Organize_remove_updates_the_setting`.
-  - [ ] InfoPane links.
+  - [x] Setting + pure helper + tests.
+  - [x] Menu accessors, dynamic list, Ctrl+D.
+  - [x] `OrganizeFavoritesDialog` + `FavoritesTests.Organize_remove_updates_the_setting`.
+  - [x] InfoPane links.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~Favorites"` → pass
 - **Done when:** Ctrl+D adds the folder, it appears under Favorites and in the info pane in every open Filer window, clicking navigates, Organize reorders and removes; then `bd close bevel-4pgk --reason "FilerFavorites setting + menu + organize dialog + info-pane links"`
 
