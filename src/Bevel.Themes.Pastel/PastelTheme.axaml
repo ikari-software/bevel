@@ -44,6 +44,7 @@
       <SolidColorBrush x:Key="Bevel.Brush.ButtonShadow" Color="#C9BFD6" />
       <SolidColorBrush x:Key="Bevel.Brush.ButtonDkShadow" Color="#A99FC0" />
       <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="#B9C7D6" />
+      <SolidColorBrush x:Key="Bevel.Brush.WindowFrameInactive" Color="#DCE3EA" />
       <SolidColorBrush x:Key="Bevel.Brush.GrayText" Color="#8A8598" />
       <SolidColorBrush x:Key="Bevel.Brush.Scrollbar" Color="#F2EEF7" />
       <SolidColorBrush x:Key="Bevel.Brush.Highlight" Color="#A6D8EC" />

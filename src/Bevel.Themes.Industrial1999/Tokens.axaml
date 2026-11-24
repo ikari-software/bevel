@@ -97,6 +97,9 @@
     <SolidColorBrush x:Key="Bevel.Brush.Window" Color="{StaticResource Bevel.Color.Window}" />
     <SolidColorBrush x:Key="Bevel.Brush.WindowText" Color="{StaticResource Bevel.Color.WindowText}" />
     <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="{StaticResource Bevel.Color.WindowFrame}" />
+    <!-- Frame colour while the window is inactive. Win2000 draws its frame as the 3D bevel (content border 0),
+         so this only shows for skins that give WindowContentBorder a thickness; they override it. -->
+    <SolidColorBrush x:Key="Bevel.Brush.WindowFrameInactive" Color="#808080" />
     <SolidColorBrush x:Key="Bevel.Brush.GrayText" Color="{StaticResource Bevel.Color.GrayText}" />
     <SolidColorBrush x:Key="Bevel.Brush.AppWorkspace" Color="{StaticResource Bevel.Color.AppWorkspace}" />
     <SolidColorBrush x:Key="Bevel.Brush.Desktop" Color="{StaticResource Bevel.Color.Desktop}" />

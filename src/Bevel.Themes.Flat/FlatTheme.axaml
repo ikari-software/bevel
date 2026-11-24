@@ -46,6 +46,8 @@
       <SolidColorBrush x:Key="Bevel.Brush.ButtonShadow" Color="#ACA899" />
       <SolidColorBrush x:Key="Bevel.Brush.ButtonDkShadow" Color="#716F64" />
       <SolidColorBrush x:Key="Bevel.Brush.WindowFrame" Color="#3567CB" />
+      <!-- The foot of the inactive caption ramp (CaptionInactive), so the frame dims with the title bar. -->
+      <SolidColorBrush x:Key="Bevel.Brush.WindowFrameInactive" Color="#9FB2CA" />
       <SolidColorBrush x:Key="Bevel.Brush.ColumnHeader" Color="#ECE9D8" />
       <SolidColorBrush x:Key="Bevel.Brush.ColumnHeaderLight" Color="#FFFFFF" />
       <SolidColorBrush x:Key="Bevel.Brush.ColumnSeparator" Color="#ACA899" />
