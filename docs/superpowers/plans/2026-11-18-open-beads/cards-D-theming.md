@@ -236,9 +236,9 @@ engine epic **dob** → Blue2001 finish (8lb, 7cq, ekcv) → Flat/Pastel finish 
 - **Decision:** Close against the acceptance criterion ("coherent, distinct watercolor look … not a Win2000 clone"), which both skins meet. Do not create `FlatTokens.axaml` by hand: token files come from ThemeGen (bevel-ayhn/bevel-tknt). Update the spec's status block, which still calls `flat` "a token-only stub" and points at `Industrial1999/ThemeFlat.axaml`.
 - **Test first:** `ThemeEngineTests` + `RenderFlatAndPastelComparisonTest` pass.
 - **Steps:**
-  - [ ] Run the Verify command.
-  - [ ] Rewrite the 6-line status block at the top of `flat-theme-spec.md`: implemented; palette §2-§3 = `pastel`; `flat` = source-led Whistler per `look-delta.md`.
-  - [ ] HUMAN: confirm "Pastel (preview)" is the intended home of the spec's look.
+  - [x] Run the Verify command.
+  - [x] Rewrite the 6-line status block at the top of `flat-theme-spec.md`: implemented; palette §2-§3 = `pastel`; `flat` = source-led Whistler per `look-delta.md`.
+  - [x] HUMAN: confirm "Pastel (preview)" is the intended home of the spec's look.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~ThemeEngineTests|FullyQualifiedName~RenderFlatAndPastel"` → pass
 - **Done when:** owner confirms; then `bd close bevel-q455 --reason "implemented as flat + pastel Styles-set themes (ab58f0b, 46b8e2d); key promotion tracked in bevel-lqot"`
 
