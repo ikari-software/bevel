@@ -33,8 +33,10 @@ public sealed class UdsMessageServer : IAsyncDisposable
     private int _disposed;
 
     /// <summary>
-    /// Raised once per client, right after a successful handshake and before any request from
-    /// that client is processed. The handler is given a <c>sendToThisClient</c> delegate that
+    /// Raised once per client, after its hello is accepted and before any request from that client
+    /// is processed. It runs BEFORE the client can read <see cref="FrameKind.HandshakeOk"/>
+    /// (bevel-70nw), so the client's connect waits for it: a handler must be quick, and one that
+    /// throws fails that client's connect. The handler is given a <c>sendToThisClient</c> delegate that
     /// enqueues a Broadcast-kind frame to ONLY the new client — a transport-level hook. The
     /// shell-core protocol no longer pushes state here: its session layer gates the snapshot behind a
     /// Hello REQUEST (bevel-4zfs) because push-on-connect is exactly the race that ate snapshots
