@@ -50,9 +50,11 @@ public sealed class RoleHeartbeatTests : IDisposable
     {
         var text = ShellHealthAlert.Format(new HealthVerdict(
             ShellRole.Taskbar, HealthAction.Hold, HealthFault.StartupFailed, "XamlLoadException"));
-        Assert.Contains("Taskbar", text, StringComparison.Ordinal);
-        Assert.Contains("StartupFailed", text, StringComparison.Ordinal);
-        Assert.Contains("XamlLoadException", text, StringComparison.Ordinal);
+        // bevel-f4g5: leads with a plain sentence naming the role, keeps the raw fault + detail under Details:.
+        Assert.StartsWith("Bevel's Taskbar failed to start.", text);
+        var details = text.Split("Details:\n")[1];
+        Assert.Contains("StartupFailed", details, StringComparison.Ordinal);
+        Assert.Contains("XamlLoadException", details, StringComparison.Ordinal);
         Assert.Contains("stopped restarting", text, StringComparison.Ordinal);
     }
 

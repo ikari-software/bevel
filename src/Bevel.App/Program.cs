@@ -350,7 +350,17 @@ internal static class Program
             coreHealthyProbe: ct => CoreSocketProbe.IsServingAsync(coreSocket, coreNonce, ct),
             quitRequested: QuitRequest.Exists,
             health: new ShellHealthMonitor(BuildStamp.Current),
-            onAlert: ShellHealthAlert.Show);
+            // bevel-f4g5: a Hold dialog now offers a way forward — Restart takes the same whole-shell
+            // relaunch path as onLauncherStale, Quit just stops the launcher (ordered teardown below).
+            onAlert: v => ShellHealthAlert.Show(v, choice =>
+            {
+                if (choice == HealthAlertChoice.Restart)
+                {
+                    launcherStale = true;
+                    supervisor.RequestStop();
+                }
+                stop.Set();
+            }));
 
         // Stand down BEFORE anything is spawned or cleared (bevel-9790). The lock above and a live socket
         // are independent detectors — an orphaned core can still serve core.sock (2026-10-12). The gate

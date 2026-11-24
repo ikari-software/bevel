@@ -61,4 +61,26 @@ internal static class BuildStamp
     [UnconditionalSuppressMessage("SingleFile", "IL3000",
         Justification = "Empty Location under single-file/AOT is handled: ticks stay 0 and ProcessPath is used.")]
     private static string EntryLocation() => Assembly.GetEntryAssembly()?.Location ?? "";
+
+    /// <summary>Human-readable form of a stamp for dialogs (bevel-f4g5): <c>"1|1.0.0+1f4cc8f…|6392…"</c>
+    /// → <c>"1.0.0 (1f4cc8f, built 2026-09-29 19:23)"</c> — version before the <c>+</c>, first 7 of the
+    /// SHA, ticks as local build time. Unparseable input is returned unchanged.</summary>
+    internal static string Describe(string stamp)
+    {
+        var parts = stamp.Split('|');
+        if (parts.Length != 3 || !long.TryParse(parts[2], out var ticks)) return stamp;
+        var ver = parts[1];
+        var plus = ver.IndexOf('+');
+        var version = plus >= 0 ? ver[..plus] : ver;
+        var sha = plus >= 0 ? ver[(plus + 1)..] : "";
+        var sha7 = sha.Length >= 7 ? sha[..7] : sha;
+        string built;
+        try
+        {
+            built = new DateTime(ticks, DateTimeKind.Utc).ToLocalTime()
+                .ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch { return stamp; }
+        return $"{version} ({sha7}, built {built})";
+    }
 }
