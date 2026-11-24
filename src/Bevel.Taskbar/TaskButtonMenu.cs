@@ -144,7 +144,10 @@ public static class TaskButtonMenu
                 var tabItem = new MenuItem
                 {
                     Header = EscapeHeader(Ellipsize(captured.Title)),
-                    Icon = row.Icon is { } fav ? new Image { Source = fav, Width = 16, Height = 16 } : null,
+                    // bevel-l17f: favicon when there is one; otherwise an iTerm session-tint swatch
+                    // (code-drawn vector Border — no bitmap).
+                    Icon = row.Icon is { } fav ? new Image { Source = fav, Width = 16, Height = 16 }
+                        : TintSwatch(captured.Tint),
                     // Budgeted: activation walks a foreign app (AX tree / Apple Events) and a wedged
                     // target must cost a bounded threadpool wait, not an open-ended one.
                     Command = new AsyncRelayCommand(async () =>
@@ -239,6 +242,27 @@ public static class TaskButtonMenu
     /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
     /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>
     internal static string EscapeHeader(string title) => title.Replace("_", "__");
+
+    /// <summary>bevel-l17f: a 12×12 colour swatch for iTerm rows without a favicon. The tint is external
+    /// content (like a favicon), so a literal colour is allowed here; border uses the theme token.</summary>
+    internal static Control? TintSwatch(string? tintHex)
+    {
+        if (tintHex is null || tintHex.Length != 7 || tintHex[0] != '#'
+            || !int.TryParse(tintHex[1..], System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var rgb))
+            return null;
+        var color = Avalonia.Media.Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8 & 0xFF), (byte)(rgb & 0xFF));
+        return new Border
+        {
+            Width = 12,
+            Height = 12,
+            CornerRadius = new Avalonia.CornerRadius(2),
+            Background = new Avalonia.Media.SolidColorBrush(color),
+            BorderBrush = Avalonia.Application.Current?.FindResource("Bevel.Brush.ButtonShadow") as Avalonia.Media.IBrush
+                ?? Avalonia.Media.Brushes.Gray,
+            BorderThickness = new Avalonia.Thickness(1),
+        };
+    }
 
     /// <summary>Single-line cap for foreign tab titles so one verbose page can't stretch the menu.
     /// The cut backs off a high surrogate so an emoji-leading title never leaves half a pair

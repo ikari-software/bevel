@@ -119,9 +119,9 @@ Target: one live-apply funnel with section diffs; stacks reconciled incrementall
 - **Decision:** Add `string? Tint = null` (hex `#RRGGBB`) as the last parameter of `AppTab`. iTerm enumeration appends a 4th field: `background color of current session of t` (an AppleScript `{r,g,b}` list, 0-65535 each; UNVERIFIED: exact property name — check iTerm2's scripting dictionary with `sdef /Applications/iTerm.app | grep -i color` before coding; if absent, drop the field and close as shipped). `Parse` converts to hex. `TaskButtonMenu.Build` shows, when `row.Icon` is null and `Tab.Tint` parses, a code-drawn 12×12 `Border` with `CornerRadius=2`, `Background` = the tint, 1px `Bevel.Brush.ButtonShadow` border — vector, no bitmap. The tint is external content (like a favicon), so a literal colour is allowed here.
 - **Test first:** `MacOSTabProviderTests.Parse_reads_an_iterm_session_colour_into_Tint` (row `"7␟1␟zsh␟65535, 0, 0"` → `Tint == "#FF0000"`); `TaskButtonMenuTabsTests.Rows_without_a_favicon_show_the_session_tint_swatch`.
 - **Steps:**
-  - [ ] Confirm the property with `sdef`; record the result in the bead notes.
-  - [ ] Tests, then script + `Parse(raw, bundleId, hasUrl)` gains the colour column for `Dialect.ITerm`.
-  - [ ] Swatch in `Build`.
+  - [x] Confirm the property with `sdef`; record the result in the bead notes.
+  - [x] Tests, then script + `Parse(raw, bundleId, hasUrl)` gains the colour column for `Dialect.ITerm`.
+  - [x] Swatch in `Build`.
 - **Verify:** `dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --filter "FullyQualifiedName~MacOSTabProviderTests"` and `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~TaskButtonMenuTabsTests"` → pass. HUMAN: iTerm with two differently-coloured profiles → two different swatches.
 - **Done when:** iTerm rows carry a swatch (or the dictionary lacks the property and that is recorded); then `bd close bevel-l17f --reason "Chromium+Gecko favicons shipped 8927980; iTerm session swatch added"`
 

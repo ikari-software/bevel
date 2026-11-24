@@ -239,6 +239,27 @@ public class MacOSTabProviderTests
         Assert.Null(Assert.Single(MacOSTabProvider.Parse($"1{Us}1{Us}T{Us}https://a{Rs}", "com.google.Chrome", hasUrl: true)).SessionId);
     }
 
+    [Fact]
+    public void Parse_reads_an_iterm_session_colour_into_Tint(/* bevel-l17f */)
+    {
+        var script = MacOSTabProvider.EnumerationScript("com.googlecode.iterm2", MacOSTabProvider.Dialect.ITerm);
+        Assert.Contains("background color of current session of t", script);
+
+        var tab = Assert.Single(MacOSTabProvider.Parse(
+            $"77{Us}2{Us}-zsh{Us}SID-9{Us}65535, 0, 0{Rs}", "com.googlecode.iterm2", hasUrl: false, hasSessionId: true, hasTint: true));
+        Assert.Equal("#FF0000", tab.Tint);
+        Assert.Equal("SID-9", tab.SessionId);
+
+        // Braces variant and scaling: 32768 -> 0x80-ish; malformed -> null, row still parses.
+        Assert.Equal("#7F0000", MacOSTabProvider.TintToHex("{32768, 0, 0}"));   // 32768*255/65535 = 127
+        Assert.Null(MacOSTabProvider.TintToHex("not-a-colour"));
+        Assert.Null(MacOSTabProvider.TintToHex(null));
+        var noTint = Assert.Single(MacOSTabProvider.Parse($"77{Us}2{Us}-zsh{Us}SID-9{Rs}", "com.googlecode.iterm2", hasUrl: false, hasSessionId: true, hasTint: true));
+        Assert.Null(noTint.Tint);   // 4-field row: no tint column present
+        // Browsers never read a tint column even if extra fields appear.
+        Assert.Null(Assert.Single(MacOSTabProvider.Parse($"1{Us}1{Us}T{Us}https://a{Us}1, 2, 3{Rs}", "com.google.Chrome", hasUrl: true)).Tint);
+    }
+
     // ── Matching rules (pure model mirroring the script's decision) ─────────
 
     private static TabIdentity.Live L(string w, int i, string title, string url, string? sid = null) => new(w, i, title, url, sid);

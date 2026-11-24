@@ -59,7 +59,8 @@ public sealed class MacOSTabProvider : ITabProvider
         if (ScriptDialectFor(bundleId) is { } dialect)
         {
             var raw = await RunOsaScriptAsync(EnumerationScript(bundleId, dialect), ct).ConfigureAwait(false);
-            var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm, hasSessionId: dialect == Dialect.ITerm);
+            var tabs = Parse(raw, bundleId, hasUrl: dialect != Dialect.ITerm, hasSessionId: dialect == Dialect.ITerm,
+                hasTint: dialect == Dialect.ITerm);   // bevel-l17f: iTerm session colour column
             return await EnrichAsync(bundleId, tabs, ct).ConfigureAwait(false);
         }
         return Array.Empty<AppTab>();
@@ -186,7 +187,8 @@ public sealed class MacOSTabProvider : ITabProvider
                     repeat with t in tabs of w
                         set ti to ti + 1
                         try
-                            set end of rows to (wid as text) & us & ti & us & (name of current session of t) & us & (unique id of current session of t)
+                            set c to background color of current session of t
+                            set end of rows to (wid as text) & us & ti & us & (name of current session of t) & us & (unique id of current session of t) & us & ((red of c) as text) & ", " & ((green of c) as text) & ", " & ((blue of c) as text)
                         end try
                     end repeat
                 end repeat
@@ -489,7 +491,8 @@ public sealed class MacOSTabProvider : ITabProvider
 
     // ── Output parsing (internal for tests) ──────────────────────────────────
 
-    internal static IReadOnlyList<AppTab> Parse(string raw, string bundleId, bool hasUrl, bool hasSessionId = false)
+    internal static IReadOnlyList<AppTab> Parse(string raw, string bundleId, bool hasUrl, bool hasSessionId = false,
+        bool hasTint = false)
     {
         if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<AppTab>();
         var tabs = new List<AppTab>();
@@ -500,12 +503,32 @@ public sealed class MacOSTabProvider : ITabProvider
             var title = TabIdentity.Normalize(f[2]);
             var url = hasUrl && f.Length >= 4 ? TabIdentity.Normalize(f[3]) : null;
             var sessionId = hasSessionId && f.Length >= 4 ? f[3].Trim() : null;
+            // bevel-l17f: iTerm appends a 5th column "r, g, b" (0-65535) = the session's background colour.
+            var tint = hasTint && f.Length >= 5 ? TintToHex(f[4]) : null;
             // A tab with no title at all falls back to its URL (browsers mid-load), else app name-less "".
             if (title.Length == 0 && !string.IsNullOrEmpty(url)) title = url;
             tabs.Add(new AppTab(bundleId, f[0].Trim(), tabIndex, title, string.IsNullOrEmpty(url) ? null : url,
-                SessionId: string.IsNullOrEmpty(sessionId) ? null : sessionId));
+                SessionId: string.IsNullOrEmpty(sessionId) ? null : sessionId,
+                Tint: tint));
         }
         return tabs;
+    }
+
+    /// <summary>bevel-l17f: converts an AppleScript colour rendering ("65535, 0, 0" or "{65535, 0, 0}")
+    /// to "#RRGGBB" (0-65535 components scaled to 0-255). Returns null when unparseable — a bad colour must
+    /// never break row parsing.</summary>
+    internal static string? TintToHex(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var parts = raw.Trim().Trim('{', '}').Split(',');
+        if (parts.Length != 3) return null;
+        var rgb = new int[3];
+        for (var i = 0; i < 3; i++)
+        {
+            if (!int.TryParse(parts[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return null;
+            rgb[i] = Math.Clamp(v, 0, 65535) * 255 / 65535;
+        }
+        return string.Create(CultureInfo.InvariantCulture, $"#{rgb[0]:X2}{rgb[1]:X2}{rgb[2]:X2}");
     }
 
     // ── osascript runner ─────────────────────────────────────────────────────
