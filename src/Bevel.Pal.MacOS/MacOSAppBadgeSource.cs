@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,8 +34,12 @@ namespace Bevel.Pal.MacOS;
 /// (2) It reports what the DOCK shows, so an app the Dock does not list (an <c>LSUIElement</c>
 ///     agent, or an app hidden from the Dock) has no badge here even if it notifies.
 /// (3) The label is the Dock's own rendering: wide counts arrive ELLIPSIZED (macOS reports
-///     <c>"..82"</c> for 1082), and apps may badge with a dot or a glyph. The label is therefore
-///     surfaced verbatim and <see cref="AppBadge.Count"/> is null unless it parses as a number.
+///     <c>"..82"</c> for 1082), and apps may badge with a dot or a glyph. To lift the 2-digit cap,
+///     ellipsized labels are substituted with the RAW count from usernoted's database
+///     (<see cref="UserNotedBadgeStore"/>) when that db has one for the app's bundle id — the db is
+///     what the Dock itself reads before truncating. Plain labels and custom string badges pass
+///     through verbatim, and <see cref="AppBadge.Count"/> is null unless the final label parses as a
+///     number.
 /// (4) It is a snapshot poll, not a push: there is no public notification for a badge change.</para>
 ///
 /// Nothing here is synthesised — no title parsing, no inference. An app with no Dock badge has no
@@ -53,7 +58,7 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         {
             "macOS badges are read from the Dock's accessibility tree (AXApplicationDockItem/AXStatusLabel)",
             "requires the Accessibility permission; apps absent from the Dock publish no badge",
-            "labels are the Dock's own strings — wide counts arrive ellipsized (e.g. \"..82\")",
+            "ellipsized Dock labels (\"..82\") are replaced with the raw count from usernoted's db when available",
         });
 
     public ValueTask<IReadOnlyList<AppBadge>> GetBadgesAsync(CancellationToken ct = default)
@@ -102,6 +107,19 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
                 }
                 finally { ReleaseAll(lists); }
 
+                // Raw counts from usernoted, used to de-ellipsize wide labels. Read LAZILY — only when
+                // some Dock label actually looks truncated — so the common no-truncation poll costs no
+                // sqlite open at all; an unavailable db yields an empty map and every label stays verbatim.
+                if (badges.Exists(b => LooksTruncated(b.Label)))
+                {
+                    var rawCounts = UserNotedBadgeStore.ReadCounts();
+                    for (var i = 0; i < badges.Count; i++)
+                    {
+                        var b = badges[i];
+                        badges[i] = b with { Label = ResolveLabel(b.Label, b.BundleId, rawCounts) };
+                    }
+                }
+
                 return badges;
             }
             finally { CFRelease(dock); }
@@ -126,6 +144,59 @@ public sealed class MacOSAppBadgeSource : IAppBadgeSource
         var bundleId = path is null ? null : _bundleIdByPath.GetOrAdd(path, BundleIdForAppPath);
 
         into.Add(new AppBadge(bundleId, name, label.Trim()));
+    }
+
+    // ── De-ellipsization ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Substitutes the Dock's ellipsized label with the raw count when usernoted's db has one for
+    /// the app. The Dock truncates wide counts keeping the last digits (<c>"..82"</c> for 1082,
+    /// <c>"…82"</c>, or a <c>"99+"</c>-style cap on some versions), so a label that LOOKS truncated and
+    /// has a positive raw count behind it is replaced by that count in full — the taskbar pill has no
+    /// digit cap, so 4+ digits render fine. For the "..NN"/"…NN" forms the label's digit tail must
+    /// also be a suffix of the raw count (the Dock keeps the last digits), guarding against a stale
+    /// db row. Anything else (plain counts, dots, glyphs, custom string badges like Calendar's date)
+    /// passes through verbatim: only a truncated-looking label is ever rewritten, and only when the
+    /// db actually knows the app.
+    /// </summary>
+    internal static string ResolveLabel(string axLabel, string? bundleId, IReadOnlyDictionary<string, int> rawCounts)
+    {
+        if (bundleId is null || !LooksTruncated(axLabel))
+            return axLabel;
+        if (!rawCounts.TryGetValue(bundleId, out var count) || count <= 0)
+            return axLabel;
+
+        var raw = count.ToString(CultureInfo.InvariantCulture);
+        // For the "..NN"/"…NN" forms the Dock keeps the count's LAST digits — if the label's tail
+        // is not a suffix of the raw count, the db row is stale relative to what the Dock is painting;
+        // keep the Dock's label rather than substitute a number that disagrees with it. ("NN+" is a
+        // cap style, not a suffix, so it gets no cross-check.)
+        if (EndsWithEllipsis(axLabel) && !raw.EndsWith(TailDigits(axLabel), StringComparison.Ordinal))
+            return axLabel;
+        return raw;
+    }
+
+    /// <summary>Whether the label is the leading-ellipsis truncation form ("..NN" or "…NN").</summary>
+    private static bool EndsWithEllipsis(string label) =>
+        label.StartsWith("..", StringComparison.Ordinal) || label[0] == '…';
+
+    /// <summary>The digit tail of a leading-ellipsis truncation ("..82" → "82").</summary>
+    private static string TailDigits(string label) =>
+        label.StartsWith("..", StringComparison.Ordinal) ? label[2..] : label[1..];
+
+    /// <summary>Whether <paramref name="label"/> is a count the Dock truncated rather than a full
+    /// label: leading <c>".."</c>/<c>"…"</c> plus digits, or digits plus a <c>'+'</c> cap.</summary>
+    internal static bool LooksTruncated(string label)
+    {
+        if (label.Length < 3)
+            return false;
+        if (label.StartsWith("..", StringComparison.Ordinal))
+            return int.TryParse(label.AsSpan(2), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+        if (label[0] == '…')
+            return int.TryParse(label.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+        if (label[label.Length - 1] == '+')
+            return int.TryParse(label.AsSpan(0, label.Length - 1), NumberStyles.None, CultureInfo.InvariantCulture, out _);
+        return false;
     }
 
     // ── Dock process ────────────────────────────────────────────────────

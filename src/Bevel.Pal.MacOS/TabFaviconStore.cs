@@ -250,7 +250,7 @@ internal static class TabFaviconStore
     /// treats that as "no icons this round" and the next mtime change re-copies. Writes go
     /// through a unique temp name + rename so a concurrent caller or a crash can never publish a
     /// half-copy under a valid mtime.</summary>
-    private static void RawCopy(string source, string destination, CancellationToken ct)
+    internal static void RawCopy(string source, string destination, CancellationToken ct)
     {
         // The raw-syscall path exists ONLY to dodge macOS's flock↔fcntl contention (see remarks above).
         // Off-macOS that rationale is moot and libSystem.dylib isn't present — a managed copy through the
