@@ -86,4 +86,39 @@ internal readonly record struct WrapLayout(int Count, int PerLine, int Lines, do
     /// whole rows for horizontal flow, whole columns for vertical flow, at least one line.</summary>
     public int PageSize(Size viewport)
         => PerLine * Math.Max(1, (int)(Horizontal ? viewport.Height / ItemHeight : viewport.Width / ItemWidth));
+
+    /// <summary>The line indices (rows for horizontal flow, columns for vertical) that intersect
+    /// <paramref name="r"/>. Empty when nothing does.</summary>
+    public (int First, int Last) LinesIn(Rect r)
+    {
+        if (Count <= 0 || PerLine <= 0 || Lines <= 0) return (0, -1);
+        double line = Horizontal ? ItemHeight : ItemWidth;
+        double start = Horizontal ? r.Y : r.X;
+        double end = Horizontal ? r.Bottom : r.Right;
+        int first = Math.Clamp((int)(start / line), 0, Lines - 1);
+        int last = Math.Clamp((int)(end / line), 0, Lines - 1);
+        return last < first ? (first, first) : (first, last);
+    }
+
+    /// <summary>bevel-rzz: the item index range that must be realized for <paramref name="viewport"/>
+    /// plus <paramref name="buffer"/> pixels of margin on each side along the scrolling axis (the
+    /// caller passes one viewport extent; at least two lines are always realized). Horizontal flow
+    /// scrolls vertically, vertical flow horizontally. (0, -1) when empty.</summary>
+    public (int First, int Last) RangeFor(Rect viewport, double buffer)
+    {
+        if (Count <= 0 || PerLine <= 0 || Lines <= 0) return (0, -1);
+        double line = Horizontal ? ItemHeight : ItemWidth;
+        double start = Horizontal ? viewport.Y : viewport.X;
+        double end = Horizontal ? viewport.Bottom : viewport.Right;
+        double bufStart = Math.Max(0, start - buffer);
+        double bufEnd = end + buffer;
+        int firstLine = Math.Clamp((int)(bufStart / line), 0, Lines - 1);
+        int lastLine = Math.Clamp((int)(bufEnd / line), 0, Lines - 1);
+        if (lastLine < firstLine + 1 && Lines > 1)      // minimum two lines
+            lastLine = Math.Min(Lines - 1, firstLine + 1);
+        if (lastLine < firstLine) lastLine = firstLine;
+        int first = firstLine * PerLine;
+        int last = Math.Min(Count - 1, (lastLine + 1) * PerLine - 1);
+        return (first, last);
+    }
 }
