@@ -81,30 +81,100 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/bevel-signing.keychain-db"
 
-      # A tag build publishes a real GitHub Release. Release assets are free and unmetered,
-      # unlike Actions artifacts which bill against the org's 2 GB Actions storage and then
-      # silently expire — so the notarized DMG used to cost storage and reach nobody.
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          shopt -s nullglob
-          dmgs=(dist/Bevel-*.dmg)
-          if [ ${#dmgs[@]} -eq 0 ]; then echo '::error::no DMG produced in dist/'; exit 1; fi
-          gh release create "$GITHUB_REF_NAME" "${dmgs[@]}" \
-            --title "Bevel $VERSION" \
-            --generate-notes \
-            --verify-tag
-
-      # workflow_dispatch runs have no tag to attach a Release to, so they keep a short-lived
-      # artifact instead of the old 90-day default.
-      - name: Upload DMG artifact (manual runs only)
-        if: github.event_name == 'workflow_dispatch'
+      # The DMG is uploaded as a short-lived artifact on EVERY run; the `release` job below
+      # attaches it (plus the win/linux zips) to the GitHub Release on tag builds. Release
+      # assets are free and unmetered, unlike Actions artifacts which bill against the org's
+      # 2 GB Actions storage and then silently expire.
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: Bevel-macos-${{ steps.ver.outputs.version }}
           path: dist/Bevel-*.dmg
           if-no-files-found: error
           retention-days: 7
+
+  # Windows/Linux release zips (bevel-oedd): the v0.1.0 win/linux zips were hand-uploaded; this
+  # matrix publishes them per RID (cross-publish from ubuntu works — same command as ci.yml's
+  # publish job) and zips them as Bevel-<version>-<rid>.zip, the names v0.1.0 shipped under.
+  zips:
+    name: Zip ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [linux-x64, win-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: ver
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -z "$V" ] && V="${GITHUB_REF_NAME#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Publish self-contained
+        shell: bash
+        run: |
+          dotnet publish src/Bevel.App/Bevel.App.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            -p:BevelPackaging=true \
+            --output ".publish/bevel-${{ matrix.rid }}"
+
+      - name: Zip
+        shell: bash
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cd ".publish/bevel-${{ matrix.rid }}"
+          zip -qr "$GITHUB_WORKSPACE/dist/Bevel-$V-${{ matrix.rid }}.zip" .
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bevel-zip-${{ matrix.rid }}-${{ steps.ver.outputs.version }}
+          path: dist/Bevel-*-${{ matrix.rid }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # Tag builds only: create the GitHub Release and attach the DMG + both zips. Manual
+  # (workflow_dispatch) runs have no tag, so they keep their 7-day artifacts instead.
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, zips]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve version
+        id: ver
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: Bevel-*
+          merge-multiple: true
+
+      - name: Create release with all assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          shopt -s nullglob
+          assets=(dist/Bevel-*)
+          if [ ${#assets[@]} -eq 0 ]; then echo '::error::no release assets downloaded'; exit 1; fi
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+            --title "Bevel $VERSION" \
+            --generate-notes \
+            --verify-tag
