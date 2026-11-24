@@ -761,8 +761,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
             // bevel-m3.2.1: hash the raw pixels BEFORE trim+encode — an unchanged frame reuses the
             // cached PNG and skips pngFromCGImage (the full-pixel trim scan + PNG encode was the waste).
+            // A nil hash (no readable pixel bytes) never matches, so the frame is always re-encoded.
             let hash = Self.pixelHash(cgImage)
-            if let hit = captureCacheLock.withLock({ captureCache[items[i].itemID] }), hit.hash == hash {
+            if let hash, let hit = captureCacheLock.withLock({ captureCache[items[i].itemID] }), hit.hash == hash {
                 if !hit.png.isEmpty {   // empty PNG must not overwrite the limited-mode icon
                     items[i].iconPng = hit.png
                     items[i].isLive = true
@@ -771,7 +772,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
             let png = pngFromCGImage(cgImage)
             if png.isEmpty { blank += 1 }   // captured, but fully transparent — see bevel-sd6n
-            captureCacheLock.withLock { captureCache[items[i].itemID] = (hash, png) }
+            if let hash { captureCacheLock.withLock { captureCache[items[i].itemID] = (hash, png) } }
             if !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
@@ -804,7 +805,15 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// bevel-m3.2.1: FNV-1a over the raw pixel bytes plus width/height — identical bytes hash equal,
     /// any pixel change or resize changes the hash. Pure static seam, unit-testable.
-    static func pixelHash(_ image: CGImage) -> UInt64 {
+    /// Returns nil when the image has no readable pixel bytes (some CGImages have a nil dataProvider):
+    /// a width/height-only hash would make every same-size frame a cache "hit" and serve a stale PNG
+    /// forever (ce-code-review), so nil means "always changed" and the caller skips the cache.
+    static func pixelHash(_ image: CGImage) -> UInt64? {
+        pixelHash(width: image.width, height: image.height, data: image.dataProvider?.data as Data?)
+    }
+
+    static func pixelHash(width: Int, height: Int, data: Data?) -> UInt64? {
+        guard let data else { return nil }   // no pixel bytes → never a cache hit
         var hash: UInt64 = 14695981039346656037
         let prime: UInt64 = 1099511628211
         func mix(_ value: UInt64) {
@@ -812,11 +821,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 hash = (hash ^ ((value >> shift) & 0xff)) &* prime
             }
         }
-        mix(UInt64(image.width))
-        mix(UInt64(image.height))
-        if let data = image.dataProvider?.data as Data? {
-            for byte in data { hash = (hash ^ UInt64(byte)) &* prime }
-        }
+        mix(UInt64(width))
+        mix(UInt64(height))
+        for byte in data { hash = (hash ^ UInt64(byte)) &* prime }
         return hash
     }
 

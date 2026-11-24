@@ -159,6 +159,12 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertNotEqual(TrayServiceImpl.pixelHash(a), TrayServiceImpl.pixelHash(makeImage(changed, width: 4, height: 4)))
 
         XCTAssertNotEqual(TrayServiceImpl.pixelHash(a), TrayServiceImpl.pixelHash(makeImage(pixels, width: 2, height: 8)))
+
+        // ce-code-review: an image with no readable pixel bytes (nil dataProvider data) must hash nil,
+        // never a width/height-only value — otherwise every same-size frame is a cache "hit" and a
+        // stale PNG is served forever.
+        XCTAssertNil(TrayServiceImpl.pixelHash(width: 4, height: 4, data: nil))
+        XCTAssertNil(TrayServiceImpl.pixelHash(width: 2, height: 8, data: nil))
     }
 
     func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
