@@ -221,6 +221,30 @@ public class UserNotedBadgeStoreTests : IDisposable
     }
 
     [Fact]
+    public void Read_counts_match_mixed_case_bundle_ids_against_the_lowercased_db_rows()
+    {
+        // End to end: usernoted stores identifiers lowercased; CFBundleGetIdentifier returns the
+        // Info.plist case. The resolved label must still de-ellipsize.
+        var dir = NewTempDir();
+        var path = Path.Combine(dir, "db");
+        using (var conn = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false }.ConnectionString))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "CREATE TABLE app (app_id INTEGER PRIMARY KEY, identifier VARCHAR, badge INTEGER NULL);" +
+                "INSERT INTO app (identifier, badge) VALUES ('one.ayugram.ayugramdesktop', 190);";
+            cmd.ExecuteNonQuery();
+        }
+
+        var counts = UserNotedBadgeStore.ReadCounts(path);
+
+        Assert.Equal("190",
+            MacOSAppBadgeSource.ResolveLabel("..90", "one.ayugram.AyuGramDesktop", counts));
+    }
+
+    [Fact]
     public void Default_path_points_at_the_usernoted_group_container()
     {
         var p = UserNotedBadgeStore.DefaultDatabasePath();

@@ -85,6 +85,18 @@ public class BadgeLabelResolutionTests
     }
 
     [Fact]
+    public void Bundle_id_matching_is_case_insensitive_because_usernoted_lowercases_identifiers()
+    {
+        // The db stores 'one.ayugram.ayugramdesktop' (all lowercase); CFBundleGetIdentifier returns
+        // 'one.ayugram.AyuGramDesktop'. The lookup must still hit.
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["one.ayugram.ayugramdesktop"] = 190,
+        };
+        Assert.Equal("190", MacOSAppBadgeSource.ResolveLabel("..90", "one.ayugram.AyuGramDesktop", counts));
+    }
+
+    [Fact]
     public void When_the_db_read_fails_the_dock_ellipsis_falls_back_verbatim()
     {
         // The end-to-end fallback chain: a missing/unreadable usernoted db yields an empty map
