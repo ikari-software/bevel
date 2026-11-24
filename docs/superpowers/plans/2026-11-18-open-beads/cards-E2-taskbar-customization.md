@@ -192,9 +192,9 @@ Target: one live-apply funnel with section diffs; stacks reconciled incrementall
 - **Decision:** Add `public sealed record TaskMenuAction(string Header, Action Invoke)` and an optional last parameter `Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null` to `Build` and `TryShow` (bundle id in, actions out). Items render directly under the header separator, followed by a `Separator`. `TaskbarView` supplies one provider method `AppActionsFor(string? bundleId)`: for `Bevel.Core.AppInfo.BundleId` return `New _Window` → `_openFolder(home)` where home is the user profile as a `VfsPath`; everything else returns empty. Key on bundle id, not `AppId` (`AppId` is a display name, `Dtos.cs:98-100`). Keep the provider in the view — no DI service for one entry.
 - **Test first:** `TaskButtonMenuTabsTests.App_actions_appear_under_the_header_and_invoke` — `Build` with a provider returning one action; assert a `MenuItem` with that header exists before the Windows submenu and clicking it runs the callback; with a null provider the menu shape is unchanged.
 - **Steps:**
-  - [ ] Test, then the parameter + rendering.
-  - [ ] `AppActionsFor` + pass it at `TaskbarView.axaml.cs:1018`.
-  - [ ] UNVERIFIED: that a `--role=filer` window reports bundle id `pl.ikari.bevel` to the helper in a packaged build — check with `BEVEL_DEBUG_TASKBAR=1` and note the result; in `dotnet run` dev mode it will not, which is acceptable.
+  - [x] Test, then the parameter + rendering.
+  - [x] `AppActionsFor` + pass it at `TaskbarView.axaml.cs:1018`.
+  - [x] UNVERIFIED: that a `--role=filer` window reports bundle id `pl.ikari.bevel` to the helper in a packaged build — check with `BEVEL_DEBUG_TASKBAR=1` and note the result; in `dotnet run` dev mode it will not, which is acceptable.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~TaskButtonMenuTabsTests"` → pass
 - **Done when:** right-clicking a Bevel Filer button offers New Window and it opens one; then `bd close bevel-s5x --reason "Per-app actions seam on TaskButtonMenu; Filer New Window wired"`
 

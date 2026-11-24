@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
@@ -42,14 +43,19 @@ public static class TaskButtonMenu
     /// Build runs on the UI thread and must only compose already-decoded bitmaps.</summary>
     public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon);
 
+    /// <summary>bevel-s5x: a per-app jump-list entry (header + action) for the button menu — the
+    /// view supplies them via Build's appActions parameter: bundle id in, actions out.</summary>
+    public sealed record TaskMenuAction(string Header, Action Invoke);
+
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
-        Action? onActivateForeign = null, Action? onActivationFailed = null)
+        Action? onActivateForeign = null, Action? onActivationFailed = null,
+        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -63,7 +69,8 @@ public static class TaskButtonMenu
     // to the front is chosen (window Activate, a Tab, or Quit/Force Quit) — the taskbar uses it to cancel
     // the key-focus handback so the menu's Closed doesn't re-raise the prior app over the new front.
     internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
-        Action? onActivateForeign = null, Action? onActivationFailed = null)
+        Action? onActivateForeign = null, Action? onActivationFailed = null,
+        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -73,6 +80,22 @@ public static class TaskButtonMenu
             header.Icon = new Image { Source = bmp, Width = 16, Height = 16 };
 
         var items = new List<object> { header, new Separator() };
+
+        // bevel-s5x: per-app jump-list actions render directly under the header separator, keyed on
+        // the bundle id (AppId is only a display name).
+        if (appActions?.Invoke(model.BundleId) is { Count: > 0 } actions)
+        {
+            foreach (var action in actions)
+            {
+                var captured = action;
+                items.Add(new MenuItem
+                {
+                    Header = action.Header,
+                    Command = new AsyncRelayCommand(() => { captured.Invoke(); return Task.CompletedTask; })
+                });
+            }
+            items.Add(new Separator());
+        }
 
         if (model.Windows.Count > 0)
         {
@@ -188,7 +211,8 @@ public static class TaskButtonMenu
 
     private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand CloseCommand);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
-        bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null);
+        bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
+        string? BundleId = null);
 
     private static MenuModel? Describe(object? dc) => dc switch
     {
@@ -196,13 +220,15 @@ public static class TaskButtonMenu
             g.DisplayName, g.IconSource,
             g.Windows.Select(Row).ToList(),
             g.QuitCommand, g.ForceQuitCommand,
-            IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand),
+            IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand,
+            BundleId: g.BundleId),
 
         // App-presence has no windows → the Windows section is omitted (Windows is empty).
         TaskItemViewModel t => new MenuModel(
             TaskbarGrouping.DisplayName(t.AppId), t.IconSource,
             t.IsAppPresence ? Array.Empty<WindowRow>() : new[] { Row(t) },
-            t.QuitCommand, t.ForceQuitCommand),
+            t.QuitCommand, t.ForceQuitCommand,
+            BundleId: t.BundleId),
 
         _ => null,
     };
