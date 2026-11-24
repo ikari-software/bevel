@@ -197,10 +197,10 @@ dead fake search box with hardcoded `White` / `#68799A` / `#8A8598`; `StartMenu.
 - **Decision:** Filter in the taskbar PROJECTION, not in the helper: no proto/helper change, the helper keeps sending everything (activation and `WorkAreaMitigator` still need other-Space windows), and the toggle applies live. Add `bool IsOnOtherSpace` to `TaskItemViewModel` (set in ctor and `Update`), `TaskbarItemsProjector.SetShowOtherSpaces(bool show)` next to `SetSort` (:56), forwarded by `TaskbarViewModel`, called from `ApplyLiveSettings` beside `_vm?.SetSort(...)`. Setting `TaskbarShowOtherSpaceWindows`, key `taskbarShowOtherSpaceWindows`, default true. A windowless app-presence button (`Id` starting `app:`) is never filtered.
 - **Test first:** `tests/Bevel.Taskbar.Tests/TaskbarGroupingTests.cs` or a new `OtherSpaceFilterTests.cs` (new): `Other_space_windows_are_listed_by_default`, `Turning_the_setting_off_drops_other_space_windows_and_keeps_current_ones`, `A_window_that_moves_to_the_current_space_reappears` (drive `Update` with `IsOnOtherSpace=false`).
 - **Steps:**
-  - [ ] Add the VM property and keep it current in `Update`.
-  - [ ] Add the projector filter + tests.
-  - [ ] Add the setting (same four additive edits as `WindowlessAppsLast`, `SettingsService.cs:551/722/957`) and a checkbox in Settings > Taskbar.
-  - [ ] Wire `ApplyLiveSettings` and the startup mirror block at `TaskbarView.axaml.cs:173-190`.
+  - [x] Add the VM property and keep it current in `Update`.
+  - [x] Add the projector filter + tests.
+  - [x] Add the setting (same four additive edits as `WindowlessAppsLast`, `SettingsService.cs:551/722/957`) and a checkbox in Settings > Taskbar.
+  - [x] Wire `ApplyLiveSettings` and the startup mirror block at `TaskbarView.axaml.cs:173-190`.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~OtherSpace"` → all pass.
 - **Done when:** the toggle hides/shows other-Space buttons live with no restart; then `bd close bevel-jt30 --reason "taskbarShowOtherSpaceWindows (default on), filtered in TaskbarItemsProjector"`
 

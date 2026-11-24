@@ -75,6 +75,7 @@ public static class TaskbarComponentsMigration
                 ["reclickMinimize"] = s.TaskbarReclickMinimize.ToString(),
                 ["windowSort"] = s.TaskbarWindowSort.ToString(),
                 ["windowlessAppsLast"] = B(s.WindowlessAppsLast),
+                ["showOtherSpaceWindows"] = B(s.TaskbarShowOtherSpaceWindows),
             },
             Visible: true));
 

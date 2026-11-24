@@ -32,6 +32,7 @@ public sealed class TaskbarItemsProjector : IDisposable
     private TaskbarGroupingMode _mode;
     private TaskbarWindowSort _sort = TaskbarWindowSort.OpenOrder;
     private bool _windowlessLast;
+    private bool _showOtherSpaces = true;
 
     public TaskbarItemsProjector(ObservableCollection<TaskItemViewModel> source, TaskbarGroupingMode mode = TaskbarGroupingMode.Never)
     {
@@ -61,6 +62,15 @@ public sealed class TaskbarItemsProjector : IDisposable
         RePlan();
     }
 
+    /// <summary>bevel-jt30: whether windows on other Spaces get a button. Applies live; a windowless
+    /// app-presence entry is never filtered. Re-plans immediately.</summary>
+    public void SetShowOtherSpaces(bool show)
+    {
+        if (_showOtherSpaces == show) return;
+        _showOtherSpaces = show;
+        RePlan();
+    }
+
     /// <summary>Resolves the mode to a concrete group/don't-group decision for the current window set.</summary>
     private bool ShouldGroup() => _mode switch
     {
@@ -74,7 +84,12 @@ public sealed class TaskbarItemsProjector : IDisposable
     private void RePlan()
     {
         UpdateHueSubscriptions();   // keep colour-sort re-ordering fresh as icons load
-        var plan = TaskbarGrouping.Plan(_source, ShouldGroup());
+        // bevel-jt30: filter in the PROJECTION (the helper keeps sending everything — activation and
+        // WorkAreaMitigator still need other-Space windows). App-presence entries are never filtered.
+        IReadOnlyList<TaskItemViewModel> visible = _showOtherSpaces
+            ? _source
+            : _source.Where(w => w.IsAppPresence || !w.IsOnOtherSpace).ToArray();
+        var plan = TaskbarGrouping.Plan(visible, ShouldGroup());
 
         // Reuse existing group view-models by key so width/animation + child subscriptions survive.
         var existingGroups = Items.OfType<TaskGroupViewModel>().ToDictionary(g => "g:" + g.AppId);
@@ -215,12 +230,8 @@ public sealed class TaskbarItemsProjector : IDisposable
 
     private void UpdateHueSubscriptions()
     {
-        if (_sort != TaskbarWindowSort.Colour)
-        {
-            foreach (var t in _hueSubs) t.PropertyChanged -= OnItemPropertyChanged;
-            _hueSubs.Clear();
-            return;
-        }
+        // Always subscribed: besides the colour-sort icon re-plan, bevel-jt30 needs IsOnOtherSpace
+        // changes to re-plan the projection when other-Space filtering is on.
         var current = new HashSet<TaskItemViewModel>(_source);
         foreach (var gone in _hueSubs.Where(t => !current.Contains(t)).ToList())
         {
@@ -234,6 +245,9 @@ public sealed class TaskbarItemsProjector : IDisposable
     private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_sort == TaskbarWindowSort.Colour && e.PropertyName == nameof(TaskItemViewModel.IconSource))
+            RePlan();
+        // bevel-jt30: a window that moved spaces appears/vanishes from the strip (when filtering).
+        if (!_showOtherSpaces && e.PropertyName == nameof(TaskItemViewModel.IsOnOtherSpace))
             RePlan();
     }
 
