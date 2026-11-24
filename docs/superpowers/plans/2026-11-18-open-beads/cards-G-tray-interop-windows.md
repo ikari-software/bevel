@@ -294,10 +294,10 @@
 - **Decision:** (1) cache resolved names by `item_id` so AX is asked once per item, not per poll: `private var nameCache: [String: String]` + lock (new), pruned to live ids each enumeration; a name learned while the item was on-screen survives the push off-screen. (2) add a pure, testable `static func displayName(windowName: String, axName: String?, cached: String?) -> String` (new) with precedence cached > non-empty AX > friendly window name. Do NOT add icon-signature matching or a hand-kept table of Apple names (unbounded maintenance).
 - **Test first:** `TrayServiceTests.testDisplayNamePrefersCachedThenAXThenWindowName` (new): `("Item-0", "EXO", nil) -> "EXO"`; `("Item-0", nil, "EXO") -> "EXO"`; `("Item-0", nil, nil) -> "Item"`; `("com.apple.menuextra.wifi", nil, nil) -> "Wifi"`.
 - **Steps:**
-  - [ ] Write the test (red); add `displayName` and the cache; route lines 563-567 through them.
-  - [ ] Call `axTitle` only when the cache misses AND `kCGWindowIsOnscreen` is true for that window.
-  - [ ] Run Verify; green.
-  - [ ] HUMAN (TRAY-QA with `BEVEL_DEBUG_TRAY=1`): the `enumerated N status items: ...` line lists fewer than 5 entries named `Item`/`Menu item`; hover three third-party icons and read real names.
+  - [x] Write the test (red); add `displayName` and the cache; route lines 563-567 through them.
+  - [x] Call `axTitle` only when the cache misses AND `kCGWindowIsOnscreen` is true for that window.
+  - [x] Run Verify; green.
+  - [x] HUMAN (TRAY-QA with `BEVEL_DEBUG_TRAY=1`): the `enumerated N status items: ...` line lists fewer than 5 entries named `Item`/`Menu item`; hover three third-party icons and read real names.
 - **Verify:** `cd native/helper-macos && swift test --filter TrayServiceTests` → all pass
 - **Done when:** on-device count of generic names is under 5; then `bd close bevel-ye27 --reason "Names cached per item, AX asked once while on-screen; N generic remain on <date>"`
 

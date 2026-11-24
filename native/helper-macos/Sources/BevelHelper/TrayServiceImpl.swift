@@ -64,6 +64,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     // frame skips the trim scan + PNG encode. Pruned to the live item ids on each full pass.
     private let captureCacheLock = NSLock()
     private var captureCache: [String: (hash: UInt64, png: Data)] = [:]
+    // bevel-ye27: AX-resolved display names by item id, so AX is asked once per item (not per poll)
+    // and a name learned while on-screen survives the push off-screen. Pruned to live ids per pass.
+    private let nameCacheLock = NSLock()
+    private var nameCache: [String: String] = [:]
     // A self-test that had nothing to capture retries after this, instead of on every 250 ms tick.
     private var selfTestRetryAfter: UInt64 = 0
     private let iconCacheLock = NSLock()
@@ -604,16 +608,22 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
             let identity = resolveItem(windowName: windowName, ownerPID: pid, ownerName: ownerName)
             // A generic AppKit window name ("Item-0" → "Item", empty → "Menu item") carries no identity,
             // and every item's owner PID is Control Center on macOS 26 — so the app's real label only
-            // lives in accessibility. Query the AX element at the item's centre so the tooltip reads
-            // "EXO"/"Weather"/… instead of a useless "Item".
-            var displayName = identity.name
-            if displayName == "Item" || displayName == "Menu item",
+            // lives in accessibility. bevel-ye27: ask AX ONCE per item (cached by item id, and only
+            // while the window is on-screen — the hit-test reads a screen point), so the tooltip reads
+            // "EXO"/"Weather"/… instead of a useless "Item", and the learned name survives the
+            // consolidation push off-screen.
+            let itemID = "\(pid):\(windowNumber)"
+            let cachedName = nameCacheLock.withLock { nameCache[itemID] }
+            var displayName = Self.displayName(windowName: identity.name, axName: nil, cached: cachedName)
+            if (displayName == "Item" || displayName == "Menu item"), cachedName == nil,
+               (w[kCGWindowIsOnscreen as String] as? Bool) == true,
                let axName = axTitle(at: CGPoint(x: rect.midX, y: rect.midY)) {
-                displayName = axName
+                displayName = Self.displayName(windowName: identity.name, axName: axName, cached: nil)
+                nameCacheLock.withLock { nameCache[itemID] = displayName }
             }
 
             var item = Bevel_Helper_V1_TrayItem()
-            item.itemID = "\(pid):\(windowNumber)"
+            item.itemID = itemID
             item.ownerPid = pid
             item.ownerBundleID = identity.bundleID
             item.ownerName = displayName
@@ -653,6 +663,9 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         }
 
         let sorted = found.sorted { $0.x < $1.x }.map { $0.item }
+        // bevel-ye27: prune the name cache to the ids still alive, so closed items don't pin names.
+        let liveIds = Set(sorted.map { $0.itemID })
+        nameCacheLock.withLock { nameCache = nameCache.filter { liveIds.contains($0.key) } }
         dbg("enumerated \(sorted.count) status items: " + sorted.map { $0.ownerName }.joined(separator: ", "))
         return sorted
     }
@@ -1092,12 +1105,21 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         //    owning process's icon (Control Center on macOS 26) with a friendly name.
         let app = NSRunningApplication(processIdentifier: ownerPID)
         let icon = app?.bundleIdentifier.map { cachedAppIconPNG(bundleID: $0) } ?? Data()
-        return (app?.bundleIdentifier ?? "", friendlyName(windowName.isEmpty ? ownerName : windowName), icon)
+        return (app?.bundleIdentifier ?? "", Self.friendlyName(windowName.isEmpty ? ownerName : windowName), icon)
+    }
+
+    /// bevel-ye27: name precedence for a tray item — a name cached while the item was on-screen
+    /// (survives the consolidation push off-screen) beats a fresh AX read, which beats the friendly
+    /// window name. Pure static seam, unit-testable.
+    static func displayName(windowName: String, axName: String?, cached: String?) -> String {
+        if let cached, !cached.isEmpty { return cached }
+        if let axName, !axName.isEmpty { return axName }
+        return friendlyName(windowName)
     }
 
     /// Humanizes a raw window/system name: strips the `com.apple.menuextra.` prefix, drops a trailing
     /// `-0` suffix, and leaves already-friendly names (WiFi, Sound, Clock) as-is.
-    private func friendlyName(_ raw: String) -> String {
+    static func friendlyName(_ raw: String) -> String {
         var s = raw
         if let r = s.range(of: "com.apple.menuextra.") { s.removeSubrange(r) }
         if s.hasSuffix("-0") { s = String(s.dropLast(2)) }
@@ -1106,7 +1128,7 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     }
 
     /// Test seam for `friendlyName`.
-    func friendlyNameForTest(_ raw: String) -> String { friendlyName(raw) }
+    func friendlyNameForTest(_ raw: String) -> String { Self.friendlyName(raw) }
 
     /// Test seams for the self-test (§5.10).
     func runSelfTestForTest() async -> Bool? { await runSelfTest() }
