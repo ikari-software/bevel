@@ -22,7 +22,7 @@ namespace Bevel.Pal.MacOS;
 /// </summary>
 public static unsafe partial class AppleEventInbound
 {
-    public enum Verb { Reveal, Delete, Duplicate, Make, Move, SetSelection, Open }
+    public enum Verb { Reveal, Delete, Duplicate, Make, Move, SetSelection, Open, Launch }
 
     /// <summary>A parsed inbound request. For reveal/delete/duplicate: <see cref="Paths"/> (literal
     /// files) + <see cref="Specifiers"/> (descriptive references) are the targets. For make:
@@ -100,6 +100,7 @@ public static unsafe partial class AppleEventInbound
         Register("core", "doex");   // exists
         Register("core", "setd");   // set    (set selection to …)
         Register("aevt", "odoc");   // open   (bevel-whz: claimed here, not via Avalonia file activation)
+        Register("Bevl", "Lnch");   // launch program "<bundle id>"  (bevel-vs10, custom Bevel suite)
 
         _installed = true;
     }
@@ -127,6 +128,7 @@ public static unsafe partial class AppleEventInbound
             {
                 Verb.Make => BuildMake(evt),
                 Verb.Move => BuildMove(evt),
+                Verb.Launch => BuildLaunch(evt),
                 _ => BuildTargets(verb.Value, evt),
             };
             Trace($"AE {verb}: paths={request.Paths.Count} specs={request.Specifiers.Count} name={request.Name}");
@@ -143,6 +145,7 @@ public static unsafe partial class AppleEventInbound
         _ when cls == FourCC("core") && id == FourCC("crel") => Verb.Make,
         _ when cls == FourCC("core") && id == FourCC("move") => Verb.Move,
         _ when cls == FourCC("aevt") && id == FourCC("odoc") => Verb.Open,
+        _ when cls == FourCC("Bevl") && id == FourCC("Lnch") => Verb.Launch,
         _ => null,
     };
 
@@ -238,6 +241,15 @@ public static unsafe partial class AppleEventInbound
     {
         var (paths, specs) = ParseTargetsFrom(Send_u32(evt, Sel("paramDescriptorForKeyword:"), FourCC("data")));
         return new AeRequest(Verb.SetSelection, paths, specs, null, null);
+    }
+
+    /// <summary>bevel-vs10: `launch program "<bundle id>"` — the direct object is a plain string
+    /// carrying the bundle id (carried as <see cref="AeRequest.Name"/>).</summary>
+    static AeRequest BuildLaunch(IntPtr evt)
+    {
+        var direct = Send_u32(evt, Sel("paramDescriptorForKeyword:"), keyDirectObject);
+        var bundleId = direct == IntPtr.Zero ? null : NSStr(AppKitInterop.SendIntPtr(direct, Sel("stringValue")));
+        return new AeRequest(Verb.Launch, Array.Empty<string>(), Array.Empty<AeSpecifier>(), null, bundleId);
     }
 
     static AeRequest BuildMake(IntPtr evt)

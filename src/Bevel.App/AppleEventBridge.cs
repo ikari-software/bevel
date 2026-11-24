@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Bevel.Core.Vfs;
 using Bevel.Interop;
 using Bevel.Interop.AppleEvents;
+using Bevel.Interop.Cli;
 using Bevel.Pal.MacOS;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -109,6 +110,18 @@ public static class AppleEventBridge
                     ? known.Desktop   // `make new folder` with no `at` → Finder defaults to the desktop
                     : (await resolver.ResolveAsync(ConvertSpec(request.Container))).FirstOrDefault();
                 await automation.MakeAsync(container, NewItemKind.Folder, request.Name, default);
+                return;
+            }
+
+            if (request.Verb == AppleEventInbound.Verb.Launch)
+            {
+                // bevel-vs10: `launch program "<bundle id>"` — the SAME guard as bevelctl/bevel://:
+                // a bundle id only, never a filesystem path (LooksLikePath is shared, public).
+                var appId = request.Name;
+                if (appId is not null && !AutomationCommandRouter.LooksLikePath(appId))
+                    await automation.LaunchAsync(appId, default);
+                else
+                    Console.Error.WriteLine("[apple-event] launch needs an application bundle id, not a path.");
                 return;
             }
 

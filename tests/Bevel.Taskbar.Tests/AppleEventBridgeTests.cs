@@ -70,6 +70,13 @@ public class AppleEventBridgeTests
     private sealed class RecordingAutomation : IShellAutomation
     {
         public List<VfsPath> Opens { get; } = new();
+        public List<string> Launches { get; } = new();
+
+        public Task LaunchAsync(string appId, CancellationToken ct)
+        {
+            Launches.Add(appId);
+            return Task.CompletedTask;
+        }
 
         public Task<WindowRef> OpenAsync(VfsPath containerOrFile, OpenOptions opts, CancellationToken ct)
         {
@@ -85,7 +92,6 @@ public class AppleEventBridgeTests
         public Task<IReadOnlyList<VfsPath>> MoveAsync(IReadOnlyList<VfsPath> items, VfsPath destination, CancellationToken ct) => throw new NotSupportedException();
         public Task<BevelStateSnapshot> QueryAsync(AutomationQuery query, CancellationToken ct) => throw new NotSupportedException();
         public Task SetAsync(AutomationTarget target, AutomationProperty prop, string value, CancellationToken ct) => throw new NotSupportedException();
-        public Task LaunchAsync(string appId, CancellationToken ct) => throw new NotSupportedException();
         public Task QuitAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 
@@ -100,5 +106,31 @@ public class AppleEventBridgeTests
         await AppleEventBridge.DispatchAsync(automation, null!, null!, request);
 
         Assert.Equal(new[] { new VfsPath("file", "/tmp"), new VfsPath("file", "/Users") }, automation.Opens);
+    }
+
+    // ── bevel-vs10: AE 'launch program' routes to LaunchAsync, bundle id only ──
+
+    [Fact]
+    public async Task Launch_passes_the_bundle_id_to_LaunchAsync()
+    {
+        var automation = new RecordingAutomation();
+        var request = new AppleEventInbound.AeRequest(AppleEventInbound.Verb.Launch,
+            Array.Empty<string>(), Array.Empty<AeSpecifier>(), null, "com.apple.TextEdit");
+
+        await AppleEventBridge.DispatchAsync(automation, null!, null!, request);
+
+        Assert.Equal(new[] { "com.apple.TextEdit" }, automation.Launches);
+    }
+
+    [Fact]
+    public async Task Launch_refuses_a_filesystem_path()
+    {
+        var automation = new RecordingAutomation();
+        var request = new AppleEventInbound.AeRequest(AppleEventInbound.Verb.Launch,
+            Array.Empty<string>(), Array.Empty<AeSpecifier>(), null, "/Applications/TextEdit.app");
+
+        await AppleEventBridge.DispatchAsync(automation, null!, null!, request);
+
+        Assert.Empty(automation.Launches);   // same LooksLikePath guard as bevelctl/bevel://
     }
 }

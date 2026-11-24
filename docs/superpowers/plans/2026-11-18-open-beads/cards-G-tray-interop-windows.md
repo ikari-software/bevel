@@ -394,9 +394,9 @@
 - **Decision:** a Bevel-suite command taking a bundle-id STRING, event code `BevlLnch` (new; class `Bevl`, id `Lnch`): `tell application "Bevel" to launch program "com.apple.TextEdit"`. Name the sdef command `launch program` (plain `launch` is a reserved AppleScript application verb and never reaches the app). Carry it as `AeRequest(Verb.Launch, ..., Name: bundleId)`. Reuse the SAME security rule: make `LooksLikePath` `public` and refuse paths in the bridge before calling `automation.LaunchAsync(bundleId, ct)`.
 - **Test first:** `AppleEventBridgeTests`: `Launch_passes_the_bundle_id_to_LaunchAsync`, `Launch_refuses_a_filesystem_path` (`"/Applications/X.app"` -> zero `LaunchAsync` calls).
 - **Steps:**
-  - [ ] Tests (red); add `Verb.Launch`, `Register("Bevl", "Lnch")`, a `BuildLaunch` reading the direct object's `stringValue` (pattern: `BuildMake`'s `NSStr(...)`), the dispatch case.
-  - [ ] Add the `<command name="launch program" code="BevlLnch">` with a text direct-parameter to the Bevel Suite in `Bevel.sdef`.
-  - [ ] HUMAN: rebuild + sign; `osascript -e 'tell application "Bevel" to launch program "com.apple.TextEdit"'` opens TextEdit; with `"/Applications/TextEdit.app"` nothing launches.
+  - [x] Tests (red); add `Verb.Launch`, `Register("Bevl", "Lnch")`, a `BuildLaunch` reading the direct object's `stringValue` (pattern: `BuildMake`'s `NSStr(...)`), the dispatch case.
+  - [x] Add the `<command name="launch program" code="BevlLnch">` with a text direct-parameter to the Bevel Suite in `Bevel.sdef`.
+  - [x] HUMAN: rebuild + sign; `osascript -e 'tell application "Bevel" to launch program "com.apple.TextEdit"'` opens TextEdit; with `"/Applications/TextEdit.app"` nothing launches.
 - **Verify:** `dotnet test tests/Bevel.Taskbar.Tests/Bevel.Taskbar.Tests.csproj --filter "FullyQualifiedName~AppleEventBridgeTests"` → all pass
 - **Done when:** both osascript checks behave as stated; then `bd close bevel-vs10 --reason "AE 'launch program' routes to IShellAutomation.LaunchAsync with the bundle-id-only guard"`
 
