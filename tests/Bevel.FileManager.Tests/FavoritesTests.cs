@@ -138,4 +138,39 @@ public sealed class FavoritesTests : IDisposable
         Pump();
         Assert.Equal(new[] { "vfs://file//c", "vfs://file//a" }, settings.Current.FilerFavorites);
     }
+
+    /// <summary>ce-code-review (bevel-4pgk): a hand-edited malformed 'filerFavorites' entry must be
+    /// skipped, not throw — RefreshInfoPaneLinks runs inside the settings.Changed fan-out
+    /// (ApplyFolderOptions), so one bad entry used to throw in every open Filer window.</summary>
+    [AvaloniaFact]
+    public async Task Malformed_stored_favorite_is_skipped_without_throwing()
+    {
+        var settings = new SettingsService(_cfg);
+        await settings.LoadAsync();
+        var good = new VfsPath("file", _dir).ToString();
+        await settings.UpdateAsync(s => s.FilerFavorites = new[] { "garbage-no-scheme", good, "vfs://" });
+
+        // Window setup navigates → UpdateInfoPane → RefreshInfoPaneLinks: must not throw.
+        var win = NewWindow(settings);
+        win.ActiveController!.NavigateTo(new VfsPath("file", _dir));
+        Pump();
+
+        // The settings.Changed fan-out path (ApplyFolderOptions → RefreshFavorites) must not throw either.
+        win.ApplyFolderOptions();
+        Pump();
+
+        // Info pane: 2 fixed links + the single valid favorite; malformed entries were skipped.
+        var infoPane = Field<InfoPane>(win, "InfoPane");
+        var links = (IList)Field<object>(infoPane, "_links");
+        Assert.Equal(3, links.Count);
+
+        // Favorites menu: only the valid entry appears after the separator.
+        var menu = Field<MenuBar>(win, "MenuBar");
+        menu.FavoritesMenu.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.SubmenuOpenedEvent));
+        Dispatcher.UIThread.RunJobs();
+        var items = menu.FavoritesMenu.Items.Cast<object>().ToList();
+        var sep = items.IndexOf(menu.GetType().GetField("FavoritesSeparator", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(menu)!);
+        Assert.True(sep >= 0, "favorites separator exists");
+        Assert.Equal(1, items.Count - sep - 1);
+    }
 }

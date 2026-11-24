@@ -373,8 +373,17 @@ public partial class FileManagerWindow : BevelWindow
     }
 
     private void RebuildFavoritesMenu()
-        => MenuBar.RebuildFavorites(_settings?.Current.FilerFavorites ?? Array.Empty<string>(),
-            path => NavigateTo(VfsPath.Parse(path)));
+        => MenuBar.RebuildFavorites(ValidStoredFavorites().ToList(),
+            path => { if (VfsPath.TryParse(path, out var parsed)) NavigateTo(parsed); });
+
+    /// <summary>bevel-4pgk: stored favorites are hand-editable settings, so parse tolerantly and skip
+    /// malformed entries (missing/corrupt → empty) instead of throwing in every open window.</summary>
+    private IEnumerable<string> ValidStoredFavorites()
+    {
+        foreach (var fav in _settings?.Current.FilerFavorites ?? Array.Empty<string>())
+            if (VfsPath.TryParse(fav, out _))
+                yield return fav;
+    }
 
     /// <summary>Refresh every favorites surface in this window (menu + info-pane links) — also called from
     /// <see cref="ApplyFolderOptions"/> so the settings fan-out reaches every open Filer window.</summary>
@@ -985,9 +994,11 @@ public partial class FileManagerWindow : BevelWindow
         InfoPane.AddLink("My Computer", () => NavigateTo(VfsPath.Root("computer")));
         foreach (var fav in _settings?.Current.FilerFavorites ?? Array.Empty<string>())
         {
-            var captured = fav;
-            InfoPane.AddLink(Navigation.HistoryEntry.LabelFor(VfsPath.Parse(captured)),
-                () => NavigateTo(VfsPath.Parse(captured)));
+            // Skip malformed stored entries (missing/corrupt → empty) instead of throwing mid-fan-out.
+            if (!VfsPath.TryParse(fav, out var parsed))
+                continue;
+            InfoPane.AddLink(Navigation.HistoryEntry.LabelFor(parsed),
+                () => NavigateTo(parsed));
         }
     }
 
