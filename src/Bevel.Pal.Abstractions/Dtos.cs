@@ -189,6 +189,7 @@ public sealed record AppTab(
     /// <summary>bevel-l17f: iTerm session background colour as "#RRGGBB", shown as a swatch when the row
     /// has no favicon. Null for browsers.</summary>
     string? Tint = null);
+<<<<<<< HEAD
 
 /// <summary>bevel-bw1v: what <see cref="ITabProvider.ActivateAsync"/> actually did, so the UI can
 /// tell a silent no-op apart from a success. <see cref="NotFound"/> means the re-resolve found nothing
@@ -201,6 +202,8 @@ public enum TabActivationResult
     NotFound,
     Failed,
 }
+=======
+>>>>>>> a24492b (feat(taskbar): iTerm session-colour swatch for tab rows without a favicon (bevel-l17f))
 
 /// <summary>The one rule for "is this window still where the caller thinks" (bevel-tm1n). Every PAL's
 /// compare-and-set reposition uses it, and the Swift helper mirrors it (<c>FrameGuard.swift</c>).</summary>
