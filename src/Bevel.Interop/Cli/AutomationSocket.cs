@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using Bevel.ShellCore.Ipc;
 
@@ -17,6 +18,11 @@ public static class AutomationSocket
     /// <summary>Default per-user socket path (alongside the settings db under ~/.config/bevel).</summary>
     public static string DefaultPath => Path.Combine(
         Bevel.Core.BevelConfigDir.Path, "bevelctl.sock");
+
+    /// <summary>bevel-wcqr: the per-session nonce file that sits NEXT TO the socket
+    /// (<c>&lt;socket&gt;.token</c>, 0600). The server writes it at <c>Start()</c>; clients read it to
+    /// build the HMAC hello. Same pattern as the shell-core <c>core.token</c>.</summary>
+    public static string TokenPathFor(string socketPath) => socketPath + ".token";
 
     private const int MaxFrame = 16 * 1024 * 1024;
 
@@ -98,11 +104,17 @@ public static class AutomationSocket
 /// </summary>
 public sealed class AutomationSocketServer : IAsyncDisposable
 {
+    /// <summary>Capability string the bevelctl client presents in its hello frame.</summary>
+    public const string ClientCapability = "bevelctl";
+
     private readonly string _path;
     private readonly Func<IReadOnlyList<string>, CancellationToken, Task<CommandResult>> _handler;
     private Socket? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
+    private byte[]? _nonce;
+    private string? _tokenPath;
+    private bool _bound;
 
     public AutomationSocketServer(string path, Func<IReadOnlyList<string>, CancellationToken, Task<CommandResult>> handler)
     {
@@ -120,10 +132,22 @@ public sealed class AutomationSocketServer : IAsyncDisposable
             // non-traversable parent keeps other local users off it regardless of umask (INT-10 review).
             TrySetDirOwnerOnly(dir);
         }
+        // bevel-wcqr: mint the per-session nonce and drop it as hex in a 0600 token file NEXT TO
+        // the socket BEFORE binding, so a client that connects the moment the listener appears
+        // never reads a stale token. Only when the path is free — a live incumbent owns both files,
+        // and this instance must not clobber them before standing down.
+        if (!UdsSocketClaim.IsServing(_path))
+        {
+            _nonce = RandomNumberGenerator.GetBytes(16);
+            _tokenPath = AutomationSocket.TokenPathFor(_path);
+            File.WriteAllText(_tokenPath, Convert.ToHexString(_nonce));
+            TrySetOwnerOnly(_tokenPath);
+        }
         // Probe-then-bind (bevel-wio0): a stale socket from a crashed run is reclaimed, a LIVE one
         // (another shell instance's bevelctl endpoint) throws UdsSocketBusyException so this instance
         // stands down instead of unlinking the incumbent's socket out from under it.
         _listener = UdsSocketClaim.BindListener(_path, backlog: 16);
+        _bound = true;
         TrySetOwnerOnly(_path);
 
         _cts = new CancellationTokenSource();
@@ -148,6 +172,16 @@ public sealed class AutomationSocketServer : IAsyncDisposable
         try
         {
             await using var stream = new NetworkStream(connection, ownsSocket: true);
+            // bevel-wcqr: the FIRST frame must be a valid HMAC hello keyed by this session's token.
+            // No hello / wrong nonce → nothing runs; answer "not authorized" and close.
+            var hello = await AutomationSocket.ReadFrameAsync(stream, ct);
+            if (_nonce is null || Handshake.ValidateHello(_nonce, hello) is null)
+            {
+                await AutomationSocket.WriteFrameAsync(stream, AutomationSocket.EncodeResult(
+                    new CommandResult(ExitCodes.ShellNotRunning, "bevel: not authorized")), ct);
+                return;
+            }
+
             var request = await AutomationSocket.ReadFrameAsync(stream, ct);
             var args = AutomationSocket.DecodeArgs(request);
 
@@ -191,18 +225,34 @@ public sealed class AutomationSocketServer : IAsyncDisposable
             try { await _acceptLoop; } catch { /* shutting down */ }
         }
         _cts?.Dispose();
+        // bevel-wcqr: take the token file with us only if THIS instance bound the socket (a
+        // stood-down instance never wrote one and must not delete the incumbent's).
+        if (_bound && _tokenPath is not null)
+        {
+            try { File.Delete(_tokenPath); } catch { /* best effort */ }
+        }
     }
 }
 
-/// <summary>The bevelctl client side: connect, send argv, read back the result.</summary>
+/// <summary>The bevelctl client side: connect, prove the session token, send argv, read back the result.</summary>
 public static class AutomationSocketClient
 {
     public static async Task<CommandResult> SendAsync(string path, IReadOnlyList<string> args, CancellationToken ct = default)
     {
+        // bevel-wcqr: read the per-session token the server dropped next to the socket. A missing
+        // token means no shell is running (or it never bound), so surface that as a connect failure
+        // — bevelctl prints its "shell isn't running" line for SocketException.
+        var tokenPath = AutomationSocket.TokenPathFor(path);
+        if (!File.Exists(tokenPath))
+            throw new SocketException((int)SocketError.ConnectionRefused);
+        var nonce = Convert.FromHexString(File.ReadAllText(tokenPath).Trim());
+
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await socket.ConnectAsync(new UnixDomainSocketEndPoint(path), ct);
         await using var stream = new NetworkStream(socket, ownsSocket: true);
 
+        await AutomationSocket.WriteFrameAsync(stream,
+            Handshake.BuildHelloPayload(nonce, AutomationSocketServer.ClientCapability), ct);
         await AutomationSocket.WriteFrameAsync(stream, AutomationSocket.EncodeArgs(args), ct);
         var response = await AutomationSocket.ReadFrameAsync(stream, ct);
         return AutomationSocket.DecodeResult(response);

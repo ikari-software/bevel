@@ -7,11 +7,10 @@ using Microsoft.Extensions.Hosting;
 namespace Bevel.App;
 
 /// <summary>
-/// Hosts the bevelctl socket (08-os-interop.md §3.2) in the process that owns the live file manager,
-/// dispatching each connection's argv through BevelCtlParser → <see cref="AutomationCommandRouter"/>
-/// → the one <see cref="Bevel.Interop.IShellAutomation"/> seam. Registered only for the FM-hosting
-/// roles (All / Filer); a bind failure is logged, never fatal (a second instance simply doesn't
-/// own the socket).
+/// Hosts the bevelctl socket (08-os-interop.md §3.2) in the Taskbar role (the one process with the
+/// full automation DI graph), dispatching each connection's argv through BevelCtlParser →
+/// <see cref="AutomationCommandRouter"/> → the one <see cref="Bevel.Interop.IShellAutomation"/> seam.
+/// A bind failure is logged, never fatal (a second instance simply doesn't own the socket).
 /// </summary>
 public sealed class AutomationSocketHost : IHostedService, IAsyncDisposable
 {
