@@ -572,6 +572,28 @@ public partial class ItemView : UserControl
 
     // ── Sorting ──────────────────────────────────────────────────────
 
+    /// <summary>Current sort state as enum-name strings, for persistence (bevel-ze3o).</summary>
+    public (string Column, bool Ascending) SortState => (_sortCol.ToString(), _sortAsc);
+
+    /// <summary>Raised when the user changes the sort (header click or Arrange Icons ▸ Sort By) so the
+    /// window can persist the per-folder state (bevel-ze3o). Not raised by <see cref="SetSort"/> when the
+    /// state is unchanged.</summary>
+    public event Action? SortChanged;
+
+    /// <summary>Set the sort explicitly — never toggles, and a no-op (no re-sort, no event) when the state
+    /// is already the requested one, so restoring a persisted per-folder state can't flip direction
+    /// (bevel-ze3o).</summary>
+    public void SetSort(string column, bool ascending)
+    {
+        if (!Enum.TryParse<SortColumn>(column, out var col)) col = SortColumn.Name;
+        if (_sortCol == col && _sortAsc == ascending) return;
+        _sortCol = col;
+        _sortAsc = ascending;
+        _ = SortAsync();
+        RefreshSortIndicators();
+        SortChanged?.Invoke();
+    }
+
     void OnHeaderClick(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not TextBlock tb || tb.Tag is not string ts
@@ -579,6 +601,7 @@ public partial class ItemView : UserControl
         _sortAsc = _sortCol == col ? !_sortAsc : true;
         _sortCol = col;
         _ = SortAsync(); RefreshSortIndicators();
+        SortChanged?.Invoke();
         e.Handled = true;
     }
 
@@ -598,6 +621,7 @@ public partial class ItemView : UserControl
         _sortCol = col;
         _ = SortAsync();
         RefreshSortIndicators();
+        SortChanged?.Invoke();
     }
 
     /// <summary>Sort on a background thread for large lists, synchronously for small.</summary>

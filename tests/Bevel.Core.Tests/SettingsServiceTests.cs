@@ -86,6 +86,26 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task FilerFolderViews_round_trips_and_is_pruned_when_empty(/* bevel-ze3o */)
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        Assert.Empty(service.Current.FilerFolderViews);   // default: nothing recorded
+
+        var entries = new[] { "Details|Size|D|/Users/x/Documents", "List|Name|A|/Users/x/Downloads" };
+        await service.UpdateAsync(s => s.FilerFolderViews = entries);
+
+        var s2 = new SettingsService(_dir);
+        await s2.LoadAsync();
+        Assert.Equal(entries, s2.Current.FilerFolderViews);
+        Assert.Contains("\"filerFolderViews\"", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+
+        // Pruned when emptied again (the blob must not keep a stale empty array).
+        await s2.UpdateAsync(s => s.FilerFolderViews = Array.Empty<string>());
+        Assert.DoesNotContain("filerFolderViews", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+    }
+
+    [Fact]
     public async Task Taskbar_customization_settings_round_trip(/* bevel-cust */)
     {
         var service = new SettingsService(_dir);

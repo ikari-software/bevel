@@ -145,6 +145,8 @@ public partial class FileManagerWindow : BevelWindow
         Toolbar.Search.Click += (_, _) => ToggleSearchPane();
         SearchPane.SearchRequested += OnSearchRequested;
         SearchPane.CloseRequested += (_, _) => ToggleSearchPane();
+        // bevel-ze3o: persist the per-folder view+sort whenever the user changes the sort.
+        ItemView.SortChanged += SaveFolderViewState;
         FilerPane.CloseClicked += (_, _) => ToggleFolders();
 
         // Left-pane splitter (bevel-xw12): drag to resize the pane; the width is persisted.
@@ -842,7 +844,11 @@ public partial class FileManagerWindow : BevelWindow
         UpdateTitle(path);
         AddressBar.SetAddress(path.Value);
         if (_activeTab is { } tab) TabStrip.SetHeader(tab.StripId, LabelFor(path));
+<<<<<<< HEAD
         MenuBar.EmptyTrash.IsEnabled = path.Scheme == "trash";   // bevel-j905: only inside the Trash
+=======
+        ApplyFolderViewState(path);   // bevel-ze3o: restore this folder's view+sort before the listing streams
+>>>>>>> 38b8fc8 (feat(filer): persist per-folder view mode + sort (bevel-ze3o))
         // Re-landing on the directory already shown (F5, or a controller Refresh) is a
         // differential update — reconcile in place rather than clearing and rebuilding, so the
         // list doesn't flash. A genuine navigation streams a fresh listing.
@@ -850,6 +856,40 @@ public partial class FileManagerWindow : BevelWindow
             await ReloadDifferential(path);
         else
             await LoadDirectory(path);
+    }
+
+    private bool _applyingFolderViewState;
+
+    /// <summary>bevel-ze3o: apply the persisted per-folder view mode + sort for <paramref name="path"/>
+    /// before the listing streams, so sorted insert uses the right order from the first batch. Falls back
+    /// to DefaultViewMode + Name ascending when the folder has no entry. Runs under
+    /// <see cref="_applyingFolderViewState"/> so the SortChanged event it may raise is not saved back.</summary>
+    private void ApplyFolderViewState(VfsPath path)
+    {
+        var entries = _settings?.Current.FilerFolderViews;
+        var stored = entries is { Length: > 0 } ? Core.FolderViewStates.Find(entries, path.ToString()) : null;
+        _applyingFolderViewState = true;
+        try
+        {
+            var mode = stored is { } s && Enum.TryParse<Components.ViewMode>(s.ViewMode, out var vm)
+                ? vm
+                : Enum.TryParse<Components.ViewMode>(_settings?.Current.DefaultViewMode ?? "LargeIcons", out var dm) ? dm : Components.ViewMode.LargeIcons;
+            ItemView.ViewMode = mode;
+            ItemView.SetSort(stored?.SortColumn ?? "Name", stored?.Ascending ?? true);
+        }
+        finally { _applyingFolderViewState = false; }
+    }
+
+    /// <summary>bevel-ze3o: persist the current folder's view mode + sort into FilerFolderViews (MRU-last,
+    /// capped). Skipped while a search is showing (the list is search results, not the folder) and while
+    /// a stored state is being applied (avoids writing back what was just read).</summary>
+    private void SaveFolderViewState()
+    {
+        if (_applyingFolderViewState || SearchPane.IsVisible) return;
+        if (_settings is null || _loadedPath is not { } path) return;
+        var sort = ItemView.SortState;
+        var state = new Core.FolderViewStates.FolderViewState(ItemView.ViewMode.ToString(), sort.Column, sort.Ascending);
+        _ = _settings.UpdateAsync(s => s.FilerFolderViews = Core.FolderViewStates.Upsert(s.FilerFolderViews, path.ToString(), state));
     }
 
     private void OnNavigationStateChanged() => UpdateNavigationButtons();
@@ -1051,6 +1091,7 @@ public partial class FileManagerWindow : BevelWindow
     private void SetView(ViewMode mode)
     {
         ItemView.ViewMode = mode;
+        SaveFolderViewState();   // bevel-ze3o: persist the view mode for the current folder
     }
 
     /// <summary>Set the list view mode (used by tests and the render harness).</summary>

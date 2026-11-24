@@ -569,6 +569,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         // bevel-4pgk: empty = no favorites yet → prune (an empty array equals the default).
         if (_settings.FilerFavorites.Length == 0) _raw.Remove("filerFavorites");
         else _raw["filerFavorites"] = JsonSerializer.SerializeToElement(_settings.FilerFavorites, SettingsJsonContext.Default.StringArray);
+        // bevel-ze3o: empty = no per-folder states recorded yet → prune, like the other arrays.
+        if (_settings.FilerFolderViews.Length == 0) _raw.Remove("filerFolderViews");
+        else _raw["filerFolderViews"] = JsonSerializer.SerializeToElement(_settings.FilerFolderViews, SettingsJsonContext.Default.StringArray);
         // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
         // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
         if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
@@ -704,6 +707,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
                 ? tbs : TaskbarButtonSize.Normal,
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             FilerFavorites = GetStringArray("filerFavorites") ?? Array.Empty<string>(),
+            FilerFolderViews = GetStringArray("filerFolderViews") ?? Array.Empty<string>(),
             TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
             TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
@@ -899,6 +903,10 @@ public sealed class BevelSettings
     /// <summary>bevel-4pgk: Filer favorites (Favorites menu + info-pane links), as
     /// <c>VfsPath.ToString()</c> values in display order. Empty = none.</summary>
     public string[] FilerFavorites { get; set; } = Array.Empty<string>();
+    /// <summary>bevel-ze3o: per-folder view mode + sort state, one entry per folder in the
+    /// <c>"ViewMode|SortColumn|A|D|path"</c> format <see cref="FolderViewStates"/> parses — MRU last,
+    /// capped at 200. Empty when nothing recorded yet.</summary>
+    public string[] FilerFolderViews { get; set; } = Array.Empty<string>();
 
     internal static string[] DefaultStacks { get; } = new[]
     {
@@ -1046,6 +1054,7 @@ public sealed class BevelSettings
                 p.SetValue(this, p.GetValue(other));
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
         FilerFavorites = (string[])other.FilerFavorites.Clone();
+        FilerFolderViews = (string[])other.FilerFolderViews.Clone();
         TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }
