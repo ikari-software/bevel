@@ -22,6 +22,22 @@ public sealed class ComputerProviderTests
     }
 
     [Fact]
+    public async Task ResolveNavigationTarget_maps_a_volume_and_not_the_root(/* bevel-cq7g */)
+    {
+        var volumes = await EnumerateRootAsync(_provider);
+        Assert.NotEmpty(volumes);
+        var volume = volumes[0];
+
+        var target = _provider.ResolveNavigationTarget(volume.Path);
+        Assert.NotNull(target);
+        Assert.Equal("file", target.Value.Scheme);
+        Assert.Equal(new VfsPath("file", volume.Volume!.MountPath), target.Value);
+
+        // The computer root has no mount — navigation stays put.
+        Assert.Null(_provider.ResolveNavigationTarget(VfsPath.Root("computer")));
+    }
+
+    [Fact]
     public async Task Enumerated_volumes_carry_typed_volume_metadata()
     {
         var volumes = await EnumerateRootAsync(_provider);

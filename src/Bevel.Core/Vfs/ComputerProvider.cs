@@ -103,6 +103,15 @@ public sealed class ComputerProvider : IVfsProvider
         return drives.FirstOrDefault(d => d.RootDirectory.FullName == mount)?.RootDirectory.FullName;
     }
 
+    /// <summary>bevel-cq7g: a volume node navigates to its native file:// mount (the same target
+    /// <see cref="ResolveEffectivePath"/> reports); the computer root and unmatched volumes return
+    /// null and stay put.</summary>
+    public VfsPath? ResolveNavigationTarget(VfsPath path)
+    {
+        var mount = ResolveEffectivePath(path);
+        return mount is null ? null : new VfsPath("file", mount);
+    }
+
     /// <summary>
     /// The path segment for a volume: its native mount path, percent-escaped so the segment
     /// contains no '/' or '\' (VfsPath splits segments on separators; bevel-d3b). This is the

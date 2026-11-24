@@ -42,6 +42,15 @@ public interface IVfsProvider
     string? ResolveEffectivePath(VfsPath path) => null;
 
     /// <summary>
+    /// Where NAVIGATION into <paramref name="path"/> should go when that differs from the path itself —
+    /// e.g. a computer:// volume node navigates to its file:// mount. Default: null, meaning "navigate
+    /// to the path itself", so providers like Trash whose sub-folders belong in their own scheme inherit
+    /// the safe stay-put behavior. Distinct from <see cref="ResolveEffectivePath"/>, which answers "what
+    /// native path is this for open/preview/copy" and must NOT drive navigation (bevel-cq7g).
+    /// </summary>
+    VfsPath? ResolveNavigationTarget(VfsPath path) => null;
+
+    /// <summary>
     /// True when a native atomic rename can relocate <paramref name="source"/> to
     /// <paramref name="destination"/> without a copy+delete (same provider, same volume).
     /// Default: false (always copy+delete).

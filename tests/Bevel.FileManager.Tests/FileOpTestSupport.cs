@@ -135,5 +135,6 @@ public sealed class DecoratingVfsProvider : IVfsProvider
     // volume key / native path / fast-move behavior instead of the interface defaults.
     public string GetVolumeKey(VfsPath path) => _inner.GetVolumeKey(path);
     public string? ResolveEffectivePath(VfsPath path) => _inner.ResolveEffectivePath(path);
+    public VfsPath? ResolveNavigationTarget(VfsPath path) => _inner.ResolveNavigationTarget(path);
     public bool CanFastMoveWithin(VfsPath source, VfsPath destination) => _inner.CanFastMoveWithin(source, destination);
 }

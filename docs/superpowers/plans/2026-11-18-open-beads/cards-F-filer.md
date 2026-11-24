@@ -279,9 +279,9 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
 - **Decision:** Separate "what is the native path" from "where does navigation go". Add a default interface member `VfsPath? ResolveNavigationTarget(VfsPath path) => null;` to `IVfsProvider`. `ComputerProvider` overrides it to return `new VfsPath("file", mount)` for a volume (reusing its `ResolveEffectivePath`). `ToNavigablePath` becomes `_vfsRoot?.GetProvider(path).ResolveNavigationTarget(path) ?? path`. Trash inherits the default, so sub-folders stay `trash://`. No scheme string checks in the window, which is the rule the interface comments already state (`IVfsProvider.cs:23-28`).
 - **Test first:** `VolumeNavigationTests.A_folder_inside_the_trash_stays_in_the_trash_scheme` (new): `TrashProvider` on a temp dir containing `sub/`, assert `win.ToNavigablePath(new VfsPath("trash","sub"))` equals the input. Keep `A_computer_volume_path_translates_to_its_native_file_mount` green.
 - **Steps:**
-  - [ ] Add the interface member, the `ComputerProvider` override, and forward it in the test wrapper at `FileOpTestSupport.cs:137`.
-  - [ ] Change `ToNavigablePath`; update its doc comment.
-  - [ ] Add `ComputerProviderTests.ResolveNavigationTarget_maps_a_volume_and_not_the_root`.
+  - [x] Add the interface member, the `ComputerProvider` override, and forward it in the test wrapper at `FileOpTestSupport.cs:137`.
+  - [x] Change `ToNavigablePath`; update its doc comment.
+  - [x] Add `ComputerProviderTests.ResolveNavigationTarget_maps_a_volume_and_not_the_root`.
 - **Verify:** `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~VolumeNavigation"` → pass
 - **Done when:** opening a folder inside Trash shows `trash://…` in the address bar and its items have no Rename; then `bd close bevel-cq7g --reason "navigation target split from effective path; trash sub-folders stay trash://"`
 
