@@ -492,12 +492,13 @@ internal static class Program
     /// incumbent's pid. A lock that cannot be created AT ALL (unwritable config dir, exotic filesystem)
     /// also returns null but flags <paramref name="unavailable"/>: the shell then boots unguarded with a
     /// logged warning rather than refusing to start over a permissions quirk.</summary>
-    private static ShellInstanceLock? TryTakeInstanceLock(out int incumbentPid, out bool unavailable)
+    internal static ShellInstanceLock? TryTakeInstanceLock(out int incumbentPid, out bool unavailable,
+        string? path = null, TimeSpan? wait = null)
     {
         unavailable = false;
         try
         {
-            return ShellInstanceLock.TryAcquire(ShellInstanceLock.DefaultPath, ShellInstanceLock.DefaultWait, out incumbentPid);
+            return ShellInstanceLock.TryAcquire(path ?? ShellInstanceLock.DefaultPath, wait ?? ShellInstanceLock.DefaultWait, out incumbentPid);
         }
         catch (Exception ex) when (ex is not IOException)
         {

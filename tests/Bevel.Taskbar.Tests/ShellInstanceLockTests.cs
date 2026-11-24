@@ -85,4 +85,69 @@ public sealed class ShellInstanceLockTests : IDisposable
         Assert.False(File.Exists(LockPath + ".pid"));
         Assert.Equal(0, ShellInstanceLock.ReadIncumbentPid(LockPath));
     }
+
+    // bevel-glnc: a lock directory that cannot be created is "the lock is unavailable", not "another
+    // shell holds it". It must not surface as an IOException (the launcher lets those through and
+    // would abort), and it must not be reported as an incumbent after burning the whole wait.
+    [Fact]
+    public void A_lock_directory_that_cannot_be_created_is_unavailable_not_held()
+    {
+        Directory.CreateDirectory(_dir);
+        var blocker = Path.Combine(_dir, "not-a-dir");
+        File.WriteAllText(blocker, "a file where the config directory should be");
+        var lockPath = Path.Combine(blocker, "shell.lock");
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<ShellInstanceLockUnavailableException>(
+            () => ShellInstanceLock.TryAcquire(lockPath, TimeSpan.FromSeconds(30), out _));
+
+        Assert.IsAssignableFrom<IOException>(ex.InnerException);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), "it waited as if the lock were contended");
+    }
+
+    // The launcher's half of bevel-glnc. TryAcquire throwing the right type is not enough: what
+    // keeps the launcher alive is its own mapping of that type to "unavailable, run unguarded".
+    [Fact]
+    public void The_launcher_runs_unguarded_when_the_lock_is_unavailable()
+    {
+        Directory.CreateDirectory(_dir);
+        var blocker = Path.Combine(_dir, "not-a-dir");
+        File.WriteAllText(blocker, "a file where the config directory should be");
+
+        using var taken = Bevel.App.Program.TryTakeInstanceLock(out var incumbent, out var unavailable,
+            Path.Combine(blocker, "shell.lock"), TimeSpan.FromSeconds(30));
+
+        Assert.Null(taken);
+        Assert.True(unavailable);
+        Assert.Equal(0, incumbent);
+    }
+
+    [Fact]
+    public void The_launcher_reports_a_held_lock_as_held_not_unavailable()
+    {
+        using var first = ShellInstanceLock.TryAcquire(LockPath, TimeSpan.Zero, out _);
+        Assert.NotNull(first);
+
+        using var taken = Bevel.App.Program.TryTakeInstanceLock(out var incumbent, out var unavailable,
+            LockPath, TimeSpan.Zero);
+
+        Assert.Null(taken);
+        Assert.False(unavailable);                        // a real holder must still stop the launch
+        Assert.Equal(Environment.ProcessId, incumbent);
+    }
+
+    // A file that cannot be opened for a reason other than a holder must not be mistaken for one.
+    // (A read-only volume cannot be made in a unit test; the classifier is what decides.)
+    [Fact]
+    public void Only_a_sharing_violation_counts_as_held()
+    {
+        using var first = ShellInstanceLock.TryAcquire(LockPath, TimeSpan.Zero, out _);
+        Assert.NotNull(first);
+        var contended = Assert.ThrowsAny<IOException>(
+            () => new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+
+        Assert.True(ShellInstanceLock.IsHeldByAnother(contended));
+        Assert.False(ShellInstanceLock.IsHeldByAnother(new IOException("Read-only file system", 30)));
+        Assert.False(ShellInstanceLock.IsHeldByAnother(new IOException("generic")));
+    }
 }
