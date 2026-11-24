@@ -95,6 +95,10 @@
                 <GradientStop Offset="1" Color="#2064D8"/>
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterButtonBorder" Color="#8CB8FF" />
+            <!-- Frame colour while a window is inactive. Win2000 draws its frame as the 3D bevel (content border 0),
+                 so this only shows for skins that give WindowContentBorder a thickness; they override it. Lives
+                 here, not in Tokens.axaml, which is generated from theme.json. -->
+            <SolidColorBrush x:Key="Bevel.Brush.WindowFrameInactive" Color="#808080" />
             <SolidColorBrush x:Key="Bevel.Brush.ColumnHeader" Color="#D4D0C8" />
             <SolidColorBrush x:Key="Bevel.Brush.ColumnHeaderLight" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Bevel.Brush.ColumnSeparator" Color="#808080" />
