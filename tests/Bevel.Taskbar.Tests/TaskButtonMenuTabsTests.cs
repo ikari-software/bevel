@@ -38,6 +38,10 @@ public class TaskButtonMenuTabsTests
     private static TaskItemViewModel BrowserVm() =>
         new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default), new NullWm());
 
+    // Same shape but with the machine key set — jump-list actions key on BundleId, not AppId.
+    private static TaskItemViewModel BrowserVmWithBundle() =>
+        new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default, BundleId: App), new NullWm());
+
     private static IReadOnlyList<TaskButtonMenu.TabMenuRow> MakeTabs(int count) =>
         Enumerable.Range(1, count)
             .Select(i => new TaskButtonMenu.TabMenuRow(new AppTab(App, "1", i, $"Tab {i}"), null))
@@ -139,6 +143,40 @@ public class TaskButtonMenuTabsTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, failed);
         Assert.NotNull(provider.LastActivated);
+    }
+
+    // ── bevel-s5x: per-app jump-list actions under the header ───────────────────
+
+    [AvaloniaFact]
+    public void App_actions_appear_under_the_header_and_invoke()
+    {
+        var invoked = 0;
+        Func<string?, IReadOnlyList<TaskButtonMenu.TaskMenuAction>> provider = bundle =>
+            bundle == App
+                ? new[] { new TaskButtonMenu.TaskMenuAction("New _Window", () => invoked++) }
+                : Array.Empty<TaskButtonMenu.TaskMenuAction>();
+
+        var flyout = TaskButtonMenu.Build(BrowserVmWithBundle(), null, null, appActions: provider)!;
+        var items = (flyout.ItemsSource as IEnumerable<object>)!.ToList();
+        // header, separator, action, separator, then the Windows section.
+        var action = Assert.IsType<MenuItem>(items[2]);
+        Assert.Equal("New _Window", action.Header);
+        Assert.True(action.IsEnabled);
+        Assert.IsType<Separator>(items[3]);
+        Assert.Equal("_Windows", (Assert.IsType<MenuItem>(items[4])).Header);
+
+        action.Command!.Execute(null);
+        Assert.Equal(1, invoked);
+    }
+
+    [AvaloniaFact]
+    public void Null_app_actions_leave_the_menu_shape_unchanged()
+    {
+        var flyout = TaskButtonMenu.Build(BrowserVm(), null, null)!;
+        var items = (flyout.ItemsSource as IEnumerable<object>)!.ToList();
+        // header, separator, Windows — no action row, no extra separator.
+        Assert.Equal("_Windows", (Assert.IsType<MenuItem>(items[2])).Header);
+        Assert.DoesNotContain(items, i => i is MenuItem { Header: "New _Window" });
     }
 
     [AvaloniaFact]

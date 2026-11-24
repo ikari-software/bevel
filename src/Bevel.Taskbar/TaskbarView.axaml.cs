@@ -1110,7 +1110,8 @@ public partial class TaskbarView : UserControl
 
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider,
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
-                    onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc))) is { } menu)
+                    onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
+                    appActions: AppActionsFor) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
@@ -1144,6 +1145,21 @@ public partial class TaskbarView : UserControl
         TaskItemViewModel t => t.BundleId,
         _ => null,
     };
+
+    /// <summary>bevel-s5x: per-app jump-list actions for the button context menu, keyed on the
+    /// BUNDLE id (AppId is only a display name). Only the Filer gets one today: New Window opens a
+    /// filer window at the user profile. Everything else returns empty.</summary>
+    private IReadOnlyList<TaskButtonMenu.TaskMenuAction> AppActionsFor(string? bundleId)
+    {
+        if (bundleId != Bevel.Core.AppInfo.BundleId || _openFolder is null)
+            return Array.Empty<TaskButtonMenu.TaskMenuAction>();
+        return new[]
+        {
+            new TaskButtonMenu.TaskMenuAction("New _Window", () =>
+                _openFolder(new Bevel.Core.Vfs.VfsPath("file",
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))),
+        };
+    }
 
     /// <summary>Tab lists warmed on hover so the context menu can open without waiting on osascript
     /// (bevel-1fy8). Created lazily because the provider is injected after construction.</summary>
