@@ -48,9 +48,14 @@ public sealed class ShellCoreIntegrationTests
     [Fact]
     public async Task Proxies_report_the_cores_capabilities_after_the_snapshot()
     {
+        // The proxies' pre-snapshot fallback is per-platform (macOS mirrors, else authoritative —
+        // see ShellCoreSystemTrayHost.Fallback), so give the core the OPPOSITE mode: the asserts below
+        // then prove the forwarding on every OS, not just where the fallback differs from Authoritative.
+        var fallbackTrayMode = OperatingSystem.IsMacOS() ? TrayCapability.Mirrored : TrayCapability.Authoritative;
+        var coreTrayMode = fallbackTrayMode == TrayCapability.Mirrored ? TrayCapability.Authoritative : TrayCapability.Mirrored;
         var pal = new ControllablePal
         {
-            Capabilities = new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
+            Capabilities = new Capabilities(Available: true, TrayMode: coreTrayMode,
                 Notes: new[] { "test-pal" }, SupportsReposition: false),
         };
         pal.SeedWindows(Win("a", "Alpha"));
@@ -64,12 +69,12 @@ public sealed class ShellCoreIntegrationTests
         await using var core = new ShellCoreClient(path, nonce);
         var wm = new ShellCoreWindowManager(core);
         var tray = new ShellCoreSystemTrayHost(core);
-        // Pre-snapshot the proxies still answer from their literal fallback.
-        Assert.NotEqual(TrayCapability.Authoritative, tray.Capabilities.TrayMode);
+        // Pre-snapshot the proxies still answer from their literal fallback, not the core's slot.
+        Assert.NotEqual(coreTrayMode, tray.Capabilities.TrayMode);
 
         await core.EnsureConnectedAsync(Ct);
         await core.StartSessionAsync(Ct);
-        await WaitFor(() => tray.Capabilities.TrayMode == TrayCapability.Authoritative
+        await WaitFor(() => tray.Capabilities.TrayMode == coreTrayMode
                          && !wm.Capabilities.SupportsReposition,
             "the proxies should forward the core's capabilities after the snapshots");
         // (Record equality would compare the Notes list by reference post-JSON; compare fields.)
