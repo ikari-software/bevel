@@ -242,10 +242,10 @@ Unlike the rest of this file, these cards were checked by running code. On 2026-
   - Window: in `OnCurrentDirectoryChanged`, before `LoadDirectory`, look the path up; apply the stored state, or `DefaultViewMode` + Name ascending when there is none. Applying before the stream starts means sorted insert uses the right order from the first batch. On `SetView` and `SortChanged`, `_settings.UpdateAsync(s => s.FilerFolderViews = FolderViewStates.Upsert(...))`. Do not save while a search is showing. The settings fan-out does not re-list for this key (`ApplyFolderOptions` re-lists only on its two listing inputs, :294-300).
 - **Test first:** `FolderViewStatesTests.Upsert_moves_an_existing_folder_to_the_end_and_caps_at_200` and `Find_ignores_malformed_entries` (new, plain `[Fact]`). Then `SettingsServiceTests.FilerFolderViews_round_trips_and_is_pruned_when_empty`. Then `tests/Bevel.FileManager.Tests/FolderViewStateTests.cs` (new) `Navigating_back_to_a_folder_restores_its_view_and_sort`.
 - **Steps:**
-  - [ ] Add `FolderViewStates` + tests.
-  - [ ] Add the setting at the four touch points + round-trip test.
-  - [ ] Add `SortState` / `SetSort` / `SortChanged` to `ItemView`.
-  - [ ] Apply on navigation and tab switch; save on change; window test.
+  - [x] Add `FolderViewStates` + tests.
+  - [x] Add the setting at the four touch points + round-trip test.
+  - [x] Add `SortState` / `SetSort` / `SortChanged` to `ItemView`.
+  - [x] Apply on navigation and tab switch; save on change; window test.
 - **Verify:** `dotnet test tests/Bevel.Core.Tests/Bevel.Core.Tests.csproj --filter "FullyQualifiedName~FolderViewStates|FullyQualifiedName~FilerFolderViews"` and `dotnet test tests/Bevel.FileManager.Tests/Bevel.FileManager.Tests.csproj --filter "FullyQualifiedName~FolderViewState"` → pass
 - **Done when:** set Details + sort by Size in folder A, visit B, return to A (also after a restart) and A is Details by Size while B is untouched; then `bd close bevel-ze3o --reason "per-folder view+sort persisted as capped FilerFolderViews setting"`
 
