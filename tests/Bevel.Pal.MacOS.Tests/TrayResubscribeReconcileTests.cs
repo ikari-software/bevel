@@ -99,4 +99,40 @@ public sealed class TrayResubscribeReconcileTests
         await host.ReconcileAfterResubscribeAsync(counting, CancellationToken.None);
         Assert.Empty(log);
     }
+
+    // The reconcile runs between opening the stream and reading it. A list that fails must not
+    // throw into the stream loop (that would drop the subscription), and must not forget what was
+    // raised: the next resubscribe still has to be able to take the item back.
+    [Fact]
+    public async Task A_list_that_fails_removes_nothing_and_keeps_what_was_raised()
+    {
+        var (host, log, lifecycle) = NewHost();
+        using var _ = lifecycle; using var __ = host;
+        host.Apply(TrayChange.Types.Kind.Added, Item("a"));
+        log.Clear();
+
+        await host.ReconcileAfterResubscribeAsync(
+            _ => throw new InvalidOperationException("Helper not connected."), CancellationToken.None);
+        Assert.Empty(log);
+
+        await host.ReconcileAfterResubscribeAsync(Lists(), CancellationToken.None);
+        Assert.Equal(new[] { "-a" }, log);
+    }
+
+    [Fact]
+    public async Task Shutdown_during_the_list_still_cancels()
+    {
+        var (host, _, lifecycle) = NewHost();
+        using var _1 = lifecycle; using var _2 = host;
+        host.Apply(TrayChange.Types.Kind.Added, Item("a"));
+        using var cts = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await host.ReconcileAfterResubscribeAsync(async t =>
+            {
+                cts.Cancel();
+                await Task.Delay(Timeout.Infinite, t);
+                return null;
+            }, cts.Token));
+    }
 }

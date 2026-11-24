@@ -183,19 +183,35 @@ public sealed class MacOSSystemTrayHost : ISystemTrayHost, IDisposable
         }
     }
 
+    /// <summary>How long the reconcile's one list may take before the stream is read without it.</summary>
+    internal static readonly TimeSpan ReconcileListDeadline = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// Removes what vanished while the stream was down (bevel-voqo, the tray half of bevel-35r9). The
     /// stream's snapshot burst is upsert-only and has no end marker, so it can never say "this item is
     /// gone"; without this an item that quit during a helper restart stays in the core's projection,
     /// and on the taskbar, for good. One list per (re)subscribe, never periodic.
     /// <para>A null list means the helper could not be asked. That is not an empty tray: nothing is
-    /// removed, and the next resubscribe tries again.</para>
+    /// removed, and the next resubscribe tries again. A list that fails or does not answer within
+    /// <see cref="ReconcileListDeadline"/> is the same: this is a cleanup, and it must never cost
+    /// the subscription it runs in front of.</para>
     /// </summary>
     internal async ValueTask ReconcileAfterResubscribeAsync(
         Func<CancellationToken, ValueTask<IReadOnlyList<AbstractionsTrayItem>?>> list, CancellationToken ct)
     {
         if (_raised.Count == 0) return; // first subscribe: nothing raised, nothing to take back
-        var listed = await list(ct).ConfigureAwait(false);
+        IReadOnlyList<AbstractionsTrayItem>? listed;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bounded.CancelAfter(ReconcileListDeadline);
+        try
+        {
+            listed = await list(bounded.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Tray reconcile list failed, nothing removed: {Message}", ex.Message);
+            return;
+        }
         if (listed is null) return;
         foreach (var gone in SnapshotReconcile.Absent(_raised, listed, i => i.Id.Value))
             Apply(TrayChange.Types.Kind.Removed, gone);
