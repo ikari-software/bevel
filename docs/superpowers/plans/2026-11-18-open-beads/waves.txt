@@ -55,6 +55,10 @@ W3|bevel-gsz|A+H|S|cards-C-packaging-security.md|M5: Homebrew cask (brew install
 W3|bevel-cp2|AGENT|M|cards-C-packaging-security.md|M5: user guide + known-issues docs
 W3|bevel-l3o|AGENT|S|cards-C-packaging-security.md|M1: per-capability RPC auth scoping for helper services (ScriptingService/InputService)
 W3|bevel-ij3n|AGENT|M|-|Update-availability UI (filed by bevel-rkxb)
+W3|bevel-dgd7|AGENT|M|-|Surface update availability: Start-menu badge + 'Restart to update' (filed by bevel-m5)
+W3|bevel-oedd|AGENT|M|-|Release lane: build + attach Windows/Linux zips (filed by bevel-m5)
+W3|bevel-0bcd|HUMAN|M|-|HUMAN: update-from-(n-1) acceptance on a real Mac (filed by bevel-m5)
+W3|bevel-ncey|AGENT|S|-|Site: /downloads/ 404s (filed by bevel-m5)
 W4|bevel-rzz|A+H|L|cards-F-filer.md|File manager: type-to-select smooth-scroll + virtualized list with up/down buffer
 W4|bevel-onyp|AGENT|L|cards-F-filer.md|Filer: virtualize wrap-panel + O(n^2) InsertSorted + watcher-vs-search + Open-With wire-up + reconcile re-sort
 W4|bevel-ujx8|AGENT|M|cards-B-core-ipc-startup.md|Taskbar: tray seed/stream ordering + StartMenu O(n^2) startup + All-Programs flyout rebuild
