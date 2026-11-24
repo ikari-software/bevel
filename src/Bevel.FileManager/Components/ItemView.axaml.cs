@@ -340,12 +340,11 @@ public partial class ItemView : UserControl
     // here: the name cell carries the "namecell" class (plus "selected", bound to IsSelected) and the
     // styles in ItemView.axaml paint it with DynamicResource tokens, so a live theme or colour-scheme
     // switch recolours every realized row in place (bevel-5rel). No per-row event subscriptions.
-    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealLinesConv =
-        new(full => full ? 0 : 2);
-
     /// <summary>The filename label wrapped in a selection-highlight border (navy bar + white text
-    /// when selected, plus a dotted focus outline). Used by every view mode's template.</summary>
-    static Control NameCell(string text, TextWrapping wrap = TextWrapping.NoWrap, double maxW = 0,
+    /// when selected, plus a dotted focus outline). Used by every view mode's template. The
+    /// selection/reveal state is hooked with <see cref="Bevel.UI.InpcBind"/> (AOT-safe, no
+    /// reflection Binding — bevel-gww.9), not a DataContext binding.</summary>
+    static Control NameCell(ItemViewModel vm, string text, TextWrapping wrap = TextWrapping.NoWrap, double maxW = 0,
         TextAlignment align = TextAlignment.Left)
     {
         var label = new NameLabel
@@ -363,13 +362,14 @@ public partial class ItemView : UserControl
         {
             label.LineHeight = 15;
             // Two lines, or the whole name while this is the revealed item (MaxLines 0 = no limit).
-            label.Bind(TextBlock.MaxLinesProperty,
-                new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealLinesConv });
+            Bevel.UI.InpcBind.Attach(label, vm, nameof(ItemViewModel.ShowFullName),
+                () => label.MaxLines = vm.ShowFullName ? 0 : 2);
         }
 
         var highlight = new Border { Child = label, Padding = new(2, 0) };
         highlight.Classes.Add("namecell");
-        highlight.BindClass("selected", new Avalonia.Data.Binding(nameof(ItemViewModel.IsSelected)), null!);
+        Bevel.UI.InpcBind.Attach(highlight, vm, nameof(ItemViewModel.IsSelected),
+            () => highlight.Classes.Set("selected", vm.IsSelected));
         return highlight;
     }
 
@@ -392,12 +392,13 @@ public partial class ItemView : UserControl
     /// ListItem automation role, an accessible name (bound to DisplayName), and a SelectionItem pattern
     /// (IsSelected) to screen readers. Decorator is layout-transparent, so the template's visuals,
     /// marquee/Hit rect-testing, and rename are unaffected (bevel-6zs6).</summary>
-    static Control Row(Control content)
+    static Control Row(ItemViewModel vm, Control content)
     {
         var row = new ItemRow { Child = content };
-        // DataContext is the ItemViewModel (inherited from the container), so this tracks live
-        // DisplayName changes (rename / hide-extensions) without rebuilding the row.
-        row.Bind(AutomationProperties.NameProperty, new Avalonia.Data.Binding(nameof(ItemViewModel.DisplayName)));
+        // Tracks live DisplayName changes (rename / hide-extensions) without rebuilding the row
+        // — via InpcBind (AOT-safe), not a reflection Binding (bevel-gww.9).
+        Bevel.UI.InpcBind.Attach(row, vm, nameof(ItemViewModel.DisplayName),
+            () => AutomationProperties.SetName(row, vm.DisplayName));
         return row;
     }
 
@@ -406,20 +407,20 @@ public partial class ItemView : UserControl
         if (vm is null) return new TextBlock { Text = "" };
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(4) };
         s.Children.Add(GlyphIcon.For(vm.IconKey, 32));
-        s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
-        return Row(s);
+        s.Children.Add(NameCell(vm, vm.DisplayName, TextWrapping.Wrap, 72, TextAlignment.Center));
+        return Row(vm, s);
     });
 
     static readonly FuncDataTemplate<ItemViewModel> SmallIconTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(2, 0)));
+        return Row(vm, IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm, vm.DisplayName), new Thickness(2, 0)));
     });
 
     static readonly FuncDataTemplate<ItemViewModel> ListTpl = new((vm, _) =>
     {
         if (vm is null) return new TextBlock { Text = "" };
-        return Row(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName), new Thickness(0, 1)));
+        return Row(vm, IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm, vm.DisplayName), new Thickness(0, 1)));
     });
 
     // Instance (not static) so each row's Size/Type/Date columns bind to the shared column
@@ -435,12 +436,12 @@ public partial class ItemView : UserControl
         g.ColumnDefinitions.Add(BoundCol(SizeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(TypeColWidthProperty));
         g.ColumnDefinitions.Add(BoundCol(DateColWidthProperty));
-        g.Children.Add(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm.DisplayName)));
+        g.Children.Add(IconAndName(GlyphIcon.For(vm.IconKey, 16), NameCell(vm, vm.DisplayName)));
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 1, Text = vm.SizeDisplay, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 2, Text = vm.TypeDescription, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         g.Children.Add(new TextBlock { [Grid.ColumnProperty] = 3, Text = vm.ModifiedDisplay, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, Margin = new(4, 0) });
         row.Child = g;
-        return Row(row);
+        return Row(vm, row);
     });
 
     /// <summary>A details-view column whose width tracks a shared ItemView property (live).</summary>
@@ -462,8 +463,8 @@ public partial class ItemView : UserControl
         frame[!Border.BorderBrushProperty] = new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension(Bevel.UI.ThemeTokens.BrushButtonFace);
         var s = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Spacing = 2, Margin = new(2) };
         s.Children.Add(frame);
-        s.Children.Add(NameCell(vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
-        return Row(s);
+        s.Children.Add(NameCell(vm, vm.DisplayName, TextWrapping.Wrap, 106, TextAlignment.Center));
+        return Row(vm, s);
     });
 
     // ── Rebuild ───────────────────────────────────────────────────────

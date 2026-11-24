@@ -223,7 +223,7 @@ public partial class StartMenu : UserControl
     {
         var icon = new Image { Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center };
         RenderOptions.SetBitmapInterpolationMode(icon, BitmapInterpolationMode.HighQuality);
-        icon.Bind(Image.SourceProperty, new Binding(nameof(ProgramItemViewModel.IconSource)) { Source = p });
+        Bevel.UI.InpcBind.Attach(icon, p, nameof(ProgramItemViewModel.IconSource), () => icon.Source = p.IconSource);   // AOT-safe (bevel-gww.9)
         p.EnsureIcon();   // every row must kick its own load — without this only pre-loaded icons showed
         var label = new TextBlock
         {
@@ -614,7 +614,7 @@ public partial class StartMenu : UserControl
 
         var icon = new Image { Width = 16, Height = 16 };
         RenderOptions.SetBitmapInterpolationMode(icon, BitmapInterpolationMode.HighQuality);
-        icon.Bind(Image.SourceProperty, new Binding(nameof(ProgramItemViewModel.IconSource)) { Source = vm });
+        Bevel.UI.InpcBind.Attach(icon, vm, nameof(ProgramItemViewModel.IconSource), () => icon.Source = vm.IconSource);   // AOT-safe (bevel-gww.9)
         item.Icon = icon;
 
         vm.Launched -= Close; // idempotent: a re-realized container must not stack close handlers

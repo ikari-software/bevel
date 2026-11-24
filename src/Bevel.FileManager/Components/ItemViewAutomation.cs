@@ -74,16 +74,16 @@ internal sealed class ItemList : ItemsControl
 
     protected override AutomationPeer OnCreateAutomationPeer() => new ItemListAutomationPeer(this);
 
-    static readonly Avalonia.Data.Converters.FuncValueConverter<bool, int> RevealZ = new(full => full ? 1 : 0);
-
     /// <summary>The revealed item's whole name draws over the rows below it, so its container paints
-    /// above its siblings (bevel-m9jy). A binding, not an imperative set, so a recycled container
-    /// picks up the right value for its new item.</summary>
+    /// above its siblings (bevel-m9jy). Hooked per item via <see cref="Bevel.UI.InpcBind"/> (AOT-safe,
+    /// no reflection Binding — bevel-gww.9), so a recycled container picks up the right value for
+    /// its new item and detaches cleanly when recycled.</summary>
     protected override void PrepareContainerForItemOverride(Control container, object? item, int index)
     {
         base.PrepareContainerForItemOverride(container, item, index);
-        container.Bind(Avalonia.Visual.ZIndexProperty,
-            new Avalonia.Data.Binding(nameof(ItemViewModel.ShowFullName)) { Converter = RevealZ });
+        if (container.DataContext is ItemViewModel vm)
+            Bevel.UI.InpcBind.Attach(container, vm, nameof(ItemViewModel.ShowFullName),
+                () => container.ZIndex = vm.ShowFullName ? 1 : 0);
     }
 }
 
