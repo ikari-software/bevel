@@ -844,11 +844,8 @@ public partial class FileManagerWindow : BevelWindow
         UpdateTitle(path);
         AddressBar.SetAddress(path.Value);
         if (_activeTab is { } tab) TabStrip.SetHeader(tab.StripId, LabelFor(path));
-<<<<<<< HEAD
         MenuBar.EmptyTrash.IsEnabled = path.Scheme == "trash";   // bevel-j905: only inside the Trash
-=======
         ApplyFolderViewState(path);   // bevel-ze3o: restore this folder's view+sort before the listing streams
->>>>>>> 38b8fc8 (feat(filer): persist per-folder view mode + sort (bevel-ze3o))
         // Re-landing on the directory already shown (F5, or a controller Refresh) is a
         // differential update — reconcile in place rather than clearing and rebuilding, so the
         // list doesn't flash. A genuine navigation streams a fresh listing.

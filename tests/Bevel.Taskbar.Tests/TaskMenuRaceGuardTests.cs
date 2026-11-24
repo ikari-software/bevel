@@ -101,7 +101,7 @@ public class TaskMenuRaceGuardTests
         public bool SupportsApp(string? bundleId) => true;
         public async ValueTask<IReadOnlyList<AppTab>> GetTabsAsync(string bundleId, CancellationToken ct = default)
             => await _gate.Task;
-        public Task ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.FromResult(TabActivationResult.Activated);
     }
 
     private sealed class StubWm : IWindowManager

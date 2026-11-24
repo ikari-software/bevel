@@ -101,13 +101,13 @@ public partial class StartMenu : UserControl
     private void WireSearchSession()
     {
         if (_programsVm is null) return;
-        _session = new SearchSession(
+        _searchSession = new SearchSession(
             new ISearchProvider[] { new AppsSearchProvider(_programsVm.Model) },
             a => Dispatcher.UIThread.Post(a));
-        _session.SectionChanged += OnSearchSectionChanged;
+        _searchSession.SectionChanged += OnSearchSectionChanged;
         foreach (var view in new[] { ClassicResultsView, Blue2001ResultsView })
         {
-            view.RegisterProvider(_session.Providers[0]);
+            view.RegisterProvider(_searchSession.Providers[0]);
             view.HitActivated += hit => { _ = hit.ActivateAsync(); Close(); };
         }
     }
@@ -341,7 +341,7 @@ public partial class StartMenu : UserControl
     private readonly StartMenuFilter _filter = new();
     private readonly ObservableCollection<ProgramItemViewModel> _searchResults = new();
     // bevel-6sk6: the sectioned search session + the current Programs-section hits.
-    private SearchSession? _session;
+    private SearchSession? _searchSession;
     private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
 
     /// <summary>True while a typed query is narrowing the menu.</summary>
@@ -440,7 +440,7 @@ public partial class StartMenu : UserControl
     /// </summary>
     public bool EnterShouldLaunchTopMatch(object? keySource)
     {
-        if (_session?.TopHit is null) return false;
+        if (_searchSession?.TopHit is null) return false;
         return keySource is not Control c
             || c.DataContext is not SearchHit focused
             || !_programHits.Contains(focused);
@@ -448,7 +448,7 @@ public partial class StartMenu : UserControl
 
     private bool TryLaunchTopMatch(object? source)
     {
-        if (!EnterShouldLaunchTopMatch(source) || _session?.TopHit is not { } top) return false;
+        if (!EnterShouldLaunchTopMatch(source) || _searchSession?.TopHit is not { } top) return false;
         _ = top.ActivateAsync();
         Close();
         return true;
@@ -462,7 +462,7 @@ public partial class StartMenu : UserControl
     private void ApplySearch()
     {
         if (!_filter.IsActive) { ClearSearch(); return; }
-        _session?.SetQuery(_filter.Query);
+        _searchSession?.SetQuery(_filter.Query);
 
         var luna = Blue2001Layout.IsVisible;
         ItemsMenu.IsVisible = !(_filter.IsActive && !luna);
@@ -505,7 +505,7 @@ public partial class StartMenu : UserControl
     private void ClearSearch()
     {
         _filter.Clear();
-        _session?.Clear();
+        _searchSession?.Clear();
         _searchResults.Clear();
         _programHits = Array.Empty<SearchHit>();
         ClassicSearchStrip.IsVisible = false;

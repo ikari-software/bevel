@@ -100,6 +100,8 @@ public class PerfBudgetTests
             Bevel.UI.Blue2001.Blue2001VariantService.Clear();
             Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
         }
+    }
+
     [Fact]
     public void Perf_search_rank_500_apps_under_budget()
     {
