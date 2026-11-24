@@ -73,7 +73,8 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         ShellHealthMonitor? health = null,
         Func<ShellRole, RoleHeartbeat?>? heartbeat = null,
         Action<HealthVerdict>? onAlert = null,
-        Action? onLauncherStale = null)
+        Action? onLauncherStale = null,
+        Func<bool>? launcherIsStale = null)
     {
         if (processes.Count == 0) throw new ArgumentException("Supervise at least one process.", nameof(processes));
         _processes = processes.ToList(); // own a private, mutable copy — runtime add/remove edits this list, not the caller's
@@ -88,7 +89,11 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
         _heartbeat = heartbeat ?? (health is null ? null : RoleHeartbeatStore.Read);
         _onAlert = onAlert;
         _onLauncherStale = onLauncherStale;
+        _launcherIsStale = launcherIsStale;
     }
+
+    // bevel-hprc: true when the RUNNING launcher predates the on-disk bundle (rebuild-while-running).
+    private readonly Func<bool>? _launcherIsStale;
 
     /// <summary>Starts every process in order (core → UIs), then launches the crash-monitor loop.</summary>
     public async Task StartAsync(CancellationToken ct = default)
@@ -105,23 +110,46 @@ internal sealed class RoleProcessSupervisor : IAsyncDisposable
     }
 
     /// <summary>Kills and respawns every process — each returns on the CURRENT binary. This is what a
-    /// taskbar restart triggers, so the whole shell updates to the latest build in one action.</summary>
-    public async Task RestartAllAsync(CancellationToken ct = default)
+    /// taskbar restart triggers, so the whole shell updates to the latest build in one action.
+    /// bevel-hprc: when the RUNNING LAUNCHER is stale, escalate straight to the one whole-shell
+    /// relaunch (fire <c>onLauncherStale</c> once, kill nothing) and return true; the caller skips
+    /// the filer restart on that path — killing children first would black out twice.</summary>
+    /// <returns>True when the call escalated to a whole-shell relaunch instead of restarting children.</returns>
+    public async Task<bool> RestartAllAsync(CancellationToken ct = default)
     {
+        if (_launcherIsStale?.Invoke() == true && _onLauncherStale is not null && !_launcherStaleFired)
+        {
+            _launcherStaleFired = true;
+            _log?.Invoke("supervisor: launcher stale on RestartAll — whole-shell relaunch, no child restarts");
+            _onLauncherStale();
+            return true;
+        }
+
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             _log?.Invoke("supervisor: restarting all role processes");
             // Tear down UIs before the core (reverse dependency order) so no UI briefly talks to a
-            // dying core; then start back up core-first.
-            for (var i = _processes.Count - 1; i >= 0; i--)
-                _processes[i].Kill();
+            // dying core. UI kills run in PARALLEL (each Kill blocks up to GraceMs); the core goes last.
+            // Each kill is wrapped best-effort (like every other kill site): RoleProcess.Kill only
+            // catches InvalidOperationException, so one throwing Kill must not fault the WhenAll and
+            // skip the core kill AND the respawn fan-out (ce-code-review).
+            var uiKills = _processes
+                .Where(p => p.Role != ShellRole.Core)
+                .Select(p => Task.Run(() => { try { p.Kill(); } catch { /* best-effort */ } }))
+                .ToArray();
+            if (uiKills.Length > 0)
+                await Task.WhenAll(uiKills).ConfigureAwait(false);
+            foreach (var p in _processes)
+                if (p.Role == ShellRole.Core)
+                    p.Kill();
             _cooldown.Clear();
             _backoffTicks.Clear();
             _alerted.Clear();
             _health?.Reset();
             if (_health is not null) RoleHeartbeatStore.ClearAll();
             await StartAllInOrderLocked(ct).ConfigureAwait(false);
+            return false;
         }
         finally { _gate.Release(); }
     }

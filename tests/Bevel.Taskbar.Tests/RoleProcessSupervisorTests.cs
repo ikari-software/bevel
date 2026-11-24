@@ -31,6 +31,7 @@ public sealed class RoleProcessSupervisorTests
         public ShellRole Role { get; }
         public volatile bool Alive;
         public volatile bool FailOnStart;
+        public volatile bool FailOnKill;
         public int StartCount;
         public int KillCount;
 
@@ -62,6 +63,9 @@ public sealed class RoleProcessSupervisorTests
             Interlocked.Increment(ref KillCount);
             lock (_log) _log.Add($"kill:{Role}");
             Alive = false;
+            // RoleProcess.Kill only catches InvalidOperationException, so simulate a throw from a
+            // different failure mode (e.g. WaitForExit/ObjectDisposedException path).
+            if (FailOnKill) throw new ApplicationException("simulated kill failure");
         }
 
         public void Dispose() => Kill();
@@ -114,6 +118,30 @@ public sealed class RoleProcessSupervisorTests
         Assert.Equal(2, taskbar.StartCount);
         Assert.True(core.KillCount >= 1);      // ...after being killed
         Assert.True(taskbar.KillCount >= 1);
+        Assert.True(core.IsAlive);
+        Assert.True(taskbar.IsAlive);
+    }
+
+    [Fact]
+    public async Task RestartAll_survives_a_throwing_ui_kill()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log) { FailOnKill = true };
+        await using var sup = new RoleProcessSupervisor(new IRoleProcess[] { core, taskbar }, Poll);
+        await sup.StartAsync();
+
+        // The UI kill runs in a Task.Run fan-out; if it throws, the WhenAll must not fault — the
+        // core kill and the respawn fan-out still have to run (ce-code-review: one throwing Kill
+        // must not abort the whole restart).
+        var relaunching = await sup.RestartAllAsync();
+        taskbar.FailOnKill = false; // let teardown kill cleanly
+
+        Assert.False(relaunching);              // no stale-launcher hook wired
+        Assert.True(core.KillCount >= 1);      // the core was still killed...
+        Assert.True(taskbar.KillCount >= 1);
+        Assert.Equal(2, core.StartCount);       // ...and every role was respawned
+        Assert.Equal(2, taskbar.StartCount);
         Assert.True(core.IsAlive);
         Assert.True(taskbar.IsAlive);
     }
@@ -414,6 +442,54 @@ public sealed class RoleProcessSupervisorTests
         await Task.Delay(Poll * 6);
         Assert.Equal(starts, taskbar.StartCount); // matching stamp after respawn — no more restarts
         Assert.True(taskbar.IsAlive);
+    }
+
+    // bevel-hprc: RestartAll on a stale launcher (rebuild-while-running) must escalate straight to
+    // ONE whole-shell relaunch — not kill+respawn every child first (two blackouts).
+    [Fact]
+    public async Task RestartAll_on_a_stale_launcher_relaunches_once_and_kills_no_child()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var stale = 0;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            onLauncherStale: () => Interlocked.Increment(ref stale),
+            launcherIsStale: () => true);
+        await sup.StartAsync();
+
+        var relaunching = await sup.RestartAllAsync();
+
+        Assert.True(relaunching);               // the handler skips the filer restart on this path
+        Assert.Equal(1, stale);                 // relaunch hook fired exactly once
+        Assert.Equal(0, core.KillCount);
+        Assert.Equal(0, taskbar.KillCount);    // nothing killed — the relaunch teardown owns that
+        Assert.Equal(1, core.StartCount);       // and nothing respawned either
+        Assert.Equal(1, taskbar.StartCount);
+    }
+
+    [Fact]
+    public async Task RestartAll_on_a_current_launcher_restarts_children_in_place()
+    {
+        var log = new List<string>();
+        var core = new FakeRoleProcess(ShellRole.Core, log);
+        var taskbar = new FakeRoleProcess(ShellRole.Taskbar, log);
+        var stale = 0;
+        await using var sup = new RoleProcessSupervisor(
+            new IRoleProcess[] { core, taskbar }, Poll,
+            onLauncherStale: () => Interlocked.Increment(ref stale),
+            launcherIsStale: () => false);
+        await sup.StartAsync();
+
+        var relaunching = await sup.RestartAllAsync();
+
+        Assert.False(relaunching);
+        Assert.Equal(0, stale);                 // no relaunch hook on a current launcher
+        Assert.Equal(2, core.StartCount);
+        Assert.Equal(2, taskbar.StartCount);
+        Assert.True(core.KillCount >= 1);
+        Assert.True(taskbar.KillCount >= 1);
     }
 
     [Fact]
