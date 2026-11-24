@@ -90,10 +90,10 @@ and CI actually executes every gate it claims (three gaps found, listed under "N
 - **Decision:** Add one optional trailing parameter to each internal ctor: `Func<CancellationToken, IAsyncEnumerable<WindowChange>>? changesSource = null` (tray: `IAsyncEnumerable<TrayChange>`). Default = a private `async IAsyncEnumerable<...> GrpcChanges([EnumeratorCancellation] CancellationToken ct)` containing today's `GetWindowClient()` + `ws.Changes(...)` + `ReadAllAsync`. `StreamLoopAsync` does `await foreach (var change in _changesSource(ct))`. A delegate, not an interface: one call site, and `HelperLifecycle` stays the only owner of the channel. Delete `_knownWindowIds`. Ghost reconciliation is a wire-contract change (helper + proto + both hosts) — out of scope here, filed as a new bead (see end of file).
 - **Test first:** `MacOSStreamLoopTests` with `ManualClock` and `new HelperLifecycle(NullLogger<HelperLifecycle>.Instance)` (never started): `Unavailable_delays_one_retry_interval_then_resubscribes` (source throws `RpcException(StatusCode.Unavailable)` once; assert `clock.Requested == [interval]`, then second subscription happens after `Tick`), `Generic_exception_delays_then_resubscribes`, `Cancellation_exits_without_a_delay`, `[Theory] Each_window_change_kind_raises_its_event` (Snapshot→`WindowChanged`, Opened→`WindowOpened`, Closed→`WindowClosed`, Focused with `IsFocused`→`WindowChanged`+`ForegroundChanged`, TitleChanged/Moved/Minimized/Deminimized→`WindowChanged`), and the tray equivalents (Snapshot/Added→`ItemAdded`, Updated→`ItemUpdated`, Removed→`ItemRemoved`).
 - **Steps:**
-  - [ ] Move `ManualClock` to its own internal file; `HelperLifecycleTests` still green.
-  - [ ] Write the tests against the new ctor parameter (compile error = red).
-  - [ ] Add the parameter + `GrpcChanges` in both classes; start the loop with the existing `StartPollAsync`.
-  - [ ] Delete `_knownWindowIds` and its three writes.
+  - [x] Move `ManualClock` to its own internal file; `HelperLifecycleTests` still green.
+  - [x] Write the tests against the new ctor parameter (compile error = red).
+  - [x] Add the parameter + `GrpcChanges` in both classes; start the loop with the existing `StartPollAsync`.
+  - [x] Delete `_knownWindowIds` and its three writes.
 - **Verify:** `dotnet test tests/Bevel.Pal.MacOS.Tests/Bevel.Pal.MacOS.Tests.csproj --filter "FullyQualifiedName~MacOSStreamLoopTests"` → all pass, no test uses `Task.Delay`.
 - **Done when:** both loops have fake-driven tests for retry, cancel and every change kind; then `bd close bevel-umgr --reason "changesSource seam + ManualClock tests; _knownWindowIds removed; snapshot reconcile split to its own bead"`.
 

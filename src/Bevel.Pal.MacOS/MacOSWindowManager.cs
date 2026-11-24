@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Bevel.Ipc;
 using Bevel.Ipc.V1;
 using Bevel.Pal.Abstractions;
@@ -43,13 +44,19 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     }
 
     internal MacOSWindowManager(HelperLifecycle helperLifecycle, ILogger<MacOSWindowManager> logger,
-        IClock clock, TimeSpan streamRetryInterval)
+        IClock clock, TimeSpan streamRetryInterval,
+        Func<CancellationToken, IAsyncEnumerable<WindowChange>>? changesSource = null)
     {
         _helperLifecycle = helperLifecycle;
         _logger = logger;
         _clock = clock;
         _streamRetryInterval = streamRetryInterval;
+        _changesSource = changesSource;
     }
+
+    // bevel-umgr test seam: null means the real gRPC stream (GrpcChanges); tests inject a fake
+    // IAsyncEnumerable so retry/cancel/change-kind behavior is driven without a helper.
+    private readonly Func<CancellationToken, IAsyncEnumerable<WindowChange>>? _changesSource;
 
     // ── IWindowManager ──────────────────────────────────────────────────
 
@@ -236,14 +243,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
         {
             try
             {
-                var ws = GetWindowClient();
-                using var call = ws.Changes(new ChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
-
-                // Subscribe FIRST, then list: a close that happens after the list is already on
-                // its way down the stream. The other order loses it (same discipline as the tray host).
-                await ReconcileAfterResubscribeAsync(c => TrySeedWindowsAsync(skipIcons: true, c), ct).ConfigureAwait(false);
-
-                await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
+                var source = _changesSource ?? GrpcChanges;
+                await foreach (var change in source(ct))
                     Apply(change.Kind, change.Window is null ? null : Map(change.Window));
             }
             catch (OperationCanceledException) { break; }
@@ -262,6 +263,18 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
                 await _clock.Delay(_streamRetryInterval, ct);
             }
         }
+    }
+
+    /// <summary>The production changes source: subscribe to the gRPC stream, then — subscribe FIRST,
+    /// then list, so a close that happens after the list is already on its way down the stream is not
+    /// lost (same discipline as the tray host) — reconcile, then yield the live deltas.</summary>
+    private async IAsyncEnumerable<WindowChange> GrpcChanges([EnumeratorCancellation] CancellationToken ct)
+    {
+        var ws = GetWindowClient();
+        using var call = ws.Changes(new ChangesRequest(), headers: AuthHeader(), cancellationToken: ct);
+        await ReconcileAfterResubscribeAsync(c => TrySeedWindowsAsync(skipIcons: true, c), ct).ConfigureAwait(false);
+        await foreach (var change in call.ResponseStream.ReadAllAsync(ct))
+            yield return change;
     }
 
     /// <summary>
