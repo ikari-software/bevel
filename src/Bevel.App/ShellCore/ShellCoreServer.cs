@@ -278,11 +278,11 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private CoreEvent[] BuildSnapshotEvents()
     {
         var windowSnapshot = new CoreEvent(CoreEventKind.WindowSnapshot, Windows: _windowById.Values.ToArray(),
-            Epoch: _epoch);
+            Epoch: _epoch, WindowCapabilities: _windows.Capabilities);   // bevel-mhvu: forward, don't duplicate
         var appSnapshot = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: _installed,
             Epoch: _epoch);
         var traySnapshot = new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: _trayById.Values.ToArray(),
-            Epoch: _epoch);
+            Epoch: _epoch, TrayCapabilities: _tray.Capabilities);   // bevel-mhvu
         // The settings blob lives in the service (its own single-writer discipline), not the _gate-guarded
         // projection — SnapshotJson/Version are cheap in-memory reads.
         var settingsSnapshot = new CoreEvent(CoreEventKind.SettingsSnapshot,

@@ -38,31 +38,29 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
         _core.EventReceived += OnCoreEvent;
     }
 
-    /// <summary>
-    /// Capabilities of the tray this proxy fronts. This used to be hardcoded to
-    /// <see cref="TrayCapability.Mirrored"/> with a "macos-tray" note — but the proxy backs the taskbar
-    /// role on EVERY platform, so on Windows it claimed to mirror a menu bar that does not exist
-    /// (bevel-traycaps). Anything gating on TrayMode therefore got the macOS answer everywhere.
-    ///
-    /// <para>Reported per-platform to match what the core's real PAL says: macOS can only ever mirror
-    /// another process's menu bar, while Windows shells own the tray protocol outright. This duplicates
-    /// the truth that lives in the core's PAL, which is why it is still wrong in principle — the core
-    /// should FORWARD its capabilities over the IPC snapshot and this proxy should report those verbatim.
-    /// Tracked separately; this at least stops the proxy asserting a platform it isn't on.</para>
-    /// </summary>
-    public Capabilities Capabilities { get; } = OperatingSystem.IsMacOS()
+    /// <summary>bevel-mhvu: the core FORWARDs its tray host's capabilities on the TraySnapshot; this
+    /// proxy reports them verbatim. The per-platform literal remains only as the pre-snapshot fallback
+    /// (older cores send no capability slot — the nullable field keeps them wire-compatible).</summary>
+    private volatile Capabilities? _forwarded;
+    private static Capabilities Fallback => OperatingSystem.IsMacOS()
         ? new Capabilities(Available: true, TrayMode: TrayCapability.Mirrored,
             Notes: new[] { "macos-tray: mirrored via shell-core" }, SupportsReposition: false)
         : new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
             Notes: new[] { "tray: authoritative, via shell-core" }, SupportsReposition: false);
+
+    public Capabilities Capabilities => _forwarded ?? Fallback;
 
     // internal = test seam: tests feed synthetic CoreEvents without a live server.
     internal void OnCoreEvent(CoreEvent e)
     {
         switch (e.Kind)
         {
-            case CoreEventKind.TraySnapshot when e.TrayItems is not null:
+            case CoreEventKind.TraySnapshot:
+                if (e.TrayCapabilities is { } caps) _forwarded = caps;   // bevel-mhvu: forward verbatim
+                if (e.TrayItems is null) break;
             {
+                // (fall through to the snapshot merge below)
+
                 // A snapshot is authoritative (bevel-ri8c): remove what it omits, then (re)add what it
                 // lists. Adds alone left ghosts for icons that vanished while the link was down.
                 var gone = _known.ApplySnapshot(e.TrayItems);

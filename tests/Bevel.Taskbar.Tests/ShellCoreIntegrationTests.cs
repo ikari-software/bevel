@@ -43,6 +43,45 @@ public sealed class ShellCoreIntegrationTests
 
     private static TrayItem Tray(string id, string tooltip) => new(new TrayItemId(id), tooltip);
 
+    // bevel-mhvu: after the Hello snapshots, both proxies must report the CORE's capabilities
+    // verbatim — not their per-platform literals.
+    [Fact]
+    public async Task Proxies_report_the_cores_capabilities_after_the_snapshot()
+    {
+        var pal = new ControllablePal
+        {
+            Capabilities = new Capabilities(Available: true, TrayMode: TrayCapability.Authoritative,
+                Notes: new[] { "test-pal" }, SupportsReposition: false),
+        };
+        pal.SeedWindows(Win("a", "Alpha"));
+        pal.SeedTray(Tray("1:10", "Clock"));
+
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        var tray = new ShellCoreSystemTrayHost(core);
+        // Pre-snapshot the proxies still answer from their literal fallback.
+        Assert.NotEqual(TrayCapability.Authoritative, tray.Capabilities.TrayMode);
+
+        await core.EnsureConnectedAsync(Ct);
+        await core.StartSessionAsync(Ct);
+        await WaitFor(() => tray.Capabilities.TrayMode == TrayCapability.Authoritative
+                         && !wm.Capabilities.SupportsReposition,
+            "the proxies should forward the core's capabilities after the snapshots");
+        // (Record equality would compare the Notes list by reference post-JSON; compare fields.)
+        foreach (var proxy in new[] { tray.Capabilities, wm.Capabilities })
+        {
+            Assert.Equal(pal.Capabilities.Available, proxy.Available);
+            Assert.Equal(pal.Capabilities.TrayMode, proxy.TrayMode);
+            Assert.Equal(pal.Capabilities.SupportsReposition, proxy.SupportsReposition);
+            Assert.Equal(pal.Capabilities.Notes, proxy.Notes);
+        }
+    }
+
     // 1. On connect, the core replays its whole window projection to the new client as WindowOpened
     //    events, and the installed-app registry is answerable by a pull — the snapshot path.
     [Fact]
@@ -1593,7 +1632,7 @@ public sealed class ShellCoreIntegrationTests
         public void RaiseAppTerminated(RunningApp a) => AppTerminated?.Invoke(this, a);
 
         // ── IWindowManager ──
-        public Capabilities Capabilities { get; } =
+        public Capabilities Capabilities { get; set; } =
             new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
 
         /// <summary>Test seam (bevel-ejon): exceptions to throw from the next N window enumerates before
