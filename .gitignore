@@ -72,3 +72,4 @@ BenchmarkDotNet.Artifacts/
 
 # Built release artifacts staged for bevel.run (not committed — deployed from a local machine)
 site/downloads/
+.dotnet/
