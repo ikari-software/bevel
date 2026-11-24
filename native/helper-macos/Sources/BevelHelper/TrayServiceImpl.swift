@@ -60,6 +60,10 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
     // Last raw matte crop + its PNG per AX item: the 250 ms glyph tick re-encodes only on a real change.
     private let axPngCacheLock = NSLock()
     private var axPngCache: [String: (raw: Data, png: Data)] = [:]
+    // bevel-m3.2.1: window-capture cache — pixel hash + last PNG per item id — so an unchanged
+    // frame skips the trim scan + PNG encode. Pruned to the live item ids on each full pass.
+    private let captureCacheLock = NSLock()
+    private var captureCache: [String: (hash: UInt64, png: Data)] = [:]
     // A self-test that had nothing to capture retries after this, instead of on every 250 ms tick.
     private var selfTestRetryAfter: UInt64 = 0
     private let iconCacheLock = NSLock()
@@ -755,13 +759,28 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 noImage += 1   // no backing store at all (window gone, or the private symbol failed)
                 continue
             }
+            // bevel-m3.2.1: hash the raw pixels BEFORE trim+encode — an unchanged frame reuses the
+            // cached PNG and skips pngFromCGImage (the full-pixel trim scan + PNG encode was the waste).
+            // A nil hash (no readable pixel bytes) never matches, so the frame is always re-encoded.
+            let hash = Self.pixelHash(cgImage)
+            if let hash, let hit = captureCacheLock.withLock({ captureCache[items[i].itemID] }), hit.hash == hash {
+                if !hit.png.isEmpty {   // empty PNG must not overwrite the limited-mode icon
+                    items[i].iconPng = hit.png
+                    items[i].isLive = true
+                }
+                continue
+            }
             let png = pngFromCGImage(cgImage)
             if png.isEmpty { blank += 1 }   // captured, but fully transparent — see bevel-sd6n
+            if let hash { captureCacheLock.withLock { captureCache[items[i].itemID] = (hash, png) } }
             if !png.isEmpty {   // empty PNG must not overwrite the limited-mode icon (review: correctness)
                 items[i].iconPng = png
                 items[i].isLive = true
             }
         }
+        // Prune the capture cache to the ids still alive, so closed items don't pin their PNGs.
+        let liveIds = Set(items.map { $0.itemID })
+        captureCacheLock.withLock { captureCache = captureCache.filter { liveIds.contains($0.key) } }
         // Items only Accessibility reports (macOS 27) have no window to read: matte their glyphs out of the
         // composited menu-bar strip instead (MenuBarStripCapture). Without this they keep the owner's app
         // icon, which for system items is MenuBarAgent's generic one rather than Wi-Fi, Sound, etc.
@@ -782,6 +801,30 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // could not tell "0 live" from "never looked"; every poll still traces it under debug.
         let summary = "captured \(items.filter(\.isLive).count)/\(items.count) items live (noImage=\(noImage) blank=\(blank))"
         if !logCaptureStateIfChanged(summary) { dbg(summary) }
+    }
+
+    /// bevel-m3.2.1: FNV-1a over the raw pixel bytes plus width/height — identical bytes hash equal,
+    /// any pixel change or resize changes the hash. Pure static seam, unit-testable.
+    /// Returns nil when the image has no readable pixel bytes (some CGImages have a nil dataProvider):
+    /// a width/height-only hash would make every same-size frame a cache "hit" and serve a stale PNG
+    /// forever (ce-code-review), so nil means "always changed" and the caller skips the cache.
+    static func pixelHash(_ image: CGImage) -> UInt64? {
+        pixelHash(width: image.width, height: image.height, data: image.dataProvider?.data as Data?)
+    }
+
+    static func pixelHash(width: Int, height: Int, data: Data?) -> UInt64? {
+        guard let data else { return nil }   // no pixel bytes → never a cache hit
+        var hash: UInt64 = 14695981039346656037
+        let prime: UInt64 = 1099511628211
+        func mix(_ value: UInt64) {
+            for shift in stride(from: 0, to: 64, by: 8) {
+                hash = (hash ^ ((value >> shift) & 0xff)) &* prime
+            }
+        }
+        mix(UInt64(width))
+        mix(UInt64(height))
+        for byte in data { hash = (hash ^ UInt64(byte)) &* prime }
+        return hash
     }
 
     /// PNG for an AX glyph, re-encoded only when its pixels changed since the last tick. A static icon
@@ -856,9 +899,11 @@ final class TrayServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return cg.cropping(to: CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1))
     }
 
-    /// Diff signature that EXCLUDES the icon bytes, so a re-capture (whose pixels can differ frame to
-    /// frame, e.g. an iStat graph) doesn't churn the change stream — only identity/geometry changes
-    /// count as an UPDATE.
+    /// Diff signature covering IDENTITY only (bundle/name/tooltip/isLive) — it deliberately excludes
+    /// the icon bytes. Pixel changes are detected separately at the diff site, which compares
+    /// `iconPng` byte-for-byte and emits an UPDATE only when a live item's pixels actually changed
+    /// (bevel-m3.2.1); unchanged frames are now cheap because the capture path hashes raw pixels
+    /// before encoding and reuses the cached PNG.
     private func signature(_ item: Bevel_Helper_V1_TrayItem) -> String {
         // Deliberately EXCLUDES bounds: the menu bar reflows by a pixel constantly, and keying the
         // diff on x/width fired a spurious UPDATE for every item each poll — re-decoding icons and

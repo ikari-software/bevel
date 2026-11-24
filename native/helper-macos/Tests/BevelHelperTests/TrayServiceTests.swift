@@ -138,6 +138,34 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertFalse(TrayServiceImpl.shouldCaptureLive(selfTestDone: true, liveEnabled: true, granted: false))
         XCTAssertTrue(TrayServiceImpl.shouldCaptureLive(selfTestDone: true, liveEnabled: true, granted: true))
     }
+    /// machine, same seam style as `trayGlyphLayout`.
+    func testPixelHashIsStableAndContentSensitive() {
+        // bevel-m3.2.1: identical bytes hash equal, one flipped byte changes the hash, and the same
+        // bytes at a different geometry hash differently (width/height are mixed in).
+        func makeImage(_ bytes: [UInt8], width: Int, height: Int) -> CGImage {
+            let provider = CGDataProvider(data: Data(bytes) as CFData)!
+            return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                           bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                           bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                           provider: provider, decode: nil, shouldInterpolate: false,
+                           intent: .defaultIntent)!
+        }
+        let pixels = [UInt8](repeating: 0xAB, count: 4 * 4 * 4)
+        let a = makeImage(pixels, width: 4, height: 4)
+        let b = makeImage(pixels, width: 4, height: 4)
+        XCTAssertEqual(TrayServiceImpl.pixelHash(a), TrayServiceImpl.pixelHash(b))
+
+        var changed = pixels; changed[0] ^= 0xFF
+        XCTAssertNotEqual(TrayServiceImpl.pixelHash(a), TrayServiceImpl.pixelHash(makeImage(changed, width: 4, height: 4)))
+
+        XCTAssertNotEqual(TrayServiceImpl.pixelHash(a), TrayServiceImpl.pixelHash(makeImage(pixels, width: 2, height: 8)))
+
+        // ce-code-review: an image with no readable pixel bytes (nil dataProvider data) must hash nil,
+        // never a width/height-only value — otherwise every same-size frame is a cache "hit" and a
+        // stale PNG is served forever.
+        XCTAssertNil(TrayServiceImpl.pixelHash(width: 4, height: 4, data: nil))
+        XCTAssertNil(TrayServiceImpl.pixelHash(width: 2, height: 8, data: nil))
+    }
 
     func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
         // 1. Never run yet → always run (first capture attempt triggers it, granted or not).

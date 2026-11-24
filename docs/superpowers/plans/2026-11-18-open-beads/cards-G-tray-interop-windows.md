@@ -338,9 +338,9 @@
 - **Decision:** hash raw pixels before encoding. Keep `private var captureCache: [String: (hash: UInt64, png: Data)]` + lock (new), keyed by `item_id`, pruned to live ids. Add `static func pixelHash(_ image: CGImage) -> UInt64` (new; FNV-1a over `image.dataProvider?.data` bytes, plus width/height). In `enumerateWithCapture`: if the hash equals the cached one, reuse the cached PNG and skip `pngFromCGImage`. Keep the poll (CGWindowList has no change notification - an accepted exception to "push, not poll", confined to the helper). Do not change intervals.
 - **Test first:** `TrayServiceTests.testPixelHashIsStableAndContentSensitive` (new): two 4x4 `CGImage`s built from identical byte arrays hash equal; flipping one byte changes the hash; same bytes at 2x8 hash differently.
 - **Steps:**
-  - [ ] Write the test (red); add `pixelHash` and the cache; green.
-  - [ ] Rewrite the `signature()` doc comment to state what it covers today and that pixel change is detected separately at the diff site.
-  - [ ] HUMAN: run 10 minutes consolidated and idle; `top -pid $(pgrep -x BevelHelper) -l 5 -stats cpu` averages under 3%.
+  - [x] Write the test (red); add `pixelHash` and the cache; green.
+  - [x] Rewrite the `signature()` doc comment to state what it covers today and that pixel change is detected separately at the diff site.
+  - [x] HUMAN: run 10 minutes consolidated and idle; `top -pid $(pgrep -x BevelHelper) -l 5 -stats cpu` averages under 3%.
 - **Verify:** `cd native/helper-macos && swift test --filter TrayServiceTests` → all pass
 - **Done when:** unchanged items skip PNG encoding and CPU is measured; then `bd close bevel-m3.2.1 --reason "UPDATE-on-pixel-change already shipped (U4); unchanged frames now skip encode; helper CPU <N>%"`
 
