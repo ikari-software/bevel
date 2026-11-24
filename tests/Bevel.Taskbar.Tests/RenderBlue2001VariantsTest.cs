@@ -198,9 +198,9 @@ public class RenderBlue2001VariantsTest
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 3, Margin = new Thickness(6, 3), VerticalAlignment = VerticalAlignment.Center };
         (string Key, string Border, string Label)[] btns =
         {
-            ("Blue2001.Brush.TaskButton", "Blue2001.Brush.TaskButtonBorder", "Documents"),
-            ("Blue2001.Brush.TaskButtonHover", "Blue2001.Brush.TaskButtonBorder", "Hover"),
-            ("Blue2001.Brush.TaskButtonChecked", "Blue2001.Brush.TaskButtonCheckedBorder", "Active window"),
+            ("Bevel.Brush.TaskButton", "Bevel.Brush.TaskButtonBorder", "Documents"),
+            ("Bevel.Brush.TaskButtonHover", "Bevel.Brush.TaskButtonBorder", "Hover"),
+            ("Bevel.Brush.TaskButtonChecked", "Bevel.Brush.TaskButtonCheckedBorder", "Active window"),
         };
         foreach (var (k, bd, lbl) in btns)
             bar.Children.Add(new Border

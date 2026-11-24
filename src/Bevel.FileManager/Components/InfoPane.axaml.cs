@@ -96,14 +96,14 @@ public partial class InfoPane : UserControl
 
     private void ApplyXpPalette()
     {
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneWatermark", "InfoPane.Xp.Watermark", _xpDefaultWatermark);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneHeader", "InfoPane.Xp.Header", _xpDefaultHeader);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneBorder", "InfoPane.Xp.Border", _xpDefaultBorder);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneHeadingText", "InfoPane.Xp.HeadingText", _xpDefaultHeadingText);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneBodyText", "InfoPane.Xp.BodyText", _xpDefaultBodyText);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneLinkText", "InfoPane.Xp.LinkText", _xpDefaultLinkText);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneArrow", "InfoPane.Xp.Arrow", _xpDefaultArrow);
-        CopyApplicationBrush("Blue2001.Brush.InfoPaneMutedText", "InfoPane.Xp.MutedText", _xpDefaultMutedText);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneWatermark", "InfoPane.Xp.Watermark", _xpDefaultWatermark);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneHeader", "InfoPane.Xp.Header", _xpDefaultHeader);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneBorder", "InfoPane.Xp.Border", _xpDefaultBorder);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneHeadingText", "InfoPane.Xp.HeadingText", _xpDefaultHeadingText);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneBodyText", "InfoPane.Xp.BodyText", _xpDefaultBodyText);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneLinkText", "InfoPane.Xp.LinkText", _xpDefaultLinkText);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneArrow", "InfoPane.Xp.Arrow", _xpDefaultArrow);
+        CopyApplicationBrush("Bevel.Brush.InfoPaneMutedText", "InfoPane.Xp.MutedText", _xpDefaultMutedText);
     }
 
     private void OnPaletteChanged()

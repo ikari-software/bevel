@@ -68,10 +68,10 @@ public static class FlatVariantService
         Put(resources, "Flat.Brush.Focus", new SolidColorBrush(Color.Parse(select)));
         Put(resources, "Flat.Brush.Progress", Gradient(caption, captionEnd));
         Put(resources, "Flat.Brush.TaskButtonChecked", Gradient(caption, captionEnd));
-        Put(resources, "Blue2001.Brush.StartMenuHeader", Gradient(caption, captionEnd));
-        Put(resources, "Blue2001.Brush.StartMenuPlacesColumn", Gradient(places, places));
-        Put(resources, "Blue2001.Brush.StartMenuFooter", Gradient(start, startEnd));
-        Put(resources, "Blue2001.Brush.StartMenuPlaceText", new SolidColorBrush(Color.Parse(placeText)));
+        Put(resources, "Bevel.Brush.StartMenuHeader", Gradient(caption, captionEnd));
+        Put(resources, "Bevel.Brush.StartMenuPlacesColumn", Gradient(places, places));
+        Put(resources, "Bevel.Brush.StartMenuFooter", Gradient(start, startEnd));
+        Put(resources, "Bevel.Brush.StartMenuPlaceText", new SolidColorBrush(Color.Parse(placeText)));
         Put(resources, "Flat.Brush.TitleToneDark", new SolidColorBrush(Color.Parse(toneDark)));
         Glyphs.InvalidateThemeCache();   // AFTER the writes (bevel-yfkw); coalesces with Clear()'s above
     }

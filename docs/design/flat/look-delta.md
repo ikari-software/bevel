@@ -35,14 +35,14 @@ Reference shorthand:
 | 6 | Menubar | Warm neutral shell face (README §Material Separation; SVG-O line 31 #EDEDEA, 22px) | `Bevel.Color.Menu` #ECE9D8 (19), `MenuBarHeight` 21 (233) | **Keep** — warm-paper per direction; SVG-O's 22px vs 21px within tolerance |
 | 7 | Taskbar | Compact warm bar, height ≈30-classic (R-W bottom band ≈y=518..554, gray-green ≈#8E908D..#A1A3A0; R-CS task strip is warm gray) | `Flat.Brush.Taskbar` #F4F2E8→#ECE9D8 (86-88), `Bevel.Brush.TaskbarBackground` same (127-129), height 30 (235) | **Keep.** Render `flat-taskbar-blue.png` measures #EDEFE9→#D7D9CF — warm family ✓ |
 | 8 | Start button | R-SB measured directly: face top #FFFFFF→#DEE0DA (y=1..20), hover wash #C7DCF6→#9BBEE6 (y=23..43), pressed #7C9FCC→#A3BEDC (y=44..65) | `Flat.Brush.Start` #EEF0EA→#E5E7E1→#D6D8CE (99-100), `StartHover` #BDD8F4→#93B7DF (102-103), `StartPressed` #8CAFD8→#B8D0EC (105-106) | **Keep** — same warm-gray/blue family as the source button; hues within JPEG noise of R-SB |
-| 9 | Start menu — pinned column | White main column (README `Main_background=#FFFFFF`; slices X=10,144,2,2,168,10; R-CS left column measured #FFFFFF) | `Blue2001.Brush.StartMenuPinnedColumn` #FFFFFF (205), `Flat.Brush.StartMenuPinned` #FFFFFF (147) | **Keep** |
-| 10 | Start menu — places column | **Pale blue-lilac secondary column** ≈#D9E3F3/#B9CCEF (README §Material Separation item 4; R-CS right column measured ≈#C6D7F1 at x=420..680 y=400..560, with a #2B73C8 cobalt gutter at x≈390; SVG-O line 45 fills the places column #D9E3F3) | `Blue2001.Brush.StartMenuPlacesColumn` gradient **#3570D6→#2862C8 saturated cobalt** (226); `Flat.Brush.StartMenuPlaces` #3570D6 (148); place text `Blue2001.Brush.StartMenuPlaceText` **#FFFFFF** (208) | **Column → solid #D9E3F3** (226 and twin 148); **place text → #1A202C dark ink** (208) — dark text on pale column per README ("Main and submenu text are dark/white by state") |
-| 11 | Start menu — header / footer | Header is the blue-violet chrome band (README layer 2); footer warm neutral | `Blue2001.Brush.StartMenuHeader` #4A85DF→#2862C8 cobalt (223) ✓; `Blue2001.Brush.StartMenuFooter` #ECE9D8→#DCD7C8 (224) ✓ warm | **Keep** |
+| 9 | Start menu — pinned column | White main column (README `Main_background=#FFFFFF`; slices X=10,144,2,2,168,10; R-CS left column measured #FFFFFF) | `Bevel.Brush.StartMenuPinnedColumn` #FFFFFF (205), `Flat.Brush.StartMenuPinned` #FFFFFF (147) | **Keep** |
+| 10 | Start menu — places column | **Pale blue-lilac secondary column** ≈#D9E3F3/#B9CCEF (README §Material Separation item 4; R-CS right column measured ≈#C6D7F1 at x=420..680 y=400..560, with a #2B73C8 cobalt gutter at x≈390; SVG-O line 45 fills the places column #D9E3F3) | `Bevel.Brush.StartMenuPlacesColumn` gradient **#3570D6→#2862C8 saturated cobalt** (226); `Flat.Brush.StartMenuPlaces` #3570D6 (148); place text `Bevel.Brush.StartMenuPlaceText` **#FFFFFF** (208) | **Column → solid #D9E3F3** (226 and twin 148); **place text → #1A202C dark ink** (208) — dark text on pale column per README ("Main and submenu text are dark/white by state") |
+| 11 | Start menu — header / footer | Header is the blue-violet chrome band (README layer 2); footer warm neutral | `Bevel.Brush.StartMenuHeader` #4A85DF→#2862C8 cobalt (223) ✓; `Bevel.Brush.StartMenuFooter` #ECE9D8→#DCD7C8 (224) ✓ warm | **Keep** |
 | 12 | Submenu geometry | Submenu slices X=2,174,2 / Y=2,18,2 (README) → 2px frame, 18px item band; sibling Blue2001 token is 18 (`Blue2001Tokens.axaml:85`) | `Bevel.Metric.MenuItemHeight` 21 (234) | **21 → 18** |
 | 13 | Scrollbar | Classic 16px-class width; SVG-O line 38 track #EDF0F6, stroke #C2C5BC; SVG-D "15px matte scrollbar" | Width 16 (232); `Bevel.Brush.Scrollbar` #EDF0F6 (53); `Bevel.Theme.ScrollBar` background #EDF0F6 (364) | **Keep** (16px/track within the approved target's tolerance). NOTE: `flat-filer.png` x=740..756 samples the filer scrollbar face as warm #ECE9D8 — the filer's internal scrollbars do not resolve `Bevel.Theme.ScrollBar`; follow-up |
 | 14 | Selection — primary | Saturated blue #316AC5 (README; R-CS hover rows y=383..531 dense #316AC5) | `Bevel.Color.Highlight` #316AC5 (26), `Bevel.Brush.Highlight` #316AC5 (54), `Flat.Brush.Check` #316AC5 (115) | **Keep** — pinned-row hover in StartMenu consumes `Bevel.Brush.Highlight` ✓ |
 | 15 | Selection — secondary | #5096F8 (README; R-CS y=532..569 x=0..390 band) | **No token exists** | **Gap — not fixable here:** no secondary-selection brush is mapped in FlatTheme.axaml (selection-inactive state). Follow-up token needed |
-| 16 | New-item selection | Pale warm yellow #FEEAB6 (README; SVG-O line 46 "New item" row fill; R-CS sparse ≈37 px due to JPEG) | Only icon tint `Flat.Brush.StartMenuFolder` #FEEAB6 (165) / `Blue2001.Brush.StartMenuPlaceIconFolder` (215) | **Gap — not fixable here:** no new-item *row* brush is consumed by the menu template; row-state mapping is a StartMenu.axaml follow-up |
+| 16 | New-item selection | Pale warm yellow #FEEAB6 (README; SVG-O line 46 "New item" row fill; R-CS sparse ≈37 px due to JPEG) | Only icon tint `Flat.Brush.StartMenuFolder` #FEEAB6 (165) / `Bevel.Brush.StartMenuPlaceIconFolder` (215) | **Gap — not fixable here:** no new-item *row* brush is consumed by the menu template; row-state mapping is a StartMenu.axaml follow-up |
 | 17 | Borders / corner radii | Square corners throughout (README direction; classic bitmap slices are square; shared Classic templates carry no radius) | Chrome `Bevel.Metric.CornerRadius` 0 (236), start menu radii 0 (142-144) ✓ — but every Flat control template rounds 1px (277 Button, 291 CheckBox, 315 TextBox, 321 ComboBox ×3, 327 ProgressBar ×2, 332 Slider ×3, 339 TabItem, 346 TabControl, 351 scroll line button, 358/361 scroll thumbs, 380 ToggleButton) | **Flatten all 1px radii → 0** |
 | 18 | Caption decoration | Clean gradient band with shadowed pixels dual-tone effect at color transition | `PART_DualTone` canvas re-enabled on `:active` with floating pixel tiles and diffuse shadows | **Keep active re-show style** so the authentic Whistler Watercolor shadowed pixel transition renders over active captions |
 
@@ -55,8 +55,8 @@ Reference shorthand:
 | 71-73 | `Flat.Brush.CaptionActive` stops | `#5E9CF9` / `#4A8CEF` | `#4A85DF` / `.5 #3570D6` / `#2862C8` |
 | 121-123 | `Bevel.Brush.CaptionActive` stops | `#5E9CF9` / `#4A8CEF` | `#4A85DF` / `.5 #3570D6` / `#2862C8` |
 | 148 | `Flat.Brush.StartMenuPlaces` | `#3570D6` | `#D9E3F3` |
-| 208 | `Blue2001.Brush.StartMenuPlaceText` | `#FFFFFF` | `#1A202C` |
-| 226 | `Blue2001.Brush.StartMenuPlacesColumn` | cobalt gradient `#3570D6→#2862C8` | solid `#D9E3F3` |
+| 208 | `Bevel.Brush.StartMenuPlaceText` | `#FFFFFF` | `#1A202C` |
+| 226 | `Bevel.Brush.StartMenuPlacesColumn` | cobalt gradient `#3570D6→#2862C8` | solid `#D9E3F3` |
 | 234 | `Bevel.Metric.MenuItemHeight` | `21` | `18` |
 | 277, 291, 315, 321 (×3), 327 (×2), 332 (×3), 339, 346, 351, 358, 361, 380 | control-template `CornerRadius` | `1` / `0,4,4,0` / `1,1,0,0` / `0,1,1,1` | `0` / `0` / `0,0,0,0` / `0` — pairs positionally: 321 ComboBox `0,4,4,0`→`0`, 339 TabItem `1,1,0,0`→literal `0,0,0,0`, 380 ToggleButton `0,1,1,1`→`0`, remainder `1`→`0` |
 | 625-627 | `^:active /template/ Canvas#PART_DualTone` re-show style | active captions re-enable the glass-tile canvas | **Kept** (`PART_DualTone` active style retained for shadowed pixels effect) |
@@ -71,7 +71,7 @@ square chrome corners.
 1. **`src/Bevel.UI/FlatVariantService.cs` shadows several of these keys at runtime** for the
    Blue variant (lines 34, 36-57): it re-injects the pastel caption
    (`#5E9CF9→#4A8CEF`), the cobalt `Flat.Brush.CaptionButton/#2862C8` fill, the saturated
-   `Blue2001.Brush.StartMenuPlacesColumn`/`#3570D6` column and white place text whenever a
+   `Bevel.Brush.StartMenuPlacesColumn`/`#3570D6` column and white place text whenever a
    Flat variant is active, overriding this file's corrected base values. Until that service
    is updated to the source-led values, variant-applied runs keep the old looks; the
    corrected base renders when no variant override is applied.
@@ -80,8 +80,8 @@ square chrome corners.
    cannot express, so Blue never receives the re-injection. Non-Blue variants receive the
    minimal tuple at `:34-40` (synthetic accent calculator), re-injected at `:49-62`. That
    does touch three token groups above by design — `Flat.Brush.CaptionButton`/`CaptionClose`
-   (`:49-50`), `Blue2001.Brush.StartMenuPlacesColumn` (`:59`) and
-   `Blue2001.Brush.StartMenuPlaceText` (`:61`) — giving each variant its own pigments; the
+   (`:49-50`), `Bevel.Brush.StartMenuPlacesColumn` (`:59`) and
+   `Bevel.Brush.StartMenuPlaceText` (`:61`) — giving each variant its own pigments; the
    corrected base values hold wherever no variant is applied. §5 confirms at render level:
    every corrected token lands byte-identical on the filtered Blue renders (early-return),
    the silver/amber/ergonomic caption-button deltas of §5 rows 6-8 are exactly this variant
@@ -96,7 +96,7 @@ square chrome corners.
 3. Secondary-selection (#5096F8) and new-item-row (#FEEAB6) tokens: no consuming template
    state exists yet (rows 15-16).
 4. Start-menu proportions: source slices total 336px wide (10+144+2+2+168+10) vs
-   `Flat.Metric.StartMenuWidth` 390 (139); the per-column widths live in
+   `Bevel.Metric.StartMenuWidth` 390 (139); the per-column widths live in
    `src/Bevel.Taskbar/StartMenu.axaml`, which is out of scope for this pass.
 
 ---

@@ -175,10 +175,10 @@ public class InfoPaneStyleTest
         Bevel.UI.Blue2001.Blue2001VariantService.Apply(color, "Hybrid");
         try
         {
-            AssertContrast("Blue2001.Brush.InfoPaneHeadingText", 4.5);
-            AssertContrast("Blue2001.Brush.InfoPaneBodyText", 4.5);
-            AssertContrast("Blue2001.Brush.InfoPaneLinkText", 4.5);
-            AssertContrast("Blue2001.Brush.InfoPaneMutedText", 3.0);
+            AssertContrast("Bevel.Brush.InfoPaneHeadingText", 4.5);
+            AssertContrast("Bevel.Brush.InfoPaneBodyText", 4.5);
+            AssertContrast("Bevel.Brush.InfoPaneLinkText", 4.5);
+            AssertContrast("Bevel.Brush.InfoPaneMutedText", 3.0);
 
             var pane = new InfoPane { Style = InfoPaneStyle.WinXP, Width = 200, Height = 380 };
             pane.Title = "ikari";

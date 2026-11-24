@@ -105,24 +105,24 @@
             <!-- Matte concave (authentic Luna), NOT the aftermarket gloss: light top edge → dimmest
                  matte middle → subtle lighter bottom edge. No hard 50% split-stop "shiny bead". -->
             <!-- Glossy blue task button (design shiny bead): light top, hard 50% split, lighter bottom. -->
-            <LinearGradientBrush x:Key="Blue2001.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.TaskButton" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#5A97F0" />
                 <GradientStop Offset="0.5" Color="#2F6FE0" />
                 <GradientStop Offset="0.5" Color="#215FD8" />
                 <GradientStop Offset="1" Color="#4483EC" />
             </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#79ABF2" />
                 <GradientStop Offset="0.5" Color="#4384E4" />
                 <GradientStop Offset="1" Color="#5695EC" />
             </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Blue2001.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#1B4EA8" />
                 <GradientStop Offset="0.5" Color="#2559BC" />
                 <GradientStop Offset="1" Color="#2E63C8" />
             </LinearGradientBrush>
-            <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonBorder" Color="#1C4D9C" />
-            <SolidColorBrush x:Key="Blue2001.Brush.TaskButtonCheckedBorder" Color="#12358A" />
+            <SolidColorBrush x:Key="Bevel.Brush.TaskButtonBorder" Color="#1C4D9C" />
+            <SolidColorBrush x:Key="Bevel.Brush.TaskButtonCheckedBorder" Color="#12358A" />
 
             <!-- The iconic green Start pill (rounded right edge, glossy). Bound via Bevel.Theme.StartButton
                  set locally on the Start button, so it swaps live independently of the grey dialog button. -->
@@ -162,7 +162,7 @@
             <!-- ── Caption buttons: 21x21 glossy "shiny bead" squares; close is red (LUN chrome). Overriding
                  {x:Type CaptionButtons} restyles the internal CaptionButtonsEx (it resolves to this theme),
                  so framed windows get the Luna caption buttons + red close. -->
-            <LinearGradientBrush x:Key="Blue2001.Brush.CaptionButton" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.CaptionButton" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0"   Color="#5AA6FF" />
                 <GradientStop Offset="0.5" Color="#1E70EF" />
                 <GradientStop Offset="0.5" Color="#0D57E6" />
@@ -174,8 +174,8 @@
                 <GradientStop Offset="0.5" Color="#CF3417" />
                 <GradientStop Offset="1"   Color="#F07D63" />
             </LinearGradientBrush>
-            <SolidColorBrush x:Key="Blue2001.Brush.CaptionButtonBorder" Color="#0A3EA8" />
-            <LinearGradientBrush x:Key="Blue2001.Brush.CaptionButtonGloss" StartPoint="0%,0%" EndPoint="0%,100%">
+            <SolidColorBrush x:Key="Bevel.Brush.CaptionButtonBorder" Color="#0A3EA8" />
+            <LinearGradientBrush x:Key="Bevel.Brush.CaptionButtonGloss" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0" Color="#A0FFFFFF" />
                 <GradientStop Offset="1" Color="#10FFFFFF" />
             </LinearGradientBrush>
@@ -188,10 +188,10 @@
                     <ControlTemplate TargetType="Button">
                         <Border Name="bead" CornerRadius="3"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="{DynamicResource Blue2001.Brush.CaptionButtonBorder}" BorderThickness="1">
+                                BorderBrush="{DynamicResource Bevel.Brush.CaptionButtonBorder}" BorderThickness="1">
                             <Panel>
                                 <Border CornerRadius="2,2,4,4" VerticalAlignment="Top" Height="8" Margin="2,1,2,0"
-                                        Background="{DynamicResource Blue2001.Brush.CaptionButtonGloss}" />
+                                        Background="{DynamicResource Bevel.Brush.CaptionButtonGloss}" />
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                                   Content="{TemplateBinding Content}" />
                             </Panel>
@@ -211,17 +211,17 @@
                     <ControlTemplate TargetType="CaptionButtons">
                         <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="2" Margin="0,0,2,0">
                             <Button x:Name="PART_FullScreenButton" IsVisible="False" Focusable="False"
-                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Blue2001.Brush.CaptionButton}">
+                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Bevel.Brush.CaptionButton}">
                                 <Viewbox Width="10"><Path Name="FullScreenButtonPath"
                                     Data="M2048 2048v-819h-205v469l-1493 -1493h469v-205h-819v819h205v-469l1493 1493h-469v205h819z"
                                     Fill="White" Stretch="UniformToFill" /></Viewbox>
                             </Button>
                             <Button x:Name="PART_MinimizeButton" Focusable="False" AutomationProperties.Name="Minimize"
-                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Blue2001.Brush.CaptionButton}">
+                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Bevel.Brush.CaptionButton}">
                                 <Path Name="MinimizeButtonPath" Data="M 0 8 L 8 8 L 8 10 L 0 10 z" Fill="White" />
                             </Button>
                             <Button x:Name="PART_RestoreButton" Focusable="False" AutomationProperties.Name="Maximize"
-                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Blue2001.Brush.CaptionButton}">
+                                    Theme="{StaticResource Blue2001.Theme.CaptionButton}" Background="{DynamicResource Bevel.Brush.CaptionButton}">
                                 <Path Name="RestoreButtonPath" Data="M 0 0 L 9 0 L 9 2 L 1 2 L 1 8 L 8 8 L 8 2 L 9 2 L 9 9 L 0 9 L 0 0 z" Fill="White" />
                             </Button>
                             <Button x:Name="PART_CloseButton" Focusable="False" AutomationProperties.Name="Close"
@@ -297,49 +297,49 @@
                  tree; the Luna one binds these via {DynamicResource} and is only visible under Luna).
                  Keeping its palette here — not as literals in the panel — is the ENG-01 token contract,
                  so a future Luna variant (Olive/Silver) restyles the menu by swapping this dict. -->
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuBorder"          Color="#1857C9" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinnedColumn"    Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinTitle"        Color="#0A1A3A" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinSub"          Color="#7A869C" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceText"       Color="#08152E" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuDivider"         Color="#C9D2E4" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlacesDivider"   Color="#AEBFDB" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterHover"     Color="#4E93EC" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuFooterRule"      Color="#6AA8F2" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRule"      Color="#F4A020" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHeaderRuleLight" Color="#FFD27F" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuComputerIcon"    Color="#3F6FC5" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconGeneric" Color="#E6ECF7" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuBorder"          Color="#1857C9" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinnedColumn"    Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinTitle"        Color="#0A1A3A" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinSub"          Color="#7A869C" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceText"       Color="#08152E" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuDivider"         Color="#C9D2E4" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlacesDivider"   Color="#AEBFDB" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterHover"     Color="#4E93EC" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterRule"      Color="#6AA8F2" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuHeaderRule"      Color="#F4A020" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuHeaderRuleLight" Color="#FFD27F" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconFolder"  Color="#F4D06A" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuComputerIcon"    Color="#3F6FC5" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconGeneric" Color="#E6ECF7" />
             <!-- Neutral tile shown behind a pinned app's icon while its real bitmap loads (or when the
                  icon provider yields none) so a pinned row is never a hollow gap. -->
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPinIconFallback" Color="#DCE6F5" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuPlaceIconBorder"  Color="#8AA3C9" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuHelpIcon"        Color="#3F8EE6" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuLogOffIcon"      Color="#E8A23C" />
-            <SolidColorBrush x:Key="Blue2001.Brush.StartMenuTurnOffIcon"     Color="#D94A2E" />
-            <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%">
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinIconFallback" Color="#DCE6F5" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconBorder"  Color="#8AA3C9" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuHelpIcon"        Color="#3F8EE6" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuLogOffIcon"      Color="#E8A23C" />
+            <SolidColorBrush x:Key="Bevel.Brush.StartMenuTurnOffIcon"     Color="#D94A2E" />
+            <LinearGradientBrush x:Key="Bevel.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0"   Color="#4F97EE" />
                 <GradientStop Offset="0.5" Color="#2F7EE6" />
                 <GradientStop Offset="1"   Color="#1E63D6" />
             </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0"   Color="#3F8CE8" />
                 <GradientStop Offset="0.5" Color="#245EDC" />
                 <GradientStop Offset="1"   Color="#1A4FBE" />
             </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%">
                 <GradientStop Offset="0" Color="#FFD27F" />
                 <GradientStop Offset="1" Color="#E88A3C" />
             </LinearGradientBrush>
-            <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuAllProgramsGlyph" StartPoint="0%,0%" EndPoint="0%,100%">
+            <LinearGradientBrush x:Key="Bevel.Brush.StartMenuAllProgramsGlyph" StartPoint="0%,0%" EndPoint="0%,100%">
                 <GradientStop Offset="0"   Color="#7EC97F" />
                 <GradientStop Offset="0.5" Color="#3F9A41" />
                 <GradientStop Offset="1"   Color="#2F7A33" />
             </LinearGradientBrush>
             <!-- Right column: a clearly-blue but light panel — distinct from the white left column
                  (XP two-tone) yet light enough that the dark navy place-text reads with strong contrast. -->
-            <LinearGradientBrush x:Key="Blue2001.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
+            <LinearGradientBrush x:Key="Bevel.Brush.StartMenuPlacesColumn" StartPoint="0%,0%" EndPoint="100%,0%">
                 <GradientStop Offset="0" Color="#E7F0FC" />
                 <GradientStop Offset="1" Color="#D6E4F7" />
             </LinearGradientBrush>
@@ -772,8 +772,8 @@
             <ControlTheme x:Key="Blue2001.Theme.ComboDropButton" TargetType="ToggleButton">
                 <Setter Property="Template">
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border Name="ButtonFace" Background="{DynamicResource Blue2001.Brush.TaskButton}"
-                                BorderBrush="{DynamicResource Blue2001.Brush.TaskButtonBorder}"
+                        <Border Name="ButtonFace" Background="{DynamicResource Bevel.Brush.TaskButton}"
+                                BorderBrush="{DynamicResource Bevel.Brush.TaskButtonBorder}"
                                 BorderThickness="1" CornerRadius="0,1,1,0">
                             <Path HorizontalAlignment="Center" VerticalAlignment="Center"
                                   Fill="White" Data="M 0 0 L 3.5 4 L 7 0 Z" />
@@ -781,10 +781,10 @@
                     </ControlTemplate>
                 </Setter>
                 <Style Selector="^:pointerover /template/ Border#ButtonFace">
-                    <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TaskButtonHover}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.TaskButtonHover}" />
                 </Style>
                 <Style Selector="^:pressed /template/ Border#ButtonFace">
-                    <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TaskButtonChecked}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.TaskButtonChecked}" />
                 </Style>
             </ControlTheme>
 
@@ -794,8 +794,8 @@
                  blue ground. Combo/ScrollBar toggle-buttons set their Theme locally, so they aren't hit. -->
             <ControlTheme x:Key="Bevel.Theme.ToggleButton" TargetType="ToggleButton">
                 <Setter Property="Foreground" Value="{DynamicResource Bevel.Brush.TrayText}" />
-                <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TaskButton}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource Blue2001.Brush.TaskButtonBorder}" />
+                <Setter Property="Background" Value="{DynamicResource Bevel.Brush.TaskButton}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.TaskButtonBorder}" />
                 <Setter Property="Template">
                     <ControlTemplate TargetType="ToggleButton">
                         <Border Name="Face" Background="{TemplateBinding Background}"
@@ -809,11 +809,11 @@
                     </ControlTemplate>
                 </Setter>
                 <Style Selector="^:pointerover /template/ Border#Face">
-                    <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TaskButtonHover}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.TaskButtonHover}" />
                 </Style>
                 <Style Selector="^:checked /template/ Border#Face">
-                    <Setter Property="Background" Value="{DynamicResource Blue2001.Brush.TaskButtonChecked}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource Blue2001.Brush.TaskButtonCheckedBorder}" />
+                    <Setter Property="Background" Value="{DynamicResource Bevel.Brush.TaskButtonChecked}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.TaskButtonCheckedBorder}" />
                 </Style>
             </ControlTheme>
 
