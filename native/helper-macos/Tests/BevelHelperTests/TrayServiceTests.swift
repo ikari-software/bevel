@@ -166,6 +166,16 @@ final class TrayServiceTests: XCTestCase {
         XCTAssertNil(TrayServiceImpl.pixelHash(width: 4, height: 4, data: nil))
         XCTAssertNil(TrayServiceImpl.pixelHash(width: 2, height: 8, data: nil))
     }
+    func testDisplayNamePrefersCachedThenAXThenWindowName() {
+        // bevel-ye27: precedence is cached (learned while on-screen, survives the push off-screen)
+        // > a fresh AX read > the friendly window name.
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "Item-0", axName: "EXO", cached: nil), "EXO")
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "Item-0", axName: nil, cached: "EXO"), "EXO")
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "Item-0", axName: "Fresh", cached: "Cached"), "Cached")
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "Item-0", axName: nil, cached: nil), "Item")
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "com.apple.menuextra.wifi", axName: nil, cached: nil), "Wifi")
+        XCTAssertEqual(TrayServiceImpl.displayName(windowName: "", axName: nil, cached: nil), "Menu item")
+    }
 
     func testSelfTestReArmsOnceOnTheUngrantedToGrantedTransition() {
         // 1. Never run yet → always run (first capture attempt triggers it, granted or not).
