@@ -57,8 +57,27 @@ lands, tighten the matching budget and update the table above.
   UI/dispatcher thread, which BDN's engine thread isn't; it throws "Call from invalid thread". Bitmaps
   (`TrayIconTint`) are thread-agnostic and benchmark fine. A future UI-thread harness could cover glyph
   build.
-- **Theme apply** (`ThemeService`/`Blue2001VariantService`), **taskbar reflow end-to-end**, and **IPC round-trips**
-  (taskbar↔core↔helper) — these need a live Avalonia app / running processes, out of scope for the pure-CPU
-  micro-harness. Profile with `dotnet-trace` under real churn when they're suspected.
+- **Taskbar reflow end-to-end** and **IPC round-trips** (taskbar↔core↔helper) — these need a live Avalonia
+  app / running processes, out of scope for the pure-CPU micro-harness. Profile with `dotnet-trace` under
+  real churn when they're suspected.
+
+## Theme apply (measured on the UI thread — bevel-yd2n, bevel-vw90)
+
+BDN can't host this (brush construction `VerifyAccess`es the UI thread, which BDN's engine thread isn't), so
+`benchmarks/Bevel.Benchmarks` has a dedicated mode that times the colourway switch on the main/UI thread with
+a window of 240 `DynamicResource` consumers realized:
+
+```
+dotnet run -c Release --project benchmarks/Bevel.Benchmarks -- --measure-theme-switch
+```
+
+Baselines (Apple Silicon M2 Ultra, .NET 10, Release):
+
+- Colourway switch (Blue↔Silver, Hybrid gloss, 240 consumers realized, 30 iters after 5 warmup):
+  **mean ~20 ms, median ~20 ms, p95 ~25 ms, max ~29 ms, ~4.4 MiB/op** — under the 50 ms per-switch budget,
+  so the per-key direct writes stay (no merged-dictionary rewrite; bevel-yd2n closed as measured).
+- Full theme round-trip (swap to Blue2001 + Purple/Hybrid variant + revert, no window realized): **~0.8 ms**
+  average (30 iters after 5 warmup) — CI-gated as `Perf_theme_apply_roundtrip_under_budget` in
+  `PerfBudgetTests` at a 20× budget of 16 ms (bevel-vw90).
 
 [BenchmarkDotNet]: https://benchmarkdotnet.org

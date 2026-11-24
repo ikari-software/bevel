@@ -21,6 +21,7 @@ namespace Bevel.Taskbar.Tests;
 /// measured on Apple Silicon, so it survives CI-runner variance yet still fails on a gross regression
 /// (an accidental O(n²), a per-call allocation blowup). Numbers + rationale: docs/perf.md.
 /// </summary>
+[Collection("TaskbarTheme")]   // serialize with the theme-mutating tests: they share Application.Current (bevel-hd05, bevel-vw90)
 public class PerfBudgetTests
 {
     // Average wall-clock per op over `iters` after a warmup, so JIT + one-off GC don't dominate.
@@ -74,6 +75,31 @@ public class PerfBudgetTests
         // median ~16µs → 3000µs budget (decode + full-pixel scan + recolour).
         var us = AvgMicros(10, 100, () => TrayIconTint.Process(png, Colors.Black));
         Assert.True(us < 3000, $"Tint(32px) averaged {us:F1}µs (budget 3000µs)");
+    }
+
+    [AvaloniaFact]
+    public void Perf_theme_apply_roundtrip_under_budget()
+    {
+        // bevel-vw90: full round-trip = swap to Blue2001 theme + Purple/Hybrid variant, then revert.
+        // Measured average on Apple Silicon ~0.8 ms → 20× budget = 16 ms (baseline in docs/perf.md).
+        const double BudgetMs = 16.0;
+        try
+        {
+            var us = AvgMicros(5, 30, () =>
+            {
+                Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+                Bevel.UI.Blue2001.Blue2001VariantService.Apply("Purple", "Hybrid");
+                Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+                Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+            });
+            var ms = us / 1000.0;
+            Assert.True(ms < BudgetMs, $"theme apply round-trip averaged {ms:F2}ms (budget {BudgetMs}ms)");
+        }
+        finally
+        {
+            Bevel.UI.Blue2001.Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+        }
     }
 
     private static byte[] MakeGlyphPng(int n)
