@@ -282,7 +282,7 @@ public interface IDirectoryWatcher : IDisposable
 
 ## 5. Drag & drop and clipboard
 
-**FM-150** Internal DnD between views/tree/desktop uses Avalonia DnD with our own `FileDropPayload`; default effect follows Explorer rules: same volume → Move, cross volume → Copy, any → Link with Ctrl+Shift (Cmd+Option on macOS); modifier keys update the drag cursor (theme-drawn +copy badge). External DnD interops with the platform: publish `NSFilenamesPboardType`/`public.file-url` (macOS), `CF_HDROP` (Windows), `text/uri-list` (Linux) so drags into other apps work, and accept the same inbound.
+**FM-150** Internal DnD between views/tree/desktop uses Avalonia DnD carrying the OS file list only (an extra application payload hangs the native macOS drag session, bevel-u2x6); default effect: a drag within one window → Move, a drag from anywhere else (another app or another Filer window) → Copy, Ctrl or Option → Copy, Shift or Cmd → Move when the source allows it; modifier keys update the drag cursor (theme-drawn +copy badge). *Not yet built:* Link (Ctrl+Shift copies), and same-volume → Move across windows (a second Filer window is another process and is indistinguishable from any other app). External DnD interops with the platform: publish `NSFilenamesPboardType`/`public.file-url` (macOS), `CF_HDROP` (Windows), `text/uri-list` (Linux) so drags into other apps work, and accept the same inbound.
 
 **FM-151** Clipboard cut/copy publishes both native file formats (above) and an internal marker distinguishing cut vs copy (`Preferred DropEffect` on Windows; private pasteboard type elsewhere since macOS has no native "cut files" convention). Cut items render at 50% opacity until pasted or clipboard changes.
 

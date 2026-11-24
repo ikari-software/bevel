@@ -51,7 +51,7 @@ public partial class StackFlyoutView : UserControl
         {
             _dragItem = vm;
             _dragStart = e.GetPosition(null);
-            _dragFileTask = TopLevel.GetTopLevel(this)?.StorageProvider?.TryGetFileFromPathAsync(ToFileUri(vm.FullPath));
+            _dragFileTask = TopLevel.GetTopLevel(this)?.StorageProvider?.TryGetFileFromPathAsync(Bevel.Core.Vfs.FileUri.FromPath(vm.FullPath));
         }
     }
 
@@ -75,5 +75,4 @@ public partial class StackFlyoutView : UserControl
         _ = DragDrop.DoDragDrop(e, data, DragDropEffects.Copy | DragDropEffects.Link);
     }
 
-    private static Uri ToFileUri(string path) => new UriBuilder { Scheme = "file", Host = string.Empty, Path = path }.Uri;
 }

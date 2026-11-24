@@ -1091,15 +1091,25 @@ public partial class FileManagerWindow : BevelWindow
 
     void OnDropRequested(object? sender, DropEventArgs e)
     {
-        if (_controller is null || e.Paths.Count == 0) return;
+        if (_controller is null) return;
         var dest = e.TargetFolder ?? _controller.CurrentDirectory;
-        // Never drop an item onto itself (dragging a folder onto its own row).
-        var paths = e.Paths.Where(p => p != dest).ToList();
+        var paths = DropSources(e.Paths, dest);
         if (paths.Count == 0) return;
-        // Ctrl = copy, Ctrl+Shift = link (not yet supported — falls through to copy),
-        // plain = move. Matches Finder/Filer conventions.
-        _ = RunOpAsync(() => e.IsCopy || e.IsLink ? _controller.CopyAsync(paths, dest) : _controller.MoveAsync(paths, dest));
+        _ = RunOpAsync(() => e.Operation == DropOperation.Move
+            ? _controller.MoveAsync(paths, dest)
+            : _controller.CopyAsync(paths, dest));
     }
+
+    /// <summary>The dropped paths a file operation into <paramref name="dest"/> should act on. Leaves
+    /// out the destination itself (a folder dragged onto its own row) and anything already directly
+    /// inside it (a drag released where it started): moving or copying an item onto itself is a
+    /// name conflict with itself, never something the user asked for.</summary>
+    internal static List<VfsPath> DropSources(IReadOnlyList<VfsPath> paths, VfsPath dest)
+        => paths.Where(p => !SameLocation(p, dest) && !SameLocation(p.Parent, dest)).ToList();
+
+    private static bool SameLocation(VfsPath a, VfsPath b)
+        => string.Equals(a.Scheme, b.Scheme, StringComparison.Ordinal)
+           && (string.Equals(a.Value, b.Value, StringComparison.Ordinal) || (a.IsRoot && b.IsRoot));
 
     async void OnRenameCommitted(object? sender, RenameCommittedEventArgs e)
     {
