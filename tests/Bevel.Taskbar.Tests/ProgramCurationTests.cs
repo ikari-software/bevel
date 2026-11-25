@@ -20,6 +20,25 @@ public sealed class ProgramCurationTests
     private static string TempDir()
         => Path.Combine(Path.GetTempPath(), "bevel-usage-" + Guid.NewGuid().ToString("N"));
 
+    // The store persists on a fire-and-forget task; deleting the directory while a write is in flight throws
+    // IOException on Windows ("program-usage.json is being used by another process"). Drain every store's write
+    // chain for the directory before removing it.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentBag<ProgramUsageStore>> Stores = new();
+
+    private static ProgramUsageStore NewStore(string dir)
+    {
+        var store = new ProgramUsageStore(dir);
+        Stores.GetOrAdd(dir, _ => new()).Add(store);
+        return store;
+    }
+
+    private static void Cleanup(string dir)
+    {
+        if (Stores.TryRemove(dir, out var bag))
+            Task.WaitAll(bag.Select(st => st.FlushAsync()).ToArray(), TimeSpan.FromSeconds(10));
+        Directory.Delete(dir, true);
+    }
+
     private static void LoadPrograms(ShellModel model, int expected)
     {
         model.Start();
@@ -33,7 +52,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             var seen = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             Assert.True(store.MarkSeen("com.a", seen));
             Assert.False(store.MarkSeen("com.a", seen.AddYears(1)));   // already recorded → no overwrite
@@ -41,11 +60,11 @@ public sealed class ProgramCurationTests
             store.RecordLaunch("com.a");
 
             store.FlushAsync().Wait();   // writes are now fire-and-forget off the UI thread (ce-review)
-            var reloaded = new ProgramUsageStore(dir);
+            var reloaded = NewStore(dir);
             Assert.Equal(2, reloaded.LaunchCount("com.a"));
             Assert.Equal(seen, reloaded.FirstSeen("com.a"));
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -55,7 +74,7 @@ public sealed class ProgramCurationTests
         try
         {
             var t = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             store.Set("com.a", launchCount: 1, t);
             store.Set("com.b", launchCount: 5, t);
             store.Set("com.c", launchCount: 3, t);
@@ -72,7 +91,7 @@ public sealed class ProgramCurationTests
             Assert.Equal("Cee", model.FrequentPrograms[1].DisplayName);
             Assert.Equal("Alpha", model.FrequentPrograms[2].DisplayName);
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -81,7 +100,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             store.Set("com.a", launchCount: 10, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)); // first-run baseline, heavily used
             store.Set("com.b", launchCount: 0, DateTime.UtcNow.AddHours(-1));                          // installed just now
             var appEnv = new StubAppEnvironment(
@@ -93,7 +112,7 @@ public sealed class ProgramCurationTests
             Assert.Equal("Beta", model.FrequentPrograms[0].DisplayName);   // newest on top, above the frequent one
             Assert.Equal("Alpha", model.FrequentPrograms[1].DisplayName);
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -102,7 +121,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             // com.a is the first-run baseline, heavily used. com.b was installed a year later — but that is
             // still long ago (well outside the recent "newly added" window), so it must NOT pin to the top;
             // it rejoins the frequency ranking and sits below the heavily-used app.
@@ -117,7 +136,7 @@ public sealed class ProgramCurationTests
             Assert.Equal("Alpha", model.FrequentPrograms[0].DisplayName);   // stale install no longer starves frequency
             Assert.Equal("Beta", model.FrequentPrograms[1].DisplayName);
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -127,7 +146,7 @@ public sealed class ProgramCurationTests
         try
         {
             var t = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             var apps = new InstalledApp[5];
             for (var i = 0; i < 5; i++)
             {
@@ -142,7 +161,7 @@ public sealed class ProgramCurationTests
             Assert.Equal(5, model.Programs.Count);       // full list unaffected
             Assert.Equal(3, model.FrequentPrograms.Count); // curated list capped
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     // ── bevel-xrx6 Part A: exclude-open apps from the frequent column ──
@@ -204,7 +223,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             var (model, wm) = ModelWithApps(store, 4, cap: 3);
             using (model)
             {
@@ -215,7 +234,7 @@ public sealed class ProgramCurationTests
                     "open app excluded, column backfilled to the cap");
             }
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -224,7 +243,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             var (model, wm) = ModelWithApps(store, 4, cap: 3);
             using (model)
             {
@@ -234,7 +253,7 @@ public sealed class ProgramCurationTests
                 Assert.Equal(new[] { "App0", "App1", "App2" }, Column(model));   // open app still listed
             }
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 
     [AvaloniaFact]
@@ -243,7 +262,7 @@ public sealed class ProgramCurationTests
         var dir = TempDir();
         try
         {
-            var store = new ProgramUsageStore(dir);
+            var store = NewStore(dir);
             var (model, wm) = ModelWithApps(store, 4, cap: 3);
             using (model)
             {
@@ -254,6 +273,6 @@ public sealed class ProgramCurationTests
                 Bevel.TestSupport.Settle.Until(() => Column(model)[0] == "App0", "App0 back on top after close");
             }
         }
-        finally { Directory.Delete(dir, true); }
+        finally { Cleanup(dir); }
     }
 }
