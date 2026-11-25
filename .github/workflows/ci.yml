@@ -243,11 +243,21 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Re-harvest and compare
+        env:
+          BEVEL_SHOTS_KEEP: ${{ runner.temp }}/fresh-shots
         run: |
           if ! ./site/harvest-shots.sh --check; then
-            echo "::error::site/shots/ is stale, or index.html declares the wrong size for a shot. Run './site/harvest-shots.sh' and commit the result."
+            echo "::error::site/shots/ is stale, or index.html declares the wrong size for a shot. Run './site/harvest-shots.sh' and commit the result, or copy the runner's own renders from the fresh-shots artifact (byte-compare: another Mac's render may not match)."
             exit 1
           fi
+
+      - name: Keep the runner's fresh renders
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-shots
+          path: ${{ runner.temp }}/fresh-shots
+          retention-days: 7
 
   # ── Proto codegen drift check (bevel-vgg) ───────────────────────────────────
   #

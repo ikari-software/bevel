@@ -27,6 +27,45 @@ internal readonly record struct ColorXform(double HueShift, double SatMul, doubl
     public double BandContrast { get; init; } = 1.0;
 
     public Color Apply(Color c) => this == Identity ? c : Transform(c, HueShift, SatMul, LightMul, LightShift);
+
+    /// <summary>Hue of the reference chrome family (Luna blue). <see cref="HueShift"/> is a rotation OF THIS hue
+    /// (blue 220 + 46 = violet), so it is meaningless for a surface that does not start blue.</summary>
+    public const double ReferenceHue = 225.0;
+
+    /// <summary>When set, light control surfaces (<see cref="Surface.Control"/>) keep their lightness instead of
+    /// taking <see cref="LightMul"/>: Purple's 0.6 compresses DEEP chrome, and on a near-white well it would
+    /// paint a dark purple slab.</summary>
+    public bool KeepControlLight { get; init; }
+
+    /// <summary>Progress-bar fill hue override (degrees). Null = the reference Luna green in every colourway.
+    /// Re-hues the fill's own stops and boosts saturation (<see cref="ProgressSatMul"/>), keeping their lightness
+    /// ramp, so the glossy sheen survives.</summary>
+    public double? ProgressHue { get; init; }
+    public double ProgressSatMul { get; init; } = 1.0;
+
+    /// <summary>Exact colours for control surfaces whose family must NOT follow the chrome tint (Purple's orange
+    /// progress sits on a warm cream well: orange on a lavender well turns muddy).</summary>
+    public System.Collections.Generic.IReadOnlyDictionary<string, string>? ControlOverrides { get; init; }
+
+    public Color ApplyProgress(Color c)
+    {
+        var (_, s, l) = ToHsl(c);
+        return FromHsl(ProgressHue ?? 0, Math.Clamp(s * ProgressSatMul, 0, 1), l, c.A);
+    }
+
+    /// <summary>Re-tints a beige control surface (progress well, group frame, tab faces) toward the colourway.
+    /// The beige sits at ~49 degrees, so rotating it by the chrome's <see cref="HueShift"/> lands Purple on GREEN
+    /// (49 + 46 = 95). Anchor the hue to the blue family first, then rotate: blue-family hue + shift is the
+    /// colourway's own hue, at the surface's own (low) saturation.</summary>
+    public Color ApplyControl(Color c)
+    {
+        if (this == Identity) return c;
+        var (_, s, l) = ToHsl(c);
+        var h = (ReferenceHue + HueShift) % 360.0; if (h < 0) h += 360.0;
+        s = Math.Clamp(s * SatMul, 0, 1);
+        if (!KeepControlLight) l = Math.Clamp(l * LightMul + LightShift, 0, 1);
+        return FromHsl(h, s, l, c.A);
+    }
 }
 
 /// <summary>A gloss role: how a surface reacts to the gloss axis. Control = glossy under Gloss/Hybrid,
@@ -35,10 +74,14 @@ internal enum GlossRole { Control, Chrome, Inert }
 
 /// <summary>One factory-generated surface: its reference (Blue + current-gloss) stops, whether the colour
 /// axis re-hues it, and its gloss role.</summary>
-internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false, bool LightLocked = false, double MaxLight = 1.0)
+internal sealed record Surface(string Key, bool Chromatic, GlossRole Role, (double Off, string Hex)[] Stops, bool Horizontal = false, bool LightLocked = false, double MaxLight = 1.0, bool Control = false)
 {
     public static Surface Solid(string key, bool chromatic, string hex, double maxLight = 1.0) =>
         new(key, chromatic, GlossRole.Inert, new[] { (0.0, hex) }, MaxLight: maxLight);
+    /// <summary>A beige control surface that follows the colourway by TINT, not by the chrome rotation
+    /// (see <see cref="ColorXform.ApplyControl"/>).</summary>
+    public static Surface ControlSolid(string key, string hex) =>
+        new(key, true, GlossRole.Inert, new[] { (0.0, hex) }, Control: true);
     public bool IsSolid => Stops.Length == 1;
 }
 
@@ -71,7 +114,18 @@ public static class Blue2001VariantService
         Blue2001ColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
         // BandContrast re-expands the taskbar/caption gradient the LightMul:0.6 compression flattens —
         // violet lightness steps read weakly, so the bands need a punchier light→dark spread than blue.
-        Blue2001ColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) { BandContrast = 2.2 },
+        Blue2001ColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) {
+            BandContrast = 2.2, KeepControlLight = true,
+            // Orange blocks (violet's complement) on a warm cream well. The lavender tint the other control
+            // surfaces take would turn orange muddy, so the well is pinned warm. Hue 30 / sat x1.5: at the
+            // green's own saturation the same ramp reads as tan.
+            ProgressHue = 30, ProgressSatMul = 1.5,
+            ControlOverrides = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["Blue2001.Brush.ProgressWell"] = "F7EEE2",
+                ["Blue2001.Brush.ProgressWellBorder"] = "B59A7C",
+            },
+        },
         _ => ColorXform.Identity,
     };
 
@@ -142,12 +196,12 @@ public static class Blue2001VariantService
 
         // Beige control chrome that must follow the colourway (bevel-quif): the progress well + its border,
         // the group-box frame, and the tab faces. Chromatic so Silver/Black/Purple re-hue them; gloss-inert.
-        Surface.Solid("Blue2001.Brush.ProgressWell", true, "F4F2E9"),
-        Surface.Solid("Blue2001.Brush.ProgressWellBorder", true, "8A887A"),
-        Surface.Solid("Blue2001.Brush.GroupFrame", true, "D0CDBF"),
-        Surface.Solid("Blue2001.Brush.TabFace", true, "D7D1BC"),
+        Surface.ControlSolid("Blue2001.Brush.ProgressWell", "F4F2E9"),
+        Surface.ControlSolid("Blue2001.Brush.ProgressWellBorder", "8A887A"),
+        Surface.ControlSolid("Blue2001.Brush.GroupFrame", "D0CDBF"),
+        Surface.ControlSolid("Blue2001.Brush.TabFace", "D7D1BC"),
         new("Blue2001.Brush.TabFaceSelected", true, GlossRole.Inert, new[]{
-            (0.0,"FFFFFF"),(1.0,"ECE9D8")}),
+            (0.0,"FFFFFF"),(1.0,"ECE9D8")}, Control: true),
 
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
@@ -308,6 +362,9 @@ public static class Blue2001VariantService
         {
             var reference = Hex(hex);
             var col = s.LightLocked ? TransformInfoPane(reference, variant, s.Key)
+                    : s.Control && xform.ControlOverrides is { } ov && ov.TryGetValue(s.Key, out var fixedHex) ? Hex(fixedHex)
+                    : s.Key == "Blue2001.Brush.Progress" && xform.ProgressHue is not null ? xform.ApplyProgress(reference)
+                    : s.Control ? xform.ApplyControl(reference)
                     : s.Chromatic ? xform.Apply(reference)
                     : reference;
             // Cap lightness (control edges): Silver's LightMul 1.4 washes borders to near the window grey,
