@@ -37,6 +37,22 @@ internal readonly record struct ColorXform(double HueShift, double SatMul, doubl
     /// paint a dark purple slab.</summary>
     public bool KeepControlLight { get; init; }
 
+    /// <summary>Progress-bar fill hue override (degrees). Null = the reference Luna green in every colourway.
+    /// Re-hues the fill's own stops and boosts saturation (<see cref="ProgressSatMul"/>), keeping their lightness
+    /// ramp, so the glossy sheen survives.</summary>
+    public double? ProgressHue { get; init; }
+    public double ProgressSatMul { get; init; } = 1.0;
+
+    /// <summary>Exact colours for control surfaces whose family must NOT follow the chrome tint (Purple's orange
+    /// progress sits on a warm cream well: orange on a lavender well turns muddy).</summary>
+    public System.Collections.Generic.IReadOnlyDictionary<string, string>? ControlOverrides { get; init; }
+
+    public Color ApplyProgress(Color c)
+    {
+        var (_, s, l) = ToHsl(c);
+        return FromHsl(ProgressHue ?? 0, Math.Clamp(s * ProgressSatMul, 0, 1), l, c.A);
+    }
+
     /// <summary>Re-tints a beige control surface (progress well, group frame, tab faces) toward the colourway.
     /// The beige sits at ~49 degrees, so rotating it by the chrome's <see cref="HueShift"/> lands Purple on GREEN
     /// (49 + 46 = 95). Anchor the hue to the blue family first, then rotate: blue-family hue + shift is the
@@ -98,7 +114,18 @@ public static class Blue2001VariantService
         Blue2001ColorVariant.Black => new ColorXform(HueShift: 0, SatMul: 0.22, LightMul: 0.45, LightShift: 0.0),
         // BandContrast re-expands the taskbar/caption gradient the LightMul:0.6 compression flattens —
         // violet lightness steps read weakly, so the bands need a punchier light→dark spread than blue.
-        Blue2001ColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) { BandContrast = 2.2, KeepControlLight = true },
+        Blue2001ColorVariant.Purple => new ColorXform(HueShift: 46, SatMul: 1.18, LightMul: 0.6, LightShift: -0.02) {
+            BandContrast = 2.2, KeepControlLight = true,
+            // Orange blocks (violet's complement) on a warm cream well. The lavender tint the other control
+            // surfaces take would turn orange muddy, so the well is pinned warm. Hue 30 / sat x1.5: at the
+            // green's own saturation the same ramp reads as tan.
+            ProgressHue = 30, ProgressSatMul = 1.5,
+            ControlOverrides = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["Blue2001.Brush.ProgressWell"] = "F7EEE2",
+                ["Blue2001.Brush.ProgressWellBorder"] = "B59A7C",
+            },
+        },
         _ => ColorXform.Identity,
     };
 
@@ -335,6 +362,8 @@ public static class Blue2001VariantService
         {
             var reference = Hex(hex);
             var col = s.LightLocked ? TransformInfoPane(reference, variant, s.Key)
+                    : s.Control && xform.ControlOverrides is { } ov && ov.TryGetValue(s.Key, out var fixedHex) ? Hex(fixedHex)
+                    : s.Key == "Blue2001.Brush.Progress" && xform.ProgressHue is not null ? xform.ApplyProgress(reference)
                     : s.Control ? xform.ApplyControl(reference)
                     : s.Chromatic ? xform.Apply(reference)
                     : reference;

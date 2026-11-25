@@ -49,15 +49,40 @@ public class Blue2001ControlChromeTintTests
             Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
             Blue2001VariantService.Apply("Purple", "Hybrid");
 
-            foreach (var key in Keys)
+            // Frame and tab faces follow the violet tint (not the 95 deg green the chrome rotation gave).
+            foreach (var key in new[] { "Blue2001.Brush.GroupFrame", "Blue2001.Brush.TabFace" })
             {
                 var (h, _, _) = Hsl(key);
-                Assert.True(h is > 250 and < 300, $"{key} hue {h:F0} (expected violet, not the 95 deg green the chrome rotation gave)");
+                Assert.True(h is > 250 and < 300, $"{key} hue {h:F0}");
             }
-            // The well is a LIGHT well for the green segments; the border is a mid edge, not a dark slab.
-            Assert.True(Hsl("Blue2001.Brush.ProgressWell").L > 0.88, $"well L={Hsl("Blue2001.Brush.ProgressWell").L:F2}");
+            // The well is pinned WARM (orange blocks on lavender turn muddy): cream, light, orange-family hue.
+            var (wh, _, wl) = Hsl("Blue2001.Brush.ProgressWell");
+            Assert.True(wh is > 15 and < 50 && wl > 0.88, $"well hue {wh:F0} L={wl:F2}");
             Assert.True(Hsl("Blue2001.Brush.GroupFrame").L > 0.7);
             Assert.True(Hsl("Blue2001.Brush.TabFace").L > 0.7);
+        }
+        finally
+        {
+            Blue2001VariantService.Clear();
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Purple_progress_blocks_are_orange_and_other_colourways_stay_green()
+    {
+        static double FillHue(string variant)
+        {
+            Bevel.UI.ThemeService.Apply(ThemeIds.Blue2001);
+            Blue2001VariantService.Apply(variant, "Hybrid");
+            var g = Assert.IsType<LinearGradientBrush>(Application.Current!.Resources["Blue2001.Brush.Progress"]);
+            return ToHsl(g.GradientStops[1].Color).H;
+        }
+        try
+        {
+            Assert.InRange(FillHue("Purple"), 15, 50);
+            foreach (var v in new[] { "Blue", "Silver", "Black" })
+                Assert.InRange(FillHue(v), 90, 150);
         }
         finally
         {
