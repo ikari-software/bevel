@@ -52,4 +52,24 @@ public class WindowFrameInactiveTests
         Assert.Equal(Color.Parse(inactive), FrameColor(a));
         Assert.Equal(Color.Parse(active), FrameColor(b));
     }
+
+    [AvaloniaTheory]
+    [InlineData("Silver")]
+    [InlineData("Black")]
+    [InlineData("Purple")]
+    public void A_luna_variant_re_hues_the_inactive_frame(string variant)
+    {
+        ThemeService.Apply(ThemeIds.Blue2001);
+        try
+        {
+            Bevel.UI.Blue2001.Blue2001VariantService.Apply(variant, "Hybrid");
+            var w = new BevelWindow { Width = 300, Height = 200, Title = "A" };
+            w.Show();
+            Dispatcher.UIThread.RunJobs();
+            SetActive(w, false);
+            // The static Luna-blue fallback must not survive: the variant owns this key like WindowFrame.
+            Assert.NotEqual(Color.Parse("#7FA0D2"), FrameColor(w));
+        }
+        finally { Bevel.UI.Blue2001.Blue2001VariantService.Clear(); }
+    }
 }

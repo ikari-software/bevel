@@ -151,6 +151,7 @@ public static class Blue2001VariantService
 
         // Chrome solids (re-hued, gloss-inert)
         Surface.Solid("Bevel.Brush.WindowFrame", true, "0831D9"),
+        Surface.Solid("Bevel.Brush.WindowFrameInactive", true, "7FA0D2"),
         Surface.Solid("Bevel.Brush.TaskButtonBorder", true, "1C4D9C"),
         Surface.Solid("Bevel.Brush.TaskButtonCheckedBorder", true, "0B2456"),
         Surface.Solid("Bevel.Brush.CaptionButtonBorder", true, "0A3EA8"),
