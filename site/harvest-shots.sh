@@ -141,6 +141,9 @@ echo "    declared sizes match"
 if [ "$CHECK" = 1 ]; then
   echo "==> drift check"
   drift=0
+  # CI keeps the fresh renders (BEVEL_SHOTS_KEEP) so a stale shot can be fixed from the runner's own render:
+  # the comparison is byte-for-byte, and a render from a different Mac need not match the runner's.
+  if [ -n "${BEVEL_SHOTS_KEEP:-}" ]; then mkdir -p "$BEVEL_SHOTS_KEEP" && cp "$OUT"/*.png "$BEVEL_SHOTS_KEEP"/; fi
   for f in "$OUT"/*.png; do
     b="$(basename "$f")"
     case " $MANUAL " in *" $b "*) continue ;; esac
