@@ -41,16 +41,17 @@ public partial class StartSearchStrip : UserControl
     {
         base.OnPropertyChanged(change);
         // Both frames carry their own text blocks (only one is visible per class); keep both in sync so
-        // switching the class mid-search never shows a stale query.
+        // switching the class mid-search never shows a stale query. The named fields can still be null
+        // before InitializeComponent runs, so guard each write.
         if (change.Property == QueryProperty)
         {
-            ClassicSearchText.Text = Query;
-            Blue2001SearchText.Text = Query;
+            if (ClassicSearchText is not null) ClassicSearchText.Text = Query;
+            if (Blue2001SearchText is not null) Blue2001SearchText.Text = Query;
         }
         else if (change.Property == CountTextProperty)
         {
-            ClassicSearchCount.Text = CountText;
-            Blue2001SearchCount.Text = CountText;
+            if (ClassicSearchCount is not null) ClassicSearchCount.Text = CountText;
+            if (Blue2001SearchCount is not null) Blue2001SearchCount.Text = CountText;
         }
     }
 }

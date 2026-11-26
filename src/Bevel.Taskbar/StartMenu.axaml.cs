@@ -5,7 +5,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -72,19 +71,26 @@ public partial class StartMenu : UserControl
         InitializeComponent();
         _programsVm = programs;
         // bevel-pr4l: the search feature is extracted; the host hands over the controls it swaps between
-        // (both layouts' strips + results views, the item column / pinned column, the Programs item).
-        _searchInput = new StartMenuSearchInput(this, programs, new StartMenuSearchBody
-        {
-            LunaLayout = Blue2001Layout,
-            Items = ItemsMenu,
-            PinnedScroll = Blue2001PinnedScroll,
-            Pinned = Blue2001Pinned,
-            ProgramsItem = ProgramsItem,
-            ClassicResults = ClassicResultsView,
-            LunaResults = Blue2001ResultsView,
-            ClassicStrip = ClassicSearchStrip,
-            LunaStrip = Blue2001SearchStrip,
-        });
+        // (both layouts' strips + results views, the item column / pinned column, the Programs item) plus
+        // its back-channel as delegates, so the extracted class holds no reference to this host.
+        _searchInput = new StartMenuSearchInput(
+            programs,
+            new StartMenuSearchBody
+            {
+                LunaLayout = Blue2001Layout,
+                Items = ItemsMenu,
+                PinnedScroll = Blue2001PinnedScroll,
+                Pinned = Blue2001Pinned,
+                ProgramsItem = ProgramsItem,
+                ClassicResults = ClassicResultsView,
+                LunaResults = Blue2001ResultsView,
+                ClassicStrip = ClassicSearchStrip,
+                LunaStrip = Blue2001SearchStrip,
+            },
+            isOpen: () => MenuPopup.IsOpen,
+            close: Close,
+            lunaWired: () => _lunaWired,
+            restoreProgramsPlaceholder: UpdateProgramsPlaceholder);
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         _openSettings = openSettings ?? (() => { });
@@ -175,8 +181,6 @@ public partial class StartMenu : UserControl
     }
 
     private bool _lunaWired;
-    /// <summary>bevel-pr4l: read by the extracted search input when restoring the pinned column.</summary>
-    internal bool LunaWired => _lunaWired;
 
     /// <summary>Picks the layout for the active theme (bevel-dob). The menu is never on screen during a
     /// theme swap, so toggling the whole visual tree here is safe. The Luna two-column panel is wired
@@ -481,7 +485,7 @@ public partial class StartMenu : UserControl
     /// forbids holding both <c>Items</c> and <c>ItemsSource</c>, so each branch clears the other's
     /// mode before switching. Idempotent — safe to call on every collection/loaded change.
     /// </summary>
-    internal void UpdateProgramsPlaceholder()
+    private void UpdateProgramsPlaceholder()
     {
         // While a type-to-search query is live the cascade belongs to the result list (bevel-cezo); a
         // background re-enumeration must not yank it back to the full collection mid-search.

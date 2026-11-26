@@ -46,7 +46,12 @@ internal sealed class StartMenuSearchBody
 /// </summary>
 internal sealed class StartMenuSearchInput
 {
-    private readonly StartMenu _host;
+    // bevel-pr4l review: the host back-channel arrives as delegates, so this class needs no
+    // reference to the concrete StartMenu (and no private→internal widenings on it).
+    private readonly Func<bool> _isOpen;
+    private readonly Action _close;
+    private readonly Func<bool> _lunaWired;
+    private readonly Action _restoreProgramsPlaceholder;
     private readonly StartMenuViewModel? _vm;
     private readonly StartMenuSearchBody _body;
     private readonly StartMenuFilter _filter = new();
@@ -56,11 +61,20 @@ internal sealed class StartMenuSearchInput
     private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
     private RoutedEventArgs? _lastSearchEvent;
 
-    public StartMenuSearchInput(StartMenu host, StartMenuViewModel? vm, StartMenuSearchBody body)
+    public StartMenuSearchInput(
+        StartMenuViewModel? vm,
+        StartMenuSearchBody body,
+        Func<bool> isOpen,
+        Action close,
+        Func<bool> lunaWired,
+        Action restoreProgramsPlaceholder)
     {
-        _host = host;
         _vm = vm;
         _body = body;
+        _isOpen = isOpen;
+        _close = close;
+        _lunaWired = lunaWired;
+        _restoreProgramsPlaceholder = restoreProgramsPlaceholder;
         QueryChanged += ApplySearch;
         Cleared += ClearSearch;
         EnterPressed += source => TryLaunchTopMatch(source);
@@ -100,7 +114,7 @@ internal sealed class StartMenuSearchInput
         }
     }
 
-    private bool Enabled => _host.MenuPopupControl.IsOpen && _vm is not null;
+    private bool Enabled => _isOpen() && _vm is not null;
 
     /// <summary>
     /// The handlers sit on BOTH the popup root and the inner <see cref="Menu"/>: the Programs cascade opens
@@ -160,7 +174,7 @@ internal sealed class StartMenuSearchInput
         foreach (var view in new[] { _body.ClassicResults, _body.LunaResults })
         {
             view.RegisterProvider(_searchSession.Providers[0]);
-            view.HitActivated += hit => { _ = hit.ActivateAsync(); _host.Close(); };
+            view.HitActivated += hit => { _ = hit.ActivateAsync(); _close(); };
         }
     }
 
@@ -197,7 +211,7 @@ internal sealed class StartMenuSearchInput
     {
         if (!EnterShouldLaunchTopMatch(source) || _searchSession?.TopHit is not { } top) return false;
         _ = top.ActivateAsync();
-        _host.Close();
+        _close();
         return true;
     }
 
@@ -264,8 +278,8 @@ internal sealed class StartMenuSearchInput
         _body.Items.IsVisible = true;
         _body.PinnedScroll.IsVisible = true;
         if (_vm is null) return;
-        if (_host.LunaWired) _body.Pinned.ItemsSource = _vm.FrequentPrograms;
+        if (_lunaWired()) _body.Pinned.ItemsSource = _vm.FrequentPrograms;
         _body.ProgramsItem.IsSubMenuOpen = false;
-        _host.UpdateProgramsPlaceholder();
+        _restoreProgramsPlaceholder();
     }
 }
