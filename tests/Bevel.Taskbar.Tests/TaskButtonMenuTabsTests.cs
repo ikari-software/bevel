@@ -255,7 +255,8 @@ public class TaskButtonMenuTabsTests
         var windows = top.First(m => (m.Header as string) == "_Windows");
         var per = windows.Items.OfType<MenuItem>().First();
         var verbs = per.Items.OfType<MenuItem>().Select(m => m.Header as string).ToList();
-        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
+        // bevel-kpkx: each per-window submenu also carries the Maximize/Zoom verb.
+        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "Ma_ximize", "_Close" }, verbs);
     }
 
     [AvaloniaFact]
@@ -272,7 +273,8 @@ public class TaskButtonMenuTabsTests
         var windows = top.First(m => (m.Header as string) == "_Windows");
         var verbs = windows.Items.OfType<MenuItem>().First().Items.OfType<MenuItem>()
             .Select(m => m.Header as string).ToList();
-        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "_Close" }, verbs);
+        // bevel-kpkx: each per-window submenu also carries the Maximize/Zoom verb.
+        Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "Ma_ximize", "_Close" }, verbs);
     }
 
 

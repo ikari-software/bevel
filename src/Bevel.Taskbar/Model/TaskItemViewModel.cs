@@ -56,6 +56,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         CloseCommand = new AsyncRelayCommand(() => _windows.CloseAsync(Id));
         MinimizeCommand = new AsyncRelayCommand(() => _windows.MinimizeAsync(Id));
         RestoreCommand = new AsyncRelayCommand(() => _windows.RestoreAsync(Id));
+        ZoomCommand = new AsyncRelayCommand(() => _windows.ZoomAsync(Id));
         QuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: false));
         ForceQuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: true));
     }
@@ -231,6 +232,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Right-click context-menu verbs (bevel-cust.ctxmenu): the taskbar-button system menu.</summary>
     public ICommand MinimizeCommand { get; }
     public ICommand RestoreCommand { get; }
+    /// <summary>Zoom/maximize this window (bevel-kpkx): the green-button zoom on macOS.</summary>
+    public ICommand ZoomCommand { get; }
 
     /// <summary>Quit the owning app (graceful terminate) — the app-level action every button offers.</summary>
     public ICommand QuitCommand { get; }

@@ -13,7 +13,7 @@ namespace Bevel.Taskbar;
 
 /// <summary>
 /// Builds the app-centric taskbar-button context menu (bevel-ww71): the app icon + name header, a
-/// "Windows ▶" submenu (each window → Activate / Minimize / Close), and Quit (or Force Quit when Option
+/// "Windows ▶" submenu (each window → Activate / Minimize / Restore / Maximize / Close), and Quit (or Force Quit when Option
 /// is held WHILE right-clicking — decide-at-open; a live relabel is impossible, see Build). Built in code
 /// (not XAML) so the per-window nesting + native modifier/dismiss hooks stay simple, and so one shape
 /// covers single windows, groups, and windowless app-presence entries.
@@ -108,6 +108,8 @@ public static class TaskButtonMenu
                 per.Items.Add(activate);
                 per.Items.Add(new MenuItem { Header = "Mi_nimize", Command = win.MinimizeCommand });
                 per.Items.Add(new MenuItem { Header = "_Restore", Command = win.RestoreCommand });
+                // bevel-kpkx: the macOS green-button zoom (Windows: Maximize).
+                per.Items.Add(new MenuItem { Header = "Ma_ximize", Command = win.ZoomCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
                 windows.Items.Add(per);
             }
@@ -212,7 +214,7 @@ public static class TaskButtonMenu
 
     // ── Adapt either button VM to a common menu shape ────────────────────────
 
-    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand CloseCommand);
+    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
         bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
         string? BundleId = null);
@@ -237,7 +239,7 @@ public static class TaskButtonMenu
     };
 
     private static WindowRow Row(TaskItemViewModel w) =>
-        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.RestoreCommand, w.CloseCommand);
+        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.RestoreCommand, w.ZoomCommand, w.CloseCommand);
 
     /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
     /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>

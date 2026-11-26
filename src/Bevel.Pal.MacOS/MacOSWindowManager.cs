@@ -155,6 +155,15 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    public async Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        await ws.ZoomAsync(new WindowRef { WindowId = id.Value },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+    }
+
     public async Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));

@@ -44,6 +44,8 @@ public sealed class FakeWindowManager : IWindowManager
     // One atomic op in the real PAL (bevel-nxic); in-memory it's a no-op like Restore+Activate.
     public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+    // bevel-kpkx: no native zoom in the in-memory desktop — a no-op like Minimize/Restore/Close.
+    public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
 
     /// <summary>Applies the move/resize to the in-memory desktop and announces it, the way a real
     /// window server would: the caller can read the new frame back from

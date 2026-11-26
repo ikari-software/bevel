@@ -27,6 +27,13 @@ public interface IWindowManager
     Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default);
     Task CloseAsync(ForeignWindowId id, CancellationToken ct = default);
 
+    /// <summary>Zoom/maximize a window (bevel-kpkx): on macOS the green-button zoom — the helper
+    /// presses the window's AXZoomButton, toggling it between its user state and the zoomed state;
+    /// on Windows <c>ShowWindow(SW_MAXIMIZE)</c>. Default: unsupported — backends and test stubs
+    /// without a native zoom verb no-op.</summary>
+    Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     /// <summary>De-miniaturize (if minimized) and activate in ONE atomic operation (bevel-nxic): the
     /// taskbar's minimized→click path. Backends that own the real activation collapse this into a single
     /// helper round-trip whose order is "raise the clicked window LAST", so it reliably ends frontmost

@@ -127,6 +127,7 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Restore, id, ct);
     public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.RestoreAndActivate, id, ct);
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Close, id, ct);
+    public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Zoom, id, ct);
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 

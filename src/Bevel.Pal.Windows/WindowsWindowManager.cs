@@ -136,6 +136,20 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return Task.Run(() => { if (IsWindow(hwnd)) PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero); }, ct);
     }
 
+    public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows() || _disposed || !TryParseHwnd(id, out var hwnd))
+            return Task.CompletedTask;
+        // The Windows twin of the macOS zoom (bevel-kpkx): maximize (restore first if minimized,
+        // so a minimized window zooms instead of staying in the taskbar).
+        return Task.Run(() =>
+        {
+            if (!IsWindow(hwnd)) return;
+            if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+            ShowWindow(hwnd, SW_MAXIMIZE);
+        }, ct);
+    }
+
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
         CancellationToken ct = default)
     {
@@ -921,6 +935,7 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
     private const int DWMWA_CLOAKED = 14;
 
     private const int SW_MINIMIZE = 6;
+    private const int SW_MAXIMIZE = 3;
     private const int SW_RESTORE = 9;
 
     private const uint WM_CLOSE = 0x0010;
