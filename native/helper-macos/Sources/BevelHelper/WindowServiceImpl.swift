@@ -1342,14 +1342,32 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         return any
     }
 
+    /// Well-known system bundle ids the shell must never hide (bevel-d2j9 review): hiding the Dock,
+    /// Finder, SystemUIServer or Control Center takes the whole desktop chrome down with the app.
+    private static let hideDenylist: Set<String> = [
+        "com.apple.dock",
+        "com.apple.finder",
+        "com.apple.systemuiserver",
+        "com.apple.controlcenter",
+    ]
+
     /// Hide the whole app (bevel-d2j9): NSRunningApplication.hide() — the Cmd-H equivalent. The app
     /// keeps running with no visible windows; unlike terminate() it never prompts to save.
-    /// Returns false when no running app matches the bundle id.
+    /// Only `.regular` (Dock) apps are hidden — the same activation-policy gate the window enumeration
+    /// uses — and the denylisted system agents above are never touched.
+    /// Returns false when no hideable running app matches the bundle id.
     func hideApp(bundleID: String) -> Bool {
-        let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == bundleID }
+        let apps = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == bundleID
+                && $0.activationPolicy == .regular
+                && !Self.hideDenylist.contains(bundleID)
+        }
         var any = false
         for app in apps {
-            any = any || app.hide()
+            // Attempt hide() on EVERY match — several processes can share one bundle id, and
+            // `any = any || app.hide()` would short-circuit and skip the rest after the first success.
+            let did = app.hide()
+            any = did || any
         }
         return any
     }

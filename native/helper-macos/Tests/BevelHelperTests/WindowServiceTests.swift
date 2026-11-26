@@ -486,6 +486,15 @@ final class WindowServiceTests: XCTestCase {
         XCTAssertFalse(svc.hideApp(bundleID: ""))
     }
 
+    func testHideAppNeverTargetsDenylistedSystemBundleIDs() {
+        // bevel-d2j9 review: the system denylist must hold even when the system app IS running.
+        // Probing the real Dock/Finder/… ids is safe precisely because the gate refuses to hide them.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        for bundle in ["com.apple.dock", "com.apple.finder", "com.apple.systemuiserver", "com.apple.controlcenter"] {
+            XCTAssertFalse(svc.hideApp(bundleID: bundle), "denylisted system id must never be hidden: \(bundle)")
+        }
+    }
+
     // MARK: - AXError → RPCError mapping
 
     func testAXErrorInvalidUIElementMapsToNotFound() {

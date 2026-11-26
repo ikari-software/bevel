@@ -328,13 +328,47 @@ public class TaskButtonMenuTabsTests
         group.Windows.Add(new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w2"), "Two", App, false, false, default, BundleId: App), wm));
 
-        var top = TopLevelItems(TaskButtonMenu.Build(group, null, null));
-        var hide = top.First(m => (m.Header as string) == "_Hide");
+        var flyout = TaskButtonMenu.Build(group, null, null)!;
+        // bevel-d2j9 review: in the group menu too, _Hide sits immediately above Separator+_Quit.
+        var items = (flyout.ItemsSource as IEnumerable<object>)!.ToList();
+        var hideIdx = items.FindIndex(i => i is MenuItem { Header: "_Hide" });
+        Assert.True(hideIdx >= 0, "menu has no _Hide item");
+        Assert.IsType<Separator>(items[hideIdx + 1]);
+        Assert.Equal("_Quit", (Assert.IsType<MenuItem>(items[hideIdx + 2]).Header as string));
+
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
         hide.Command!.Execute(null);
 
         Assert.Equal(new[] { App }, wm.Hidden);
     }
 
+    [AvaloniaFact]
+    public void Hide_item_click_invokes_the_activate_foreign_handback_cancel()
+    {
+        // bevel-nxic (same pattern as StartMenuTests' Quit item): choosing _Hide hands the front to
+        // whatever the OS surfaces next, so the menu cancels the key-focus handback the instant the
+        // item is clicked — before the command even runs.
+        var tapped = false;
+        var flyout = TaskButtonMenu.Build(BrowserVmWithBundle(), null, null, onActivateForeign: () => tapped = true)!;
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
+
+        hide.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+
+        Assert.True(tapped);
+    }
+
+    [AvaloniaFact]
+    public void Hide_item_is_disabled_when_there_is_no_bundle_id()
+    {
+        // bevel-d2j9 review: no bundle id → HideAppAsync has nothing to key on (HideAsync no-ops),
+        // so the row renders disabled rather than offering a dead verb.
+        var flyout = TaskButtonMenu.Build(BrowserVm(), null, null)!;
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
+        Assert.False(hide.IsEnabled);
+
+        var withBundle = TaskButtonMenu.Build(BrowserVmWithBundle(), null, null)!;
+        Assert.True(TopLevelItems(withBundle).First(m => (m.Header as string) == "_Hide").IsEnabled);
+    }
 
     [AvaloniaFact]
     public void Rows_without_a_favicon_show_the_session_tint_swatch(/* bevel-l17f */)

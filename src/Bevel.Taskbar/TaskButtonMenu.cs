@@ -202,8 +202,13 @@ public static class TaskButtonMenu
         // bevel-d2j9: Hide sits directly above Quit (the macOS app-menu order). Hiding the target
         // hands the front to whatever the OS surfaces next, so — exactly like Quit — cancel the
         // key-focus handback (bevel-nxic).
-        var hide = new MenuItem { Header = "_Hide", Command = model.HideCommand };
-        if (onActivateForeign is not null) hide.Click += (_, _) => onActivateForeign();
+        // Dead when there is no bundle id to key HideAppAsync on (HideAsync no-ops then) — keep the
+        // row for a stable menu shape but grey it out (bevel-d2j9 review).
+        var hide = new MenuItem { Header = "_Hide", Command = model.HideCommand, IsEnabled = !string.IsNullOrEmpty(model.BundleId) };
+        // handledEventsToo: a MenuItem with a Command has a class handler (OnClick) that executes the
+        // command and marks ClickEvent HANDLED before plain `Click +=` handlers run — without this the
+        // handback-cancel would never fire (bevel-nxic).
+        if (onActivateForeign is not null) hide.AddHandler(MenuItem.ClickEvent, (_, _) => onActivateForeign(), handledEventsToo: true);
         items.Add(hide);
         items.Add(new Separator());
         var quit = new MenuItem

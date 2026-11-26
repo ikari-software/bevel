@@ -214,6 +214,14 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
             Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (not replayable; link down)");
             return;
         }
+        // App-level verbs are NEVER replayed (bevel-d2j9 review): a HideApp/TerminateApp held in the
+        // queue would fire up to ReplayTtl late — by which time the user has often relaunched the app,
+        // and hiding/quitting the fresh instance is worse than the dead click. Send once, live, or drop.
+        if (cmd.Kind is CoreCommandKind.HideApp or CoreCommandKind.TerminateApp)
+        {
+            Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (app-level verbs are not replayed; link down)");
+            return;
+        }
         lock (_queueLock)
         {
             while (_replayQueue.Count >= MaxQueuedCommands)
