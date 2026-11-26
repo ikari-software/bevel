@@ -104,8 +104,9 @@ public class StartMenuSearchTests
         // The search strip shows the live query + match count for the classic layout only.
         Assert.True(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
         Assert.False(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
-        Assert.Equal("cal", h.Menu.FindControl<TextBlock>("ClassicSearchText")!.Text);
-        Assert.Equal("2 matches", h.Menu.FindControl<TextBlock>("ClassicSearchCount")!.Text);
+        // bevel-pr4l: the strip markup lives in StartSearchStrip, so its text blocks are reached through it.
+        Assert.Equal("cal", Strip(h.Menu, "ClassicSearchStrip").FindControl<TextBlock>("ClassicSearchText")!.Text);
+        Assert.Equal("2 matches", Strip(h.Menu, "ClassicSearchStrip").FindControl<TextBlock>("ClassicSearchCount")!.Text);
     }
 
     [AvaloniaFact]
@@ -119,7 +120,7 @@ public class StartMenuSearchTests
         var results = h.Menu.FindControl<StartSearchResultsView>("ClassicResultsView")!;
         var row = Assert.Single(results.Rows);
         Assert.Equal("(No matches)", Assert.IsType<Bevel.Core.Search.SearchSectionHeader>(row).Title);
-        Assert.Equal("no matches", h.Menu.FindControl<TextBlock>("ClassicSearchCount")!.Text);
+        Assert.Equal("no matches", Strip(h.Menu, "ClassicSearchStrip").FindControl<TextBlock>("ClassicSearchCount")!.Text);
     }
 
     [AvaloniaFact]
@@ -249,6 +250,39 @@ public class StartMenuSearchTests
         Assert.Equal(["Notepad"], h.Menu.SearchResults.Select(p => p.DisplayName));
     }
 
+    [AvaloniaFact]
+    public async Task Search_input_is_attached_to_both_the_popup_root_and_the_inner_menu()
+    {
+        using var h = await Harness.OpenAsync();
+        var root = PopupRoot(h.Menu);
+        var menu = h.Menu.FindControl<Menu>("ItemsMenu")!;
+
+        // One keystroke routes through BOTH hosts (the Menu sits inside the popup root, so a bubbled text
+        // event reaches the Menu's handler first, then the root's) — the per-event de-dup must apply it
+        // exactly once, or every character would land twice (bevel-pr4l moved the wiring, not the rule).
+        var typed = new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "c", Source = menu };
+        menu.RaiseEvent(typed);
+        root.RaiseEvent(typed);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("c", h.Menu.SearchQuery);
+
+        // Each host on its own also drives the filter: the popup root (where the other tests type)…
+        Type(h.Menu, "a");
+        // …and the inner Menu.
+        menu.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "l", Source = menu });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("cal", h.Menu.SearchQuery);
+
+        // KeyDown is taken on the tunnel phase on both hosts too — one Back seen through both applies once.
+        var back = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Back, Source = menu };
+        menu.RaiseEvent(back);
+        root.RaiseEvent(back);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("ca", h.Menu.SearchQuery);
+        Assert.True(back.Handled);
+        Assert.Equal(2, h.Menu.SearchResults.Count);
+    }
+
     // ── Luna two-column layout ─────────────────────────────────────────
 
     [AvaloniaFact]
@@ -273,8 +307,8 @@ public class StartMenuSearchTests
             Assert.Equal(["Calculator", "Calendar"], h.Menu.SearchResults.Select(p => p.DisplayName));
             Assert.True(h.Menu.FindControl<Control>("Blue2001SearchStrip")!.IsVisible);
             Assert.False(h.Menu.FindControl<Control>("ClassicSearchStrip")!.IsVisible);
-            Assert.Equal("cal", h.Menu.FindControl<TextBlock>("Blue2001SearchText")!.Text);
-            Assert.Equal("2 matches", h.Menu.FindControl<TextBlock>("Blue2001SearchCount")!.Text);
+            Assert.Equal("cal", Strip(h.Menu, "Blue2001SearchStrip").FindControl<TextBlock>("Blue2001SearchText")!.Text);
+            Assert.Equal("2 matches", Strip(h.Menu, "Blue2001SearchStrip").FindControl<TextBlock>("Blue2001SearchCount")!.Text);
 
             Press(h.Menu, Key.Escape);
             Assert.Same(h.Model.FrequentPrograms, pinned.ItemsSource);   // …and back to curated on clear
@@ -309,6 +343,9 @@ public class StartMenuSearchTests
     // ── Plumbing ───────────────────────────────────────────────────────
 
     private static Control PopupRoot(StartMenu menu) => menu.FindControl<Panel>("PopupRoot")!;
+
+    /// <summary>bevel-pr4l: the strip is its own component now, so its inner controls are found through it.</summary>
+    private static StartSearchStrip Strip(StartMenu menu, string name) => menu.FindControl<StartSearchStrip>(name)!;
 
     /// <summary>Feeds real text input at the popup root, exactly as the platform would once a menu row holds
     /// focus.</summary>

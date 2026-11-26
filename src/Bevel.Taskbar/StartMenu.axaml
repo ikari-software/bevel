@@ -59,50 +59,14 @@
                          Win2000's own Start menu leaves a hairline there; without it the icon glyphs read
                          as welded to the stripe, which is the first thing the eye catches. -->
                     <DockPanel Grid.Column="1" Margin="1,0,0,0">
-                    <!-- Type-to-search strip (bevel-cezo): hidden until the user types with the menu open,
-                         then it shows the live query and the match count above the item column, in a
-                         sunken edit-field frame. Nested Borders — NOT ClassicBorderDecorator / BevelBorder:
-                         both Decorator-based edge painters force an intermediate composition layer that
-                         SiteShot's 2× RenderTargetBitmap paints wrong (glyphs enormous + clipped,
-                         bevel-qgv9; same class as theme-win2000's TabControl). -->
-                    <Border x:Name="ClassicSearchStrip"
-                            DockPanel.Dock="Top"
-                            IsVisible="False"
-                            Margin="3,3,3,2"
-                            BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}"
-                            BorderThickness="0,0,1,1">
-                        <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
-                                BorderThickness="1,1,0,0">
-                            <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonLight}"
-                                    BorderThickness="0,0,1,1">
-                                <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonDkShadow}"
-                                        BorderThickness="1,1,0,0"
-                                        Background="{DynamicResource Bevel.Brush.Window}"
-                                        Padding="4,3">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <!-- Code-drawn magnifier on the shared 16-grid; theme-tokened, vector-only. -->
-                                        <Canvas Width="14" Height="14" VerticalAlignment="Center" ClipToBounds="True">
-                                            <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
-                                                     Stroke="{DynamicResource Bevel.Brush.WindowText}" StrokeThickness="1.4" />
-                                            <Path Data="M9.5,9.5 L13,13"
-                                                  Stroke="{DynamicResource Bevel.Brush.WindowText}"
-                                                  StrokeThickness="1.6" StrokeLineCap="Round" />
-                                        </Canvas>
-                                        <TextBlock x:Name="ClassicSearchText"
-                                                   FontFamily="{DynamicResource Bevel.Font.UI}"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource Bevel.Brush.WindowText}"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock x:Name="ClassicSearchCount"
-                                                   FontFamily="{DynamicResource Bevel.Font.UI}"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource Bevel.Brush.GrayText}"
-                                                   VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Border>
-                            </Border>
-                        </Border>
-                    </Border>
+                    <!-- Type-to-search strip (bevel-cezo; markup extracted into StartSearchStrip in bevel-pr4l):
+                         hidden until the user types with the menu open, then shows the live query and the match
+                         count above the item column. The "classic" class picks the sunken edit-field frame
+                         (nested Borders, NOT ClassicBorderDecorator — bevel-qgv9), which lives in the view. -->
+                    <tb:StartSearchStrip x:Name="ClassicSearchStrip"
+                                         DockPanel.Dock="Top"
+                                         IsVisible="False"
+                                         Classes="classic" />
 
                     <!-- bevel-6sk6: while a search is active the sectioned results panel replaces the
                          item column; the Menu itself is never re-pointed at results. -->
@@ -284,32 +248,14 @@
                     <Border DockPanel.Dock="Top" Height="3" Background="{DynamicResource Bevel.Brush.StartMenuHeaderRule}" />
                     <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource Bevel.Brush.StartMenuHeaderRuleLight}" Opacity="0.7" />
 
-                    <!-- Type-to-search strip (bevel-cezo): hidden until the user types with the menu open,
-                         then it shows the live query + match count while the pinned column below turns into
-                         the ranked result list. Rounded Luna field on the pale-blue band. -->
-                    <Border x:Name="Blue2001SearchStrip" DockPanel.Dock="Top" IsVisible="False"
-                            Padding="10,7"
-                            Background="{DynamicResource Bevel.Brush.StartMenuPlacesColumn}">
-                        <Border CornerRadius="{DynamicResource Bevel.Metric.StartMenuRowCornerRadius}" Padding="7,4"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource Bevel.Brush.StartMenuPlaceIconBorder}"
-                                Background="{DynamicResource Bevel.Brush.StartMenuPinnedColumn}">
-                            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                <Canvas Width="14" Height="14" VerticalAlignment="Center">
-                                    <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
-                                             Stroke="#2F6FD0" StrokeThickness="1.6" />
-                                    <Path Data="M9.5,9.5 L13,13" Stroke="#2F6FD0"
-                                          StrokeThickness="1.8" StrokeLineCap="Round" />
-                                </Canvas>
-                                <TextBlock x:Name="Blue2001SearchText" FontSize="13"
-                                           Foreground="{DynamicResource Bevel.Brush.StartMenuPlaceText}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="Blue2001SearchCount" FontSize="11" Opacity="0.65"
-                                           Foreground="{DynamicResource Bevel.Brush.StartMenuPlaceText}"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
-                    </Border>
+                    <!-- Type-to-search strip (bevel-cezo; markup extracted into StartSearchStrip in bevel-pr4l):
+                         hidden until the user types with the menu open, then shows the live query + match count
+                         while the pinned column below turns into the ranked result list. The "luna" class picks
+                         the rounded field on the pale-blue band, which lives in the view. -->
+                    <tb:StartSearchStrip x:Name="Blue2001SearchStrip"
+                                         DockPanel.Dock="Top"
+                                         IsVisible="False"
+                                         Classes="luna" />
 
                     <!-- Footer: coloured band with Search bar on left, Log Off / Turn Off on right -->
                     <Border x:Name="Blue2001Footer" DockPanel.Dock="Bottom" Height="{DynamicResource Bevel.Metric.StartMenuFooterHeight}"

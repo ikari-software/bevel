@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
-using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -16,7 +14,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Bevel.Core.Search;
 using Bevel.Core.Vfs;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
@@ -48,6 +45,10 @@ public partial class StartMenu : UserControl
     /// <summary>bevel-4vce: OS session actions (LogOut/Restart/Shutdown/Lock) from IShellSession.
     /// Null in tests/all-in-one without a PAL → the OS-level entries are disabled, never dead.</summary>
     private readonly Func<LogoutKind, Task>? _session;
+    /// <summary>bevel-pr4l: the whole type-to-search feature (query state, popup key/text wiring, search
+    /// session, strip/results swap) lives in <see cref="StartMenuSearchInput"/> + <see cref="StartSearchStrip"/>;
+    /// this host wires them and forwards the public surface below.</summary>
+    private readonly StartMenuSearchInput _searchInput;
 
     public StartMenu() : this(null, null) { }
 
@@ -69,6 +70,27 @@ public partial class StartMenu : UserControl
     {
         InitializeComponent();
         _programsVm = programs;
+        // bevel-pr4l: the search feature is extracted; the host hands over the controls it swaps between
+        // (both layouts' strips + results views, the item column / pinned column, the Programs item) plus
+        // its back-channel as delegates, so the extracted class holds no reference to this host.
+        _searchInput = new StartMenuSearchInput(
+            programs,
+            new StartMenuSearchBody
+            {
+                LunaLayout = Blue2001Layout,
+                Items = ItemsMenu,
+                PinnedScroll = Blue2001PinnedScroll,
+                Pinned = Blue2001Pinned,
+                ProgramsItem = ProgramsItem,
+                ClassicResults = ClassicResultsView,
+                LunaResults = Blue2001ResultsView,
+                ClassicStrip = ClassicSearchStrip,
+                LunaStrip = Blue2001SearchStrip,
+            },
+            isOpen: () => MenuPopup.IsOpen,
+            close: Close,
+            lunaWired: () => _lunaWired,
+            restoreProgramsPlaceholder: UpdateProgramsPlaceholder);
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         _openSettings = openSettings ?? (() => { });
@@ -92,24 +114,10 @@ public partial class StartMenu : UserControl
         BuildStaticSubmenus();
         WireFixedItemIcons();
         WireHoverToOpen();
-        WireTypeToSearch();
-        WireSearchSession();
-    }
-
-    // bevel-6sk6: one SearchSession over the apps provider feeds BOTH layouts' results views; publishes
-    // are marshaled to the UI thread via Dispatcher.Post (background providers answer off-thread).
-    private void WireSearchSession()
-    {
-        if (_programsVm is null) return;
-        _searchSession = new SearchSession(
-            new ISearchProvider[] { new AppsSearchProvider(_programsVm.Model) },
-            a => Dispatcher.UIThread.Post(a));
-        _searchSession.SectionChanged += OnSearchSectionChanged;
-        foreach (var view in new[] { ClassicResultsView, Blue2001ResultsView })
-        {
-            view.RegisterProvider(_searchSession.Providers[0]);
-            view.HitActivated += hit => { _ = hit.ActivateAsync(); Close(); };
-        }
+        // bevel-pr4l: BOTH attachment points, preserved — the popup's own root panel AND the inner Menu.
+        // The menu lives in a Popup with its own TopLevel, and the Programs cascade nests a popup further,
+        // so typing must be seen on both (StartMenuSearchInput de-dups the double sighting per event).
+        _searchInput.Attach(PopupRoot, ItemsMenu);
     }
 
     public bool IsOpen => MenuPopup.IsOpen;
@@ -131,7 +139,7 @@ public partial class StartMenu : UserControl
     public Task OpenAsync(Control placementTarget, bool fromKeyboard = false)
     {
         ApplyThemeLayout();
-        ClearSearch();          // every open starts on the unfiltered menu (bevel-cezo)
+        _searchInput.ClearSearch();   // every open starts on the unfiltered menu (bevel-cezo)
         RefreshDesktopLabel();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
@@ -332,103 +340,30 @@ public partial class StartMenu : UserControl
     /// dropped, so the next open shows the full menu.</summary>
     public void Close()
     {
-        ClearSearch();
+        _searchInput.ClearSearch();
         MenuPopup.IsOpen = false;
     }
 
-    // ── Type-to-search (bevel-cezo) ────────────────────────────────────
-
-    private readonly StartMenuFilter _filter = new();
-    private readonly ObservableCollection<ProgramItemViewModel> _searchResults = new();
-    // bevel-6sk6: the sectioned search session + the current Programs-section hits.
-    private SearchSession? _searchSession;
-    private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
+    // ── Type-to-search (bevel-cezo / bevel-pr4l) ──────────────────────
+    // The feature itself lives in StartMenuSearchInput (query state + popup wiring + SearchSession +
+    // the strip/results swap) and StartSearchStrip (the markup); this host only forwards the surface
+    // that tests/automation and the taskbar key handler rely on.
 
     /// <summary>True while a typed query is narrowing the menu.</summary>
-    public bool IsSearchActive => _filter.IsActive;
+    public bool IsSearchActive => _searchInput.IsSearchActive;
 
     /// <summary>The query typed so far (empty when no search is running) — surfaced for tests/automation.</summary>
-    public string SearchQuery => _filter.Query;
+    public string SearchQuery => _searchInput.SearchQuery;
 
     /// <summary>The ranked matches currently shown, best first.</summary>
-    public IReadOnlyList<ProgramItemViewModel> SearchResults => _searchResults;
+    public IReadOnlyList<ProgramItemViewModel> SearchResults => _searchInput.SearchResults;
 
     /// <summary>
     /// Escape's first meaning while searching: drop the query and restore the full menu. Returns false when
     /// no search is running, which is the host's cue to close the menu instead (see
     /// <c>TaskbarView.OnTaskbarKeyDown</c>) — so one Escape clears, the next closes.
     /// </summary>
-    public bool ClearSearchIfActive()
-    {
-        if (!_filter.IsActive) return false;
-        ClearSearch();
-        return true;
-    }
-
-    /// <summary>
-    /// Wires type-to-search onto the popup's own root panel. It has to be the popup panel and not this
-    /// UserControl: the popup is a separate visual tree with its own TopLevel, so keystrokes aimed at the
-    /// focused menu row never reach the control that owns the Popup.
-    ///
-    /// KeyDown is taken on the TUNNEL phase so Enter/Backspace/Escape are seen BEFORE the inner
-    /// <see cref="Menu"/>'s own interaction handler consumes them; printable characters arrive as real text
-    /// input (bubble), which is what makes digits and accented characters work — a Key-enum decode can't.
-    /// </summary>
-    private void WireTypeToSearch()
-    {
-        foreach (var host in new Interactive[] { PopupRoot, ItemsMenu })
-        {
-            host.AddHandler(InputElement.KeyDownEvent, OnMenuKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
-            host.AddHandler(InputElement.TextInputEvent, OnMenuTextInput, RoutingStrategies.Bubble, handledEventsToo: true);
-        }
-    }
-
-    private RoutedEventArgs? _lastSearchEvent;
-
-    /// <summary>
-    /// The handlers sit on BOTH the popup root and the inner <see cref="Menu"/>: the Programs cascade opens a
-    /// popup of its own, and the Menu is the ancestor Avalonia's own menu interaction handler relies on to
-    /// receive keys from nested submenu rows — so covering both means a keystroke is seen wherever focus sits.
-    /// When an event passes through both, only the first sighting is acted on.
-    /// </summary>
-    private bool AlreadySeen(RoutedEventArgs e)
-    {
-        if (ReferenceEquals(_lastSearchEvent, e)) return true;
-        _lastSearchEvent = e;
-        return false;
-    }
-
-    private void OnMenuTextInput(object? sender, TextInputEventArgs e)
-    {
-        if (!MenuPopup.IsOpen || _programsVm is null) return;
-        if (AlreadySeen(e)) return;
-        if (!_filter.Append(e.Text)) return;
-        ApplySearch();
-        e.Handled = true;
-    }
-
-    private void OnMenuKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (!MenuPopup.IsOpen || _programsVm is null) return;
-        if (AlreadySeen(e)) return;
-        switch (e.Key)
-        {
-            case Key.Back when _filter.IsActive:
-                _filter.Backspace();
-                ApplySearch();
-                e.Handled = true;
-                break;
-            case Key.Escape when _filter.IsActive:
-                ClearSearch();
-                e.Handled = true;
-                break;
-            case Key.Enter or Key.Return when _filter.IsActive:
-                if (TryLaunchTopMatch(e.Source)) e.Handled = true;
-                break;
-            default:
-                break;   // arrows / Home / End / mnemonics stay with the menu's own navigation
-        }
-    }
+    public bool ClearSearchIfActive() => _searchInput.ClearSearchIfActive();
 
     /// <summary>
     /// Enter's rule while a search is running: launch the top match — UNLESS the keystroke came from a row
@@ -438,89 +373,7 @@ public partial class StartMenu : UserControl
     /// Public because it is the only honestly testable form of the rule: headless Avalonia never realizes a
     /// submenu's containers, so no test can produce a focused cascade row to raise the key from.
     /// </summary>
-    public bool EnterShouldLaunchTopMatch(object? keySource)
-    {
-        if (_searchSession?.TopHit is null) return false;
-        return keySource is not Control c
-            || c.DataContext is not SearchHit focused
-            || !_programHits.Contains(focused);
-    }
-
-    private bool TryLaunchTopMatch(object? source)
-    {
-        if (!EnterShouldLaunchTopMatch(source) || _searchSession?.TopHit is not { } top) return false;
-        _ = top.ActivateAsync();
-        Close();
-        return true;
-    }
-
-    /// <summary>
-    /// Runs the current query through the <see cref="SearchSession"/> (bevel-6sk6) and swaps the live
-    /// layout's body to the sectioned results view. The Programs cascade / pinned column are NEVER
-    /// re-pointed at results — the results view replaces them for the duration of the search.
-    /// </summary>
-    private void ApplySearch()
-    {
-        if (!_filter.IsActive) { ClearSearch(); return; }
-        _searchSession?.SetQuery(_filter.Query);
-
-        var luna = Blue2001Layout.IsVisible;
-        ItemsMenu.IsVisible = !(_filter.IsActive && !luna);
-        ClassicResultsView.IsVisible = _filter.IsActive && !luna;
-        Blue2001PinnedScroll.IsVisible = !(_filter.IsActive && luna);
-        Blue2001ResultsView.IsVisible = _filter.IsActive && luna;
-        UpdateSearchStrip();
-    }
-
-    /// <summary>A section's hits arrived (marshaled to the UI thread): feed both results views and keep
-    /// the Programs hits for Enter/arrow semantics.</summary>
-    private void OnSearchSectionChanged(string sectionId, IReadOnlyList<SearchHit> hits)
-    {
-        ClassicResultsView.SetSection(sectionId, hits);
-        Blue2001ResultsView.SetSection(sectionId, hits);
-        if (sectionId == "programs")
-        {
-            _programHits = hits;
-            _searchResults.Clear();
-            foreach (var h in hits)
-                if (h.Tag is ProgramItemViewModel p) _searchResults.Add(p);
-        }
-        UpdateSearchStrip();
-    }
-
-    private void UpdateSearchStrip()
-    {
-        var n = _searchResults.Count;
-        var count = n switch { 0 => "no matches", 1 => "1 match", _ => $"{n} matches" };
-        ClassicSearchText.Text = _filter.Query;
-        ClassicSearchCount.Text = count;
-        Blue2001SearchText.Text = _filter.Query;
-        Blue2001SearchCount.Text = count;
-        ClassicSearchStrip.IsVisible = _filter.IsActive && !Blue2001Layout.IsVisible;
-        Blue2001SearchStrip.IsVisible = _filter.IsActive && Blue2001Layout.IsVisible;
-    }
-
-    /// <summary>Drops the query and puts both layouts back the way they were: the results views hide, the
-    /// item column / pinned column show again (Luna's pinned column returns to the curated frequent list).</summary>
-    private void ClearSearch()
-    {
-        _filter.Clear();
-        _searchSession?.Clear();
-        _searchResults.Clear();
-        _programHits = Array.Empty<SearchHit>();
-        ClassicSearchStrip.IsVisible = false;
-        Blue2001SearchStrip.IsVisible = false;
-        ClassicResultsView.IsVisible = false;
-        Blue2001ResultsView.IsVisible = false;
-        ClassicResultsView.ClearSections();
-        Blue2001ResultsView.ClearSections();
-        ItemsMenu.IsVisible = true;
-        Blue2001PinnedScroll.IsVisible = true;
-        if (_programsVm is null) return;
-        if (_lunaWired) Blue2001Pinned.ItemsSource = _programsVm.FrequentPrograms;
-        ProgramsItem.IsSubMenuOpen = false;
-        UpdateProgramsPlaceholder();
-    }
+    public bool EnterShouldLaunchTopMatch(object? keySource) => _searchInput.EnterShouldLaunchTopMatch(keySource);
 
     // ── Hover-to-open ──────────────────────────────────────────────────
 
@@ -636,7 +489,7 @@ public partial class StartMenu : UserControl
     {
         // While a type-to-search query is live the cascade belongs to the result list (bevel-cezo); a
         // background re-enumeration must not yank it back to the full collection mid-search.
-        if (_filter.IsActive) return;
+        if (_searchInput.IsSearchActive) return;
         var programs = _programsVm!.Programs;
         if (programs.Count > 0)
         {
