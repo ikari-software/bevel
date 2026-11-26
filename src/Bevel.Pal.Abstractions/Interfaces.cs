@@ -29,8 +29,10 @@ public interface IWindowManager
 
     /// <summary>Zoom/maximize a window (bevel-kpkx): on macOS the green-button zoom — the helper
     /// presses the window's AXZoomButton, toggling it between its user state and the zoomed state;
-    /// on Windows <c>ShowWindow(SW_MAXIMIZE)</c>. Default: unsupported — backends and test stubs
-    /// without a native zoom verb no-op.</summary>
+    /// on Windows <c>ShowWindow(SW_MAXIMIZE)</c>. The platforms differ in toggle semantics:
+    /// macOS <b>toggles</b> (a second ZoomAsync press un-zooms back to the user state), while
+    /// Windows SW_MAXIMIZE is <b>one-way</b> — it maximizes only and never restores the previous
+    /// frame. Default: unsupported — backends and test stubs without a native zoom verb no-op.</summary>
     Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
         => Task.CompletedTask;
 

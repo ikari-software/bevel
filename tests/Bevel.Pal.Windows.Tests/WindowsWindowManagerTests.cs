@@ -55,6 +55,7 @@ public class WindowsWindowManagerTests
         await wm.RestoreAsync(id);
         await wm.RestoreAndActivateAsync(id);
         await wm.CloseAsync(id);
+        await wm.ZoomAsync(id);
         await wm.RepositionAsync(id, new PalRect(0, 0, 100, 100));
         await wm.TerminateAppAsync("C:\\Windows\\notepad.exe", force: false);
         Assert.Null(await wm.CaptureWindowAsync(id, 320, 240));
@@ -117,6 +118,7 @@ public class WindowsWindowManagerTests
         await wm.MinimizeAsync(id);
         await wm.CloseAsync(id);
         await wm.RestoreAndActivateAsync(id);
+        await wm.ZoomAsync(id);
         Assert.Null(await wm.CaptureWindowAsync(id, 200, 200));
     }
 
@@ -174,6 +176,12 @@ public class WindowsWindowManagerTests
                 Assert.True(minimized.IsMinimized);
 
             await wm.RestoreAsync(id);
+
+            // Zoom (bevel-kpkx): restore-first, then SW_MAXIMIZE — a live window reports IsZoomed.
+            await wm.ZoomAsync(id);
+            await Task.Delay(200);
+            Assert.True(IsZoomed(hwnd), "ZoomAsync (SW_MAXIMIZE) should leave the window zoomed");
+
             await wm.CloseAsync(id);
         }
         finally
@@ -307,6 +315,9 @@ public class WindowsWindowManagerTests
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);

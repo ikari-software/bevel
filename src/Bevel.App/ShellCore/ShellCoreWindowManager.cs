@@ -12,7 +12,9 @@ namespace Bevel.App.ShellCore;
 /// <para>Outbound resilience: a window action issued while the core link is down (or one whose send
 /// races the drop) is held in a small bounded queue and replayed FIFO on reconnect, so a click
 /// during the gap isn't a dead click — it just applies a beat late. Queries (Enumerate) are NOT
-/// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.</para>
+/// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.
+/// Zoom is the one action that is never queued: a replayed zoom could hit a recycled window id
+/// (the wrong window) after reconnect.</para>
 /// </summary>
 public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSource
 {
@@ -197,8 +199,18 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
         }
     }
 
+    // bevel-kpkx review: Zoom is NOT replayable — a queued zoom replayed after reconnect could hit a
+    // recycled window id (the wrong window entirely). A dropped zoom click is recoverable by the
+    // user; a zoom landing on the wrong window is not. Everything else stays replayable.
+    private static bool IsReplayable(CoreCommandKind kind) => kind != CoreCommandKind.Zoom;
+
     private void Enqueue(CoreCommand cmd)
     {
+        if (!IsReplayable(cmd.Kind))
+        {
+            Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (not replayable; link down)");
+            return;
+        }
         lock (_queueLock)
         {
             while (_replayQueue.Count >= MaxQueuedCommands)
