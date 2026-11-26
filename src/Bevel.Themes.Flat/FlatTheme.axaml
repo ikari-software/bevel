@@ -218,8 +218,14 @@
       <SolidColorBrush x:Key="Bevel.Brush.StartMenuPinIconFallback" Color="#D9E3F3" />
       <SolidColorBrush x:Key="Bevel.Brush.StartMenuPlaceIconBorder" Color="#A6AED5" />
       <SolidColorBrush x:Key="Bevel.Brush.StartMenuHelpIcon" Color="#3570D6" />
-      <SolidColorBrush x:Key="Bevel.Brush.StartMenuLogOffIcon" Color="#3570D6" />
-      <SolidColorBrush x:Key="Bevel.Brush.StartMenuTurnOffIcon" Color="#3570D6" />
+      <!-- Session buttons (footer Log Off / Turn Off): fully saturated warm yellow and red. -->
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuLogOffButton" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FFC53D"/><GradientStop Offset="1" Color="#E89400"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuLogOffButtonBorder" Color="#FFE08A" />
+      <LinearGradientBrush x:Key="Bevel.Brush.StartMenuTurnOffButton" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#FF5A3C"/><GradientStop Offset="1" Color="#D02A14"/></LinearGradientBrush>
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuTurnOffButtonBorder" Color="#FF9C8A" />
+      <!-- Shell-management rows (Restart / Quit Bevel): the same hues, one step calmer. -->
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuLogOffIcon" Color="#E3AE55" />
+      <SolidColorBrush x:Key="Bevel.Brush.StartMenuTurnOffIcon" Color="#D6685A" />
       <LinearGradientBrush x:Key="Bevel.Brush.StartMenuHeader" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#4A85DF"/><GradientStop Offset="1" Color="#2862C8"/></LinearGradientBrush>
       <LinearGradientBrush x:Key="Bevel.Brush.StartMenuFooter" StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Offset="0" Color="#ECE9D8"/><GradientStop Offset="1" Color="#DCD7C8"/></LinearGradientBrush>
       <LinearGradientBrush x:Key="Bevel.Brush.StartMenuAvatar" StartPoint="0%,0%" EndPoint="100%,100%"><GradientStop Offset="0" Color="#FFE7A8"/><GradientStop Offset="1" Color="#B8D0F4"/></LinearGradientBrush>

@@ -95,6 +95,12 @@
                 <GradientStop Offset="1" Color="#2064D8"/>
             </LinearGradientBrush>
             <SolidColorBrush x:Key="Bevel.Brush.StartMenuFooterButtonBorder" Color="#8CB8FF" />
+            <!-- Per-button faces so a theme can colour Log Off and Turn Off apart (Flat does). Here both are
+                 the shared blue plate, so every other theme looks exactly as before. -->
+            <StaticResource x:Key="Bevel.Brush.StartMenuLogOffButton" ResourceKey="Bevel.Brush.StartMenuFooterButton" />
+            <StaticResource x:Key="Bevel.Brush.StartMenuTurnOffButton" ResourceKey="Bevel.Brush.StartMenuFooterButton" />
+            <StaticResource x:Key="Bevel.Brush.StartMenuLogOffButtonBorder" ResourceKey="Bevel.Brush.StartMenuFooterButtonBorder" />
+            <StaticResource x:Key="Bevel.Brush.StartMenuTurnOffButtonBorder" ResourceKey="Bevel.Brush.StartMenuFooterButtonBorder" />
             <!-- Frame colour while a window is inactive. Win2000 draws its frame as the 3D bevel (content border 0),
                  so this only shows for skins that give WindowContentBorder a thickness; they override it. Lives
                  here, not in Tokens.axaml, which is generated from theme.json. -->
