@@ -52,11 +52,13 @@ public class TaskButtonMenuShowInFinderTests
         var item = ShowInFinderItem(flyout);
         Assert.NotNull(item);
 
-        // It sits directly above the Quit item (the last two entries of the menu). Holding Option
-        // while the menu opens on macOS relabels that entry "_Force Quit", so accept either.
+        // It sits in the bottom app-verb section, above Quit. bevel-d2j9's _Hide row now sits
+        // directly above the Quit separator (macOS app-menu order), so the immediate successor is
+        // "_Hide"; on a menu without it the successor is the Quit entry. Holding Option while the
+        // menu opens on macOS relabels that entry "_Force Quit", so accept either.
         var headers = (flyout!.ItemsSource as IEnumerable<object>)
             .OfType<MenuItem>().Select(m => m.Header as string).ToList();
-        Assert.Contains(headers[headers.IndexOf("Show in _Finder") + 1], new[] { "_Quit", "_Force Quit" });
+        Assert.Contains(headers[headers.IndexOf("Show in _Finder") + 1], new[] { "_Hide", "_Quit", "_Force Quit" });
 
         item!.Command!.Execute(null);
         Assert.Equal("/Applications/Fake.app", revealed);
