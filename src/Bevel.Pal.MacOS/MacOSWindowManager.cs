@@ -394,7 +394,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             BundleId: string.IsNullOrEmpty(tw.AppBundleId) ? null : tw.AppBundleId,
             IsFullscreen: tw.IsFullscreen,
             IsOnOtherSpace: tw.IsOnOtherSpace,
-            BundlePath: string.IsNullOrEmpty(tw.AppBundlePath) ? null : tw.AppBundlePath);
+            // Whitespace is as dead as empty — a blank path must not reach the verb (bevel-4nct review).
+            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath);
     }
 
     public void Dispose()

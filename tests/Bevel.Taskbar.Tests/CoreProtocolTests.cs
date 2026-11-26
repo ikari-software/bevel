@@ -47,6 +47,17 @@ public sealed class CoreProtocolTests
     }
 
     [Fact]
+    public void Window_with_null_bundle_path_round_trips_null()   // bevel-4nct: unknown path stays null
+    {
+        var evt = new CoreEvent(CoreEventKind.WindowForeground, Window: SampleWindow with { BundlePath = null });
+
+        var back = RoundTrip(evt);
+
+        Assert.Equal("cg-1618", back.Window!.Id.Value);
+        Assert.Null(back.Window.BundlePath);   // null survives the core→UI JSON, not "" or a default
+    }
+
+    [Fact]
     public void Window_delta_event_round_trips_a_single_window()
     {
         var back = RoundTrip(new CoreEvent(CoreEventKind.WindowForeground, Window: SampleWindow));

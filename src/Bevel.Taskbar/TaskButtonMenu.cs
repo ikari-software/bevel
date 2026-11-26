@@ -185,13 +185,14 @@ public static class TaskButtonMenu
         // Option-key read (and the two monitor calls below) short-circuit there. `&&` never touches the type
         // when IsMacOS() is false, so the cctor never runs.
         // bevel-4nct: "Show in Finder" reveals the owning app's bundle in a file-manager window.
-        // Offered only when the window carried a bundle path — never guessed when unknown.
-        if (model.BundlePath is { } bundlePath)
+        // Offered only when the window carried a bundle path AND the caller wired a reveal hook —
+        // never guessed when unknown, and never shown as a dead verb when hook-less.
+        if (model.BundlePath is { } bundlePath && onShowInFinder is not null)
         {
             items.Add(new MenuItem
             {
                 Header = "Show in _Finder",
-                Command = new AsyncRelayCommand(() => { onShowInFinder?.Invoke(bundlePath); return Task.CompletedTask; })
+                Command = new AsyncRelayCommand(() => { onShowInFinder(bundlePath); return Task.CompletedTask; })
             });
         }
 

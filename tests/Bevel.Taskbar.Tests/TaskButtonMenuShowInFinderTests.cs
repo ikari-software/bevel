@@ -11,9 +11,10 @@ namespace Bevel.Taskbar.Tests;
 
 /// <summary>
 /// bevel-4nct: the task-button context menu's "Show in Finder" verb. It appears only when the
-/// window carried an app bundle path (<see cref="ForeignWindow.BundlePath"/>), sits directly above
-/// Quit, and invokes the caller's reveal hook with exactly that path. A group button takes the
-/// first member's path, and <see cref="TaskItemViewModel.Update"/> keeps the path current.
+/// window carried an app bundle path (<see cref="ForeignWindow.BundlePath"/>) AND the caller wired
+/// a reveal hook, sits directly above Quit, and invokes the hook with exactly that path. A group
+/// button takes the first member's path, and <see cref="TaskItemViewModel.Update"/> keeps the path
+/// current.
 /// </summary>
 public class TaskButtonMenuShowInFinderTests
 {
@@ -51,10 +52,11 @@ public class TaskButtonMenuShowInFinderTests
         var item = ShowInFinderItem(flyout);
         Assert.NotNull(item);
 
-        // It sits directly above the Quit item (the last two entries of the menu).
+        // It sits directly above the Quit item (the last two entries of the menu). Holding Option
+        // while the menu opens on macOS relabels that entry "_Force Quit", so accept either.
         var headers = (flyout!.ItemsSource as IEnumerable<object>)
             .OfType<MenuItem>().Select(m => m.Header as string).ToList();
-        Assert.Equal("_Quit", headers[headers.IndexOf("Show in _Finder") + 1]);
+        Assert.Contains(headers[headers.IndexOf("Show in _Finder") + 1], new[] { "_Quit", "_Force Quit" });
 
         item!.Command!.Execute(null);
         Assert.Equal("/Applications/Fake.app", revealed);
@@ -69,9 +71,19 @@ public class TaskButtonMenuShowInFinderTests
     }
 
     [AvaloniaFact]
+    public void Item_omitted_when_no_reveal_hook_wired()
+    {
+        // A hook-less caller must not get a clickable item that no-ops on click.
+        var flyout = TaskButtonMenu.Build(Vm("/Applications/Fake.app"), null, null);
+        Assert.Null(ShowInFinderItem(flyout));
+    }
+
+    [AvaloniaFact]
     public void Group_menu_uses_first_member_with_a_path()
     {
         var g = new TaskGroupViewModel("fake.app");
+        // The earlier member carries a DIFFERENT path, so this pins FirstOrDefault, not LastOrDefault.
+        g.Windows.Add(Vm("/Applications/First.app", "w0"));
         g.Windows.Add(Vm(null, "w1"));
         g.Windows.Add(Vm("/Applications/Fake.app", "w2"));
 
@@ -79,7 +91,18 @@ public class TaskButtonMenuShowInFinderTests
         var flyout = TaskButtonMenu.Build(g, null, null, onShowInFinder: p => revealed = p);
 
         ShowInFinderItem(flyout)!.Command!.Execute(null);
-        Assert.Equal("/Applications/Fake.app", revealed);
+        Assert.Equal("/Applications/First.app", revealed);
+    }
+
+    [AvaloniaFact]
+    public void Group_menu_omits_item_when_no_member_has_a_path()
+    {
+        var g = new TaskGroupViewModel("fake.app");
+        g.Windows.Add(Vm(null, "w1"));
+        g.Windows.Add(Vm(null, "w2"));
+
+        var flyout = TaskButtonMenu.Build(g, null, null, onShowInFinder: _ => { });
+        Assert.Null(ShowInFinderItem(flyout));
     }
 
     [AvaloniaFact]

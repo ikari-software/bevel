@@ -521,10 +521,12 @@ public partial class App : Application
     /// seam's reveal), off the UI thread like every other filer spawn.</summary>
     private static void RevealInFiler(IServiceProvider services, string path)
     {
-        if (string.IsNullOrWhiteSpace(path)) return;
-        var parent = System.IO.Path.GetDirectoryName(path);
-        if (string.IsNullOrEmpty(parent)) parent = "/";
-        SpawnFilerSupervised(services, parent, selectPath: path);
+        // Only a rooted path can be revealed — a relative or blank one would open a filer at a
+        // meaningless parent. Normalize first so the parent and the selection share one form.
+        if (string.IsNullOrWhiteSpace(path) || !System.IO.Path.IsPathRooted(path)) return;
+        var full = System.IO.Path.GetFullPath(path);
+        var parent = System.IO.Path.GetDirectoryName(full) ?? System.IO.Path.GetPathRoot(full) ?? "/";
+        SpawnFilerSupervised(services, parent, selectPath: full);
     }
 
     /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Filer at Home already in Find
