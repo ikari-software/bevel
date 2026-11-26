@@ -105,6 +105,16 @@ public sealed class CoreProtocolTests
     }
 
     [Fact]
+    public void HideApp_command_round_trips_with_bundle_id(/* bevel-d2j9 */)
+    {
+        var back = RoundTrip(new CoreCommand(CoreCommandKind.HideApp, AppIdOrPath: "com.apple.Safari"));
+
+        Assert.Equal(CoreCommandKind.HideApp, back.Kind);
+        Assert.Equal("com.apple.Safari", back.AppIdOrPath);
+        Assert.False(back.Force);   // HideApp never sets Force; the flag belongs to TerminateApp
+    }
+
+    [Fact]
     public void Response_carries_query_results_and_failure()
     {
         var ok = RoundTrip(new CoreResponse(Ok: true, RunningApps: new[] { new RunningApp("com.a", "Alpha", 42) }));

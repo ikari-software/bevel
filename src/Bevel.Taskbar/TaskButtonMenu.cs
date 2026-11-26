@@ -199,6 +199,13 @@ public static class TaskButtonMenu
         }
 
         var force = OperatingSystem.IsMacOS() && TaskbarNative.OptionKeyDown();
+        // bevel-d2j9: Hide sits directly above Quit (the macOS app-menu order). Hiding the target
+        // hands the front to whatever the OS surfaces next, so — exactly like Quit — cancel the
+        // key-focus handback (bevel-nxic).
+        var hide = new MenuItem { Header = "_Hide", Command = model.HideCommand };
+        if (onActivateForeign is not null) hide.Click += (_, _) => onActivateForeign();
+        items.Add(hide);
+        items.Add(new Separator());
         var quit = new MenuItem
         {
             Header = force ? "_Force Quit" : "_Quit",
@@ -231,7 +238,7 @@ public static class TaskButtonMenu
     private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
         bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
-        string? BundleId = null, string? BundlePath = null);
+        string? BundleId = null, string? BundlePath = null, ICommand? HideCommand = null);
 
     private static MenuModel? Describe(object? dc) => dc switch
     {
@@ -240,14 +247,14 @@ public static class TaskButtonMenu
             g.Windows.Select(Row).ToList(),
             g.QuitCommand, g.ForceQuitCommand,
             IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand,
-            BundleId: g.BundleId, BundlePath: g.BundlePath),
+            BundleId: g.BundleId, BundlePath: g.BundlePath, HideCommand: g.HideCommand),
 
         // App-presence has no windows → the Windows section is omitted (Windows is empty).
         TaskItemViewModel t => new MenuModel(
             TaskbarGrouping.DisplayName(t.AppId), t.IconSource,
             t.IsAppPresence ? Array.Empty<WindowRow>() : new[] { Row(t) },
             t.QuitCommand, t.ForceQuitCommand,
-            BundleId: t.BundleId, BundlePath: t.BundlePath),
+            BundleId: t.BundleId, BundlePath: t.BundlePath, HideCommand: t.HideCommand),
 
         _ => null,
     };

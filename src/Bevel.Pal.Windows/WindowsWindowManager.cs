@@ -184,6 +184,13 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return Task.Run(() => TerminateAppCore(bundleId, force), ct);
     }
 
+    public Task HideAppAsync(string bundleId, CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows() || _disposed || string.IsNullOrEmpty(bundleId))
+            return Task.CompletedTask;
+        return Task.Run(() => HideAppCore(bundleId), ct);
+    }
+
     // ── Enumeration + identity (Windows-only) ───────────────────────────
 
     [SupportedOSPlatform("windows")]
@@ -596,6 +603,25 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
             try { TerminateProcess(h, 1); }
             finally { CloseHandle(h); }
         }
+    }
+
+    /// <summary>Windows analog of macOS "hide app" (bevel-d2j9): no SW_HIDE-all-apps equivalent
+    /// exists, so minimize every top-level window of the app — the closest "no visible windows".</summary>
+    [SupportedOSPlatform("windows")]
+    private static void HideAppCore(string bundleId)
+    {
+        EnumWindowsProc cb = (hwnd, _) =>
+        {
+            if (IsRealAppWindow(hwnd))
+            {
+                var (id, _, _) = ResolveIdentity(hwnd);
+                if (id is not null && id.Equals(bundleId, StringComparison.OrdinalIgnoreCase) && IsWindow(hwnd))
+                    ShowWindow(hwnd, SW_MINIMIZE);
+            }
+            return true;
+        };
+        EnumWindows(cb, IntPtr.Zero);
+        GC.KeepAlive(cb);
     }
 
     // ── Capture: PrintWindow → 32bpp DIB → PNG (Windows-only) ────────────

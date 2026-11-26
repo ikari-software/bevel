@@ -174,6 +174,16 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    public async Task HideAppAsync(string bundleId, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        if (string.IsNullOrEmpty(bundleId)) return;
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        await ws.HideAppAsync(new HideAppRequest { BundleId = bundleId },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+    }
+
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (_disposed) return null;

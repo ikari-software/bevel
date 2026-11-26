@@ -58,6 +58,7 @@ public class WindowsWindowManagerTests
         await wm.ZoomAsync(id);
         await wm.RepositionAsync(id, new PalRect(0, 0, 100, 100));
         await wm.TerminateAppAsync("C:\\Windows\\notepad.exe", force: false);
+        await wm.HideAppAsync("C:\\Windows\\notepad.exe");
         Assert.Null(await wm.CaptureWindowAsync(id, 320, 240));
     }
 

@@ -557,6 +557,11 @@ public sealed class ShellCoreServer : IAsyncDisposable
                     cmd.AppIdOrPath ?? throw new ArgumentException("TerminateApp needs AppIdOrPath (bundle id)"),
                     cmd.Force, ct).ConfigureAwait(false);
                 return CoreResponse.Success();
+            case CoreCommandKind.HideApp:
+                await _windows.HideAppAsync(
+                    cmd.AppIdOrPath ?? throw new ArgumentException("HideApp needs AppIdOrPath (bundle id)"),
+                    ct).ConfigureAwait(false);
+                return CoreResponse.Success();
             case CoreCommandKind.LaunchApp:
                 await _apps.LaunchAsync(cmd.AppIdOrPath ?? throw new ArgumentException("LaunchApp needs AppIdOrPath"), ct)
                     .ConfigureAwait(false);

@@ -396,6 +396,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         )
 
+        // ── HideApp (bevel-d2j9) ──────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "HideApp"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_HideAppRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_HideAppReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                let ok = self.hideApp(bundleID: req.message.bundleID)
+                var reply = Bevel_Helper_V1_HideAppReply()
+                reply.ok = ok
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
         // ── Reposition ────────────────────────────────────────────────
         router.registerHandler(
             forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Reposition"),
@@ -1316,6 +1338,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         for app in apps {
             let quit = force ? app.forceTerminate() : app.terminate()
             any = any || quit
+        }
+        return any
+    }
+
+    /// Hide the whole app (bevel-d2j9): NSRunningApplication.hide() — the Cmd-H equivalent. The app
+    /// keeps running with no visible windows; unlike terminate() it never prompts to save.
+    /// Returns false when no running app matches the bundle id.
+    func hideApp(bundleID: String) -> Bool {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == bundleID }
+        var any = false
+        for app in apps {
+            any = any || app.hide()
         }
         return any
     }

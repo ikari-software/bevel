@@ -473,6 +473,19 @@ final class WindowServiceTests: XCTestCase {
         }
     }
 
+    func testHideAppUnknownBundleIDReturnsFalse() {
+        // bevel-d2j9: no running app carries this bundle id, so hide() is never called and the
+        // reply is ok=false. (Only ever probe with ids that match NOTHING — a matching id would
+        // really hide that app, including this test runner.)
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertFalse(svc.hideApp(bundleID: "com.bevel.nonexistent-app-for-tests"))
+    }
+
+    func testHideAppEmptyBundleIDReturnsFalse() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertFalse(svc.hideApp(bundleID: ""))
+    }
+
     // MARK: - AXError → RPCError mapping
 
     func testAXErrorInvalidUIElementMapsToNotFound() {

@@ -65,6 +65,12 @@ public interface IWindowManager
     Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    /// <summary>Hide a whole app by bundle id (bevel-d2j9): on macOS <c>NSRunningApplication.hide()</c> —
+    /// the Cmd-H equivalent; the app keeps running with no visible windows. On Windows the closest
+    /// analog is minimizing every window of the app. Default: unsupported (stubs).</summary>
+    Task HideAppAsync(string bundleId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     event EventHandler<ForeignWindow>? WindowOpened;
     event EventHandler<ForeignWindow>? WindowClosed;
     event EventHandler<ForeignWindow>? WindowChanged;

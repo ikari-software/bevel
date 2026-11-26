@@ -133,6 +133,9 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 
+    public Task HideAppAsync(string bundleId, CancellationToken ct = default) =>
+        Send(new CoreCommand(CoreCommandKind.HideApp, AppIdOrPath: bundleId), ct);
+
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
         CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds,
