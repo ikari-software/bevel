@@ -161,6 +161,8 @@
                 <GradientStop Offset="0.5" Color="#7FA0D2" />
                 <GradientStop Offset="1" Color="#5E82B8" />
             </LinearGradientBrush>
+            <!-- Mid of the inactive caption ramp: the 3px side/bottom frame dims with the title bar. -->
+            <SolidColorBrush x:Key="Bevel.Brush.WindowFrameInactive" Color="#7FA0D2" />
 
             <!-- ── Caption buttons: 21x21 glossy "shiny bead" squares; close is red (LUN chrome). Overriding
                  {x:Type CaptionButtons} restyles the internal CaptionButtonsEx (it resolves to this theme),
