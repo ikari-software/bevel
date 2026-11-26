@@ -55,7 +55,8 @@
                    the caption stays full-bleed so its rounded top corners are the window's corners (a967ec8). -->
               <utils:AutoAttachTitleBar DockPanel.Dock="Top" Margin="{DynamicResource Bevel.Metric.CaptionMargin}" />
 
-              <Border BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
+              <Border Name="PART_WindowFrame"
+                      BorderBrush="{DynamicResource Bevel.Brush.WindowFrame}"
                       BorderThickness="{DynamicResource Bevel.Metric.WindowContentBorder}"
                       Background="{DynamicResource {x:Static common:SystemColors.ControlBrushKey}}">
                 <DockPanel Name="RootLayout"
@@ -85,6 +86,13 @@
         </Panel>
       </ControlTemplate>
     </Setter>
+
+    <!-- The side/bottom frame dims with the caption when the window loses activation (bevel-frame-inactive):
+         the caption swaps to Bevel.Brush.CaptionInactive, and a frame that stayed saturated beside it read
+         as a half-dimmed window. Every theme defines Bevel.Brush.WindowFrameInactive. -->
+    <Style Selector="^[IsActive=False] /template/ Border#PART_WindowFrame">
+      <Setter Property="BorderBrush" Value="{DynamicResource Bevel.Brush.WindowFrameInactive}"/>
+    </Style>
 
     <Style Selector="^ /template/ classic|ClassicBorderDecorator#Bd">
       <Setter Property="BorderThickness" Value="2"/>
