@@ -12,7 +12,9 @@ namespace Bevel.App.ShellCore;
 /// <para>Outbound resilience: a window action issued while the core link is down (or one whose send
 /// races the drop) is held in a small bounded queue and replayed FIFO on reconnect, so a click
 /// during the gap isn't a dead click — it just applies a beat late. Queries (Enumerate) are NOT
-/// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.</para>
+/// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.
+/// Zoom is the one action that is never queued: a replayed zoom could hit a recycled window id
+/// (the wrong window) after reconnect.</para>
 /// </summary>
 public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSource
 {
@@ -127,6 +129,7 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Restore, id, ct);
     public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.RestoreAndActivate, id, ct);
     public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Close, id, ct);
+    public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default) => Command(CoreCommandKind.Zoom, id, ct);
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 
@@ -196,8 +199,18 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
         }
     }
 
+    // bevel-kpkx review: Zoom is NOT replayable — a queued zoom replayed after reconnect could hit a
+    // recycled window id (the wrong window entirely). A dropped zoom click is recoverable by the
+    // user; a zoom landing on the wrong window is not. Everything else stays replayable.
+    private static bool IsReplayable(CoreCommandKind kind) => kind != CoreCommandKind.Zoom;
+
     private void Enqueue(CoreCommand cmd)
     {
+        if (!IsReplayable(cmd.Kind))
+        {
+            Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (not replayable; link down)");
+            return;
+        }
         lock (_queueLock)
         {
             while (_replayQueue.Count >= MaxQueuedCommands)

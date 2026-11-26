@@ -84,6 +84,12 @@ public sealed class CoreWindowTrafficTests
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
+        public List<ForeignWindowId> Zooms { get; } = [];
+        public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
+        {
+            lock (Zooms) Zooms.Add(id);
+            return Task.CompletedTask;
+        }
         public List<(ForeignWindowId Id, PalRect Bounds, PalRect? Expected)> Repositions { get; } = [];
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default)
         {
@@ -331,6 +337,21 @@ public sealed class CoreWindowTrafficTests
         await wm.RepositionAsync(new ForeignWindowId("w1"), new PalRect(0, 0, 800, 600), ct: Ct);
 
         Assert.Null(Assert.Single(pal.Repositions).Expected);
+    }
+
+    // bevel-kpkx: the zoom verb must survive the taskbar -> core hop like every other window command —
+    // dropping it would turn the menu's Maximize item into a silent no-op in split mode.
+    [Fact]
+    public async Task Zoom_command_reaches_the_window_manager_across_the_core()
+    {
+        var pal = new Pal();
+        pal.Seed(Win("w1", "Doc"));
+        await using var h = await StartAsync(pal);
+        var wm = new ShellCoreWindowManager(h.Core);
+
+        await wm.ZoomAsync(new ForeignWindowId("w1"), Ct);
+
+        Assert.Equal(new[] { new ForeignWindowId("w1") }, pal.Zooms);
     }
 
     /// <summary>On a PAL that IS the window source there is no projection, so the mitigator uses the

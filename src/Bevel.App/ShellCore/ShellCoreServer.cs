@@ -530,6 +530,8 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 await _windows.RestoreAndActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Close:
                 await _windows.CloseAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
+            case CoreCommandKind.Zoom:
+                await _windows.ZoomAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Reposition:
                 await _windows.RepositionAsync(Id(cmd),
                     cmd.Bounds ?? throw new ArgumentException("Reposition needs Bounds"), cmd.ExpectedBounds, ct)

@@ -524,6 +524,16 @@ public nonisolated struct Bevel_Helper_V1_CloseReply: Sendable {
   public init() {}
 }
 
+public nonisolated struct Bevel_Helper_V1_ZoomReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Bevel_Helper_V1_ChangesRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1347,6 +1357,25 @@ nonisolated extension Bevel_Helper_V1_CloseReply: SwiftProtobuf.Message, SwiftPr
   }
 
   public static func ==(lhs: Bevel_Helper_V1_CloseReply, rhs: Bevel_Helper_V1_CloseReply) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_ZoomReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ZoomReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ZoomReply, rhs: Bevel_Helper_V1_ZoomReply) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

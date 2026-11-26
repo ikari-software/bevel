@@ -44,6 +44,10 @@ service WindowService {
   // Close a window.
   rpc Close(WindowRef) returns (CloseReply);
 
+  // Zoom a window (bevel-kpkx): the macOS green-button zoom — press the window's
+  // AXZoomButton, which toggles the window between its user state and the zoomed state.
+  rpc Zoom(WindowRef) returns (ZoomReply);
+
   // Quit (or force-quit) a whole app by bundle id (bevel-ww71): terminate() / forceTerminate().
   // The app-level action every taskbar button offers, including windowless-running ones.
   rpc TerminateApp(TerminateAppRequest) returns (TerminateAppReply);
@@ -242,6 +246,8 @@ message MinimizeReply {}
 message RestoreReply {}
 
 message CloseReply {}
+
+message ZoomReply {}
 
 message ChangesRequest {}
 

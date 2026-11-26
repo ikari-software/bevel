@@ -125,6 +125,9 @@ public enum CoreCommandKind
     /// <summary>Atomic restore-if-minimized + activate (bevel-nxic): one core round-trip, one helper op.</summary>
     RestoreAndActivate,
     Close,
+    /// <summary>Zoom/maximize a window (bevel-kpkx): green-button AXZoomButton press on macOS,
+    /// SW_MAXIMIZE on Windows.</summary>
+    Zoom,
     Reposition,
     EnumerateInstalledApps,
     GetRunningApps,

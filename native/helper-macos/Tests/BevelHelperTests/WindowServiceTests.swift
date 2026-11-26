@@ -461,6 +461,18 @@ final class WindowServiceTests: XCTestCase {
         }
     }
 
+    func testZoomInvalidWindowID() {
+        // bevel-kpkx: the zoom verb resolves the window like close/minimize, so an unknown id is notFound.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.zoomWindow(windowID: "999999999")) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .notFound)
+        }
+    }
+
     // MARK: - AXError → RPCError mapping
 
     func testAXErrorInvalidUIElementMapsToNotFound() {

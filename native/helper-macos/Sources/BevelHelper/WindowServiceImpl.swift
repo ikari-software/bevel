@@ -69,6 +69,7 @@ private func clampToInt32(_ v: CGFloat) -> Int32 {
 /// - `Minimize`        — minimize a window into the Dock
 /// - `Restore`         — restore a minimized window
 /// - `Close`           — close a window
+/// - `Zoom`            — green-button zoom via an AXZoomButton press (bevel-kpkx)
 /// - `Changes`         — snapshot-then-deltas stream (server-streaming)
 ///
 /// Correlation between CGWindowIDs and AXUIElements uses the private
@@ -347,6 +348,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                 try self.closeWindow(windowID: req.message.windowID)
                 return StreamingServerResponse(
                     single: ServerResponse(message: Bevel_Helper_V1_CloseReply())
+                )
+            }
+        )
+
+        // ── Zoom (bevel-kpkx) ────────────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Zoom"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_WindowRef>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_ZoomReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                try self.zoomWindow(windowID: req.message.windowID)
+                return StreamingServerResponse(
+                    single: ServerResponse(message: Bevel_Helper_V1_ZoomReply())
                 )
             }
         )
@@ -1319,6 +1342,50 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                            message: "Close button not found for window \(windowID)")
         }
         let result = AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString)
+        guard result == .success else {
+            throw axErrorToRPC(result, windowID: windowID)
+        }
+    }
+
+    /// Zoom a window (bevel-kpkx): the green-button zoom. Find the window's AXZoomButton
+    /// (the macOS "zoom" caption button) and press it — the window toggles between its user
+    /// state and the zoomed state, exactly as if the user had clicked the green button.
+    /// Same CFTypeID verification as closeWindow: a hostile AX server could return a
+    /// non-AXUIElement CFType, and a force cast would crash the whole helper.
+    /// A MINIMIZED window is de-miniaturized first (kAXMinimized=false, as restoreAndActivate
+    /// does) — the macOS twin of the Windows SW_RESTORE-if-iconic before SW_MAXIMIZE — so the
+    /// zoom press lands on a real window, not one parked in the Dock.
+    func zoomWindow(windowID: String) throws {
+        let axWin = try axWindow(for: windowID)
+        // R18: bound the AX round-trips on BOTH elements — a hung/slow target must not stall
+        // the caller (same 1.0s cap as correlateAXElements / activateWindow / broadcastFocusForApp).
+        _ = _AXUIElementSetMessagingTimeout(axWin, 1.0)
+        // Best-effort de-miniaturize first: a non-minimized window no-ops here.
+        AXUIElementSetAttributeValue(axWin, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+        var zoomButton: CFTypeRef?
+        let attrResult = AXUIElementCopyAttributeValue(
+            axWin, kAXZoomButtonAttribute as CFString, &zoomButton)
+        guard attrResult == .success, let button = zoomButton,
+              CFGetTypeID(button) == AXUIElementGetTypeID() else {
+            // A missing/unreadable zoom button is a precondition problem, not an internal error:
+            // attributeUnsupported/noValue = this window exposes no zoom button to press;
+            // cannotComplete = transient AX failure. (.internalError stays for the
+            // hostile-CFType case where the attribute read "succeeded" with a wrong type.)
+            switch attrResult {
+            case .attributeUnsupported, .noValue:
+                throw RPCError(code: .failedPrecondition,
+                               message: "Window \(windowID) has no zoom button")
+            case .cannotComplete:
+                throw RPCError(code: .unavailable,
+                               message: "Zoom button for window \(windowID) cannot be read right now")
+            default:
+                throw RPCError(code: .internalError,
+                               message: "Zoom button not found for window \(windowID)")
+            }
+        }
+        let zoomButtonAX = button as! AXUIElement
+        _ = _AXUIElementSetMessagingTimeout(zoomButtonAX, 1.0)
+        let result = AXUIElementPerformAction(zoomButtonAX, kAXPressAction as CFString)
         guard result == .success else {
             throw axErrorToRPC(result, windowID: windowID)
         }
