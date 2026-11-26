@@ -1,0 +1,95 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tb="using:Bevel.Taskbar"
+             x:Class="Bevel.Taskbar.StartSearchStrip">
+    <!--
+      The Start menu's type-to-search strip (bevel-cezo; extracted from StartMenu.axaml in bevel-pr4l).
+      One control, two frames switched by Classes: "classic" is the Win2000 sunken edit-field frame,
+      "luna" the rounded Luna field on the pale-blue band. The host sets Query / CountText per keystroke
+      and toggles IsVisible; the frames keep nested Borders — NOT ClassicBorderDecorator / BevelBorder:
+      both Decorator-based edge painters force an intermediate composition layer that SiteShot's 2×
+      RenderTargetBitmap paints wrong (glyphs enormous + clipped, bevel-qgv9; same class as
+      theme-win2000's TabControl).
+    -->
+    <UserControl.Styles>
+        <!-- Both frames hidden unless the matching class is set (a local IsVisible would beat a style
+             setter, so visibility is style-driven only; the class-qualified selectors are more specific
+             than the base ones and win). -->
+        <Style Selector="tb|StartSearchStrip Border#ClassicFrame">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="tb|StartSearchStrip Border#LunaFrame">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="tb|StartSearchStrip.classic Border#ClassicFrame">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="tb|StartSearchStrip.luna Border#LunaFrame">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+    </UserControl.Styles>
+    <Panel>
+        <!-- ══════════════════ Win2000 sunken field ══════════════════ -->
+        <Border x:Name="ClassicFrame"
+                Margin="3,3,3,2"
+                BorderBrush="{DynamicResource Bevel.Brush.ButtonHighlight}"
+                BorderThickness="0,0,1,1">
+            <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonShadow}"
+                    BorderThickness="1,1,0,0">
+                <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonLight}"
+                        BorderThickness="0,0,1,1">
+                    <Border BorderBrush="{DynamicResource Bevel.Brush.ButtonDkShadow}"
+                            BorderThickness="1,1,0,0"
+                            Background="{DynamicResource Bevel.Brush.Window}"
+                            Padding="4,3">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <!-- Code-drawn magnifier on the shared 16-grid; theme-tokened, vector-only. -->
+                            <Canvas Width="14" Height="14" VerticalAlignment="Center" ClipToBounds="True">
+                                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
+                                         Stroke="{DynamicResource Bevel.Brush.WindowText}" StrokeThickness="1.4" />
+                                <Path Data="M9.5,9.5 L13,13"
+                                      Stroke="{DynamicResource Bevel.Brush.WindowText}"
+                                      StrokeThickness="1.6" StrokeLineCap="Round" />
+                            </Canvas>
+                            <TextBlock x:Name="ClassicSearchText"
+                                       FontFamily="{DynamicResource Bevel.Font.UI}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.WindowText}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="ClassicSearchCount"
+                                       FontFamily="{DynamicResource Bevel.Font.UI}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Border>
+            </Border>
+        </Border>
+
+        <!-- ══════════════════ Luna rounded field ══════════════════ -->
+        <Border x:Name="LunaFrame"
+                Padding="10,7"
+                Background="{DynamicResource Bevel.Brush.StartMenuPlacesColumn}">
+            <Border CornerRadius="{DynamicResource Bevel.Metric.StartMenuRowCornerRadius}" Padding="7,4"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource Bevel.Brush.StartMenuPlaceIconBorder}"
+                    Background="{DynamicResource Bevel.Brush.StartMenuPinnedColumn}">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Canvas Width="14" Height="14" VerticalAlignment="Center">
+                        <Ellipse Canvas.Left="1" Canvas.Top="1" Width="9" Height="9"
+                                 Stroke="#2F6FD0" StrokeThickness="1.6" />
+                        <Path Data="M9.5,9.5 L13,13" Stroke="#2F6FD0"
+                              StrokeThickness="1.8" StrokeLineCap="Round" />
+                    </Canvas>
+                    <TextBlock x:Name="Blue2001SearchText" FontSize="13"
+                               Foreground="{DynamicResource Bevel.Brush.StartMenuPlaceText}"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="Blue2001SearchCount" FontSize="11" Opacity="0.65"
+                               Foreground="{DynamicResource Bevel.Brush.StartMenuPlaceText}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Panel>
+</UserControl>
