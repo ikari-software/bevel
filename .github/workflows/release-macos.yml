@@ -24,7 +24,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     environment: release   # secrets live behind a gated environment
     permissions:
       contents: write   # required to create the Release and upload its assets
