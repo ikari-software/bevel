@@ -183,14 +183,22 @@ public sealed class ShellModel : IDisposable
            ?? System.Threading.Tasks.Task.FromResult<byte[]?>(null);
 
     /// <summary>
-    /// Subscribes to PAL window events and kicks the off-thread enumeration of installed apps.
-    /// Idempotent. Call before starting the window manager's stream/poll so the initial snapshot
-    /// is captured; existing windows are also seeded directly in case the stream races.
+    /// Subscribes to PAL window events and starts the reconcile loop — everything the taskbar
+    /// STRIP needs. Idempotent. Call before starting the window manager's stream/poll so the initial
+    /// snapshot is captured; existing windows are also seeded directly in case the stream races.
+    /// The installed-apps EVENT subscription also lives here (event-only, free) so a broadcast between
+    /// Start() and the deferred kick can't be missed; only the enumeration itself is deliberately NOT
+    /// kicked here — see <see cref="StartProgramsAsync"/> (bevel-qf95).
     /// </summary>
     public void Start()
     {
         if (_started || _disposed) return;
         _started = true;
+
+        // Live installed-apps: subscribed in Start() (not in StartProgramsAsync) so the gap between
+        // Start() and the Opened/ContextIdle-posted kick cannot miss a broadcast (ce-review bevel-qf95).
+        if (_appEnv is not null)
+            _appEnv.InstalledAppsChanged += OnInstalledAppsChanged;
 
         if (_windows is not null)
         {
@@ -207,16 +215,28 @@ public sealed class ShellModel : IDisposable
             if (_connection is not null)
                 _connection.ConnectionChanged += OnConnectionChanged;
         }
+    }
 
-        // Live installed-apps: the app environment re-publishes the full set when an app is added or
-        // removed (macOS folder watchers, or the core re-broadcasting its snapshot). Reconcile Programs
-        // on each so the Start menu isn't a one-shot startup list. The connect-time snapshot also arrives
-        // here, so this is a second path that populates the initial list once the core link is up.
-        if (_appEnv is not null)
-            _appEnv.InstalledAppsChanged += OnInstalledAppsChanged;
+    /// <summary>
+    /// Kicks the off-thread enumeration of installed apps (the Start menu's Programs population and
+    /// its icon rendering). Split from <see cref="Start"/> so the taskbar can run it AFTER the first
+    /// paint (bevel-qf95): the strip's window events and reconcile loop start immediately, the app
+    /// enumeration does not compete with first paint. Live app changes are already subscribed in
+    /// <see cref="Start"/>; the connect-time snapshot also lands on that handler, so this only needs to
+    /// run the enumeration. Idempotent.
+    /// </summary>
+    public void StartProgramsAsync()
+    {
+        if (_programsStarted || _disposed) return;
+        _programsStarted = true;
 
         _ = LoadProgramsAsync();
     }
+
+    // Check-then-set in StartProgramsAsync is atomic in practice because the guard has UI-thread
+    // affinity by contract: every kick (the Opened post, the ContextIdle fallback post in App, tests)
+    // runs on the UI thread, so no two kicks can interleave between the check and the set.
+    private bool _programsStarted;
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps) => Post(() =>
     {
@@ -690,8 +710,16 @@ public sealed class ShellModel : IDisposable
             await Task.Delay(TimeSpan.FromMilliseconds(750)).ConfigureAwait(false);
         }
         // Latch loaded whether enumeration populated or gave up empty — the menu must stop showing
-        // "(Loading…)" once the startup enumeration has run its course.
-        await Dispatcher.UIThread.InvokeAsync(MarkProgramsLoaded);
+        // "(Loading…)" once the startup enumeration has run its course. The dispatcher may already be
+        // shut down at teardown (this task is fire-and-forget), so don't let that fault escape as an
+        // unobserved task exception (ce-review bevel-qf95).
+        if (_disposed) return;
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(MarkProgramsLoaded);
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // dispatcher shut down mid-flight
     }
 
     private void MarkProgramsLoaded()

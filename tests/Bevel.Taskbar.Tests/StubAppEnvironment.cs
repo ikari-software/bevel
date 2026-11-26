@@ -12,8 +12,16 @@ internal sealed class StubAppEnvironment : IAppEnvironment
     private readonly IReadOnlyList<InstalledApp> _apps;
     public StubAppEnvironment(params InstalledApp[] apps) => _apps = apps;
 
+    private int _enumerateCalls;
+    /// <summary>How many times <see cref="EnumerateInstalledAppsAsync"/> was called (bevel-qf95 test:
+    /// Start() must not enumerate; StartProgramsAsync() must).</summary>
+    public int EnumerateCalls => _enumerateCalls;
+
     public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult(_apps);
+    {
+        Interlocked.Increment(ref _enumerateCalls);
+        return ValueTask.FromResult(_apps);
+    }
     public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default)
         => ValueTask.FromResult<IReadOnlyList<RunningApp>>([]);
     public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) => Task.CompletedTask;

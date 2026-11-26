@@ -115,6 +115,7 @@ public class RenderFileMenuBarTest
                 new InstalledApp("com.web", "Web", null));
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
+            model.StartProgramsAsync();
             var vm = new StartMenuViewModel(model);
             Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 

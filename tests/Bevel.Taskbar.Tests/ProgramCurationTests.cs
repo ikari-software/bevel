@@ -42,6 +42,7 @@ public sealed class ProgramCurationTests
     private static void LoadPrograms(ShellModel model, int expected)
     {
         model.Start();
+        model.StartProgramsAsync();
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= expected, "expected programs to load");
         Dispatcher.UIThread.RunJobs();
     }
