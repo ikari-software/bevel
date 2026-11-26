@@ -50,12 +50,13 @@ public static class TaskButtonMenu
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
-        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null)
+        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
+        Action<string>? onShowInFinder = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions, onShowInFinder) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -70,7 +71,8 @@ public static class TaskButtonMenu
     // the key-focus handback so the menu's Closed doesn't re-raise the prior app over the new front.
     internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
-        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null)
+        Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
+        Action<string>? onShowInFinder = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -184,6 +186,18 @@ public static class TaskButtonMenu
         // only ships on macOS, but this menu is unit-tested headless on CI's Linux/Windows runners, so the
         // Option-key read (and the two monitor calls below) short-circuit there. `&&` never touches the type
         // when IsMacOS() is false, so the cctor never runs.
+        // bevel-4nct: "Show in Finder" reveals the owning app's bundle in a file-manager window.
+        // Offered only when the window carried a bundle path AND the caller wired a reveal hook —
+        // never guessed when unknown, and never shown as a dead verb when hook-less.
+        if (model.BundlePath is { } bundlePath && onShowInFinder is not null)
+        {
+            items.Add(new MenuItem
+            {
+                Header = "Show in _Finder",
+                Command = new AsyncRelayCommand(() => { onShowInFinder(bundlePath); return Task.CompletedTask; })
+            });
+        }
+
         var force = OperatingSystem.IsMacOS() && TaskbarNative.OptionKeyDown();
         var quit = new MenuItem
         {
@@ -217,7 +231,7 @@ public static class TaskButtonMenu
     private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
         bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
-        string? BundleId = null);
+        string? BundleId = null, string? BundlePath = null);
 
     private static MenuModel? Describe(object? dc) => dc switch
     {
@@ -226,14 +240,14 @@ public static class TaskButtonMenu
             g.Windows.Select(Row).ToList(),
             g.QuitCommand, g.ForceQuitCommand,
             IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand,
-            BundleId: g.BundleId),
+            BundleId: g.BundleId, BundlePath: g.BundlePath),
 
         // App-presence has no windows → the Windows section is omitted (Windows is empty).
         TaskItemViewModel t => new MenuModel(
             TaskbarGrouping.DisplayName(t.AppId), t.IconSource,
             t.IsAppPresence ? Array.Empty<WindowRow>() : new[] { Row(t) },
             t.QuitCommand, t.ForceQuitCommand,
-            BundleId: t.BundleId),
+            BundleId: t.BundleId, BundlePath: t.BundlePath),
 
         _ => null,
     };

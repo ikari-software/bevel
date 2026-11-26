@@ -108,7 +108,12 @@ public sealed record ForeignWindow(
     /// showing it. Such a window is still enumerated (CGWindowList <c>.optionAll</c>) and carries its
     /// last-known rect, which is stale as a position on the screen you are looking at. <b>False when
     /// unknown</b> — a missing Spaces symbol must not make every window look remote.</summary>
-    bool IsOnOtherSpace = false);
+    bool IsOnOtherSpace = false,
+    /// <summary>Owning app's bundle path on disk (e.g. <c>/Applications/Safari.app</c>; the exe path
+    /// on Windows), carried from the window manager so the taskbar's "Show in Finder" verb can reveal
+    /// it without re-asking the PAL (bevel-4nct). <b>Null when unknown</b> — the verb is then omitted,
+    /// never guessed.</summary>
+    string? BundlePath = null);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

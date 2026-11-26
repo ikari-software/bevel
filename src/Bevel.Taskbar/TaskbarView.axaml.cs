@@ -30,6 +30,9 @@ public partial class TaskbarView : UserControl
     private Action? _restartCore;
     private Action? _openSettings;
     private Action<Bevel.Core.Vfs.VfsPath>? _openFolder;
+    /// <summary>bevel-4nct: "Show in Finder" on a task-button menu — reveals the owning app's bundle
+    /// path in a Filer window (parent open, the app selected). Wired like openFolder.</summary>
+    private Action<string>? _revealInFiler;
     private Action? _openSearch;
     private Action? _toggleDesktop;
     private Func<bool?>? _desktopRunning;
@@ -154,6 +157,7 @@ public partial class TaskbarView : UserControl
         Action? openSettings = null,
         Action? toggleLock = null,
         Action<Bevel.Core.Vfs.VfsPath>? openFolder = null,
+        Action<string>? revealInFiler = null,
         Action? openSearch = null,
         Action? toggleDesktop = null,
         Func<bool?>? desktopRunning = null,
@@ -175,6 +179,7 @@ public partial class TaskbarView : UserControl
         if (RepairRestartShellItem is not null) RepairRestartShellItem.IsEnabled = restart is not null;
         _openSettings = openSettings;
         _openFolder = openFolder;
+        _revealInFiler = revealInFiler;
         _openSearch = openSearch;
         _toggleDesktop = toggleDesktop;
         _desktopRunning = desktopRunning;
@@ -1126,7 +1131,8 @@ public partial class TaskbarView : UserControl
             if (TaskButtonMenu.TryShow(c, dc, tabs, _tabProvider,
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
                     onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
-                    appActions: AppActionsFor) is { } menu)
+                    appActions: AppActionsFor,
+                    onShowInFinder: _revealInFiler) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on

@@ -20,7 +20,9 @@ public sealed class CoreProtocolTests
         IsMinimized: false,
         IsFocused: true,
         Bounds: new PalRect(10, 20, 800, 600),
-        IconPng: new byte[] { 1, 2, 3, 4, 250, 251, 252 });
+        IconPng: new byte[] { 1, 2, 3, 4, 250, 251, 252 },
+        BundleId: "com.apple.finder",
+        BundlePath: "/System/Library/CoreServices/Finder.app");   // bevel-4nct
 
     private static T RoundTrip<T>(T value) => CoreProtocol.Deserialize<T>(CoreProtocol.Serialize(value));
 
@@ -39,6 +41,20 @@ public sealed class CoreProtocolTests
         Assert.True(w.IsFocused);
         Assert.Equal(new PalRect(10, 20, 800, 600), w.Bounds);
         Assert.Equal(SampleWindow.IconPng, w.IconPng); // byte[] survives (base64)
+        // bevel-4nct: the bundle path rides the wire too (the "Show in Finder" verb's data).
+        Assert.Equal("com.apple.finder", w.BundleId);
+        Assert.Equal("/System/Library/CoreServices/Finder.app", w.BundlePath);
+    }
+
+    [Fact]
+    public void Window_with_null_bundle_path_round_trips_null()   // bevel-4nct: unknown path stays null
+    {
+        var evt = new CoreEvent(CoreEventKind.WindowForeground, Window: SampleWindow with { BundlePath = null });
+
+        var back = RoundTrip(evt);
+
+        Assert.Equal("cg-1618", back.Window!.Id.Value);
+        Assert.Null(back.Window.BundlePath);   // null survives the core→UI JSON, not "" or a default
     }
 
     [Fact]

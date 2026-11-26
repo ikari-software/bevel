@@ -44,6 +44,10 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     /// <summary>The app's bundle id (all members share it) for app-level actions like Quit.</summary>
     public string? BundleId => Windows.FirstOrDefault()?.BundleId;
 
+    /// <summary>The app's bundle path for the "Show in Finder" verb (bevel-4nct): the first member
+    /// that carries one — members of a group share one app, so any non-null path is the app's.</summary>
+    public string? BundlePath => Windows.FirstOrDefault(w => w.BundlePath is not null)?.BundlePath;
+
     public string AppId { get; }
     public string DisplayName { get; }
 

@@ -240,7 +240,10 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
             Bounds: bounds,
             IconPng: WindowIconPng(hwnd, exePath),
             IsAppPresence: false,
-            BundleId: bundleId);
+            BundleId: bundleId,
+            // The exe path is the Windows analogue of the bundle path — "Show in Finder" reveals it
+            // (bevel-4nct). Null when identity resolution found no exe; whitespace is as dead as empty.
+            BundlePath: string.IsNullOrWhiteSpace(exePath) ? null : exePath);
     }
 
     [SupportedOSPlatform("windows")]

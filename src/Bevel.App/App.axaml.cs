@@ -375,6 +375,9 @@ public partial class App : Application
             // at that folder — in-process in the single-process shell, or as its own --role=filer
             // process in a split launch (the taskbar process has no filer surface).
             openFolder: path => OpenFilerAt(services, path),
+            // Task-button "Show in Finder" (bevel-4nct): reveal the owning app's bundle path in a
+            // Filer window — parent folder open, the bundle selected.
+            revealInFiler: path => RevealInFiler(services, path),
             // Start ▸ Search → open a Bevel Filer already in Find mode (bevel-x6pv).
             openSearch: () => OpenFilerSearch(services),
             // Start ▸ Show/Hide Desktop (bevel-gdie): spawn/kill the --role=desktop child via the launcher,
@@ -513,14 +516,28 @@ public partial class App : Application
     /// degrade), and <see cref="LauncherFilerSpawner"/> falls back to the in-process spawner on a NACK,
     /// so an open can never silently die; the catch is belt-and-braces against an unobserved task
     /// exception if that ever stops being true.</para></summary>
-    internal static void SpawnFilerSupervised(IServiceProvider services, string path, bool search = false)
+    internal static void SpawnFilerSupervised(IServiceProvider services, string path, bool search = false, string? selectPath = null)
     {
         var spawner = services.GetService<IFilerSpawner>() ?? new ProcessFilerSpawner();
         _ = Task.Run(() =>
         {
-            try { spawner.Spawn(path, search: search); }
+            try { spawner.Spawn(path, selectPath: selectPath, search: search); }
             catch (Exception ex) { Console.Error.WriteLine($"[App] filer spawn failed: {ex.Message}"); }
         });
+    }
+
+    /// <summary>Task-button "Show in Finder" (bevel-4nct): reveal the owning app's bundle path in a
+    /// Filer — the parent folder opens with the bundle selected, i.e. a reveal, not a plain open.
+    /// Goes through the supervised spawn path (a spawn with <c>selectPath</c>, same as the automation
+    /// seam's reveal), off the UI thread like every other filer spawn.</summary>
+    private static void RevealInFiler(IServiceProvider services, string path)
+    {
+        // Only a rooted path can be revealed — a relative or blank one would open a filer at a
+        // meaningless parent. Normalize first so the parent and the selection share one form.
+        if (string.IsNullOrWhiteSpace(path) || !System.IO.Path.IsPathRooted(path)) return;
+        var full = System.IO.Path.GetFullPath(path);
+        var parent = System.IO.Path.GetDirectoryName(full) ?? System.IO.Path.GetPathRoot(full) ?? "/";
+        SpawnFilerSupervised(services, parent, selectPath: full);
     }
 
     /// <summary>Start ▸ Search → "For Files or Folders": open a Bevel Filer at Home already in Find
