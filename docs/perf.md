@@ -81,3 +81,24 @@ Baselines (Apple Silicon M2 Ultra, .NET 10, Release):
   `PerfBudgetTests` at a 20× budget of 16 ms (bevel-vw90).
 
 [BenchmarkDotNet]: https://benchmarkdotnet.org
+
+## Taskbar startup: post-paint work staggered (bevel-qf95)
+
+`ShellModel.Start()` used to kick the installed-app enumeration (`LoadProgramsAsync`) inline, so it
+competed with the taskbar window's first paint. It is now split: `Start()` wires only the window
+strip (PAL window events + reconcile loop) and the new `StartProgramsAsync()` kicks the app
+enumeration + subscribes to live app changes; `App.CreateTaskbarSurfaceCore` calls it from
+`taskbarWin.Opened` via `Dispatcher.UIThread.Post(..., DispatcherPriority.Background)` — no timers
+or sleeps. Regression test: `ShellModelTests.Start_does_not_enumerate_installed_apps`.
+
+Icon-path audit (the bead's "never blocks on a miss during startup" check): a taskbar icon request
+goes `IconLoader.LoadAsync` → cached `Task<Bitmap?>` (the returned task never blocks the caller) →
+`PooledIconProvider.GetIconAsync` → process-local dict → `MmfBgraPool.TryGet` (a pure read-only scan
+of the mapped pages — no locks, no writer dependency; a detached reader just misses) → on a miss the
+cold render runs on the thread pool through the inner provider and only the finished bitmap is
+marshalled to the UI thread. The UI thread never waits on a pool miss.
+
+Human verify still pending: cold-boot the dev `.app`, sample taskbar CPU for 15 s
+(`top -l 15 -pid <taskbar pid>`) and record before/after here. (The original 99–108 % CPU sawtooth
+from t+2.5 s to ~t+13 s was measured before the core-side app cache and the pool writer landed;
+whether it still reproduces is unverified.)

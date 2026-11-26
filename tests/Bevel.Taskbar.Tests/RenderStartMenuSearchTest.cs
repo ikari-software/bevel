@@ -37,6 +37,7 @@ public class RenderStartMenuSearchTest
                 new InstalledApp("com.term", "Terminal", null, "Developer Tools"));
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
+            model.StartProgramsAsync();
             Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
             var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));

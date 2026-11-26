@@ -62,7 +62,8 @@ public class RenderStartMenuTest
             new InstalledApp("com.a", "Alpha", null),
             new InstalledApp("com.b", "Beta", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
-        model.Start(); // off-thread enumerate → reconcile onto the UI thread
+        model.Start();
+        model.StartProgramsAsync(); // off-thread enumerate → reconcile onto the UI thread
         var vm = new StartMenuViewModel(model);
 
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");

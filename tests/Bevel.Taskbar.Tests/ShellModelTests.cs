@@ -20,6 +20,7 @@ public sealed class ShellModelTests
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
+        model.StartProgramsAsync();
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
         Assert.Equal("Alpha", Assert.Single(model.Programs).DisplayName);
 
@@ -48,6 +49,7 @@ public sealed class ShellModelTests
         var appEnv = new StubAppEnvironment(apps);
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
+        model.StartProgramsAsync();
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 50, "50 programs to load");
 
         int events = 0;
@@ -445,10 +447,34 @@ public sealed class ShellModelTests
             new InstalledApp("com.a", "Alpha", null),
             new InstalledApp("com.b", "Beta", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
-        model.Start(); // LoadProgramsAsync enumerates off-thread, then reconciles on the UI thread
+        model.Start();
+        model.StartProgramsAsync(); // LoadProgramsAsync enumerates off-thread, then reconciles on the UI thread
 
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");
 
         Assert.Equal(["Alpha", "Beta"], model.Programs.Select(p => p.DisplayName));
+    }
+
+    // bevel-qf95: Start() wires only the window strip — the installed-app enumeration must NOT run
+    // until StartProgramsAsync() is called (the taskbar defers it until after the first paint).
+    [AvaloniaFact]
+    public async Task Start_does_not_enumerate_installed_apps()
+    {
+        var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
+        using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
+        model.Start();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, appEnv.EnumerateCalls);
+        Assert.Empty(model.Programs);
+
+        model.StartProgramsAsync();
+        Bevel.TestSupport.Settle.Until(() => appEnv.EnumerateCalls >= 1, "app enumeration to start");
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 program to load");
+
+        // Idempotent: a second kick must not re-enumerate.
+        model.StartProgramsAsync();
+        await Task.Delay(150);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, appEnv.EnumerateCalls);
     }
 }

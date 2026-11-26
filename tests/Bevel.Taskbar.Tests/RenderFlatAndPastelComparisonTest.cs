@@ -181,6 +181,7 @@ public class RenderFlatAndPastelComparisonTest
         var appEnv = new HeroAppEnvironment();
         using var model = new ShellModel(null, appEnv, new HeroIconProvider(), usage: TestUsage.Scratch());
         model.Start();
+        model.StartProgramsAsync();
         var vm = new StartMenuViewModel(model);
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 

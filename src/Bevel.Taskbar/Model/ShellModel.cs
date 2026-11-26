@@ -183,9 +183,11 @@ public sealed class ShellModel : IDisposable
            ?? System.Threading.Tasks.Task.FromResult<byte[]?>(null);
 
     /// <summary>
-    /// Subscribes to PAL window events and kicks the off-thread enumeration of installed apps.
-    /// Idempotent. Call before starting the window manager's stream/poll so the initial snapshot
-    /// is captured; existing windows are also seeded directly in case the stream races.
+    /// Subscribes to PAL window events and starts the reconcile loop — everything the taskbar
+    /// STRIP needs. Idempotent. Call before starting the window manager's stream/poll so the initial
+    /// snapshot is captured; existing windows are also seeded directly in case the stream races.
+    /// The installed-apps side (Programs) is deliberately NOT kicked here — see
+    /// <see cref="StartProgramsAsync"/> (bevel-qf95).
     /// </summary>
     public void Start()
     {
@@ -207,6 +209,18 @@ public sealed class ShellModel : IDisposable
             if (_connection is not null)
                 _connection.ConnectionChanged += OnConnectionChanged;
         }
+    }
+
+    /// <summary>
+    /// Kicks the off-thread enumeration of installed apps (the Start menu's Programs population and
+    /// its icon rendering) and subscribes to live app changes. Split from <see cref="Start"/> so the
+    /// taskbar can run it AFTER the first paint (bevel-qf95): the strip's window events and reconcile
+    /// loop start immediately, the app enumeration does not compete with first paint. Idempotent.
+    /// </summary>
+    public void StartProgramsAsync()
+    {
+        if (_programsStarted || _disposed) return;
+        _programsStarted = true;
 
         // Live installed-apps: the app environment re-publishes the full set when an app is added or
         // removed (macOS folder watchers, or the core re-broadcasting its snapshot). Reconcile Programs
@@ -217,6 +231,8 @@ public sealed class ShellModel : IDisposable
 
         _ = LoadProgramsAsync();
     }
+
+    private bool _programsStarted;
 
     private void OnInstalledAppsChanged(object? _, IReadOnlyList<InstalledApp> apps) => Post(() =>
     {

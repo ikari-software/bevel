@@ -150,6 +150,7 @@ public class StartMenuTests
         // No app environment → the startup enumeration latches loaded immediately with zero apps.
         using var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
         model.Start();
+        model.StartProgramsAsync();
         Dispatcher.UIThread.RunJobs();
 
         var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));
@@ -174,9 +175,9 @@ public class StartMenuTests
         Assert.Equal("(Loading…)", Assert.Single(programsItem!.Items.OfType<MenuItem>()).Header);
 
         model.Start();
+        model.StartProgramsAsync();
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
         Dispatcher.UIThread.RunJobs();
-
         // Populated → cascade binds the live reconciled collection; the placeholder is gone.
         Assert.Same(model.Programs, programsItem.ItemsSource);
         Assert.Empty(programsItem.Items.OfType<MenuItem>());
@@ -190,6 +191,7 @@ public class StartMenuTests
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
+        model.StartProgramsAsync();
         Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "1 programs to load");
 
         var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model));

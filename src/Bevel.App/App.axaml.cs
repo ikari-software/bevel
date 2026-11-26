@@ -392,9 +392,10 @@ public partial class App : Application
             // up on its OWN ISettingsService.Changed the moment the real snapshot lands, instead of
             // staying frozen at whatever TaskbarRows/etc. Initialize saw here (bevel-kclq regression).
             settingsService: settings);
-        // Start the background shell model (subscribes to window events + enumerates installed
-        // apps off-thread) BEFORE the window manager's stream/poll, so its initial snapshot is
-        // captured; then start the poll so events flow into the model.
+        // Start the background shell model's window side (subscribes to window events + starts the
+        // reconcile loop) BEFORE the window manager's stream/poll, so its initial snapshot is
+        // captured; then start the poll so events flow into the model. The installed-apps side
+        // (StartProgramsAsync) is deferred to taskbarWin.Opened below (bevel-qf95).
         var shellModel = services.GetRequiredService<Taskbar.ShellModel>();
         shellModel.FrequentCap = settings.Current.TaskbarStartMenuFrequentCount;
         shellModel.FrequentExcludeOpen = settings.Current.TaskbarStartMenuFrequentExcludeOpen;   // bevel-xrx6
@@ -441,6 +442,12 @@ public partial class App : Application
         // thread and the adapters marshal onto their own dispatchers.
         if (connection is ShellCore.ShellCoreClient coreSession)
             _ = StartCoreSessionAsync(coreSession);
+        // bevel-qf95: stagger the post-paint work. The installed-app enumeration + icon rendering
+        // (StartProgramsAsync) runs only once the window has opened — posted at Background priority
+        // so it never competes with first paint/layout. No timers or sleeps: the Opened event is the
+        // signal that the first frame is on its way.
+        taskbarWin.Opened += (_, _) =>
+            Dispatcher.UIThread.Post(shellModel.StartProgramsAsync, DispatcherPriority.Background);
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
         Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Taskbar, connection?.IsConnected ?? true);

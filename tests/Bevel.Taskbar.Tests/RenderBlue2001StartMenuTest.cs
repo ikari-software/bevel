@@ -35,6 +35,7 @@ public class RenderBlue2001StartMenuTest
             var appEnv = new HeroAppEnvironment();
             using var model = new ShellModel(null, appEnv, new HeroIconProvider(), usage: TestUsage.Scratch());
             model.Start();
+            model.StartProgramsAsync();
             var vm = new StartMenuViewModel(model);
             Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 4, "4 programs to load");
 
@@ -103,6 +104,7 @@ public class RenderBlue2001StartMenuTest
                 new InstalledApp("com.b", "Beta", null));
             using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
             model.Start();
+            model.StartProgramsAsync();
             var vm = new StartMenuViewModel(model);
             Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 2, "2 programs to load");
 
