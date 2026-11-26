@@ -52,6 +52,10 @@ service WindowService {
   // The app-level action every taskbar button offers, including windowless-running ones.
   rpc TerminateApp(TerminateAppRequest) returns (TerminateAppReply);
 
+  // Hide a whole app by bundle id (bevel-d2j9): NSRunningApplication.hide() — the Cmd-H
+  // equivalent. The app keeps running with no visible windows; unlike terminate it never prompts.
+  rpc HideApp(HideAppRequest) returns (HideAppReply);
+
   // Reposition/resize a window to an absolute target rect (device pixels, AppKit origin).
   rpc Reposition(RepositionRequest) returns (RepositionReply);
 
@@ -263,6 +267,15 @@ message TerminateAppRequest {
 
 message TerminateAppReply {
   bool ok = 1;
+}
+
+// Hide an app by bundle id (bevel-d2j9).
+message HideAppRequest {
+  string bundle_id = 1;
+}
+
+message HideAppReply {
+  bool ok = 1;   // false when no running app matches the bundle id
 }
 
 // Reposition target: window + absolute device-pixel rect (AppKit bottom-left origin).

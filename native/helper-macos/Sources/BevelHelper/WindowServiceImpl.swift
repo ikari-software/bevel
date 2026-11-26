@@ -396,6 +396,28 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         )
 
+        // ── HideApp (bevel-d2j9) ──────────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "HideApp"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_HideAppRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_HideAppReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                let ok = self.hideApp(bundleID: req.message.bundleID)
+                var reply = Bevel_Helper_V1_HideAppReply()
+                reply.ok = ok
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
         // ── Reposition ────────────────────────────────────────────────
         router.registerHandler(
             forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "Reposition"),
@@ -1316,6 +1338,36 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         for app in apps {
             let quit = force ? app.forceTerminate() : app.terminate()
             any = any || quit
+        }
+        return any
+    }
+
+    /// Well-known system bundle ids the shell must never hide (bevel-d2j9 review): hiding the Dock,
+    /// Finder, SystemUIServer or Control Center takes the whole desktop chrome down with the app.
+    private static let hideDenylist: Set<String> = [
+        "com.apple.dock",
+        "com.apple.finder",
+        "com.apple.systemuiserver",
+        "com.apple.controlcenter",
+    ]
+
+    /// Hide the whole app (bevel-d2j9): NSRunningApplication.hide() — the Cmd-H equivalent. The app
+    /// keeps running with no visible windows; unlike terminate() it never prompts to save.
+    /// Only `.regular` (Dock) apps are hidden — the same activation-policy gate the window enumeration
+    /// uses — and the denylisted system agents above are never touched.
+    /// Returns false when no hideable running app matches the bundle id.
+    func hideApp(bundleID: String) -> Bool {
+        let apps = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == bundleID
+                && $0.activationPolicy == .regular
+                && !Self.hideDenylist.contains(bundleID)
+        }
+        var any = false
+        for app in apps {
+            // Attempt hide() on EVERY match — several processes can share one bundle id, and
+            // `any = any || app.hide()` would short-circuit and skip the rest after the first success.
+            let did = app.hide()
+            any = did || any
         }
         return any
     }

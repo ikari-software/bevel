@@ -135,6 +135,9 @@ public enum CoreCommandKind
     ForwardTrayClick,
     CaptureWindow,
     TerminateApp,
+    /// <summary>UI→core: hide the whole app by bundle id (bevel-d2j9) — NSRunningApplication.hide()
+    /// on macOS. Bundle id rides <see cref="CoreCommand.AppIdOrPath"/>.</summary>
+    HideApp,
     /// <summary>UI→core: fetch the current settings blob (the on-connect bootstrap, bevel-6nve). The reply
     /// carries <see cref="CoreResponse.SettingsJson"/> + <see cref="CoreResponse.SettingsVersion"/>.</summary>
     GetSettings,

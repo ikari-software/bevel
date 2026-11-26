@@ -133,6 +133,9 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.TerminateApp, AppIdOrPath: bundleId, Force: force), ct);
 
+    public Task HideAppAsync(string bundleId, CancellationToken ct = default) =>
+        Send(new CoreCommand(CoreCommandKind.HideApp, AppIdOrPath: bundleId), ct);
+
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
         CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds,
@@ -209,6 +212,14 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
         if (!IsReplayable(cmd.Kind))
         {
             Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (not replayable; link down)");
+            return;
+        }
+        // App-level verbs are NEVER replayed (bevel-d2j9 review): a HideApp/TerminateApp held in the
+        // queue would fire up to ReplayTtl late — by which time the user has often relaunched the app,
+        // and hiding/quitting the fresh instance is worse than the dead click. Send once, live, or drop.
+        if (cmd.Kind is CoreCommandKind.HideApp or CoreCommandKind.TerminateApp)
+        {
+            Console.Error.WriteLine($"[shellcore] dropped {cmd.Kind} (app-level verbs are not replayed; link down)");
             return;
         }
         lock (_queueLock)

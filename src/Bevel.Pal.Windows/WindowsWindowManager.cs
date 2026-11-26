@@ -184,6 +184,13 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
         return Task.Run(() => TerminateAppCore(bundleId, force), ct);
     }
 
+    public Task HideAppAsync(string bundleId, CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows() || _disposed || string.IsNullOrEmpty(bundleId))
+            return Task.CompletedTask;
+        return Task.Run(() => HideAppCore(bundleId), ct);
+    }
+
     // ── Enumeration + identity (Windows-only) ───────────────────────────
 
     [SupportedOSPlatform("windows")]
@@ -596,6 +603,35 @@ public sealed class WindowsWindowManager : IWindowManager, IDisposable
             try { TerminateProcess(h, 1); }
             finally { CloseHandle(h); }
         }
+    }
+
+    /// <summary>bevel-d2j9 review: the window-selection predicate behind <see cref="HideAppCore"/>,
+    /// extracted so tests can drive it without EnumWindows — a top-level window is a hide target iff
+    /// it is a real app window whose resolved identity matches the bundle id (case-insensitive, the
+    /// Windows convention). An empty bundle id matches NOTHING, checked before any Win32 call, so the
+    /// predicate is safe to probe on every OS and a stray call can never minimize the whole desktop.</summary>
+    internal static bool IsHideTarget(IntPtr hwnd, string? bundleId)
+    {
+        if (string.IsNullOrEmpty(bundleId)) return false;
+        if (!OperatingSystem.IsWindows()) return false;
+        if (!IsRealAppWindow(hwnd)) return false;
+        var (id, _, _) = ResolveIdentity(hwnd);
+        return id is not null && id.Equals(bundleId, StringComparison.OrdinalIgnoreCase) && IsWindow(hwnd);
+    }
+
+    /// <summary>Windows analog of macOS "hide app" (bevel-d2j9): no SW_HIDE-all-apps equivalent
+    /// exists, so minimize every top-level window of the app — the closest "no visible windows".</summary>
+    [SupportedOSPlatform("windows")]
+    private static void HideAppCore(string bundleId)
+    {
+        EnumWindowsProc cb = (hwnd, _) =>
+        {
+            if (IsHideTarget(hwnd, bundleId))
+                ShowWindow(hwnd, SW_MINIMIZE);
+            return true;
+        };
+        EnumWindows(cb, IntPtr.Zero);
+        GC.KeepAlive(cb);
     }
 
     // ── Capture: PrintWindow → 32bpp DIB → PNG (Windows-only) ────────────

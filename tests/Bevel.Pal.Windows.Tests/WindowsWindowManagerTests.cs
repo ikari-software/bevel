@@ -58,6 +58,7 @@ public class WindowsWindowManagerTests
         await wm.ZoomAsync(id);
         await wm.RepositionAsync(id, new PalRect(0, 0, 100, 100));
         await wm.TerminateAppAsync("C:\\Windows\\notepad.exe", force: false);
+        await wm.HideAppAsync("C:\\Windows\\notepad.exe");
         Assert.Null(await wm.CaptureWindowAsync(id, 320, 240));
     }
 
@@ -121,6 +122,61 @@ public class WindowsWindowManagerTests
         await wm.ZoomAsync(id);
         Assert.Null(await wm.CaptureWindowAsync(id, 200, 200));
     }
+
+    // ── bevel-d2j9 review: the HideApp window-selection predicate ──────────
+
+    [Fact]
+    public void IsHideTarget_empty_bundle_id_matches_nothing_on_any_os()
+    {
+        // Portable fact: the empty check runs before any Win32 call, so this never touches user32 —
+        // a stray empty bundle id must never select every window on the desktop for minimize.
+        Assert.False(WindowsWindowManager.IsHideTarget(IntPtr.Zero, ""));
+        Assert.False(WindowsWindowManager.IsHideTarget(IntPtr.Zero, null));
+        Assert.False(WindowsWindowManager.IsHideTarget(new IntPtr(12345), ""));
+    }
+
+    [Fact]
+    public async Task HideAppAsync_empty_bundle_id_is_an_inert_no_op()
+    {
+        // Runs on every OS: the public guard no-ops on empty, exactly like off-Windows.
+        using var wm = new WindowsWindowManager();
+        await wm.HideAppAsync("");
+        await wm.HideAppAsync(null!);
+    }
+
+    [Fact]
+    public async Task Windows_hide_app_minimizes_the_apps_windows_via_the_predicate()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        if (!TryLaunchNotepad(out var proc, out var hwnd)) return;
+
+        using var wm = new WindowsWindowManager();
+        try
+        {
+            // Classic Win32 identity: the "bundle id" is the exe path, matched case-insensitively.
+            string? exePath = null;
+            try { exePath = proc.MainModule?.FileName; } catch { /* process already gone */ }
+            if (exePath is null) return;
+
+            Assert.True(WindowsWindowManager.IsHideTarget(hwnd, exePath));
+            Assert.True(WindowsWindowManager.IsHideTarget(hwnd, exePath.ToUpperInvariant()));
+            Assert.False(WindowsWindowManager.IsHideTarget(hwnd, @"C:\Windows\explorer.exe"));
+            Assert.False(WindowsWindowManager.IsHideTarget(hwnd, ""));
+
+            Assert.False(IsIconic(hwnd));
+            await wm.HideAppAsync(exePath);
+            await Task.Delay(300);
+            Assert.True(IsIconic(hwnd), "HideApp should have minimized every top-level window of the app");
+        }
+        finally
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            proc.Dispose();
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
 
     [Fact]
     public void NormalizeCaptureMax_treats_zero_as_the_240x160_hover_default()

@@ -39,6 +39,8 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
         // Quit acts on the whole app (all members share one bundle) — delegate to any member's command.
         QuitCommand = new AsyncRelayCommand(() => { Windows.FirstOrDefault()?.QuitCommand.Execute(null); return Task.CompletedTask; });
         ForceQuitCommand = new AsyncRelayCommand(() => { Windows.FirstOrDefault()?.ForceQuitCommand.Execute(null); return Task.CompletedTask; });
+        // Hide likewise acts on the whole app — delegate to any member's command.
+        HideCommand = new AsyncRelayCommand(() => { Windows.FirstOrDefault()?.HideCommand.Execute(null); return Task.CompletedTask; });
     }
 
     /// <summary>The app's bundle id (all members share it) for app-level actions like Quit.</summary>
@@ -59,6 +61,9 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     /// <summary>Quit / force-quit the whole app (bevel-ww71).</summary>
     public ICommand QuitCommand { get; }
     public ICommand ForceQuitCommand { get; }
+
+    /// <summary>Hide the whole app (bevel-d2j9) — every window disappears, the app keeps running.</summary>
+    public ICommand HideCommand { get; }
 
     /// <summary>Runs one per-window command across the whole group. Snapshots the collection first —
     /// closing/minimizing mutates <see cref="Windows"/> as the shell reacts to each window op.</summary>

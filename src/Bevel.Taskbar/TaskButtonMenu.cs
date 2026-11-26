@@ -199,6 +199,18 @@ public static class TaskButtonMenu
         }
 
         var force = OperatingSystem.IsMacOS() && TaskbarNative.OptionKeyDown();
+        // bevel-d2j9: Hide sits directly above Quit (the macOS app-menu order). Hiding the target
+        // hands the front to whatever the OS surfaces next, so — exactly like Quit — cancel the
+        // key-focus handback (bevel-nxic).
+        // Dead when there is no bundle id to key HideAppAsync on (HideAsync no-ops then) — keep the
+        // row for a stable menu shape but grey it out (bevel-d2j9 review).
+        var hide = new MenuItem { Header = "_Hide", Command = model.HideCommand, IsEnabled = !string.IsNullOrEmpty(model.BundleId) };
+        // handledEventsToo: a MenuItem with a Command has a class handler (OnClick) that executes the
+        // command and marks ClickEvent HANDLED before plain `Click +=` handlers run — without this the
+        // handback-cancel would never fire (bevel-nxic).
+        if (onActivateForeign is not null) hide.AddHandler(MenuItem.ClickEvent, (_, _) => onActivateForeign(), handledEventsToo: true);
+        items.Add(hide);
+        items.Add(new Separator());
         var quit = new MenuItem
         {
             Header = force ? "_Force Quit" : "_Quit",
@@ -231,7 +243,7 @@ public static class TaskButtonMenu
     private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
         bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
-        string? BundleId = null, string? BundlePath = null);
+        string? BundleId = null, string? BundlePath = null, ICommand? HideCommand = null);
 
     private static MenuModel? Describe(object? dc) => dc switch
     {
@@ -240,14 +252,14 @@ public static class TaskButtonMenu
             g.Windows.Select(Row).ToList(),
             g.QuitCommand, g.ForceQuitCommand,
             IsGroup: true, g.MinimizeAllCommand, g.RestoreAllCommand, g.CloseAllCommand,
-            BundleId: g.BundleId, BundlePath: g.BundlePath),
+            BundleId: g.BundleId, BundlePath: g.BundlePath, HideCommand: g.HideCommand),
 
         // App-presence has no windows → the Windows section is omitted (Windows is empty).
         TaskItemViewModel t => new MenuModel(
             TaskbarGrouping.DisplayName(t.AppId), t.IconSource,
             t.IsAppPresence ? Array.Empty<WindowRow>() : new[] { Row(t) },
             t.QuitCommand, t.ForceQuitCommand,
-            BundleId: t.BundleId, BundlePath: t.BundlePath),
+            BundleId: t.BundleId, BundlePath: t.BundlePath, HideCommand: t.HideCommand),
 
         _ => null,
     };

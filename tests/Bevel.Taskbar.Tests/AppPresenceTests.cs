@@ -150,6 +150,46 @@ public class AppPresenceTests
     }
 
     [Fact]
+    public void Hide_hides_the_app_by_bundle_id()
+    {
+        // bevel-d2j9: the app-level Hide verb rides HideAppAsync, keyed on the bundle id — not a
+        // per-window minimize.
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default,
+                BundleId: "com.apple.Safari"), wm);
+
+        vm.HideCommand.Execute(null);
+        Assert.Equal(new[] { "com.apple.Safari" }, wm.Hidden);
+        Assert.Empty(wm.Minimized);   // hide is NOT a minimize
+        Assert.Empty(wm.Terminated);
+    }
+
+    [Fact]
+    public void Presence_hide_parses_the_bundle_id_from_the_app_prefixed_id()
+    {
+        // An app-presence entry with no explicit BundleId still hides — the id is "app:<bundle>".
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("app:com.apple.Music"), "", "Music", false, false, default,
+                IconPng: null, IsAppPresence: true), wm);
+
+        vm.HideCommand.Execute(null);
+        Assert.Equal(new[] { "com.apple.Music" }, wm.Hidden);
+    }
+
+    [Fact]
+    public void Hide_without_a_bundle_id_is_a_no_op()
+    {
+        var wm = new RecordingWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default), wm);
+
+        vm.HideCommand.Execute(null);
+        Assert.Empty(wm.Hidden);
+    }
+
+    [Fact]
     public void Minimized_click_issues_one_RestoreAndActivate_not_two_RPCs()
     {
         // bevel-nxic: the minimized→click path must collapse into ONE atomic op so the helper can
@@ -186,12 +226,14 @@ public class AppPresenceTests
         public List<string> Restored { get; } = new();
         public List<string> RestoredAndActivated { get; } = new();
         public List<string> Terminated { get; } = new();
+        public List<string> Hidden { get; } = new();
         public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>([]);
         public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) { Activated.Add(id.Value); return Task.CompletedTask; }
         public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) { Minimized.Add(id.Value); return Task.CompletedTask; }
         public Task TerminateAppAsync(string bundleId, bool force, CancellationToken ct = default) { Terminated.Add($"{bundleId}:{force.ToString().ToLowerInvariant()}"); return Task.CompletedTask; }
+        public Task HideAppAsync(string bundleId, CancellationToken ct = default) { Hidden.Add(bundleId); return Task.CompletedTask; }
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) { Restored.Add(id.Value); return Task.CompletedTask; }
         public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) { RestoredAndActivated.Add(id.Value); return Task.CompletedTask; }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;

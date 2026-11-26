@@ -60,10 +60,14 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         ZoomCommand = new AsyncRelayCommand(() => _windows.ZoomAsync(Id));
         QuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: false));
         ForceQuitCommand = new AsyncRelayCommand(() => TerminateAsync(force: true));
+        HideCommand = new AsyncRelayCommand(HideAsync);
     }
 
     private Task TerminateAsync(bool force) =>
         string.IsNullOrEmpty(BundleId) ? Task.CompletedTask : _windows.TerminateAppAsync(BundleId, force);
+
+    private Task HideAsync() =>
+        string.IsNullOrEmpty(BundleId) ? Task.CompletedTask : _windows.HideAppAsync(BundleId);
 
     public ForeignWindowId Id { get; }
 
@@ -245,6 +249,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Force-quit the owning app (Alt/Option in the menu).</summary>
     public ICommand ForceQuitCommand { get; }
+
+    /// <summary>Hide the whole owning app (bevel-d2j9) — NSRunningApplication.hide() on macOS; the app
+    /// keeps running with no visible windows. App-level like Quit: keyed on <see cref="BundleId"/>.</summary>
+    public ICommand HideCommand { get; }
 
     /// <summary>Refreshes the label/focus/minimized state from a fresh window snapshot in place,
     /// keeping the same VM object so the list row and its icon survive the update.</summary>

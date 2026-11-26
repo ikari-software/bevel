@@ -277,6 +277,98 @@ public class TaskButtonMenuTabsTests
         Assert.Equal(new[] { "_Activate", "Mi_nimize", "_Restore", "Ma_ximize", "_Close" }, verbs);
     }
 
+    // ── bevel-d2j9: the app-level Hide verb in the button menu ──────────────
+
+    private sealed class HideRecWm : IWindowManager
+    {
+        public List<string> Hidden { get; } = new();
+        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
+        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(System.Threading.CancellationToken ct = default)
+            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
+        public Task ActivateAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        public Task HideAppAsync(string bundleId, System.Threading.CancellationToken ct = default) { Hidden.Add(bundleId); return Task.CompletedTask; }
+        public event EventHandler<ForeignWindow>? WindowOpened;
+        public event EventHandler<ForeignWindow>? WindowClosed;
+        public event EventHandler<ForeignWindow>? WindowChanged;
+        public event EventHandler<ForeignWindow>? ForegroundChanged;
+    }
+
+    [AvaloniaFact]
+    public void Menu_offers_hide_directly_above_quit_and_it_hides_the_app()
+    {
+        // bevel-d2j9: "_Hide" sits immediately before the separator + Quit at the menu bottom (the
+        // macOS app-menu order), and its command rides HideAppAsync with the bundle id.
+        var wm = new HideRecWm();
+        var vm = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default, BundleId: "com.apple.Safari"), wm);
+
+        var flyout = TaskButtonMenu.Build(vm, null, null)!;
+        var items = (flyout.ItemsSource as IEnumerable<object>)!.ToList();
+        var hideIdx = items.FindIndex(i => i is MenuItem { Header: "_Hide" });
+        Assert.True(hideIdx >= 0, "menu has no _Hide item");
+        Assert.IsType<Separator>(items[hideIdx + 1]);
+        Assert.Equal("_Quit", (Assert.IsType<MenuItem>(items[hideIdx + 2]).Header as string));
+
+        (items[hideIdx] as MenuItem)!.Command!.Execute(null);
+        Assert.Equal(new[] { "com.apple.Safari" }, wm.Hidden);
+    }
+
+    [AvaloniaFact]
+    public void Group_menu_hide_delegates_to_a_member_window()
+    {
+        // The group's HideCommand acts on the whole app via any member's bundle id.
+        var wm = new HideRecWm();
+        var group = new TaskGroupViewModel(App);
+        group.Windows.Add(new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "One", App, false, false, default, BundleId: App), wm));
+        group.Windows.Add(new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w2"), "Two", App, false, false, default, BundleId: App), wm));
+
+        var flyout = TaskButtonMenu.Build(group, null, null)!;
+        // bevel-d2j9 review: in the group menu too, _Hide sits immediately above Separator+_Quit.
+        var items = (flyout.ItemsSource as IEnumerable<object>)!.ToList();
+        var hideIdx = items.FindIndex(i => i is MenuItem { Header: "_Hide" });
+        Assert.True(hideIdx >= 0, "menu has no _Hide item");
+        Assert.IsType<Separator>(items[hideIdx + 1]);
+        Assert.Equal("_Quit", (Assert.IsType<MenuItem>(items[hideIdx + 2]).Header as string));
+
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
+        hide.Command!.Execute(null);
+
+        Assert.Equal(new[] { App }, wm.Hidden);
+    }
+
+    [AvaloniaFact]
+    public void Hide_item_click_invokes_the_activate_foreign_handback_cancel()
+    {
+        // bevel-nxic (same pattern as StartMenuTests' Quit item): choosing _Hide hands the front to
+        // whatever the OS surfaces next, so the menu cancels the key-focus handback the instant the
+        // item is clicked — before the command even runs.
+        var tapped = false;
+        var flyout = TaskButtonMenu.Build(BrowserVmWithBundle(), null, null, onActivateForeign: () => tapped = true)!;
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
+
+        hide.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+
+        Assert.True(tapped);
+    }
+
+    [AvaloniaFact]
+    public void Hide_item_is_disabled_when_there_is_no_bundle_id()
+    {
+        // bevel-d2j9 review: no bundle id → HideAppAsync has nothing to key on (HideAsync no-ops),
+        // so the row renders disabled rather than offering a dead verb.
+        var flyout = TaskButtonMenu.Build(BrowserVm(), null, null)!;
+        var hide = TopLevelItems(flyout).First(m => (m.Header as string) == "_Hide");
+        Assert.False(hide.IsEnabled);
+
+        var withBundle = TaskButtonMenu.Build(BrowserVmWithBundle(), null, null)!;
+        Assert.True(TopLevelItems(withBundle).First(m => (m.Header as string) == "_Hide").IsEnabled);
+    }
 
     [AvaloniaFact]
     public void Rows_without_a_favicon_show_the_session_tint_swatch(/* bevel-l17f */)
