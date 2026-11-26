@@ -463,6 +463,9 @@ public sealed class ShellModelTests
         var appEnv = new StubAppEnvironment(new InstalledApp("com.a", "Alpha", null));
         using var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
         model.Start();
+        // Yield to the thread pool first (like the idempotency half below) so the negative assertion
+        // can't race a hypothetical Task.Run enumeration that Start() kicked on a loaded CI runner.
+        await Task.Delay(150);
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(0, appEnv.EnumerateCalls);
         Assert.Empty(model.Programs);

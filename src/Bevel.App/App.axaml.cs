@@ -451,6 +451,10 @@ public partial class App : Application
         taskbarWin.Show();
         desktop.MainWindow = taskbarWin;
         Supervision.RoleHeartbeatStore.ReportReady(ShellRole.Taskbar, connection?.IsConnected ?? true);
+        // Idempotent fallback kick (ce-review bevel-qf95): if the Opened post above never fired, this
+        // ContextIdle post after ReportReady still starts the app enumeration, so ProgramsLoaded can
+        // never stay unlatched ("(Loading…)" forever). The _programsStarted guard makes the double-kick safe.
+        Dispatcher.UIThread.Post(shellModel.StartProgramsAsync, DispatcherPriority.ContextIdle);
         if (connection is not null)
             connection.ConnectionChanged += (_, c) => Supervision.RoleHeartbeatStore.ReportCore(c);
 
