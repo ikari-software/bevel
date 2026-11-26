@@ -49,6 +49,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         // Bundle id for app-level actions (Quit). Prefer the explicit field; for a windowless entry the
         // id is "app:<bundle>", so parse it as a fallback.
         BundleId = w.BundleId ?? (w.Id.Value.StartsWith("app:") ? w.Id.Value["app:".Length..] : null);
+        BundlePath = w.BundlePath;
         Update(w);
         if (w.IsFocused)
             SetFocused(true);
@@ -75,6 +76,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     /// <summary>Owning app's bundle id (stable key), used by <see cref="QuitCommand"/>. Null when unknown.</summary>
     public string? BundleId { get; }
+
+    /// <summary>Owning app's bundle path on disk (bevel-4nct), carried for the context menu's
+    /// "Show in Finder" verb. Null when the window manager did not know it — the verb is omitted then.</summary>
+    public string? BundlePath { get; private set; }
 
     public string Title
     {
@@ -246,6 +251,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         IsMinimized = w.IsMinimized;
         IsFullscreen = w.IsFullscreen;
         IsOnOtherSpace = w.IsOnOtherSpace;
+        BundlePath = w.BundlePath;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
     }

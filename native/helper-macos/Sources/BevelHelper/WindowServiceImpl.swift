@@ -723,6 +723,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         win.title = entry[kCGWindowName as String] as? String ?? ""
         win.appName = app.localizedName ?? (entry[kCGWindowOwnerName as String] as? String ?? "")
         win.appBundleID = app.bundleIdentifier ?? ""
+        win.appBundlePath = Self.bundlePath(of: app)
         win.pid = Int32(pid)
 
         // App icon as PNG (best-effort; empty when unavailable), cached per bundle id.
@@ -740,6 +741,13 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             win.frame = rect
         }
         return win
+    }
+
+    /// The owning app's on-disk path (bevel-4nct): the bundle URL for a bundled app
+    /// ("/Applications/Safari.app"), falling back to the executable URL for an unbundled process.
+    /// Empty when neither is known. Drives the taskbar's "Show in Finder" verb.
+    private static func bundlePath(of app: NSRunningApplication) -> String {
+        app.bundleURL?.path ?? app.executableURL?.path ?? ""
     }
 
     /// Fold the window's live AX state into the descriptor: minimized flag, AX title fallback.
@@ -1576,6 +1584,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         if let app = NSRunningApplication(processIdentifier: pid) {
             win.appName = app.localizedName ?? ""
             win.appBundleID = app.bundleIdentifier ?? ""
+            win.appBundlePath = Self.bundlePath(of: app)
         }
 
         var title: CFTypeRef?
@@ -1853,6 +1862,7 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             var win = Bevel_Helper_V1_TaskbarWindow()
             win.windowID = "app:" + bundle
             win.appBundleID = bundle
+            win.appBundlePath = Self.bundlePath(of: app)
             win.appName = app.localizedName ?? bundle
             win.pid = pid
             win.isAppPresence = true

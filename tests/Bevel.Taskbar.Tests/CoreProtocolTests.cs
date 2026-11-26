@@ -20,7 +20,9 @@ public sealed class CoreProtocolTests
         IsMinimized: false,
         IsFocused: true,
         Bounds: new PalRect(10, 20, 800, 600),
-        IconPng: new byte[] { 1, 2, 3, 4, 250, 251, 252 });
+        IconPng: new byte[] { 1, 2, 3, 4, 250, 251, 252 },
+        BundleId: "com.apple.finder",
+        BundlePath: "/System/Library/CoreServices/Finder.app");   // bevel-4nct
 
     private static T RoundTrip<T>(T value) => CoreProtocol.Deserialize<T>(CoreProtocol.Serialize(value));
 
@@ -39,6 +41,9 @@ public sealed class CoreProtocolTests
         Assert.True(w.IsFocused);
         Assert.Equal(new PalRect(10, 20, 800, 600), w.Bounds);
         Assert.Equal(SampleWindow.IconPng, w.IconPng); // byte[] survives (base64)
+        // bevel-4nct: the bundle path rides the wire too (the "Show in Finder" verb's data).
+        Assert.Equal("com.apple.finder", w.BundleId);
+        Assert.Equal("/System/Library/CoreServices/Finder.app", w.BundlePath);
     }
 
     [Fact]

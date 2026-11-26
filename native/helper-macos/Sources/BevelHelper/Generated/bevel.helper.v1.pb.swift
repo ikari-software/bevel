@@ -348,6 +348,11 @@ public nonisolated struct Bevel_Helper_V1_TaskbarWindow: Sendable {
   /// one they had on screen. False when undetermined — never guessed from absence of evidence.
   public var isOnOtherSpace: Bool = false
 
+  /// Owning app's bundle path on disk ("/Applications/Safari.app"), from NSRunningApplication
+  /// bundleURL (executableURL as fallback for unbundled processes). Empty when unknown. Feeds the
+  /// taskbar's "Show in Finder" verb, which reveals this path in a file-manager window (bevel-4nct).
+  public var appBundlePath: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1041,7 +1046,7 @@ nonisolated extension Bevel_Helper_V1_WindowRef: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TaskbarWindow"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0\u{3}is_fullscreen\0\u{3}is_on_other_space\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0\u{3}is_fullscreen\0\u{3}is_on_other_space\0\u{3}app_bundle_path\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1061,6 +1066,7 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
       case 10: try { try decoder.decodeSingularBoolField(value: &self.isAppPresence) }()
       case 11: try { try decoder.decodeSingularBoolField(value: &self.isFullscreen) }()
       case 12: try { try decoder.decodeSingularBoolField(value: &self.isOnOtherSpace) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.appBundlePath) }()
       default: break
       }
     }
@@ -1107,6 +1113,9 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if self.isOnOtherSpace != false {
       try visitor.visitSingularBoolField(value: self.isOnOtherSpace, fieldNumber: 12)
     }
+    if !self.appBundlePath.isEmpty {
+      try visitor.visitSingularStringField(value: self.appBundlePath, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1123,6 +1132,7 @@ nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, Swif
     if lhs.isAppPresence != rhs.isAppPresence {return false}
     if lhs.isFullscreen != rhs.isFullscreen {return false}
     if lhs.isOnOtherSpace != rhs.isOnOtherSpace {return false}
+    if lhs.appBundlePath != rhs.appBundlePath {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -195,6 +195,10 @@ message TaskbarWindow {
   // listed (the CG query uses .optionAll so minimized windows survive) and their frame is the last
   // one they had on screen. False when undetermined — never guessed from absence of evidence.
   bool is_on_other_space = 12;
+  // Owning app's bundle path on disk ("/Applications/Safari.app"), from NSRunningApplication
+  // bundleURL (executableURL as fallback for unbundled processes). Empty when unknown. Feeds the
+  // taskbar's "Show in Finder" verb, which reveals this path in a file-manager window (bevel-4nct).
+  string app_bundle_path = 13;
 }
 
 message PixelRect {

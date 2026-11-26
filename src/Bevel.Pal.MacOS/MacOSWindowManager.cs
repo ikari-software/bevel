@@ -393,7 +393,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             IsAppPresence: tw.IsAppPresence,
             BundleId: string.IsNullOrEmpty(tw.AppBundleId) ? null : tw.AppBundleId,
             IsFullscreen: tw.IsFullscreen,
-            IsOnOtherSpace: tw.IsOnOtherSpace);
+            IsOnOtherSpace: tw.IsOnOtherSpace,
+            BundlePath: string.IsNullOrEmpty(tw.AppBundlePath) ? null : tw.AppBundlePath);
     }
 
     public void Dispose()
