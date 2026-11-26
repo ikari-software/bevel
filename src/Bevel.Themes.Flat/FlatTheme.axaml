@@ -95,8 +95,9 @@
       <LinearGradientBrush x:Key="Flat.Brush.TaskButtonHover" StartPoint="0%,0%" EndPoint="0%,100%">
         <GradientStop Offset="0" Color="#FFF9E8"/><GradientStop Offset="1" Color="#F1D296"/>
       </LinearGradientBrush>
+      <!-- Sunken: the shade is at the TOP (light falls from above, so an inset face is darkest under the top edge). -->
       <LinearGradientBrush x:Key="Flat.Brush.TaskButtonChecked" StartPoint="0%,0%" EndPoint="0%,100%">
-        <GradientStop Offset="0" Color="#D4E2F6"/><GradientStop Offset="1" Color="#ADC5EB"/>
+        <GradientStop Offset="0" Color="#9DB8E2"/><GradientStop Offset=".18" Color="#B2C8EA"/><GradientStop Offset="1" Color="#D4E2F6"/>
       </LinearGradientBrush>
       <LinearGradientBrush x:Key="Flat.Brush.Start" StartPoint="0%,0%" EndPoint="0%,100%">
         <GradientStop Offset="0" Color="#EEF0EA"/><GradientStop Offset=".5" Color="#E5E7E1"/><GradientStop Offset="1" Color="#D6D8CE"/>
@@ -378,7 +379,11 @@
         <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Template"><ControlTemplate TargetType="ToggleButton"><Border Name="Face" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0" Padding="{TemplateBinding Padding}"><ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/></Border></ControlTemplate></Setter>
         <Style Selector="^:pointerover /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.TaskButtonHover}"/></Style>
+        <!-- The active window's button is SUNKEN, as in Win95 (and Luna): a face shaded darker at the top (the checked
+             brush) and the label nudged 1px down-right. No bevel lines. NOT an inset BoxShadow: on this Border it
+             displaces the label out of the button. -->
         <Style Selector="^:checked /template/ Border#Face"><Setter Property="Background" Value="{DynamicResource Flat.Brush.TaskButtonChecked}"/><Setter Property="BorderBrush" Value="{DynamicResource Flat.Brush.Focus}"/></Style>
+        <Style Selector="^:checked /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="RenderTransform" Value="translate(1px, 1px)"/></Style>
       </ControlTheme>
       <ControlTheme x:Key="Bevel.Theme.StartButton" TargetType="Button">
         <Setter Property="Foreground" Value="#1A202C"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Background" Value="{DynamicResource Flat.Brush.Start}"/>

@@ -206,7 +206,7 @@ tight/dark; there are **no specular gloss strips**.
   (airier than Luna's 30). No raised 3-D strip.
 - Task buttons (`Bevel.Theme.ToggleButton`): matte Mist-paper wash pebble, `CornerRadius 6`,
   1px Edge border, Ink text; hover = butter bloom; **`:checked` (active window)** = the aqua
-  selection wash (a gentle *fill*, not a sunken bevel) with a slightly stronger border.
+  selection wash, **sunken** (face shaded darker at the top, label nudged 1px down-right; as in Win95 — decided 2026-11-25, superseding the earlier "fill, not sunken") with a slightly stronger border.
 - Dividers: transparent (like Luna — the color contrast separates regions; no 3-D seams).
 - Tray well: §3 inset aqua; tray/clock text Ink.
 

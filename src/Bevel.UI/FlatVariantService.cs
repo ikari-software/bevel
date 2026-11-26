@@ -67,7 +67,7 @@ public static class FlatVariantService
         Put(resources, "Flat.Brush.Check", new SolidColorBrush(Color.Parse(select)));
         Put(resources, "Flat.Brush.Focus", new SolidColorBrush(Color.Parse(select)));
         Put(resources, "Flat.Brush.Progress", Gradient(caption, captionEnd));
-        Put(resources, "Flat.Brush.TaskButtonChecked", Gradient(caption, captionEnd));
+        Put(resources, "Flat.Brush.TaskButtonChecked", Gradient(captionEnd, caption));   // sunken: shade at the top
         Put(resources, "Bevel.Brush.StartMenuHeader", Gradient(caption, captionEnd));
         Put(resources, "Bevel.Brush.StartMenuPlacesColumn", Gradient(places, places));
         Put(resources, "Bevel.Brush.StartMenuFooter", Gradient(start, startEnd));
