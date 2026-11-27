@@ -768,7 +768,16 @@ public partial class TaskbarView : UserControl
             // realized at once) collapses to a single Background-priority reflow instead of K+1.
             WindowButtonScroller.SizeChanged += (_, _) => QueueLayout();
             if (_vm is not null)
+            {
                 _vm.Items.CollectionChanged += OnWindowsChanged;   // grouped/ungrouped display set
+                // bevel-vtc6 review: keep the cached running-bundle-id snapshot (served to thread-pool
+                // search queries) in step with the real window list.
+                _vm.Model.Windows.CollectionChanged += (_, _) =>
+                {
+                    if (Dispatcher.UIThread.CheckAccess()) RefreshRunningTabBundleIds();
+                    else Dispatcher.UIThread.Post(() => RefreshRunningTabBundleIds());
+                };
+            }
             // Re-run the width pass when a button's container is realized, so a newly-opened
             // window's button — created at Width 0 — animates up to the target AFTER it has rendered
             // at 0 (the XP grow-in), rather than being snapped to the target before it ever draws.
@@ -824,8 +833,11 @@ public partial class TaskbarView : UserControl
         }
         // Favicon bitmaps are Skia-backed unmanaged memory the GC cannot see (bevel-1fy8): the cache
         // outlives individual menus on purpose, so the view is what has to free it.
-        _tabs?.Dispose();
-        _tabs = null;
+        lock (_tabPrefetchGate)
+        {
+            _tabs?.Dispose();
+            _tabs = null;
+        }
         base.OnUnloaded(e);
     }
 
@@ -1188,32 +1200,52 @@ public partial class TaskbarView : UserControl
     }
 
     /// <summary>Tab lists warmed on hover so the context menu can open without waiting on osascript
-    /// (bevel-1fy8). Created lazily because the provider is injected after construction.</summary>
+    /// (bevel-1fy8). Created lazily because the provider is injected after construction; the lazy
+    /// create is locked because the Start menu's search warms through this delegate from thread-pool
+    /// queries (bevel-vtc6) while the UI thread warms on pointer-enter — an unlocked ??= could mint
+    /// two instances and split the cache.</summary>
+    private readonly object _tabPrefetchGate = new();
     private TabPrefetch? _tabs;
 
     /// <summary>Starts a tab enumeration for this app, or returns the one already running/just done.
-    /// Null when the app has no tab dialect. UI thread.</summary>
+    /// Null when the app has no tab dialect. Thread-safe.</summary>
     private Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>? EnsureTabPrefetch(string? bundleId)
     {
         if (_tabProvider is null) return null;
-        _tabs ??= new TabPrefetch(_tabProvider, TabPrefetchBudget, TabPrefetchFreshness);
-        return _tabs.Warm(bundleId);
+        TabPrefetch tabs;
+        lock (_tabPrefetchGate) tabs = _tabs ??= new TabPrefetch(_tabProvider, TabPrefetchBudget, TabPrefetchFreshness);
+        return tabs.Warm(bundleId);
     }
 
     /// <summary>bevel-vtc6: the distinct bundle ids of the running apps, for the Start menu's Tabs search
     /// section (<see cref="ShellModel.Windows"/> → <see cref="TaskItemViewModel.BundleId"/>). The search
-    /// queries this from the thread pool, so the snapshot is marshalled onto the UI thread, which owns
-    /// the Windows collection.</summary>
+    /// queries this from the thread pool, and the Windows collection is owned by the UI thread — a
+    /// blocking <c>Dispatcher.UIThread.Invoke</c> per keystroke from a pool thread is a deadlock/stall
+    /// hazard, so pool callers get the cached snapshot instead. The cache is refreshed on the UI thread
+    /// whenever Windows changes (CollectionChanged below) and on every Start-menu open.</summary>
+    private readonly object _runningTabIdsGate = new();
+    private IReadOnlyList<string> _runningTabBundleIds = Array.Empty<string>();
+
     private IReadOnlyList<string> RunningTabBundleIds()
     {
+        // UI thread: read the live collection directly (and keep the cache hot for pool callers).
+        if (Dispatcher.UIThread.CheckAccess()) return RefreshRunningTabBundleIds();
+        lock (_runningTabIdsGate) return _runningTabBundleIds;
+    }
+
+    /// <summary>Recomputes the running-bundle-id snapshot. UI thread only — it enumerates
+    /// <see cref="ShellModel.Windows"/>, which the UI thread owns.</summary>
+    private IReadOnlyList<string> RefreshRunningTabBundleIds()
+    {
         if (_vm is null) return Array.Empty<string>();
-        IReadOnlyList<string> Snapshot() => _vm.Model.Windows
+        var snapshot = _vm.Model.Windows
             .Select(w => w.BundleId)
             .Where(b => !string.IsNullOrEmpty(b))
             .Distinct(StringComparer.Ordinal)
             .Select(b => b!)
             .ToArray();
-        return Dispatcher.UIThread.CheckAccess() ? Snapshot() : Dispatcher.UIThread.Invoke(Snapshot);
+        lock (_runningTabIdsGate) _runningTabBundleIds = snapshot;
+        return snapshot;
     }
 
     /// <summary>How long a right-click may wait for the target app's tab list before the menu opens
@@ -1437,7 +1469,11 @@ public partial class TaskbarView : UserControl
     {
         if (_startMenu is null) return;
         if (_startMenu.IsOpen) _startMenu.Close();
-        else _ = _startMenu.OpenAsync(StartButton, fromKeyboard);
+        else
+        {
+            RefreshRunningTabBundleIds();   // the Tabs search reads the cached snapshot — refresh it on open
+            _ = _startMenu.OpenAsync(StartButton, fromKeyboard);
+        }
     }
 
     private void OnTaskbarKeyDown(object? sender, KeyEventArgs e)
@@ -1449,6 +1485,7 @@ public partial class TaskbarView : UserControl
         {
             if (_startMenu is not null && !_startMenu.IsOpen)
             {
+                RefreshRunningTabBundleIds();   // cached snapshot the Tabs search reads — refresh on open
                 _ = _startMenu.OpenAsync(StartButton, fromKeyboard: true);
                 e.Handled = true;
             }

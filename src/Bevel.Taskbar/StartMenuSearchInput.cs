@@ -60,6 +60,9 @@ internal sealed class StartMenuSearchInput
     // bevel-6sk6: the sectioned search session + the current Programs-section hits.
     private SearchSession? _searchSession;
     private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
+    // bevel-vtc6 review: the current hits of EVERY section — Enter must not launch the top hit when the
+    // focused row is a hit of ANY section (a focused TAB row, not just a Programs row).
+    private readonly Dictionary<string, IReadOnlyList<SearchHit>> _sectionHits = new(StringComparer.Ordinal);
     private RoutedEventArgs? _lastSearchEvent;
     // bevel-vtc6: the Tabs section's inputs, handed over like the host's other delegates — distinct
     // bundle ids of the running apps, the one TabPrefetch warm delegate, and the provider itself.
@@ -219,7 +222,9 @@ internal sealed class StartMenuSearchInput
     /// <summary>
     /// Enter's rule while a search is running: launch the top match — UNLESS the keystroke came from a row
     /// that is itself one of the matches, i.e. the user arrowed focus onto it, in which case that row's own
-    /// activation is the right thing and the search stays out of the way.
+    /// activation is the right thing and the search stays out of the way. The focused row is checked
+    /// against EVERY section's hits (Programs AND Tabs — a focused TAB row must not launch the TopHit
+    /// either), not just the Programs section.
     ///
     /// Exposed on the host because it is the only honestly testable form of the rule: headless Avalonia
     /// never realizes a submenu's containers, so no test can produce a focused cascade row to raise the
@@ -230,7 +235,7 @@ internal sealed class StartMenuSearchInput
         if (_searchSession?.TopHit is null) return false;
         return keySource is not Control c
             || c.DataContext is not SearchHit focused
-            || !_programHits.Contains(focused);
+            || !_sectionHits.Values.Any(hits => hits.Contains(focused));
     }
 
     private bool TryLaunchTopMatch(object? source)
@@ -263,6 +268,7 @@ internal sealed class StartMenuSearchInput
     /// the Programs hits for Enter/arrow semantics.</summary>
     private void OnSearchSectionChanged(string sectionId, IReadOnlyList<SearchHit> hits)
     {
+        _sectionHits[sectionId] = hits;
         _body.ClassicResults.SetSection(sectionId, hits);
         _body.LunaResults.SetSection(sectionId, hits);
         if (sectionId == "programs")
@@ -295,6 +301,7 @@ internal sealed class StartMenuSearchInput
         _searchSession?.Clear();
         _searchResults.Clear();
         _programHits = Array.Empty<SearchHit>();
+        _sectionHits.Clear();
         _body.ClassicStrip.IsVisible = false;
         _body.LunaStrip.IsVisible = false;
         _body.ClassicResults.IsVisible = false;

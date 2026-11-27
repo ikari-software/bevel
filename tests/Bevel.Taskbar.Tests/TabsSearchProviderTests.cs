@@ -217,7 +217,7 @@ public sealed class TabsSearchProviderTests
 
         lock (warmCalls) Assert.Equal(["com.supported"], warmCalls);
         Assert.Equal(1, tabs.GetCalls);                             // exactly one enumeration, supported app only
-        Assert.True(tabs.SupportsCalls >= 3);                       // the gate was consulted per running id
+        Assert.Equal(3, tabs.SupportsCalls);                        // the gate was consulted per running id (incl. the dupe)
     }
 
     /// <summary>Empty-provider case: no running apps → the section publishes empty and never queries.</summary>
@@ -253,6 +253,210 @@ public sealed class TabsSearchProviderTests
         Assert.NotEmpty(log.All);
         Assert.All(log.All, p => Assert.Empty(p));
         Assert.Equal(0, tabs.GetCalls);
+    }
+
+    /// <summary>bevel-vtc6 review (publish storm): when the post-refresh rows are reference/sequence-
+    /// identical to the cached ones, the second publish is skipped — a keystroke must not rebuild both
+    /// results views twice.</summary>
+    [Fact]
+    public async Task The_refresh_publish_is_skipped_when_the_fresh_rows_are_identical_to_the_cached_ones()
+    {
+        var tabs = new CountingTabs(App);
+        var rows = Rows(Tab("Docs", "https://example.test/docs"));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => Task.FromResult(rows);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);
+        Assert.Equal(2, log.All.Count);                 // empty first paint + the fresh publish
+        Assert.Equal("Docs", Assert.Single(log.Last).Title);
+
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);
+        Assert.Equal(3, log.All.Count);                 // cache-first publish ONLY — identical refresh skipped
+        Assert.Equal("Docs", Assert.Single(log.Last).Title);
+    }
+
+    /// <summary>bevel-vtc6 review: a warm delegate that THROWS keeps the previous rows — the failure is
+    /// per-app, and the section still shows what the last successful warm produced.</summary>
+    [Fact]
+    public async Task A_throwing_warm_keeps_the_previous_rows()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(Tab("Docs", "https://example.test/docs"));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = id => impl(id);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);
+        Assert.Equal("Docs", Assert.Single(log.Last).Title);
+
+        impl = _ => throw new InvalidOperationException("app quit mid-query");
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);   // must not throw
+
+        Assert.Equal("Docs", Assert.Single(log.Last).Title);   // the previous rows stand
+    }
+
+    /// <summary>The section is capped at MaxRows (8) even when the session allows more and more rows
+    /// match — a browser can hold hundreds of tabs; the section stays scannable.</summary>
+    [Fact]
+    public async Task Results_are_capped_at_eight_rows_with_ten_matches()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => RowsOf(
+            Enumerable.Range(1, 10).Select(i => Tab($"Docs {i}", $"https://example.test/{i}", i)).ToArray());
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("docs", 20, log.Add, CancellationToken.None);
+
+        Assert.Equal(8, log.Last.Count);
+        Assert.Equal("Docs 1", log.Last[0].Title);   // stable in row order within the same rank
+    }
+
+    /// <summary>bevel-vtc6 review (rank merge): two tab-capable apps are both warmed and their hits merge
+    /// into ONE section ordered by rank — a title match in app B beats a Url-only match in app A.</summary>
+    [Fact]
+    public async Task Hits_from_two_apps_merge_in_rank_order()
+    {
+        const string A = "com.example.a", B = "com.example.b";
+        var tabs = new CountingTabs(A, B);
+        var warmCalls = new List<string>();
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = id =>
+        {
+            lock (warmCalls) warmCalls.Add(id);
+            return id == A
+                ? RowsOf(new AppTab(A, "1", 1, "Welcome", "https://a.test/docs"))          // url-only match
+                : RowsOf(new AppTab(B, "1", 1, "Docs Guide", "https://b.test/x"));         // title match
+        };
+        var provider = new TabsSearchProvider(() => new[] { A, B }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);
+
+        Assert.Equal(["Docs Guide", "Welcome"], log.Last.Select(h => h.Title));
+        Assert.Equal(0, log.Last[0].Rank);
+        Assert.True(log.Last[1].Rank > log.Last[0].Rank);
+        lock (warmCalls) Assert.Equal(new[] { A, B }.OrderBy(x => x), warmCalls.OrderBy(x => x));
+    }
+
+    /// <summary>bevel-vtc6 review (title fallback): a stale row with NO Url re-resolves by Title against
+    /// the fresh rows — but only on a UNIQUE title match, and it activates the tab at its NEW index.</summary>
+    [Fact]
+    public async Task Activation_falls_back_to_a_unique_title_match_only_when_the_stale_row_had_no_url()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(new AppTab(App, "1", 3, "Shell"));               // terminal-ish row: no Url, index 3
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => impl(_);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("shell", 8, log.Add, CancellationToken.None);
+        var hit = Assert.Single(log.Last);
+
+        impl = _ => RowsOf(new AppTab(App, "1", 1, "Shell"));             // the same tab moved to index 1
+        await hit.ActivateAsync();
+
+        var activated = Assert.Single(tabs.Activated);
+        Assert.Equal("Shell", activated.Title);
+        Assert.Equal(1, activated.TabIndex);                              // fresh index, NOT the stale 3
+    }
+
+    /// <summary>bevel-vtc6 review: several fresh rows carrying the stale title cannot be told apart —
+    /// the activation is a no-op rather than a guess at one of the twins.</summary>
+    [Fact]
+    public async Task Activation_with_several_title_matches_is_a_no_op()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(new AppTab(App, "1", 1, "Shell"));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => impl(_);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("shell", 8, log.Add, CancellationToken.None);
+        var hit = Assert.Single(log.Last);
+
+        impl = _ => RowsOf(
+            new AppTab(App, "1", 1, "Shell"),
+            new AppTab(App, "2", 1, "Shell"));                            // twins in two windows
+        await hit.ActivateAsync();
+
+        Assert.Empty(tabs.Activated);
+    }
+
+    /// <summary>bevel-vtc6 review: when the stale row HAD a Url, the Title is never consulted — a fresh
+    /// row that merely shares the title is a different tab.</summary>
+    [Fact]
+    public async Task Activation_never_falls_back_to_title_when_the_stale_row_had_a_url()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(Tab("Docs", "https://example.test/docs", 1));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => impl(_);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("docs", 8, log.Add, CancellationToken.None);
+        var hit = Assert.Single(log.Last);
+
+        impl = _ => RowsOf(Tab("Docs", "https://example.test/other", 1));   // url changed, title same
+        await hit.ActivateAsync();
+
+        Assert.Empty(tabs.Activated);
+    }
+
+    /// <summary>bevel-vtc6 review: terminal rows carry a SessionId and that is their identity — the
+    /// fresh row with the same session id is activated at its new position, even with a new title.</summary>
+    [Fact]
+    public async Task Activation_prefers_the_session_id_for_terminal_rows()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(new AppTab(App, "1", 2, "build", Url: null, IconPng: null, SessionId: "s1"));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => impl(_);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs);
+        var log = new PublishLog();
+
+        await provider.QueryAsync("build", 8, log.Add, CancellationToken.None);
+        var hit = Assert.Single(log.Last);
+
+        impl = _ => RowsOf(
+            new AppTab(App, "1", 1, "other", Url: null, IconPng: null, SessionId: "s2"),
+            new AppTab(App, "1", 5, "renamed", Url: null, IconPng: null, SessionId: "s1"));   // moved + retitled
+        await hit.ActivateAsync();
+
+        var activated = Assert.Single(tabs.Activated);
+        Assert.Equal("s1", activated.SessionId);
+        Assert.Equal(5, activated.TabIndex);
+    }
+
+    /// <summary>bevel-vtc6 review: the activation re-warm is bounded (WaitAsync budget) — a hung app must
+    /// not hang the Enter handler; the activation just no-ops after the budget.</summary>
+    [Fact]
+    public async Task The_activation_re_warm_is_bounded_by_the_budget()
+    {
+        var tabs = new CountingTabs(App);
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> impl =
+            _ => RowsOf(Tab("Beta", "https://b.test/2", 2));
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = _ => impl(_);
+        var provider = new TabsSearchProvider(() => new[] { App }, warm, tabs)
+        {
+            ActivateBudget = TimeSpan.FromMilliseconds(100),
+        };
+        var log = new PublishLog();
+
+        await provider.QueryAsync("beta", 8, log.Add, CancellationToken.None);
+        var hit = Assert.Single(log.Last);
+
+        impl = _ => new TaskCompletionSource<IReadOnlyList<TaskButtonMenu.TabMenuRow>>(
+            TaskCreationOptions.RunContinuationsAsynchronously).Task;   // hangs forever
+        var started = Environment.TickCount64;
+        await hit.ActivateAsync();                                        // must return, not hang
+
+        Assert.True(Environment.TickCount64 - started < 5000, "the re-warm must be bounded by ActivateBudget");
+        Assert.Empty(tabs.Activated);
     }
 
     /// <summary>Provider results appear through the real <see cref="SearchSession"/> plumbing: the
@@ -336,6 +540,65 @@ public sealed class TabsSearchProviderTests
             Bevel.TestSupport.Settle.Until(() => tabs.LastActivated is not null, "the tab activation");
             Assert.Equal("https://example.test/docs", tabs.LastActivated!.Url);
             Assert.False(menu.IsOpen);
+        }
+        finally
+        {
+            menu.Close();
+            host.Close();
+            model.Dispose();
+        }
+    }
+
+    /// <summary>bevel-vtc6 review (wrong-row Enter): Enter must NOT launch the TopHit when the keystroke
+    /// comes from a focused row of ANY section — a focused TAB row is a hit too, not just a Programs row.
+    /// (Rows carry their SearchHit as DataContext.)</summary>
+    [AvaloniaFact]
+    public async Task Enter_on_a_focused_tab_row_leaves_the_rows_own_activation_alone()
+    {
+        var appEnv = new StubAppEnvironment(new InstalledApp("com.calc", "Calculator", null));
+        var model = new ShellModel(null, appEnv, null, usage: TestUsage.Scratch());
+        model.Start();
+        model.StartProgramsAsync();
+        Bevel.TestSupport.Settle.Until(() => model.Programs.Count >= 1, "programs to load");
+
+        var tabs = new FakeTabProvider();
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?> warm = id =>
+            id == FakeTabProvider.TabApp
+                ? RowsOf(new AppTab(FakeTabProvider.TabApp, "1", 1, "Docs", "https://example.test/docs"))
+                : null;
+        var menu = new StartMenu(null, null, programs: new StartMenuViewModel(model),
+            runningTabBundleIds: () => new[] { FakeTabProvider.TabApp },
+            warmTabs: warm,
+            tabProvider: tabs);
+        var button = new Button { Content = "Start" };
+        var host = new Window { SystemDecorations = SystemDecorations.None, Content = button };
+        host.Show();
+        Dispatcher.UIThread.RunJobs();
+        await menu.OpenAsync(button);
+        Dispatcher.UIThread.RunJobs();
+
+        try
+        {
+            var root = menu.FindControl<Panel>("PopupRoot")!;
+            root.RaiseEvent(new TextInputEventArgs
+            {
+                RoutedEvent = InputElement.TextInputEvent,
+                Text = "docs",
+                Source = root,
+            });
+
+            var results = menu.FindControl<StartSearchResultsView>("ClassicResultsView")!;
+            Bevel.TestSupport.Settle.Until(
+                () => results.Rows.OfType<SearchHit>().Any(h => h.Title == "Docs"),
+                "the tab hit to appear");
+            var tabHit = results.Rows.OfType<SearchHit>().Single(h => h.Title == "Docs");
+
+            // The tab hit is the TopHit (no program matches "docs") — but a focused TAB row must still
+            // win over the top-match launch, exactly like a focused Programs row.
+            Assert.True(menu.EnterShouldLaunchTopMatch(root));   // menu at large: the top hit launches
+            Assert.False(menu.EnterShouldLaunchTopMatch(new MenuItem { DataContext = tabHit }));
+            // A row that is not a hit at all is no reason to skip the top hit.
+            Assert.True(menu.EnterShouldLaunchTopMatch(new MenuItem { Header = "Run…" }));
         }
         finally
         {
