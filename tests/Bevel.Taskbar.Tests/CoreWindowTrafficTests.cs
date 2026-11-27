@@ -90,6 +90,19 @@ public sealed class CoreWindowTrafficTests
             lock (Zooms) Zooms.Add(id);
             return Task.CompletedTask;
         }
+        public List<(ForeignWindowId Id, ulong SpaceId, int OwnerPid)> SpaceMoves { get; } = [];
+        public Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default)
+        {
+            lock (SpaceMoves) SpaceMoves.Add((id, spaceId, ownerPid));
+            return Task.CompletedTask;
+        }
+        public SpaceList NextSpaces { get; set; } = new(Array.Empty<SpaceInfo>());
+        public string? LastSpacesWindowId;
+        public ValueTask<SpaceList> ListSpacesAsync(ForeignWindowId? windowId = null, CancellationToken ct = default)
+        {
+            LastSpacesWindowId = windowId?.Value;
+            return ValueTask.FromResult(NextSpaces);
+        }
         public List<(ForeignWindowId Id, PalRect Bounds, PalRect? Expected)> Repositions { get; } = [];
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default)
         {
@@ -352,6 +365,58 @@ public sealed class CoreWindowTrafficTests
         await wm.ZoomAsync(new ForeignWindowId("w1"), Ct);
 
         Assert.Equal(new[] { new ForeignWindowId("w1") }, pal.Zooms);
+    }
+
+    // bevel-44vg review: ListSpaces is a pull query across the core (never queued) — the reply's
+    // Spaces plus the WindowSpaceId (the Space that window lives on, for the menu's disabled row)
+    // must survive the taskbar -> core hop, and the window id must be forwarded to the PAL.
+    [Fact]
+    public async Task ListSpaces_pulls_spaces_and_window_space_across_the_core()
+    {
+        var pal = new Pal();
+        pal.Seed(Win("w1", "Doc"));
+        pal.NextSpaces = new SpaceList(
+            [new SpaceInfo(100, 0, "Desktop 1", "UUID-A", IsCurrent: true),
+             new SpaceInfo(250, 0, "Desktop 2", "UUID-A", IsCurrent: false)],
+            WindowSpaceId: 250);
+        await using var h = await StartAsync(pal);
+        var wm = new ShellCoreWindowManager(h.Core);
+
+        var spaces = await wm.ListSpacesAsync(new ForeignWindowId("w1"), Ct);
+
+        Assert.Equal("w1", pal.LastSpacesWindowId);
+        Assert.Equal(2, spaces.Spaces.Count);
+        Assert.Equal(new[] { 100UL, 250UL }, spaces.Spaces.Select(s => s.Id).ToArray());
+        Assert.Equal(250UL, spaces.WindowSpaceId);
+    }
+
+    // bevel-44vg review: the move must cross the core with all three arguments intact — window id,
+    // target Space id, and the owner pid the caller saw at enumeration (recycled-id guard).
+    [Fact]
+    public async Task MoveWindowToSpace_carries_window_space_and_owner_pid_across_the_core()
+    {
+        var pal = new Pal();
+        pal.Seed(Win("w1", "Doc"));
+        await using var h = await StartAsync(pal);
+        var wm = new ShellCoreWindowManager(h.Core);
+
+        await wm.MoveWindowToSpaceAsync(new ForeignWindowId("w1"), 250, ownerPid: 4242, Ct);
+
+        Assert.Equal(new[] { (new ForeignWindowId("w1"), 250UL, 4242) }, pal.SpaceMoves);
+    }
+
+    // bevel-44vg review: ListSpaces on a client that never connected is a non-queued pull — it
+    // returns empty immediately instead of throwing or hanging on the dead link.
+    [Fact]
+    public async Task ListSpaces_on_a_never_connected_client_returns_empty_without_throwing()
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var wm = new ShellCoreWindowManager(core);
+
+        var spaces = await wm.ListSpacesAsync(new ForeignWindowId("w1"), Ct);
+
+        Assert.Empty(spaces.Spaces);
+        Assert.Null(spaces.WindowSpaceId);
     }
 
     /// <summary>On a PAL that IS the window source there is no projection, so the mitigator uses the

@@ -711,6 +711,11 @@ public nonisolated struct Bevel_Helper_V1_ListSpacesRequest: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  /// Window the caller is asking about (bevel-44vg review): when set, the reply's
+  /// window_space_id names the Space that window currently lives on, so the caller can
+  /// disable that row in its "Move to Space" menu. Empty = no window context.
+  public var windowID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -722,6 +727,10 @@ public nonisolated struct Bevel_Helper_V1_ListSpacesReply: Sendable {
   // methods supported on all messages.
 
   public var spaces: [Bevel_Helper_V1_SpaceInfo] = []
+
+  /// The Space the requested window currently lives on (first of SkyLight.spaceIDs(ofWindow:)),
+  /// 0 when unknown or no window was requested (bevel-44vg review).
+  public var windowSpaceID: UInt64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -736,6 +745,11 @@ public nonisolated struct Bevel_Helper_V1_MoveWindowToSpaceRequest: Sendable {
   public var windowID: String = String()
 
   public var spaceID: UInt64 = 0
+
+  /// Owner pid the caller saw when it enumerated the window (bevel-44vg review): the VM
+  /// verifies the resolved window's kCGWindowOwnerPID against it before moving, so a recycled
+  /// window id cannot be moved. 0 = unknown, check skipped.
+  public var ownerPid: Int32 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1862,18 +1876,29 @@ nonisolated extension Bevel_Helper_V1_SpaceInfo: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Bevel_Helper_V1_ListSpacesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListSpacesRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    // Load everything into unknown fields
-    while try decoder.nextFieldNumber() != nil {}
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
+      default: break
+      }
+    }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.windowID.isEmpty {
+      try visitor.visitSingularStringField(value: self.windowID, fieldNumber: 1)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_ListSpacesRequest, rhs: Bevel_Helper_V1_ListSpacesRequest) -> Bool {
+    if lhs.windowID != rhs.windowID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1881,7 +1906,7 @@ nonisolated extension Bevel_Helper_V1_ListSpacesRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Bevel_Helper_V1_ListSpacesReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListSpacesReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}spaces\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}spaces\0\u{3}window_space_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1890,6 +1915,7 @@ nonisolated extension Bevel_Helper_V1_ListSpacesReply: SwiftProtobuf.Message, Sw
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeRepeatedMessageField(value: &self.spaces) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.windowSpaceID) }()
       default: break
       }
     }
@@ -1899,11 +1925,15 @@ nonisolated extension Bevel_Helper_V1_ListSpacesReply: SwiftProtobuf.Message, Sw
     if !self.spaces.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.spaces, fieldNumber: 1)
     }
+    if self.windowSpaceID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.windowSpaceID, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_ListSpacesReply, rhs: Bevel_Helper_V1_ListSpacesReply) -> Bool {
     if lhs.spaces != rhs.spaces {return false}
+    if lhs.windowSpaceID != rhs.windowSpaceID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1911,7 +1941,7 @@ nonisolated extension Bevel_Helper_V1_ListSpacesReply: SwiftProtobuf.Message, Sw
 
 nonisolated extension Bevel_Helper_V1_MoveWindowToSpaceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MoveWindowToSpaceRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{3}space_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{3}space_id\0\u{3}owner_pid\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1921,6 +1951,7 @@ nonisolated extension Bevel_Helper_V1_MoveWindowToSpaceRequest: SwiftProtobuf.Me
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
       case 2: try { try decoder.decodeSingularUInt64Field(value: &self.spaceID) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.ownerPid) }()
       default: break
       }
     }
@@ -1933,12 +1964,16 @@ nonisolated extension Bevel_Helper_V1_MoveWindowToSpaceRequest: SwiftProtobuf.Me
     if self.spaceID != 0 {
       try visitor.visitSingularUInt64Field(value: self.spaceID, fieldNumber: 2)
     }
+    if self.ownerPid != 0 {
+      try visitor.visitSingularInt32Field(value: self.ownerPid, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_MoveWindowToSpaceRequest, rhs: Bevel_Helper_V1_MoveWindowToSpaceRequest) -> Bool {
     if lhs.windowID != rhs.windowID {return false}
     if lhs.spaceID != rhs.spaceID {return false}
+    if lhs.ownerPid != rhs.ownerPid {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -39,11 +39,18 @@ enum SkyLight {
     /// id64 rank within the display (Mission Control numbers Desktops by creation order, which
     /// id64 order approximates); fullscreen/system Spaces get a kind label. A display's
     /// "Current Space" marks `isCurrent`.
+    ///
+    /// bevel-44vg review: mirrored displays list the SAME Space id once per display, so parsed
+    /// Spaces are deduped by id; a synthesized rank never collides with a real id rank (fallback
+    /// ranks start past the user-id list); "Current Space" also honors the ManagedSpaceID
+    /// fallback; and duplicate labels are disambiguated with the display UUID.
     static func parseManagedSpaces(_ displays: [[String: Any]]) -> [ManagedSpace] {
         var out: [ManagedSpace] = []
+        var seenIDs: Set<Int> = []
         for display in displays {
             let uuid = display["Display Identifier"] as? String ?? ""
-            let currentID = (display["Current Space"] as? [String: Any])?["id64"] as? Int
+            let currentDict = display["Current Space"] as? [String: Any]
+            let currentID = (currentDict?["id64"] as? Int) ?? (currentDict?["ManagedSpaceID"] as? Int)
             let spaces = display["Spaces"] as? [[String: Any]] ?? []
             let userIDs = spaces
                 .filter { ($0["type"] as? Int) == kCGSSpaceUser }
@@ -52,14 +59,20 @@ enum SkyLight {
             var desktopRank = 0
             for space in spaces {
                 guard let id = (space["id64"] as? Int) ?? (space["ManagedSpaceID"] as? Int) else { continue }
+                if !seenIDs.insert(id).inserted { continue }   // mirrored display: same Space id again
                 let type = space["type"] as? Int ?? -1
                 let name: String
                 if let own = (space["name"] as? String) ?? (space["Name"] as? String), !own.isEmpty {
                     name = own
                 } else if type == kCGSSpaceUser {
-                    let rank = userIDs.firstIndex(of: id) ?? desktopRank
-                    desktopRank += 1
-                    name = "Desktop \(rank + 1)"
+                    if let idx = userIDs.firstIndex(of: id) {
+                        name = "Desktop \(idx + 1)"
+                    } else {
+                        // Fallback rank starts PAST the real id ranks so it can never collide
+                        // with another Desktop's number.
+                        name = "Desktop \(userIDs.count + desktopRank + 1)"
+                        desktopRank += 1
+                    }
                 } else if type == kCGSSpaceFullScreen {
                     name = "Fullscreen"
                 } else if type == kCGSSpaceSystem {
@@ -72,7 +85,17 @@ enum SkyLight {
                     displayUUID: uuid, isCurrent: currentID == id))
             }
         }
-        return out
+        // Two displays can both carry a "Desktop 1" — disambiguate duplicate labels with the
+        // display UUID so the menu rows stay distinguishable.
+        var labelCounts: [String: Int] = [:]
+        for space in out { labelCounts[space.name, default: 0] += 1 }
+        return out.map { space in
+            guard (labelCounts[space.name] ?? 0) > 1, !space.displayUUID.isEmpty else { return space }
+            return ManagedSpace(
+                id: space.id, type: space.type,
+                name: "\(space.name) (\(space.displayUUID))",
+                displayUUID: space.displayUUID, isCurrent: space.isCurrent)
+        }
     }
 
     /// Every Space on every display (empty when the symbols are unavailable).

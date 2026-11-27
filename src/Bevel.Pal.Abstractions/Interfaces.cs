@@ -73,16 +73,21 @@ public interface IWindowManager
 
     /// <summary>List every Mission Control Space on every display (bevel-44vg SPIKE): on macOS the
     /// helper reads them from private SkyLight (<c>CGSCopyManagedDisplaySpaces</c>); an empty list
-    /// means "unknown/unavailable", never "no Spaces". Default: unsupported — stubs and non-macOS
-    /// backends answer empty.</summary>
-    ValueTask<IReadOnlyList<SpaceInfo>> ListSpacesAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<SpaceInfo>>(Array.Empty<SpaceInfo>());
+    /// means "unknown/unavailable", never "no Spaces". When <paramref name="windowId"/> is given, the
+    /// reply also names the Space that window currently lives on (the helper reads it via
+    /// <c>SkyLight.spaceIDs(ofWindow:)</c>), so the caller can disable that row in its "Move to
+    /// Space" menu — the disabled row is the WINDOW's Space, not the display's current one.
+    /// Default: unsupported — stubs and non-macOS backends answer empty.</summary>
+    ValueTask<SpaceList> ListSpacesAsync(ForeignWindowId? windowId = null, CancellationToken ct = default)
+        => ValueTask.FromResult(new SpaceList(Array.Empty<SpaceInfo>()));
 
     /// <summary>Move a window onto another Mission Control Space (bevel-44vg SPIKE): on macOS the
     /// helper calls private SkyLight <c>CGSMoveWindowsToManagedSpace</c> — the window is re-parented
     /// onto the target Space without switching any display. No public API and no entitlement is
-    /// involved; a symbol miss or refusal is a silent no-op. Default: unsupported (stubs).</summary>
-    Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, CancellationToken ct = default)
+    /// involved; a symbol miss or refusal is a silent no-op. <paramref name="ownerPid"/> (the pid the
+    /// caller saw when it enumerated the window, 0 = unknown) is verified against the resolved
+    /// window before moving, so a recycled window id is never moved. Default: unsupported (stubs).</summary>
+    Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default)
         => Task.CompletedTask;
 
     event EventHandler<ForeignWindow>? WindowOpened;

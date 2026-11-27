@@ -75,14 +75,71 @@ final class SkyLightSpaceTests: XCTestCase {
     }
 
     func testMultipleDisplaysEachCarryTheirOwnCurrentSpace() {
+        // Non-mirrored displays carry DISTINCT Space ids; each display's own current is marked.
         let spaces = SkyLight.parseManagedSpaces([
             display(uuid: "A", current: 1, spaces: [["id64": 1, "type": 0], ["id64": 2, "type": 0]]),
-            display(uuid: "B", current: 2, spaces: [["id64": 1, "type": 0], ["id64": 2, "type": 0]]),
+            display(uuid: "B", current: 4, spaces: [["id64": 3, "type": 0], ["id64": 4, "type": 0]]),
         ])
-        // Same Space ids exist on both displays; only the per-display current is marked.
         let onA = spaces.filter { $0.displayUUID == "A" }
         let onB = spaces.filter { $0.displayUUID == "B" }
+        XCTAssertEqual(onA.map(\.id), [1, 2])
         XCTAssertEqual(onA.map(\.isCurrent), [true, false])
+        XCTAssertEqual(onB.map(\.id), [3, 4])
         XCTAssertEqual(onB.map(\.isCurrent), [false, true])
+    }
+
+    func testMirroredDisplaysDedupeBySpaceID() {
+        // bevel-44vg review: mirrored displays list the SAME Space id once per display — the parse
+        // dedupes by id so the menu doesn't show each Space twice.
+        let spaces = SkyLight.parseManagedSpaces([
+            display(uuid: "A", current: 1, spaces: [["id64": 1, "type": 0], ["id64": 2, "type": 0]]),
+            display(uuid: "B", current: 1, spaces: [["id64": 1, "type": 0], ["id64": 2, "type": 0]]),
+        ])
+        XCTAssertEqual(spaces.map(\.id), [1, 2])
+        XCTAssertEqual(spaces.map(\.displayUUID), ["A", "A"])   // first sighting wins
+        XCTAssertEqual(spaces.map(\.isCurrent), [true, false])
+    }
+
+    func testFallbackDesktopRankStartsPastRealRanks() {
+        // bevel-44vg review: a user Space whose id64 is missing (ManagedSpaceID fallback) used to
+        // get rank 0 — "Desktop 1", colliding with the real first Desktop. Fallback ranks now start
+        // past the user-id list.
+        let spaces = SkyLight.parseManagedSpaces([
+            display(uuid: "D1", current: nil, spaces: [
+                ["id64": 100, "type": 0],
+                ["id64": 250, "type": 0],
+                ["ManagedSpaceID": 900, "type": 0],
+            ]),
+        ])
+        let byID = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0.name) })
+        XCTAssertEqual(byID[100], "Desktop 1")
+        XCTAssertEqual(byID[250], "Desktop 2")
+        XCTAssertEqual(byID[900], "Desktop 3")
+    }
+
+    func testCurrentSpaceHonorsManagedSpaceIDFallback() {
+        // bevel-44vg review: a "Current Space" entry without id64 still marks isCurrent via
+        // ManagedSpaceID.
+        let spaces = SkyLight.parseManagedSpaces([
+            [
+                "Display Identifier": "D1",
+                "Current Space": ["ManagedSpaceID": 8],
+                "Spaces": [["ManagedSpaceID": 8, "type": 0], ["id64": 9, "type": 0]],
+            ],
+        ])
+        let byID = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0.isCurrent) })
+        XCTAssertEqual(byID[8], true)
+        XCTAssertEqual(byID[9], false)
+    }
+
+    func testDuplicateLabelsAreDisambiguatedWithDisplayUUID() {
+        // bevel-44vg review: two displays can both synthesize "Desktop 1" — the duplicate labels
+        // get the display UUID appended so the menu rows stay distinguishable.
+        let spaces = SkyLight.parseManagedSpaces([
+            display(uuid: "A", current: 1, spaces: [["id64": 1, "type": 0]]),
+            display(uuid: "B", current: 3, spaces: [["id64": 3, "type": 0]]),
+        ])
+        XCTAssertEqual(spaces.map(\.name).sorted(), ["Desktop 1 (A)", "Desktop 1 (B)"])
+        XCTAssertEqual(spaces.map(\.id), [1, 3])
     }
 }

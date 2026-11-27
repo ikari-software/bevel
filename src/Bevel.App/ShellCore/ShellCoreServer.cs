@@ -520,6 +520,17 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 lock (_gate)
                     return new CoreResponse(Ok: true,
                         Windows: _windowById.Values.Select(w => w with { IconPng = null }).ToArray());
+            case CoreCommandKind.ListSpaces:
+                // bevel-44vg SPIKE: Spaces come from the PAL (the helper's private SkyLight read).
+                // The window id is optional context for the reply's WindowSpaceId.
+                var spaces = await _windows.ListSpacesAsync(
+                    cmd.WindowId is { } wid ? new ForeignWindowId(wid) : null, ct).ConfigureAwait(false);
+                return new CoreResponse(Ok: true, Spaces: spaces.Spaces, WindowSpaceId: spaces.WindowSpaceId);
+            case CoreCommandKind.MoveWindowToSpace:
+                await _windows.MoveWindowToSpaceAsync(Id(cmd),
+                    cmd.SpaceId ?? throw new ArgumentException("MoveWindowToSpace needs SpaceId"),
+                    cmd.OwnerPid ?? 0, ct).ConfigureAwait(false);
+                return CoreResponse.Success();
             case CoreCommandKind.Activate:
                 await _windows.ActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Minimize:

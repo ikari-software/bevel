@@ -486,9 +486,14 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     expectedKey: self.expectedKey,
                     expectedCapability: "window"
                 )
-                _ = try await ServerRequest(stream: request)
+                let req = try await ServerRequest(stream: request)
                 var reply = Bevel_Helper_V1_ListSpacesReply()
-                reply.spaces = self.listSpaces()
+                reply.spaces = self.listSpaces(windowID: req.message.windowID)
+                // The Space the requested window lives on, 0 when none/unknown (bevel-44vg review):
+                // the "Move to Space" menu disables THAT row, not the display's current Space.
+                if let cgID = CGWindowID(req.message.windowID) {
+                    reply.windowSpaceID = UInt64(SkyLight.spaceIDs(ofWindow: cgID).first ?? 0)
+                }
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -508,8 +513,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                     expectedCapability: "window"
                 )
                 let req = try await ServerRequest(stream: request)
+                // Int(exactly:) — a plain Int(...) would TRAP on a space id ≥ 2^63 (bevel-44vg review).
                 let ok = try self.moveWindowToSpace(
-                    windowID: req.message.windowID, spaceID: Int(req.message.spaceID))
+                    windowID: req.message.windowID, spaceID: req.message.spaceID,
+                    ownerPID: req.message.ownerPid)
                 var reply = Bevel_Helper_V1_MoveWindowToSpaceReply()
                 reply.ok = ok
                 return StreamingServerResponse(single: ServerResponse(message: reply))
@@ -1419,7 +1426,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     /// Every Mission Control Space on every display (bevel-44vg): private SkyLight only. Empty when
     /// the symbols are missing — the caller then offers no "Move to Space" submenu at all.
-    func listSpaces() -> [Bevel_Helper_V1_SpaceInfo] {
+    /// `windowID` (may be empty) only feeds the reply's window_space_id via the ListSpaces handler.
+    func listSpaces(windowID: String = "") -> [Bevel_Helper_V1_SpaceInfo] {
         SkyLight.managedSpaces().map { space in
             var info = Bevel_Helper_V1_SpaceInfo()
             info.id = UInt64(space.id)
@@ -1436,8 +1444,25 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// one — without switching any display. Returns false (window untouched) when the private
     /// symbol is missing or the WindowServer call refuses; throws notFound/invalidArgument for a
     /// window id that no longer resolves, same as the other window verbs.
-    func moveWindowToSpace(windowID: String, spaceID: Int) throws -> Bool {
+    ///
+    /// Guards (bevel-44vg review): `spaceID` goes through `Int(exactly:)` — a plain `Int(...)`
+    /// traps on a value ≥ 2^63 — and is validated against the ids `managedSpaces()` actually
+    /// reports, so a bogus id is invalidArgument instead of a WindowServer refusal; and when
+    /// `ownerPID` is non-zero it must match the resolved entry's `kCGWindowOwnerPID`, so a
+    /// recycled window id (the number now belongs to a different process) is never moved.
+    func moveWindowToSpace(windowID: String, spaceID: UInt64, ownerPID: Int32 = 0) throws -> Bool {
+        guard let spaceID = Int(exactly: spaceID) else {
+            throw RPCError(code: .invalidArgument, message: "Invalid space_id: \(spaceID)")
+        }
         let target = try resolveWindow(windowID: windowID)
+        if ownerPID != 0, target.pid != ownerPID {
+            // The window number was recycled since the caller enumerated it — moving "it"
+            // would move the wrong window entirely.
+            return false
+        }
+        guard SkyLight.managedSpaces().contains(where: { $0.id == spaceID }) else {
+            throw RPCError(code: .invalidArgument, message: "Unknown space_id: \(spaceID)")
+        }
         return SkyLight.moveWindowToSpace(cgID: target.cgID, spaceID: spaceID)
     }
 

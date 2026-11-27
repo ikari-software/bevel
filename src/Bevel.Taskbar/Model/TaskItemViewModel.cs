@@ -50,6 +50,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         // id is "app:<bundle>", so parse it as a fallback.
         BundleId = w.BundleId ?? (w.Id.Value.StartsWith("app:") ? w.Id.Value["app:".Length..] : null);
         BundlePath = w.BundlePath;
+        Pid = w.Pid;
         Update(w);
         if (w.IsFocused)
             SetFocused(true);
@@ -70,8 +71,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         string.IsNullOrEmpty(BundleId) ? Task.CompletedTask : _windows.HideAppAsync(BundleId);
 
     /// <summary>Move this window onto another Mission Control Space (bevel-44vg SPIKE, dev-flagged):
-    /// on macOS a private-SkyLight re-parent in the helper; a no-op on backends without the verb.</summary>
-    public Task MoveToSpaceAsync(ulong spaceId) => _windows.MoveWindowToSpaceAsync(Id, spaceId);
+    /// on macOS a private-SkyLight re-parent in the helper; a no-op on backends without the verb.
+    /// Carries the owner pid so the helper can refuse a recycled window id (bevel-44vg review).</summary>
+    public Task MoveToSpaceAsync(ulong spaceId) => _windows.MoveWindowToSpaceAsync(Id, spaceId, Pid);
 
     public ForeignWindowId Id { get; }
 
@@ -89,6 +91,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Owning app's bundle path on disk (bevel-4nct), carried for the context menu's
     /// "Show in Finder" verb. Null when the window manager did not know it — the verb is omitted then.</summary>
     public string? BundlePath { get; private set; }
+
+    /// <summary>Owning process id (bevel-44vg review): sent with MoveToSpace so the helper can verify
+    /// the window id has not been recycled since this button was built. 0 when unknown.</summary>
+    public int Pid { get; private set; }
 
     public string Title
     {
@@ -267,6 +273,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         IsFullscreen = w.IsFullscreen;
         IsOnOtherSpace = w.IsOnOtherSpace;
         BundlePath = w.BundlePath;
+        Pid = w.Pid;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
     }

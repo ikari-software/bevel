@@ -184,12 +184,13 @@ public sealed class ShellModel : IDisposable
 
     /// <summary>Every Mission Control Space on every display (bevel-44vg SPIKE, dev-flagged menu):
     /// empty when the PAL has no such verb or the helper is down — the caller then omits the
-    /// "Move to Space" submenu entirely rather than showing a dead one.</summary>
-    public async System.Threading.Tasks.ValueTask<IReadOnlyList<SpaceInfo>> ListSpacesAsync(
-        System.Threading.CancellationToken ct = default)
+    /// "Move to Space" submenu entirely rather than showing a dead one. <paramref name="windowId"/>
+    /// names the window whose current Space comes back as <see cref="SpaceList.WindowSpaceId"/>.</summary>
+    public async System.Threading.Tasks.ValueTask<SpaceList> ListSpacesAsync(
+        ForeignWindowId? windowId = null, System.Threading.CancellationToken ct = default)
         => _windows is null
-            ? Array.Empty<SpaceInfo>()
-            : await _windows.ListSpacesAsync(ct).ConfigureAwait(false);
+            ? new SpaceList(Array.Empty<SpaceInfo>())
+            : await _windows.ListSpacesAsync(windowId, ct).ConfigureAwait(false);
 
     /// <summary>
     /// Subscribes to PAL window events and starts the reconcile loop — everything the taskbar

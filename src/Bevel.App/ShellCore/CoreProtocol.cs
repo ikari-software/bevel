@@ -165,6 +165,16 @@ public enum CoreCommandKind
     /// stream that built the projection, asks for this instead. NOT for a reconcile backstop: a
     /// projection polled against itself can only ever agree (see IProjectedWindowSource).</summary>
     EnumerateWindowsProjected,
+    /// <summary>UI→core: pull every Mission Control Space (bevel-44vg SPIKE). The window id rides
+    /// <see cref="CoreCommand.WindowId"/>; the reply carries <see cref="CoreResponse.Spaces"/> plus
+    /// <see cref="CoreResponse.WindowSpaceId"/> — the Space that window currently lives on, which the
+    /// caller disables in its "Move to Space" menu.</summary>
+    ListSpaces,
+    /// <summary>UI→core: move a window onto another Space (bevel-44vg SPIKE). Window id rides
+    /// <see cref="CoreCommand.WindowId"/>, target Space <see cref="CoreCommand.SpaceId"/>, and the
+    /// owner pid the caller saw at enumeration time <see cref="CoreCommand.OwnerPid"/> (recycled-id
+    /// guard). NOT replayable — a replayed move could hit a recycled window id.</summary>
+    MoveWindowToSpace,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -190,7 +200,13 @@ public sealed record CoreCommand(
     /// must be parked + pressed rather than clicked in place (bevel-6fin).</summary>
     bool Park = false,
     /// <summary>SetTrayHidden: the new consolidation state (true = the native menu bar is hidden).</summary>
-    bool Hidden = false);
+    bool Hidden = false,
+    /// <summary>MoveWindowToSpace: the target Space id (CGS id64).</summary>
+    ulong? SpaceId = null,
+    /// <summary>MoveWindowToSpace: the owner pid the caller saw when it enumerated the window
+    /// (bevel-44vg review) — the helper verifies it against the resolved window before moving,
+    /// so a recycled window id is never moved. 0/null = unknown, check skipped.</summary>
+    int? OwnerPid = null);
 
 /// <summary>The core's reply to a <see cref="CoreCommand"/>. <see cref="Ok"/>=false carries <see cref="Error"/>;
 /// the query commands fill the matching list.</summary>
@@ -207,7 +223,12 @@ public sealed record CoreResponse(
     /// <summary>GetSettings: the settings store version the blob was read at.</summary>
     int? SettingsVersion = null,
     /// <summary>GetTrayItems: the core's current mirrored-tray projection (bevel-4zfs).</summary>
-    IReadOnlyList<TrayItem>? TrayItems = null)
+    IReadOnlyList<TrayItem>? TrayItems = null,
+    /// <summary>ListSpaces: every Mission Control Space on every display (bevel-44vg SPIKE).</summary>
+    IReadOnlyList<SpaceInfo>? Spaces = null,
+    /// <summary>ListSpaces: the Space <see cref="CoreCommand.WindowId"/> currently lives on
+    /// (null when unknown / no window was named) — the row the caller disables in its menu.</summary>
+    ulong? WindowSpaceId = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

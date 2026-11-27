@@ -49,8 +49,10 @@ public static class TaskButtonMenu
 
     /// <summary>bevel-44vg: one "Move to Space ▶" row — a Mission Control Space the window can be
     /// moved onto. The view supplies the list (fetched before the menu opens, like tabs) only when the
-    /// dev flag is on; null/empty means the whole submenu is omitted.</summary>
-    public sealed record SpaceMenuRow(ulong Id, string Label, bool IsCurrent);
+    /// dev flag is on; null/empty means the whole submenu is omitted. <see cref="IsWindowSpace"/> marks
+    /// the Space the WINDOW itself currently lives on (not the display's current Space) — that row is
+    /// disabled, since moving onto the window's own Space is a no-op.</summary>
+    public sealed record SpaceMenuRow(ulong Id, string Label, bool IsWindowSpace);
 
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
@@ -120,9 +122,9 @@ public static class TaskButtonMenu
                 // bevel-kpkx: the macOS green-button zoom (Windows: Maximize).
                 per.Items.Add(new MenuItem { Header = "Ma_ximize", Command = win.ZoomCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
-                // bevel-44vg (dev-flagged): "Move to Space ▶" per window, one row per Space. The
-                // current Space is disabled — moving onto the Space the window already lives on is
-                // a no-op the WindowServer would refuse anyway.
+                // bevel-44vg (dev-flagged): "Move to Space ▶" per window, one row per Space. The row
+                // matching the WINDOW's own Space is disabled (bevel-44vg review) — moving onto the
+                // Space the window already lives on is a no-op the WindowServer would refuse anyway.
                 if (spaces is { Count: > 0 })
                 {
                     var moveToSpace = new MenuItem { Header = "Move to _Space" };
@@ -132,7 +134,7 @@ public static class TaskButtonMenu
                         moveToSpace.Items.Add(new MenuItem
                         {
                             Header = EscapeHeader(captured.Label),
-                            IsEnabled = !captured.IsCurrent,
+                            IsEnabled = !captured.IsWindowSpace,
                             Command = new AsyncRelayCommand(() => win.MoveToSpace(captured.Id)),
                         });
                     }

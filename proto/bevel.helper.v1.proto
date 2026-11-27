@@ -323,15 +323,27 @@ message SpaceInfo {
   bool is_current = 5;
 }
 
-message ListSpacesRequest {}
+message ListSpacesRequest {
+  // Window the caller is asking about (bevel-44vg review): when set, the reply's
+  // window_space_id names the Space that window currently lives on, so the caller can
+  // disable that row in its "Move to Space" menu. Empty = no window context.
+  string window_id = 1;
+}
 
 message ListSpacesReply {
   repeated SpaceInfo spaces = 1;
+  // The Space the requested window currently lives on (first of SkyLight.spaceIDs(ofWindow:)),
+  // 0 when unknown or no window was requested (bevel-44vg review).
+  uint64 window_space_id = 2;
 }
 
 message MoveWindowToSpaceRequest {
   string window_id = 1;
   uint64 space_id = 2;
+  // Owner pid the caller saw when it enumerated the window (bevel-44vg review): the VM
+  // verifies the resolved window's kCGWindowOwnerPID against it before moving, so a recycled
+  // window id cannot be moved. 0 = unknown, check skipped.
+  int32 owner_pid = 3;
 }
 
 message MoveWindowToSpaceReply {

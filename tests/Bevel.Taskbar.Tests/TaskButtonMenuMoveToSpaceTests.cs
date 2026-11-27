@@ -12,15 +12,16 @@ namespace Bevel.Taskbar.Tests;
 
 /// <summary>
 /// The per-window "Move to _Space" submenu in the task-button context menu (bevel-44vg, dev-flagged
-/// at the call site): present only when the caller supplies a Space list (fetched before the menu
-/// opens), one row per Space with the current Space disabled, and the command reaching
-/// IWindowManager.MoveWindowToSpaceAsync with the exact window id + Space id.
+/// at the call site): present only when the caller supplies a non-empty Space list (fetched before
+/// the menu opens), one row per Space with the WINDOW's own Space disabled (not the display's
+/// current one), and the command reaching IWindowManager.MoveWindowToSpaceAsync with the exact
+/// window id + Space id + owner pid.
 /// </summary>
 public class TaskButtonMenuMoveToSpaceTests
 {
     private sealed class RecordingWm : IWindowManager
     {
-        public List<(ForeignWindowId Window, ulong Space)> Moves { get; } = [];
+        public List<(ForeignWindowId Window, ulong Space, int OwnerPid)> Moves { get; } = [];
         public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
         public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
@@ -29,9 +30,9 @@ public class TaskButtonMenuMoveToSpaceTests
         public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, CancellationToken ct = default)
+        public Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default)
         {
-            lock (Moves) Moves.Add((id, spaceId));
+            lock (Moves) Moves.Add((id, spaceId, ownerPid));
             return Task.CompletedTask;
         }
         public event EventHandler<ForeignWindow>? WindowOpened;
@@ -40,18 +41,20 @@ public class TaskButtonMenuMoveToSpaceTests
         public event EventHandler<ForeignWindow>? ForegroundChanged;
     }
 
+    // IsWindowSpace marks the WINDOW's own Space (bevel-44vg review: the disabled row is the
+    // window's Space, not the display's current one) — here "Desktop 2" (250).
     private static readonly IReadOnlyList<TaskButtonMenu.SpaceMenuRow> Spaces =
     [
-        new(100, "Desktop 1", true),
-        new(250, "Desktop 2", false),
+        new(100, "Desktop 1", false),
+        new(250, "Desktop 2", true),
     ];
 
-    private static (TaskItemViewModel Vm, RecordingWm Wm) SingleWindowVm()
+    private static (TaskItemViewModel Vm, RecordingWm Wm) SingleWindowVm(int pid = 0)
     {
         var wm = new RecordingWm();
         var vm = new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w1"), "Doc", "fake.app", false, false,
-                new PalRect(100, 100, 800, 600), BundleId: "fake.app"),
+                new PalRect(100, 100, 800, 600), BundleId: "fake.app", Pid: pid),
             wm);
         return (vm, wm);
     }
@@ -79,7 +82,7 @@ public class TaskButtonMenuMoveToSpaceTests
     }
 
     [AvaloniaFact]
-    public void Submenu_lists_every_space_after_close_with_current_disabled()
+    public void Submenu_lists_every_space_with_the_windows_own_space_disabled()
     {
         var (vm, _) = SingleWindowVm();
         var flyout = TaskButtonMenu.Build(vm, tabs: null, tabProvider: null, spaces: Spaces);
@@ -91,8 +94,31 @@ public class TaskButtonMenuMoveToSpaceTests
         var submenu = MoveToSpaceSubmenu(row)!;
         var rows = submenu.Items.OfType<MenuItem>().ToList();
         Assert.Equal(new[] { "Desktop 1", "Desktop 2" }, rows.Select(m => m.Header as string).ToList());
-        Assert.False(rows[0].IsEnabled);   // current Space: moving there is a no-op
-        Assert.True(rows[1].IsEnabled);
+        Assert.True(rows[0].IsEnabled);    // the display's current Space is NOT disabled…
+        Assert.False(rows[1].IsEnabled);   // …the WINDOW's own Space is: moving there is a no-op
+    }
+
+    [AvaloniaFact]
+    public void No_submenu_when_spaces_list_is_empty()
+    {
+        var (vm, _) = SingleWindowVm();
+        var flyout = TaskButtonMenu.Build(vm, tabs: null, tabProvider: null, spaces: Array.Empty<TaskButtonMenu.SpaceMenuRow>());
+
+        var row = Assert.Single(WindowRows(flyout));
+        Assert.Null(MoveToSpaceSubmenu(row));
+    }
+
+    [AvaloniaFact]
+    public void Space_labels_have_underscores_escaped_in_headers()
+    {
+        var (vm, _) = SingleWindowVm();
+        IReadOnlyList<TaskButtonMenu.SpaceMenuRow> spaces = [new(100, "Desk_top 1", false)];
+        var flyout = TaskButtonMenu.Build(vm, tabs: null, tabProvider: null, spaces: spaces);
+
+        var row = Assert.Single(WindowRows(flyout));
+        var submenu = MoveToSpaceSubmenu(row)!;
+        var headers = submenu.Items.OfType<MenuItem>().Select(m => m.Header as string).ToList();
+        Assert.Equal(new[] { "Desk__top 1" }, headers);
     }
 
     [AvaloniaFact]
@@ -108,7 +134,23 @@ public class TaskButtonMenuMoveToSpaceTests
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
         while (wm.Moves.Count == 0 && DateTime.UtcNow < deadline) Thread.Sleep(10);
-        Assert.Equal(new[] { (new ForeignWindowId("w1"), 250UL) }, wm.Moves);
+        Assert.Equal(new[] { (new ForeignWindowId("w1"), 250UL, 0) }, wm.Moves);
+    }
+
+    [AvaloniaFact]
+    public void Space_command_forwards_the_windows_owner_pid()
+    {
+        var (vm, wm) = SingleWindowVm(pid: 4242);
+        var flyout = TaskButtonMenu.Build(vm, tabs: null, tabProvider: null, spaces: Spaces);
+
+        var row = Assert.Single(WindowRows(flyout));
+        MoveToSpaceSubmenu(row)!.Items.OfType<MenuItem>()
+            .Single(m => (m.Header as string) == "Desktop 1")
+            .Command!.Execute(null);
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (wm.Moves.Count == 0 && DateTime.UtcNow < deadline) Thread.Sleep(10);
+        Assert.Equal(new[] { (new ForeignWindowId("w1"), 100UL, 4242) }, wm.Moves);
     }
 
     [AvaloniaFact]
@@ -133,6 +175,6 @@ public class TaskButtonMenuMoveToSpaceTests
             .Command!.Execute(null);
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
         while (wm.Moves.Count == 0 && DateTime.UtcNow < deadline) Thread.Sleep(10);
-        Assert.Equal(new[] { (new ForeignWindowId("w2"), 250UL) }, wm.Moves);
+        Assert.Equal(new[] { (new ForeignWindowId("w2"), 250UL, 0) }, wm.Moves);
     }
 }
