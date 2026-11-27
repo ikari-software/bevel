@@ -23,6 +23,8 @@ DMG release lane exist. `Bevel.Pal.Windows` / `Bevel.Pal.Linux` and Flat are sti
 
 See open work with `bd ready`; the design spec is in [`docs/spec/`](docs/spec/).
 
+**User docs:** [Guide](docs/user/guide.md) · [Known issues](docs/user/known-issues.md) · [Uninstall](docs/user/uninstall.md)
+
 **Site:** [bevel.run](https://bevel.run/) (canonical). Alias:
 [ikari.software/bevel-desktop](https://ikari.software/bevel-desktop) → 301 to the former.
 Static Velopack feed directory (empty until first release):
