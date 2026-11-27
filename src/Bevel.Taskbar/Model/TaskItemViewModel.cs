@@ -283,10 +283,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         if (w.BundleId is { Length: > 0 } b) BundleId = b;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
-        // Attention (bevel-qb19): a NEW non-zero stamp starts the animation, unless this window is
-        // already focused (activation is the acknowledgement). The same value again is a no-op, so
-        // the 500ms poll re-sending the sticky stamp never re-triggers.
-        if (w.AttentionAt > 0 && w.AttentionAt != _attentionAt)
+        // Attention (bevel-qb19): only a STRICTLY NEWER non-zero stamp is an event (the helper
+        // suppresses re-stamps within its min-re-trigger interval, and the 500ms poll re-sends the
+        // sticky value — both must be no-ops), unless this window is already focused (activation is
+        // the acknowledgement). App-presence (windowless) entries never animate: the icon-only
+        // button must not pulse.
+        if (!IsAppPresence && w.AttentionAt > 0 && w.AttentionAt > _attentionAt)
         {
             _attentionAt = w.AttentionAt;
             if (!IsFocused)
@@ -311,6 +313,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     // MaxPulses cycles; until-activated runs until activation/close.
 
     private long _attentionAt;
+    private long _attentionFirstStamp;   // first stamp of the current Active run — the settle deadline anchors here
+    private bool _settleArmed;           // a bounded settle timer is pending (don't re-arm while armed)
     private TaskAttentionState _attentionState;
 
     /// <summary>Raw attention stamp (unix ms, 0 = none) exactly as the helper last reported it.</summary>
@@ -334,18 +338,50 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 
     private void StartAttention()
     {
+        var wasActive = AttentionState == TaskAttentionState.Active;
+        if (!wasActive)
+            _attentionFirstStamp = _attentionAt;   // the settle deadline anchors at the FIRST stamp
         AttentionState = TaskAttentionState.Active;
         // Bounded mode arms the settle timer; until-activated (and the static modes, which resolve
         // to a tint immediately) run no timer and stop only on activation/close.
         if (_attention.EffectiveDuration == TaskbarAttentionDuration.Bounded &&
             _attention.EffectiveAnimation is TaskbarAttentionAnimation.Pulse or TaskbarAttentionAnimation.Sweep)
-            _attentionTimer.Start(TaskAttentionPolicy.BoundedSettleDelay, SettleAttention);
+        {
+            if (!wasActive)
+            {
+                _attentionTimer.Start(TaskAttentionPolicy.BoundedSettleDelay, SettleAttention);
+                _settleArmed = true;
+            }
+            else if (!_settleArmed)
+            {
+                // The policy flipped into bounded mid-run (settings live-apply): arm with the
+                // REMAINING budget measured from the first stamp, not a fresh full delay.
+                _attentionTimer.Start(RemainingSettleDelay(), SettleAttention);
+                _settleArmed = true;
+            }
+            // Already Active with the settle timer pending: a newer stamp NEVER re-arms it —
+            // the deadline stays firstStamp + BoundedSettleDelay, so a title-chatty background
+            // app still settles instead of pulsing forever.
+        }
         else
+        {
             _attentionTimer.Stop();
+            _settleArmed = false;
+        }
+    }
+
+    /// <summary>The bounded budget left, measured from the first stamp of this Active run
+    /// (both are helper unix-ms stamps on the same machine clock). Never negative.</summary>
+    private TimeSpan RemainingSettleDelay()
+    {
+        var elapsedMs = Math.Max(0, _attentionAt - _attentionFirstStamp);
+        var remaining = TaskAttentionPolicy.BoundedSettleDelay - TimeSpan.FromMilliseconds(elapsedMs);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
     private void SettleAttention()
     {
+        _settleArmed = false;
         if (AttentionState == TaskAttentionState.Active)
             AttentionState = TaskAttentionState.Settled;
     }
@@ -355,6 +391,7 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     public void StopAttention()
     {
         _attentionTimer.Stop();
+        _settleArmed = false;
         AttentionState = TaskAttentionState.Idle;
     }
 

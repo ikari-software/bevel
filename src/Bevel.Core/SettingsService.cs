@@ -736,10 +736,12 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
             TaskbarReclickMinimize = Enum.TryParse<TaskbarReclickMinimize>(GetString("taskbarReclickMinimize"), out var trm)
                 ? trm : TaskbarReclickMinimize.Click,
+            // bevel-qb19 review: Enum.IsDefined rejects numeric out-of-range values ("99" parses
+            // fine with TryParse alone and would stick as an undefined enum member).
             TaskbarAttentionAnimation = Enum.TryParse<TaskbarAttentionAnimation>(GetString("taskbarAttentionAnimation"), out var taa)
-                ? taa : TaskbarAttentionAnimation.Pulse,
+                && Enum.IsDefined(taa) ? taa : TaskbarAttentionAnimation.Pulse,
             TaskbarAttentionDuration = Enum.TryParse<TaskbarAttentionDuration>(GetString("taskbarAttentionDuration"), out var tad)
-                ? tad : TaskbarAttentionDuration.Bounded,
+                && Enum.IsDefined(tad) ? tad : TaskbarAttentionDuration.Bounded,
             TaskbarWindowSort = Enum.TryParse<TaskbarWindowSort>(GetString("taskbarWindowSort"), out var tws)
                 ? tws : TaskbarWindowSort.OpenOrder,
             WindowlessAppsLast = GetBool("windowlessAppsLast") ?? false,

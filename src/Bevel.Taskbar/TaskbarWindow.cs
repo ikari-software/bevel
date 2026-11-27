@@ -748,13 +748,28 @@ internal static class TaskbarNative
 
     /// <summary>True iff macOS Reduce Motion (com.apple.universalaccess reduceMotion) is on, via
     /// <c>[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion</c> (bevel-qb19: forces
-    /// the taskbar attention animation to tint-only). Non-macOS or a failed lookup reports false.</summary>
+    /// the taskbar attention animation to tint-only). Fails CLOSED (bevel-qb19 review): any failed
+    /// lookup on macOS reports reduce-motion ON — animating when the flag is unknown is the
+    /// accessibility harm, a spurious tint-only is only cosmetic. Non-macOS has no such OS setting
+    /// and reports false (no lookup was attempted — that is not a failure).</summary>
     public static bool ReduceMotionOn()
     {
-        if (!OperatingSystem.IsMacOS() || cls_NSWorkspace == IntPtr.Zero) return false;
-        var ws = MacObjC.SendIntPtr(cls_NSWorkspace, sel_sharedWorkspace);
-        if (ws == IntPtr.Zero) return false;
-        return MacObjC.SendByte(ws, sel_accessibilityDisplayShouldReduceMotion) != 0;
+        if (!OperatingSystem.IsMacOS()) return false;
+        var classFound = cls_NSWorkspace != IntPtr.Zero;
+        var ws = classFound ? MacObjC.SendIntPtr(cls_NSWorkspace, sel_sharedWorkspace) : IntPtr.Zero;
+        var probe = ws != IntPtr.Zero ? MacObjC.SendByte(ws, sel_accessibilityDisplayShouldReduceMotion) : (byte)0;
+        return EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: classFound,
+            workspaceInstanceFound: ws != IntPtr.Zero, probeResult: probe);
+    }
+
+    /// <summary>Pure core of <see cref="ReduceMotionOn"/> — fail CLOSED: on macOS, any failed lookup
+    /// (class or shared-workspace instance) means "assume reduce motion ON". Internal so tests drive
+    /// every failure combination without touching ObjC.</summary>
+    internal static bool EvaluateReduceMotion(bool isMacOS, bool nsWorkspaceClassFound, bool workspaceInstanceFound, byte probeResult)
+    {
+        if (!isMacOS) return false;   // no such OS setting off macOS — not a lookup failure
+        if (!nsWorkspaceClassFound || !workspaceInstanceFound) return true;   // fail CLOSED
+        return probeResult != 0;
     }
 
     // ── Global mouse-down monitor for click-outside dismiss (bevel-ww71) ──────

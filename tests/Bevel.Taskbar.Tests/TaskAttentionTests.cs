@@ -61,13 +61,14 @@ public sealed class TaskAttentionTests
 #pragma warning restore CS0067
     }
 
-    private static ForeignWindow Win(long attentionAt = 0, bool focused = false) => new(
-        new ForeignWindowId("w-1"),
+    private static ForeignWindow Win(long attentionAt = 0, bool focused = false, bool isAppPresence = false) => new(
+        new ForeignWindowId(isAppPresence ? "app:com.example.app" : "w-1"),
         Title: "Doc",
         AppId: "com.example.app",
         IsMinimized: false,
         IsFocused: focused,
         Bounds: new PalRect(0, 0, 100, 100),
+        IsAppPresence: isAppPresence,
         AttentionAt: attentionAt);
 
     private static (TaskItemViewModel vm, ManualAttentionTimer timer, TaskAttentionPolicy policy) Make(
@@ -251,5 +252,118 @@ public sealed class TaskAttentionTests
 
         Assert.Equal(TaskAttentionState.Active, vm.AttentionState);
         Assert.Equal(TaskAttentionVisual.Pulse, vm.AttentionVisual);
+    }
+
+    // ── bevel-qb19 review regressions ────────────────────────────────────
+
+    [Fact]
+    public void MaxPulses_is_pinned_to_three_literally()
+    {
+        // The bounded flash-then-tint contract is "3 pulses" — pinned so a drive-by change to the
+        // constant can't silently stretch the animation (BoundedSettleDelay derives from it).
+        Assert.Equal(3, TaskAttentionPolicy.MaxPulses);
+        Assert.Equal(TaskAttentionPolicy.PulsePeriod * 3, TaskAttentionPolicy.BoundedSettleDelay);
+    }
+
+    [Fact]
+    public void A_title_chatty_window_never_re_arms_the_settle_timer_and_still_settles()
+    {
+        // bevel-qb19 review: each new title-change stamp used to stop+recreate the settle timer,
+        // so a chatty background app pulsed forever. The deadline anchors at the FIRST stamp.
+        var (vm, timer, _) = Make(duration: TaskbarAttentionDuration.Bounded);
+        vm.Update(Win(attentionAt: 1000));
+        Assert.Equal(TaskAttentionState.Active, vm.AttentionState);
+        Assert.Equal(1, timer.StartCount);
+        Assert.Equal(TaskAttentionPolicy.BoundedSettleDelay, timer.Due);
+
+        vm.Update(Win(attentionAt: 2000));   // title changed again while Active
+        vm.Update(Win(attentionAt: 3000));   // ...and again
+        vm.Update(Win(attentionAt: 3400));
+
+        Assert.Equal(3400, vm.AttentionAt);               // the stamp is recorded...
+        Assert.Equal(1, timer.StartCount);                // ...but the settle timer is NOT re-armed
+        Assert.Equal(TaskAttentionPolicy.BoundedSettleDelay, timer.Due);
+        Assert.Equal(TaskAttentionState.Active, vm.AttentionState);
+
+        timer.Fire();   // the original (first-stamp-anchored) timer still fires
+
+        Assert.Equal(TaskAttentionState.Settled, vm.AttentionState);   // bounded still settles
+        Assert.Equal(TaskAttentionVisual.Tint, vm.AttentionVisual);
+    }
+
+    [Fact]
+    public void Only_a_strictly_newer_stamp_is_an_event()
+    {
+        // bevel-qb19 review: the compare is `>` (not `!=`) — an older/equal stamp (clock skew,
+        // re-ordered delivery) must not retrigger or regress the recorded stamp.
+        var (vm, timer, _) = Make();
+        vm.Update(Win(attentionAt: 5000));
+        Assert.Equal(1, timer.StartCount);
+
+        vm.Update(Win(attentionAt: 3000));   // older — not an event
+        Assert.Equal(5000, vm.AttentionAt);
+        Assert.Equal(1, timer.StartCount);
+
+        vm.Update(Win(attentionAt: 5000));   // equal — not an event either
+        Assert.Equal(5000, vm.AttentionAt);
+        Assert.Equal(1, timer.StartCount);
+        Assert.Equal(TaskAttentionState.Active, vm.AttentionState);
+    }
+
+    [Fact]
+    public void App_presence_entries_never_animate()
+    {
+        // bevel-qb19 review: an app-presence (windowless) entry must not pulse even if it carries
+        // a stamp — the icon-only button animating on last-window-close was noise.
+        var (vm, timer, _) = Make(w: Win(isAppPresence: true));
+        Assert.True(vm.IsAppPresence);
+
+        vm.Update(Win(attentionAt: 1000, isAppPresence: true));
+
+        Assert.Equal(0, vm.AttentionAt);                     // not even recorded
+        Assert.Equal(TaskAttentionState.Idle, vm.AttentionState);
+        Assert.Equal(TaskAttentionVisual.None, vm.AttentionVisual);
+        Assert.Equal(0, timer.StartCount);
+    }
+
+    [Fact]
+    public void A_group_button_mirrors_a_child_s_active_attention_visual()
+    {
+        // One child of a grouped app goes Active → the group button flashes too.
+        var policy = new TaskAttentionPolicy
+        {
+            Animation = TaskbarAttentionAnimation.Pulse,
+            Duration = TaskbarAttentionDuration.Bounded,
+        };
+        var timer = new ManualAttentionTimer();
+        var child = new TaskItemViewModel(Win(), new StubWindows(), attention: policy, attentionTimer: timer);
+        var group = new TaskGroupViewModel("com.example.app");
+        group.Windows.Add(child);
+
+        Assert.Equal(TaskAttentionVisual.None, group.AttentionVisual);
+
+        child.Update(Win(attentionAt: 1000));
+
+        Assert.Equal(TaskAttentionState.Active, child.AttentionState);
+        Assert.Equal(TaskAttentionVisual.Pulse, child.AttentionVisual);
+        Assert.Equal(TaskAttentionVisual.Pulse, group.AttentionVisual);   // group mirrors the child
+
+        child.SetFocused(true);   // acknowledged
+        Assert.Equal(TaskAttentionVisual.None, group.AttentionVisual);
+    }
+
+    [Fact]
+    public void Reduce_motion_probe_fails_closed_on_any_lookup_error()
+    {
+        // bevel-qb19 review: the probe used to fail OPEN (false on any lookup error). Fail CLOSED:
+        // on macOS an unanswerable probe means "assume reduce motion ON" (tint-only).
+        Assert.False(TaskbarNative.EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: true, workspaceInstanceFound: true, probeResult: 0));
+        Assert.True(TaskbarNative.EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: true, workspaceInstanceFound: true, probeResult: 1));
+        Assert.True(TaskbarNative.EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: false, workspaceInstanceFound: false, probeResult: 0),
+            "class lookup failed → closed (assume reduced motion)");
+        Assert.True(TaskbarNative.EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: true, workspaceInstanceFound: false, probeResult: 0),
+            "shared-workspace lookup failed → closed (assume reduced motion)");
+        Assert.False(TaskbarNative.EvaluateReduceMotion(isMacOS: false, nsWorkspaceClassFound: false, workspaceInstanceFound: false, probeResult: 0),
+            "non-macOS has no such OS setting — not a failure, reports false");
     }
 }

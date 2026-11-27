@@ -197,6 +197,66 @@ public class RenderTaskAttentionTest
         }
     }
 
+    [AvaloniaFact]
+    public void Attention_overlay_timer_pauses_while_the_taskbar_window_is_hidden()
+    {
+        // bevel-qb19 review: hiding the taskbar window does NOT detach the visual tree, so the
+        // until-activated 25fps DispatcherTimer used to keep running on a hidden bar. It must pause
+        // on top-level IsVisible=false and resume on show.
+        try
+        {
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+            var model = new ShellModel(null, null, null, usage: TestUsage.Scratch());
+            var vm = new TaskbarViewModel(model, new StartMenuViewModel(model));
+            var wm = new StubWindowManager();
+            var view = new TaskbarView { DataContext = vm };
+            view.Initialize(TestSettings.NoStacks(new BevelSettings
+            {
+                TaskbarButtonWidth = 150,
+                TaskbarGrouping = TaskbarGroupingMode.Never,
+                // until-activated: no settle timer — the overlay's own animation timer is the
+                // perpetual one this test is about.
+                TaskbarAttentionDuration = TaskbarAttentionDuration.UntilActivated,
+            }));
+            var window = new TaskbarWindow(null, rows: 1) { Content = view, Width = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var policy = new TaskAttentionPolicy
+            {
+                Animation = TaskbarAttentionAnimation.Pulse,
+                Duration = TaskbarAttentionDuration.UntilActivated,
+            };
+            var item = new TaskItemViewModel(
+                new ForeignWindow(new ForeignWindowId("w-hide"), "Doc", "App", false, false, default),
+                wm, attention: policy, attentionTimer: new ManualAttentionTimer()) { Width = 150, Opacity = 1 };
+            model.Windows.Add(item);
+            Dispatcher.UIThread.RunJobs();
+
+            var overlay = view.GetVisualDescendants().OfType<TaskAttentionOverlay>()
+                .Single(o => ReferenceEquals(o.DataContext, item));
+            // AutoTick left true: the production timer path. Drive the stamp through the VM.
+            item.Update(new ForeignWindow(new ForeignWindowId("w-hide"), "Doc", "App", false, false, default)
+            { AttentionAt = 1000 });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(TaskAttentionVisual.Pulse, overlay.Mode);
+            Assert.True(overlay.TimerRunningForTest, "visible bar: the animation timer runs");
+
+            window.IsVisible = false;   // hidden bar — visual tree stays attached
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(overlay.TimerRunningForTest, "hidden bar: the 25fps timer must pause");
+
+            window.IsVisible = true;    // shown again
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(overlay.TimerRunningForTest, "shown bar: the timer resumes");
+        }
+        finally
+        {
+            Bevel.UI.ThemeService.Apply(ThemeIds.Industrial1999);
+        }
+    }
+
     // ── capture helpers (same polled-stable pattern as RenderPressedTaskButtonTest) ──
 
     private static Rect RectOf(Control c, TaskbarWindow window)

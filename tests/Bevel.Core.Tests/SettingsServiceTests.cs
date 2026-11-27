@@ -452,6 +452,18 @@ public sealed class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Numeric_out_of_range_attention_values_fall_back_to_pulse_bounded()
+    {
+        // bevel-qb19 review: Enum.TryParse accepts bare numerics, so "99" would stick as an
+        // undefined enum member (SelectedIndex 99 must not happen) — Enum.IsDefined rejects it.
+        var s = SettingsService.ProjectBlob(
+            """{ "taskbarAttentionAnimation": "99", "taskbarAttentionDuration": "7" }""").Settings;
+
+        Assert.Equal(TaskbarAttentionAnimation.Pulse, s.TaskbarAttentionAnimation);
+        Assert.Equal(TaskbarAttentionDuration.Bounded, s.TaskbarAttentionDuration);
+    }
+
+    [Fact]
     public async Task Attention_settings_survive_a_save_load_cycle()
     {
         var service = new SettingsService(_dir);

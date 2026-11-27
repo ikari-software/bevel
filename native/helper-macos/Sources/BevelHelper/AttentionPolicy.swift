@@ -25,9 +25,18 @@ enum AttentionPolicy {
     ///   - pid: owning process id.
     ///   - foregroundPID: the effective foreign frontmost pid for this pass, if any.
     ///   - nowMs: current unix time in milliseconds (injected for tests).
+    /// Minimum gap between two ACCEPTED stamps of the same window (bevel-qb19 review): a
+    /// title-chatty background app (chat clients, build tools, "(3) Building…") changes its title
+    /// several times a second, and each accepted change would otherwise re-raise attention forever.
+    /// A trigger landing within this window of the last accepted stamp is suppressed (the old
+    /// stamp stays, so the VM's strictly-newer compare sees no event).
+    static let minReTriggerIntervalMs: UInt64 = 3_000
+
     /// - Returns: `nowMs` when the window newly appeared or its title changed while its app is not
     ///   foreground; `0` when the app IS foreground (attention is consumed, not raised); otherwise
     ///   the previous value unchanged (sticky — frame-only changes and re-passes never retrigger).
+    ///   A trigger within `minReTriggerIntervalMs` of the last accepted stamp is suppressed and
+    ///   keeps the previous stamp.
     static func attentionAt(
         existed: Bool,
         previousTitle: String,
@@ -40,7 +49,14 @@ enum AttentionPolicy {
         // Foreground app: no attention is ever raised, and a previously raised one is consumed.
         if pid != 0, pid == foregroundPID { return 0 }
         let triggered = !existed || currentTitle != previousTitle
-        return triggered ? nowMs : previousAttentionAt
+        guard triggered else { return previousAttentionAt }
+        // Per-window minimum re-trigger interval: too soon after the last accepted stamp → keep it.
+        // (The `nowMs > previousAttentionAt` guard keeps the subtraction from underflowing on clock skew.)
+        if previousAttentionAt != 0, nowMs > previousAttentionAt,
+           nowMs - previousAttentionAt < minReTriggerIntervalMs {
+            return previousAttentionAt
+        }
+        return nowMs
     }
 
     /// Unix time in milliseconds (separated so tests can pass a fixed clock).

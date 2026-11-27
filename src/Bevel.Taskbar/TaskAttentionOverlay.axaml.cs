@@ -41,6 +41,10 @@ public partial class TaskAttentionOverlay : UserControl
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private DispatcherTimer? _timer;
+    /// <summary>The top-level window this overlay lives in, captured on attach so the animation
+    /// timer can pause while the bar is hidden (bevel-qb19 review).</summary>
+    private TopLevel? _topLevel;
+    private IDisposable? _topLevelVisibility;
 
     /// <summary>Test seam: when false, no DispatcherTimer is started and the animation only advances
     /// through explicit <see cref="TickAt"/> calls (deterministic frames in headless render tests).</summary>
@@ -62,11 +66,20 @@ public partial class TaskAttentionOverlay : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        // bevel-qb19 review: hiding the taskbar window does NOT detach the visual tree, so without
+        // this the 25fps pulse timer would run forever on a hidden bar. Track the top-level's
+        // IsVisible and pause/resume with it.
+        _topLevel = TopLevel.GetTopLevel(this);
+        _topLevelVisibility = _topLevel?.GetObservable(Visual.IsVisibleProperty)
+            .Subscribe(_ => SyncTimerToTopLevelVisibility());
         ApplyMode();   // re-arm in case the mode changed while detached
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _topLevelVisibility?.Dispose();
+        _topLevelVisibility = null;
+        _topLevel = null;
         StopTimer();
         base.OnDetachedFromVisualTree(e);
     }
@@ -100,10 +113,20 @@ public partial class TaskAttentionOverlay : UserControl
             case TaskAttentionVisual.Sweep:
                 IsVisible = true;
                 _clock.Restart();
-                StartTimer();
+                SyncTimerToTopLevelVisibility();
                 TickAt(0);
                 break;
         }
+    }
+
+    /// <summary>bevel-qb19 review: pauses the animation timer while the top-level window is hidden
+    /// (hiding does not detach the visual tree, so the timer would otherwise tick forever on a
+    /// hidden/occluded bar) and resumes it when the bar is visible again.</summary>
+    private void SyncTimerToTopLevelVisibility()
+    {
+        if (Mode is not (TaskAttentionVisual.Pulse or TaskAttentionVisual.Sweep)) return;
+        if (_topLevel?.IsVisible == false) StopTimer();
+        else StartTimer();
     }
 
     private void StartTimer()
@@ -152,4 +175,7 @@ public partial class TaskAttentionOverlay : UserControl
     internal double GlowOpacityForTest => Glow.Opacity;
     internal double SweepXForTest => SweepTransform.X;
     internal double SweepOpacityForTest => SweepStrip.Opacity;
+    /// <summary>Test seam: true while the animation DispatcherTimer is running (bevel-qb19 review:
+    /// it must be stopped while the top-level window is hidden).</summary>
+    internal bool TimerRunningForTest => _timer is not null;
 }

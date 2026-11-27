@@ -629,6 +629,9 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         /// True once the first reconcile has primed the stores — before that, "not in the store"
         /// just means "initial fill", not "newly appeared" (bevel-qb19).
         let primed: Bool
+        /// Unix-ms clock read ONCE per pass (bevel-qb19 review: one read per pass, not per window,
+        /// so every stamp in a pass shares one timestamp).
+        let nowMs: UInt64
 
         func isOnScreen(_ id: CGWindowID) -> Bool { onScreen.contains(id) }
     }
@@ -652,7 +655,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             spaces: SpaceContext.capture(),
             onScreen: onScreen,
             zRank: trueZOrder(),
-            primed: stateLock.withLock { storePrimed }
+            primed: stateLock.withLock { storePrimed },
+            nowMs: AttentionPolicy.nowUnixMs()
         )
         if forReconcile {
             offscreenTracker.advance(
@@ -707,6 +711,52 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
     // MARK: - Admission
 
+    /// bevel-qb19: the attention stamp for one admitted WINDOW in a pass — the call site that owns
+    /// the pass-level guards, extracted as internal so tests drive it without a live WindowServer:
+    /// - the initial fill (`!primed`) NEVER stamps. Before the first reconcile primes the store,
+    ///   "not in the store" means initial fill, not "newly appeared" — stamping there pulsed every
+    ///   background window at helper start (a pulse storm, permanent until activated);
+    /// - the clock is `pass.nowMs`, read once per pass in `beginPass`.
+    internal static func attentionStamp(
+        primed: Bool,
+        previousMatches: Bool,
+        previous: Bevel_Helper_V1_TaskbarWindow?,
+        currentTitle: String,
+        pid: pid_t,
+        foregroundPID: pid_t?,
+        nowMs: UInt64
+    ) -> UInt64 {
+        if !primed { return 0 }
+        return AttentionPolicy.attentionAt(
+            existed: previousMatches,
+            previousTitle: previousMatches ? previous!.title : "",
+            previousAttentionAt: previousMatches ? previous!.attentionAt : 0,
+            currentTitle: currentTitle,
+            pid: pid,
+            foregroundPID: foregroundPID,
+            nowMs: nowMs)
+    }
+
+    /// bevel-qb19: the attention stamp for an app-presence (windowless) entry — stamped only on a
+    /// GENUINE app launch while backgrounded. The last window of a backgrounded app closing also
+    /// surfaces the app as a presence entry, but that is NOT a launch bounce (the icon-only button
+    /// must not pulse), so `ownedWindowLastPass` suppresses it. Internal so tests drive the call site.
+    internal static func appPresenceStamp(
+        primed: Bool,
+        previouslyPresent: Bool,
+        previousAttentionAt: UInt64,
+        appPID: pid_t,
+        foregroundPID: pid_t?,
+        ownedWindowLastPass: Bool,
+        nowMs: UInt64
+    ) -> UInt64 {
+        if previouslyPresent { return previousAttentionAt }   // sticky across passes
+        if !primed { return 0 }                                // initial fill
+        if appPID == 0 || appPID == foregroundPID { return 0 } // foreground app never raises
+        if ownedWindowLastPass { return 0 }                    // last-window-close ≠ launch
+        return nowMs
+    }
+
     /// Build a full `TaskbarWindow` descriptor for a CGWindowList entry, or nil when the entry is not
     /// a taskbar window. Shared by BOTH `enumerateWindows()` (ListWindows + Changes snapshot) AND the
     /// reconciliation poll so the two paths produce identical descriptors (bevel-m2.1 / bevel-m2.3).
@@ -742,14 +792,14 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // across passes (a re-poll or frame-only change never retriggers), cleared when the app
         // is foreground, and suppressed on the initial fill (pass.primed) so shell start doesn't
         // pulse every background app. Never inferred from title CONTENT — only the fact of change.
-        win.attentionAt = AttentionPolicy.attentionAt(
-            existed: previousMatches || !pass.primed,
-            previousTitle: previousMatches ? previous!.title : "",
-            previousAttentionAt: previousMatches ? previous!.attentionAt : 0,
+        win.attentionAt = Self.attentionStamp(
+            primed: pass.primed,
+            previousMatches: previousMatches,
+            previous: previous,
             currentTitle: win.title,
             pid: pid,
             foregroundPID: pass.foregroundPID,
-            nowMs: AttentionPolicy.nowUnixMs())
+            nowMs: pass.nowMs)
 
         if let reason = dropReason(for: win, cgID: cgID, entry: entry, pass: pass) {
             dbg("drop cg=\(cgID) '\(win.appName)' reason=\(reason)")
@@ -2028,6 +2078,10 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // drops phantom zero-frame windows, so opened/closed reflect the taskbar's view.
         let currentSet = Set(newStore.keys)
         let previousSet: Set<CGWindowID> = stateLock.withLock { Set(windowStore.keys) }
+        // bevel-qb19 review: captured BEFORE the store swap below — an app whose last window just
+        // closed owns a window last pass, which is what tells "last-window-close" apart from a
+        // genuine windowless launch in the presence stamp.
+        let prevWindowPIDs: Set<pid_t> = stateLock.withLock { Set(windowStore.values.map { $0.pid }) }
         let opened = currentSet.subtracting(previousSet)
         let closed = previousSet.subtracting(currentSet)
 
@@ -2120,13 +2174,18 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
 
         // App-presence entries carry the attention signal too (bevel-qb19): a windowless app
         // APPEARING while not foreground is the launch-bounce moment. Sticky for entries that
-        // persist across passes, stamped only on genuine appearance (not the initial fill).
+        // persist across passes, stamped only on genuine appearance (not the initial fill, and
+        // NOT when the app merely lost its last window — that would pulse the icon-only button).
         for (bundle, var app) in newApps {
-            if let prev = prevApps[bundle] {
-                app.attentionAt = prev.attentionAt
-            } else if pass.primed, app.pid != 0, app.pid != pass.foregroundPID {
-                app.attentionAt = AttentionPolicy.nowUnixMs()
-            }
+            let prev = prevApps[bundle]
+            app.attentionAt = Self.appPresenceStamp(
+                primed: pass.primed,
+                previouslyPresent: prev != nil,
+                previousAttentionAt: prev?.attentionAt ?? 0,
+                appPID: app.pid,
+                foregroundPID: pass.foregroundPID,
+                ownedWindowLastPass: prevWindowPIDs.contains(app.pid),
+                nowMs: pass.nowMs)
             newApps[bundle] = app
         }
 
