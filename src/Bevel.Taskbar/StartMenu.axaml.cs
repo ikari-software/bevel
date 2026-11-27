@@ -66,7 +66,12 @@ public partial class StartMenu : UserControl
         Action? openSearch = null,
         Action? toggleDesktop = null,
         Func<bool?>? desktopRunning = null,
-        Func<LogoutKind, Task>? session = null)
+        Func<LogoutKind, Task>? session = null,
+        // bevel-vtc6: the Tabs search section's plumbing — running apps' bundle ids, the one TabPrefetch
+        // warm delegate, and the tab provider itself. Null (tests/all-in-one) = no Tabs section.
+        Func<IReadOnlyList<string>>? runningTabBundleIds = null,
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? warmTabs = null,
+        ITabProvider? tabProvider = null)
     {
         InitializeComponent();
         _programsVm = programs;
@@ -90,7 +95,10 @@ public partial class StartMenu : UserControl
             isOpen: () => MenuPopup.IsOpen,
             close: Close,
             lunaWired: () => _lunaWired,
-            restoreProgramsPlaceholder: UpdateProgramsPlaceholder);
+            restoreProgramsPlaceholder: UpdateProgramsPlaceholder,
+            runningTabBundleIds: runningTabBundleIds,
+            warmTabs: warmTabs,
+            tabProvider: tabProvider);
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
         _openSettings = openSettings ?? (() => { });
@@ -140,6 +148,7 @@ public partial class StartMenu : UserControl
     {
         ApplyThemeLayout();
         _searchInput.ClearSearch();   // every open starts on the unfiltered menu (bevel-cezo)
+        _searchInput.WarmTabs();      // bevel-vtc6: hot tab cache before the first keystroke
         RefreshDesktopLabel();
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;

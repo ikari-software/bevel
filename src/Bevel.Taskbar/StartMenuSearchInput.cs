@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Bevel.Core.Search;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
 
@@ -60,6 +61,11 @@ internal sealed class StartMenuSearchInput
     private SearchSession? _searchSession;
     private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
     private RoutedEventArgs? _lastSearchEvent;
+    // bevel-vtc6: the Tabs section's inputs, handed over like the host's other delegates — distinct
+    // bundle ids of the running apps, the one TabPrefetch warm delegate, and the provider itself.
+    private readonly Func<IReadOnlyList<string>>? _runningTabBundleIds;
+    private readonly Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? _warmTabs;
+    private readonly ITabProvider? _tabProvider;
 
     public StartMenuSearchInput(
         StartMenuViewModel? vm,
@@ -67,7 +73,10 @@ internal sealed class StartMenuSearchInput
         Func<bool> isOpen,
         Action close,
         Func<bool> lunaWired,
-        Action restoreProgramsPlaceholder)
+        Action restoreProgramsPlaceholder,
+        Func<IReadOnlyList<string>>? runningTabBundleIds = null,
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? warmTabs = null,
+        ITabProvider? tabProvider = null)
     {
         _vm = vm;
         _body = body;
@@ -75,6 +84,9 @@ internal sealed class StartMenuSearchInput
         _close = close;
         _lunaWired = lunaWired;
         _restoreProgramsPlaceholder = restoreProgramsPlaceholder;
+        _runningTabBundleIds = runningTabBundleIds;
+        _warmTabs = warmTabs;
+        _tabProvider = tabProvider;
         QueryChanged += ApplySearch;
         Cleared += ClearSearch;
         EnterPressed += source => TryLaunchTopMatch(source);
@@ -162,20 +174,34 @@ internal sealed class StartMenuSearchInput
         }
     }
 
-    // bevel-6sk6: one SearchSession over the apps provider feeds BOTH layouts' results views; publishes
+    // bevel-6sk6: one SearchSession over the providers feeds BOTH layouts' results views; publishes
     // are marshaled to the UI thread via Dispatcher.Post (background providers answer off-thread).
     private void WireSearchSession()
     {
         if (_vm is null) return;
-        _searchSession = new SearchSession(
-            new ISearchProvider[] { new AppsSearchProvider(_vm.Model) },
-            a => Dispatcher.UIThread.Post(a));
+        var providers = new List<ISearchProvider> { new AppsSearchProvider(_vm.Model) };
+        // bevel-vtc6: the Tabs section rides the same session when the host handed over the tab plumbing.
+        if (_runningTabBundleIds is not null && _warmTabs is not null && _tabProvider is not null)
+            providers.Add(new TabsSearchProvider(_runningTabBundleIds, _warmTabs, _tabProvider));
+        _searchSession = new SearchSession(providers, a => Dispatcher.UIThread.Post(a));
         _searchSession.SectionChanged += OnSearchSectionChanged;
         foreach (var view in new[] { _body.ClassicResults, _body.LunaResults })
         {
-            view.RegisterProvider(_searchSession.Providers[0]);
+            foreach (var p in _searchSession.Providers)
+                view.RegisterProvider(p);
             view.HitActivated += hit => { _ = hit.ActivateAsync(); _close(); };
         }
+    }
+
+    /// <summary>bevel-vtc6: warms every running tab-capable app when the menu opens, so the Tabs section's
+    /// first paint on the first keystroke is served from cache. Fire-and-forget: the warm delegate reuses
+    /// a running/fresh slot and never blocks the UI thread.</summary>
+    public void WarmTabs()
+    {
+        if (_runningTabBundleIds is null || _warmTabs is null || _tabProvider is null) return;
+        foreach (var id in _runningTabBundleIds())
+            if (_tabProvider.SupportsApp(id))
+                _ = _warmTabs(id);
     }
 
     /// <summary>

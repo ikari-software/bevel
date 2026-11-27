@@ -692,7 +692,12 @@ public partial class TaskbarView : UserControl
 
         // Hand the Start menu the reconciled Programs projection (bevel-d2z) so its cascade binds
         // the off-thread collection instead of enumerating + rendering icons on the UI thread.
-        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning, _session);
+        // bevel-vtc6: also hand it the tab plumbing so the search's Tabs section is fed by the SAME
+        // TabPrefetch cache the context menu uses (EnsureTabPrefetch) over the running apps' bundle ids.
+        _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning, _session,
+            runningTabBundleIds: RunningTabBundleIds,
+            warmTabs: EnsureTabPrefetch,
+            tabProvider: _tabProvider);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.
@@ -1193,6 +1198,22 @@ public partial class TaskbarView : UserControl
         if (_tabProvider is null) return null;
         _tabs ??= new TabPrefetch(_tabProvider, TabPrefetchBudget, TabPrefetchFreshness);
         return _tabs.Warm(bundleId);
+    }
+
+    /// <summary>bevel-vtc6: the distinct bundle ids of the running apps, for the Start menu's Tabs search
+    /// section (<see cref="ShellModel.Windows"/> → <see cref="TaskItemViewModel.BundleId"/>). The search
+    /// queries this from the thread pool, so the snapshot is marshalled onto the UI thread, which owns
+    /// the Windows collection.</summary>
+    private IReadOnlyList<string> RunningTabBundleIds()
+    {
+        if (_vm is null) return Array.Empty<string>();
+        IReadOnlyList<string> Snapshot() => _vm.Model.Windows
+            .Select(w => w.BundleId)
+            .Where(b => !string.IsNullOrEmpty(b))
+            .Distinct(StringComparer.Ordinal)
+            .Select(b => b!)
+            .ToArray();
+        return Dispatcher.UIThread.CheckAccess() ? Snapshot() : Dispatcher.UIThread.Invoke(Snapshot);
     }
 
     /// <summary>How long a right-click may wait for the target app's tab list before the menu opens

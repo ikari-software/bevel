@@ -41,7 +41,12 @@ public static class TaskButtonMenu
 
     /// <summary>One prefetched tab plus its favicon, decoded OFF the UI thread by the caller —
     /// Build runs on the UI thread and must only compose already-decoded bitmaps.</summary>
-    public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon);
+    public sealed record TabMenuRow(AppTab Tab, Bitmap? Icon)
+    {
+        /// <summary>bevel-vtc6: alias for <see cref="Icon"/> so the Start-menu search results view's
+        /// <c>Tag.IconSource</c> reflection binding renders the favicon when a tab row is a hit's Tag.</summary>
+        public Bitmap? IconSource => Icon;
+    }
 
     /// <summary>bevel-s5x: a per-app jump-list entry (header + action) for the button menu — the
     /// view supplies them via Build's appActions parameter: bundle id in, actions out.</summary>
