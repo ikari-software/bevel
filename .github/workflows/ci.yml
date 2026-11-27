@@ -179,6 +179,11 @@ jobs:
         shell: bash
         run: |
           . tools/sh/pinned-dotnet.sh
+          # Fail fast if pinned-dotnet.sh fell back to a Homebrew SDK (macOS only):
+          if [ "${{ matrix.os }}" = "macos-latest" ] && [ "${BEVEL_DOTNET_FROM_HOMEBREW:-0}" = "1" ]; then
+            echo "::error::dotnet resolved to a Homebrew install — its apphost links /opt/homebrew brotli (bevel-ka6c). Install the official SDK."
+            exit 1
+          fi
           dotnet publish src/Bevel.App/Bevel.App.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
