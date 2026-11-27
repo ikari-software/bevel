@@ -23,14 +23,24 @@ public sealed class IconLoader
     /// <summary>
     /// Returns the icon bitmap for <paramref name="path"/> (a file/app-bundle path), rendering
     /// off-thread on first request and returning the shared cached task thereafter. The returned
-    /// task never faults — it yields null when no icon is available.
+    /// task never faults — it yields null when no icon is available. Only SUCCESSFUL renders are
+    /// cached: a null result (app not installed yet / icon not ready) is deliberately NOT cached
+    /// permanently, so a later retry (e.g. the installed-apps list changed — bevel-be86 review)
+    /// re-renders instead of replaying the cached miss.
     /// </summary>
     public Task<Bitmap?> LoadAsync(string? path, int size = 16)
     {
         if (_icons is null || string.IsNullOrEmpty(path))
             return Task.FromResult<Bitmap?>(null);
 
-        return _cache.GetOrAdd(path + "|" + size, _ => RenderAsync(path!, size));
+        var key = path + "|" + size;
+        if (_cache.TryGetValue(key, out var cached)) return cached;
+        var rendered = RenderAsync(path!, size);
+        // Cache only a non-null result; RenderAsync never faults, so RanToCompletion implies a value.
+        _ = rendered.ContinueWith(
+            t => { if (t.Status == TaskStatus.RanToCompletion && t.Result is not null) _cache.TryAdd(key, t); },
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return rendered;
     }
 
     private async Task<Bitmap?> RenderAsync(string path, int size)

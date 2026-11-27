@@ -47,14 +47,31 @@ public class PinnedAppsTests
     private sealed class RecordingAppEnv : IAppEnvironment
     {
         public List<string> Launched { get; } = new();
+        public List<InstalledApp> Installed { get; } = new();
         public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default)
             => ValueTask.FromResult<IReadOnlyList<RunningApp>>([]);
         public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<InstalledApp>>([]);
+            => ValueTask.FromResult<IReadOnlyList<InstalledApp>>(Installed);
         public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) { Launched.Add(appIdOrPath); return Task.CompletedTask; }
         public event EventHandler<RunningApp>? AppLaunched { add { } remove { } }
         public event EventHandler<RunningApp>? AppTerminated { add { } remove { } }
-        public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged { add { } remove { } }
+        public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
+        public void RaiseInstalledAppsChanged() => InstalledAppsChanged?.Invoke(this, Installed);
+    }
+
+    /// <summary>Counts icon renders; yields a null bitmap (width 0) — only the CALL count matters.</summary>
+    private sealed class CountingIconProvider : IIconProvider
+    {
+        private readonly TaskCompletionSource _called = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls;
+        public Task WhenCalled => _called.Task;
+        public ValueTask<PalImage> GetIconAsync(string pathOrExtension, int size, CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref Calls);
+            _called.TrySetResult();
+            return ValueTask.FromResult(new PalImage(0, 0, Array.Empty<byte>()));
+        }
+        public event EventHandler? IconInvalidated { add { } remove { } }
     }
 
     /// <summary>In-memory <see cref="ISettingsService"/> for VM-level tests: UpdateAsync mutates
@@ -304,6 +321,158 @@ public class PinnedAppsTests
 
         Assert.True(vm.IsAppPinned("com.pinned"));
         Assert.Equal(new[] { "app:com.pinned" }, vm.Items.Cast<TaskItemViewModel>().Select(t => t.Id.Value).ToArray());
+    }
+
+    // ── bevel-be86 review fixes ─────────────────────────────────────────
+
+    [AvaloniaFact]
+    public void Path_shaped_pin_is_refused_at_the_launch_sink_and_app_prefix_is_stripped()
+    {
+        var wm = new RecordingWm();
+        var appEnv = new RecordingAppEnv();
+        using var model = new ShellModel(wm, appEnv, null, usage: TestUsage.Scratch());
+
+        // A path-shaped key never reaches IAppEnvironment.LaunchAsync (bevel-318a invariant).
+        model.CreatePinnedItem("/Applications/Evil.app").ActivateCommand.Execute(null);
+        model.CreatePinnedItem("~/evil").ActivateCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Empty(appEnv.Launched);
+
+        // A valid bundle id launches; a leading "app:" prefix is stripped at the sink too.
+        model.CreatePinnedItem("com.valid").ActivateCommand.Execute(null);
+        model.CreatePinnedItem("app:com.prefixed").ActivateCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(new[] { "com.valid", "com.prefixed" }, appEnv.Launched);
+    }
+
+    [AvaloniaFact]
+    public async Task TogglePinAsync_strips_the_app_prefix_and_refuses_path_shaped_ids()
+    {
+        var wm = new RecordingWm();
+        using var model = new ShellModel(wm, new RecordingAppEnv(), null, usage: TestUsage.Scratch());
+        var settings = new StubSettings();
+        using var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
+        Dispatcher.UIThread.RunJobs();
+
+        await vm.TogglePinAsync("app:com.foo");   // keyed on the bare bundle id
+        Assert.Equal(new[] { "com.foo" }, settings.Current.TaskbarPinnedApps);
+        Assert.True(vm.IsAppPinned("app:com.foo"));
+        Assert.True(vm.IsAppPinned("com.foo"));
+
+        // A path-shaped id is refused outright — never persisted, never launched.
+        await vm.TogglePinAsync("/Applications/Evil.app");
+        await vm.TogglePinAsync("evil.app");
+        Assert.Equal(new[] { "com.foo" }, settings.Current.TaskbarPinnedApps);
+        Assert.False(vm.IsAppPinned("/Applications/Evil.app"));
+    }
+
+    [AvaloniaFact]
+    public void Pins_applied_from_settings_are_sanitized_and_capped()
+    {
+        var wm = new RecordingWm();
+        using var model = new ShellModel(wm, new RecordingAppEnv(), null, usage: TestUsage.Scratch());
+        var settings = new StubSettings();
+        using var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
+        Dispatcher.UIThread.RunJobs();
+
+        var pins = new[] { "app:com.prefixed", "/evil.app", new string('x', 600) }
+            .Concat(Enumerable.Range(0, 200).Select(i => $"com.app{i:D3}"))
+            .ToArray();
+        settings.Current.TaskbarPinnedApps = pins;
+        settings.RaiseChanged();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(TaskbarPins.MaxCount, vm.PinnedApps.Count);
+        Assert.Equal("com.prefixed", vm.PinnedApps[0]);   // "app:" prefix stripped
+        Assert.Equal("com.app126", vm.PinnedApps[^1]);     // capped at 128
+        Assert.DoesNotContain(vm.PinnedApps, p => p.Length > TaskbarPins.MaxIdLength || p.Contains('/'));
+    }
+
+    [Fact]
+    public void Covered_set_uses_visible_items_so_an_other_space_window_does_not_cover_its_pin()
+    {
+        var otherSpace = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Safari", "Safari", false, false, default,
+                BundleId: "com.safari", IsOnOtherSpace: true), new RecordingWm());
+        var src = new ObservableCollection<TaskItemViewModel> { otherSpace };
+        using var proj = new TaskbarItemsProjector(src);
+        proj.SetPinnedApps(new[] { "com.safari" }, b => PinnedVm(b));
+
+        // Visible (other Spaces shown): the window covers the pin — no duplicate.
+        Assert.Equal(new[] { "w1" }, Ids(proj));
+
+        // Other-Spaces filter ON: the window leaves the strip, so it must NOT cover the pin —
+        // the pin's own synthetic button renders instead.
+        proj.SetShowOtherSpaces(false);
+        Assert.Equal(new[] { "app:com.safari" }, Ids(proj));
+    }
+
+    [Fact]
+    public void BundleId_learned_late_heals_the_duplicate_pin_button()
+    {
+        var wm = new RecordingWm();
+        var win = new TaskItemViewModel(
+            new ForeignWindow(new ForeignWindowId("w1"), "Safari", "Safari", false, false, default,
+                BundleId: null), wm);
+        var src = new ObservableCollection<TaskItemViewModel> { win };
+        using var proj = new TaskbarItemsProjector(src);
+        proj.SetPinnedApps(new[] { "com.safari" }, b => PinnedVm(b, wm: wm));
+
+        // No bundle id yet (AppId "Safari" ≠ pin key) → the pin renders its own button alongside.
+        Assert.Equal(2, proj.Items.Count);
+
+        // The platform attaches the bundle id → Update re-keys the VM in place → the projector
+        // re-plans on the BundleId change → the window now covers the pin, duplicate heals.
+        win.Update(new ForeignWindow(new ForeignWindowId("w1"), "Safari", "Safari", false, false, default,
+            BundleId: "com.safari"));
+        Assert.Equal(new[] { "w1" }, Ids(proj));
+    }
+
+    [Fact]
+    public void A_closing_window_still_covers_its_pin_until_removal_commits()
+    {
+        var win = Win("w1", "Safari", "com.safari");
+        win.IsClosing = true;   // exit animation in flight, still in the source
+        var src = new ObservableCollection<TaskItemViewModel> { win };
+        using var proj = new TaskbarItemsProjector(src);
+        proj.SetPinnedApps(new[] { "com.safari" }, b => PinnedVm(b));
+
+        Assert.Equal(new[] { "w1" }, Ids(proj));   // no synthetic pin button while closing
+
+        src.RemoveAt(0);   // removal commits → the pin's button comes back
+        Assert.Equal(new[] { "app:com.safari" }, Ids(proj));
+    }
+
+    [AvaloniaFact]
+    public async Task Pinned_icon_is_retried_on_InstalledAppsChanged_and_matched_by_exact_id_only()
+    {
+        var wm = new RecordingWm();
+        var appEnv = new RecordingAppEnv();
+        var icons = new CountingIconProvider();
+        using var model = new ShellModel(wm, appEnv, icons, usage: TestUsage.Scratch());
+        var settings = new StubSettings();
+        settings.Current.TaskbarPinnedApps = new[] { "com.late" };   // pin "com.late" → display name "Late"
+        using var vm = new TaskbarViewModel(model, new StartMenuViewModel(model), settings: settings);
+        model.Start();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, Volatile.Read(ref icons.Calls));   // no installed apps yet → no icon path
+
+        // SPOOF attempt: an installed app whose DISPLAY NAME matches the pin's derived name ("Late")
+        // but whose id is a bundle PATH — the old display-name fallback would render ITS icon for the
+        // pin. Exact-id-only matching must refuse it.
+        appEnv.Installed.Add(new InstalledApp("/Applications/Safari.app", "Late", "/Applications/Safari.app"));
+        appEnv.RaiseInstalledAppsChanged();
+        Dispatcher.UIThread.RunJobs();
+        await Task.Delay(150);   // let any (wrong) off-thread icon load land
+        Assert.Equal(0, Volatile.Read(ref icons.Calls));
+
+        // The real entry lands (an app installed after startup) → InstalledAppsChanged → the pinned
+        // icon load is retried and now resolves by EXACT id match.
+        appEnv.Installed.Add(new InstalledApp("com.late", "Late", "/Applications/Late.app"));
+        appEnv.RaiseInstalledAppsChanged();
+        Dispatcher.UIThread.RunJobs();
+        await icons.WhenCalled.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(Volatile.Read(ref icons.Calls) >= 1);
     }
 
     // ── Render (headless view) ──────────────────────────────────────────

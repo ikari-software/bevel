@@ -82,7 +82,10 @@ public sealed class TaskbarItemsProjector : IDisposable
     /// <summary>bevel-be86: sets the pinned apps (bundle ids, pin order) and re-plans immediately.
     /// Pinned apps with no window in the source get a synthetic button from <paramref name="createPinned"/>;
     /// pins covered by a real window or a running-windowless presence entry add nothing (no duplicate).
-    /// An empty/null list unpins everything (the synthetic buttons leave the strip).</summary>
+    /// An empty/null list unpins everything (the synthetic buttons leave the strip).
+    /// Note on ORDER: pin order is only preserved while the sort is <see cref="TaskbarWindowSort.OpenOrder"/> —
+    /// any other sort (Name/Colour) or windowless-last re-orders the whole strip INCLUDING the synthetic
+    /// pin buttons (<see cref="SortItems"/> does not exempt pins).</summary>
     public void SetPinnedApps(IEnumerable<string>? pins, Func<string, TaskItemViewModel>? createPinned)
     {
         _pinnedApps = pins?.Where(p => !string.IsNullOrEmpty(p)).Distinct(StringComparer.Ordinal).ToArray()
@@ -134,16 +137,18 @@ public sealed class TaskbarItemsProjector : IDisposable
         }
 
         // bevel-be86: pinned apps render as buttons even with no window. A pin whose app already has a
-        // live source entry (a real window or a running-windowless presence entry, matched on bundle id
+        // live VISIBLE entry (a real window or a running-windowless presence entry, matched on bundle id
         // or app id) is covered by that entry — the pin only guarantees the button exists, it never
         // duplicates it. So "pin while running" adds no button, and "unpin a running app" leaves the
-        // window's button in place.
+        // window's button in place. The covered set is built from the VISIBLE items (respecting
+        // showOtherSpaces), not the unfiltered source — a window hidden by the other-Spaces filter must
+        // not cover its pin (bevel-be86 review). A CLOSING window still covers its pin until the removal
+        // commits, so its exit animation never flashes a duplicate synthetic button.
         if (_pinnedApps.Count > 0 && _createPinned is not null)
         {
             var covered = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var w in _source)
+            foreach (var w in visible)
             {
-                if (w.IsClosing) continue;
                 if (w.BundleId is { Length: > 0 } b) covered.Add(b);
                 if (w.AppId is { Length: > 0 } a) covered.Add(a);
             }
@@ -294,6 +299,12 @@ public sealed class TaskbarItemsProjector : IDisposable
             RePlan();
         // bevel-jt30: a window that moved spaces appears/vanishes from the strip (when filtering).
         if (!_showOtherSpaces && e.PropertyName == nameof(TaskItemViewModel.IsOnOtherSpace))
+            RePlan();
+        // bevel-be86 review: a window's bundle id can be LEARNED after its VM was built (the platform
+        // attaches it late) — Update re-keys the VM in place, and the changed key decides which pin the
+        // window covers, so re-plan: a duplicate synthetic pin button heals (or a newly-covered pin
+        // drops out of the strip).
+        if (e.PropertyName == nameof(TaskItemViewModel.BundleId))
             RePlan();
     }
 

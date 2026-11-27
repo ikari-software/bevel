@@ -47,7 +47,7 @@ public class TaskButtonMenuPinTests
     public void Pin_item_appears_and_invokes_the_toggle_with_the_exact_bundle_id()
     {
         string? toggled = null;
-        var flyout = TaskButtonMenu.Build(Vm("fake.app"), null, null,
+        var flyout = TaskButtonMenu.Build(Vm("com.fake"), null, null,
             isPinned: _ => false, onTogglePin: b => toggled = b);
 
         var item = PinItem(flyout);
@@ -55,14 +55,14 @@ public class TaskButtonMenuPinTests
         Assert.Equal("_Pin to taskbar", item!.Header as string);
 
         item.Command!.Execute(null);
-        Assert.Equal("fake.app", toggled);
+        Assert.Equal("com.fake", toggled);
     }
 
     [AvaloniaFact]
     public void Pinned_app_shows_the_unpin_label()
     {
-        var flyout = TaskButtonMenu.Build(Vm("fake.app"), null, null,
-            isPinned: b => b == "fake.app", onTogglePin: _ => { });
+        var flyout = TaskButtonMenu.Build(Vm("com.fake"), null, null,
+            isPinned: b => b == "com.fake", onTogglePin: _ => { });
 
         Assert.Equal("Un_pin from taskbar", PinItem(flyout)?.Header as string);
     }
@@ -80,7 +80,7 @@ public class TaskButtonMenuPinTests
     public void Item_is_omitted_when_no_hooks_are_wired()
     {
         // A hook-less caller must not get a clickable item that no-ops on click.
-        var flyout = TaskButtonMenu.Build(Vm("fake.app"), null, null);
+        var flyout = TaskButtonMenu.Build(Vm("com.fake"), null, null);
         Assert.Null(PinItem(flyout));
     }
 
@@ -90,8 +90,8 @@ public class TaskButtonMenuPinTests
         var group = new TaskGroupViewModel("Fake");
         group.SyncChildren(new[]
         {
-            Vm("fake.app", "w1"),
-            Vm("fake.app", "w2"),
+            Vm("com.fake", "w1"),
+            Vm("com.fake", "w2"),
         });
 
         string? toggled = null;
@@ -103,7 +103,7 @@ public class TaskButtonMenuPinTests
         Assert.Equal("Un_pin from taskbar", item!.Header as string);
 
         item.Command!.Execute(null);
-        Assert.Equal("fake.app", toggled);
+        Assert.Equal("com.fake", toggled);
     }
 
     [AvaloniaFact]
@@ -112,12 +112,53 @@ public class TaskButtonMenuPinTests
         // A pinned app with no window is itself a TaskItemViewModel (app-presence shape) — its menu
         // must offer Unpin, not Pin.
         var pinned = new TaskItemViewModel(
-            new ForeignWindow(new ForeignWindowId("app:fake.app"), "Fake", "Fake", false, false, default,
-                IsAppPresence: true, BundleId: "fake.app"), new NullWm());
+            new ForeignWindow(new ForeignWindowId("app:com.fake"), "Fake", "Fake", false, false, default,
+                IsAppPresence: true, BundleId: "com.fake"), new NullWm());
 
         var flyout = TaskButtonMenu.Build(pinned, null, null,
-            isPinned: b => b == "fake.app", onTogglePin: _ => { });
+            isPinned: b => b == "com.fake", onTogglePin: _ => { });
 
         Assert.Equal("Un_pin from taskbar", PinItem(flyout)?.Header as string);
+    }
+
+    // ── bevel-be86 review fixes ─────────────────────────────────────────
+
+    [AvaloniaFact]
+    public void Stale_menu_header_does_not_re_pin_at_click_time()
+    {
+        // The header is a snapshot from Build; the command re-evaluates the pinned state at CLICK
+        // time and only fires when it still matches — a pin toggled elsewhere (another taskbar
+        // instance) since the menu opened must not be flipped back by the stale header.
+        var pinned = true;
+        string? toggled = null;
+        var flyout = TaskButtonMenu.Build(Vm("com.fake"), null, null,
+            isPinned: _ => pinned, onTogglePin: b => toggled = b);
+        var item = PinItem(flyout);
+        Assert.Equal("Un_pin from taskbar", item!.Header as string);
+
+        pinned = false;   // unpinned elsewhere after the menu was built
+        item.Command!.Execute(null);
+        Assert.Null(toggled);   // stale "Unpin" header must not re-pin
+
+        pinned = true;    // state matches the header again → the verb fires
+        item.Command!.Execute(null);
+        Assert.Equal("com.fake", toggled);
+    }
+
+    [AvaloniaFact]
+    public void Pin_row_is_keyed_on_the_normalized_bundle_id_and_omitted_for_path_shaped_keys()
+    {
+        string? toggled = null;
+        var flyout = TaskButtonMenu.Build(Vm("app:com.fake"), null, null,
+            isPinned: b => b == "com.fake", onTogglePin: b => toggled = b);
+        var item = PinItem(flyout);
+        Assert.NotNull(item);
+        item!.Command!.Execute(null);
+        Assert.Equal("com.fake", toggled);   // "app:" prefix stripped when keying the pin
+
+        // A path-shaped bundle id gets no row at all — it is never keyed, persisted, or launched.
+        var evil = TaskButtonMenu.Build(Vm("/Applications/Evil.app"), null, null,
+            isPinned: _ => false, onTogglePin: _ => { });
+        Assert.Null(PinItem(evil));
     }
 }

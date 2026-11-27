@@ -84,8 +84,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// click just reopens the app (no minimize/toggle, since there's no window).</summary>
     public bool IsAppPresence { get; }
 
-    /// <summary>Owning app's bundle id (stable key), used by <see cref="QuitCommand"/>. Null when unknown.</summary>
-    public string? BundleId { get; }
+    /// <summary>Owning app's bundle id (stable key), used by <see cref="QuitCommand"/> and pin keying.
+    /// Null when unknown. Updatable in place (bevel-be86 review): the platform can attach a window's
+    /// bundle id only after the VM was built, so <see cref="Update"/> re-keys it and raises
+    /// PropertyChanged, letting the projector re-plan which pin the window covers.</summary>
+    public string? BundleId { get => _bundleId; private set => SetProperty(ref _bundleId, value); }
+    private string? _bundleId;
 
     /// <summary>Owning app's bundle path on disk (bevel-4nct), carried for the context menu's
     /// "Show in Finder" verb. Null when the window manager did not know it — the verb is omitted then.</summary>
@@ -268,6 +272,9 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         IsFullscreen = w.IsFullscreen;
         IsOnOtherSpace = w.IsOnOtherSpace;
         BundlePath = w.BundlePath;
+        // bevel-be86 review: re-key when the snapshot finally carries a bundle id (learned late) —
+        // the projector re-plans on the change, so a pin covered by this window heals.
+        if (w.BundleId is { Length: > 0 } b) BundleId = b;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
     }

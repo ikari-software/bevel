@@ -18,6 +18,15 @@ internal static class TaskbarLog
     public static void Swallowed(string context, Exception ex) =>
         Trace.TraceWarning($"[Bevel.Taskbar] swallowed in {context}: {ex.GetType().Name}: {ex.Message}");
 
+    /// <summary>Always-on warning for a user-visible failure (a refused/failed pinned-app launch, a
+    /// rejected pin key) — NOT gated behind BEVEL_DEBUG_TASKBAR, because the user clicked something and
+    /// nothing happened. Routed to Trace + stderr so it lands in the process log; best-effort, never throws.</summary>
+    public static void Warn(string message)
+    {
+        Trace.TraceWarning($"[Bevel.Taskbar] {message}");
+        Console.Error.WriteLine($"[TASKBAR] {message}");
+    }
+
     /// <summary>Opt-in (BEVEL_DEBUG_TASKBAR=1) trace of every window-model reason and every button
     /// collection change, so a live "phantom button / reflow" can be diagnosed from the log rather
     /// than by chasing transient screenshots. Written to stderr so it lands in the process log.</summary>

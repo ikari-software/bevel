@@ -349,4 +349,55 @@ public sealed class SettingsServiceTests : IDisposable
         copy.TaskbarPinnedApps[0] = "mutated";
         Assert.Equal("com.apple.Safari", src.TaskbarPinnedApps[0]);
     }
+
+    // ── bevel-be86 review fixes ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task String_array_with_a_wrong_typed_element_loads_without_throwing()
+    {
+        // A single wrong-typed element must not throw a JsonException out of LoadAsync (boot crash /
+        // dead receive loop) — the bad element is dropped per-element and the rest survive.
+        Directory.CreateDirectory(_dir);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "settings.json"),
+            """{ "taskbarPinnedApps": [42], "filerFavorites": ["a", 5] }""");
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();   // must not throw
+        Assert.Empty(service.Current.TaskbarPinnedApps);   // 42 dropped
+        Assert.Equal(new[] { "a" }, service.Current.FilerFavorites);   // only the 5 dropped
+    }
+
+    [Fact]
+    public void ProjectBlob_drops_wrong_typed_array_elements_without_throwing()
+    {
+        // The remote-peer projection path (core snapshot → typed model) is the same pipeline.
+        var (settings, _) = SettingsService.ProjectBlob(
+            """{ "taskbarPinnedApps": ["com.ok", 5, true, null] }""");
+        Assert.Equal(new[] { "com.ok" }, settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_rejects_path_shaped_keys_and_strips_the_app_prefix_at_load()
+    {
+        // Launch-sink invariant (bevel-318a): a pin key is a bundle id, never a path. Path-shaped
+        // entries are dropped at the load boundary; a leading "app:" prefix is stripped when keying.
+        var (settings, _) = SettingsService.ProjectBlob("""
+            { "taskbarPinnedApps": [
+                "/Applications/Evil.app", "~/evil", "C:\\evil", "rel/evil", "evil.app", "..",
+                "app:com.prefixed", "com.valid", "has space", "", "com.apple.Safari" ] }
+            """);
+        Assert.Equal(new[] { "com.prefixed", "com.valid", "com.apple.Safari" }, settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_is_capped_at_128_entries_and_512_chars_per_key()
+    {
+        var entries = Enumerable.Range(0, 200).Select(i => $"\"com.app{i:D3}\"")
+            .Append("\"" + new string('x', 600) + "\"");   // over-length → dropped
+        var blob = "{ \"taskbarPinnedApps\": [" + string.Join(",", entries) + "] }";
+        var (settings, _) = SettingsService.ProjectBlob(blob);
+        Assert.Equal(TaskbarPins.MaxCount, settings.TaskbarPinnedApps.Length);
+        Assert.Equal("com.app000", settings.TaskbarPinnedApps[0]);
+        Assert.Equal("com.app127", settings.TaskbarPinnedApps[^1]);
+        Assert.All(settings.TaskbarPinnedApps, p => Assert.True(p.Length <= TaskbarPins.MaxIdLength));
+    }
 }

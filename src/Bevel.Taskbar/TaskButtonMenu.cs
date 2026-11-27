@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -103,15 +104,27 @@ public static class TaskButtonMenu
         }
 
         // bevel-be86: Pin/Unpin — keyed on the bundle id, so the same row serves a window button, an app
-        // group, and a windowless pinned button. Omitted when the app can't be keyed (no bundle id) or
-        // the caller wired no hooks — never a dead verb.
-        if (isPinned is not null && onTogglePin is not null && model.BundleId is { Length: > 0 } pinKey)
+        // group, and a windowless pinned button. The key is normalized (an "app:" prefix is stripped) and
+        // validated: a path-shaped id is never keyed, never persisted, never launched. Omitted when the
+        // app can't be keyed (no valid bundle id) or the caller wired no hooks — never a dead verb.
+        var pinKey = TaskbarPins.NormalizeKey(model.BundleId);
+        if (isPinned is not null && onTogglePin is not null
+            && TaskbarPins.IsValidBundleId(pinKey))
         {
-            var captured = pinKey;
+            var captured = pinKey!;
+            var pinnedAtBuild = isPinned(captured);
             items.Add(new MenuItem
             {
-                Header = isPinned(captured) ? "Un_pin from taskbar" : "_Pin to taskbar",
-                Command = new AsyncRelayCommand(() => { onTogglePin(captured); return Task.CompletedTask; })
+                Header = pinnedAtBuild ? "Un_pin from taskbar" : "_Pin to taskbar",
+                // The header is a snapshot from Build time; the command re-evaluates the pinned state
+                // INSIDE itself at click time and only fires when it still matches what this row
+                // promised — a menu that went stale (the pin was toggled elsewhere, e.g. by another
+                // taskbar instance, since the menu opened) must not flip the pin back (bevel-be86 review).
+                Command = new AsyncRelayCommand(() =>
+                {
+                    if (isPinned(captured) == pinnedAtBuild) onTogglePin(captured);
+                    return Task.CompletedTask;
+                })
             });
             items.Add(new Separator());
         }
