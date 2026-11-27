@@ -61,6 +61,15 @@ public partial class TaskbarView : UserControl
     private int _opacity = 100;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
+    /// <summary>bevel-44vg dev flag (BEVEL_ENABLE_MOVE_TO_SPACE=1): adds the per-window
+    /// "Move to Space ▶" submenu to the task-button context menu. The verb is private-SkyLight-only
+    /// (SPIKE), so it stays hidden unless explicitly enabled.</summary>
+    private static readonly bool MoveToSpaceEnabled =
+        Environment.GetEnvironmentVariable("BEVEL_ENABLE_MOVE_TO_SPACE") == "1";
+    /// <summary>Budget for the Space list fetch on right-click (bevel-44vg): an open MenuFlyout
+    /// never repaints, so the list must exist before TryShow; a slow/missing helper must not stall
+    /// the menu — no submenu beats a stalled one.</summary>
+    private static readonly TimeSpan SpaceListBudget = TimeSpan.FromMilliseconds(1500);
     private string[]? _appliedStacks;   // last TaskbarStacks pushed through ApplyLiveSettings (bevel-2ip7 diff guard)
     /// <summary>Composes the stacks region from <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7
     /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
@@ -1121,6 +1130,23 @@ public partial class TaskbarView : UserControl
             if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
                 return;
 
+            // bevel-44vg (dev flag): fetch the Space list BEFORE TryShow — an open MenuFlyout never
+            // repaints, so the "Move to Space ▶" rows must exist up front. Bounded: a wedged helper
+            // yields no submenu, not a stalled menu.
+            IReadOnlyList<TaskButtonMenu.SpaceMenuRow>? spaces = null;
+            if (MoveToSpaceEnabled && _vm is not null)
+            {
+                try
+                {
+                    using var spaceCts = new CancellationTokenSource(SpaceListBudget);
+                    var list = await _vm.Model.ListSpacesAsync(spaceCts.Token);
+                    if (list.Count > 0)
+                        spaces = list.Select(s => new TaskButtonMenu.SpaceMenuRow(
+                            s.Id, string.IsNullOrEmpty(s.Name) ? $"Space {s.Id}" : s.Name!, s.IsCurrent)).ToList();
+                }
+                catch (Exception ex) { TaskbarLog.Swallowed("MoveToSpace space list", ex); }
+            }
+
             // Dismiss any still-open prior menu BEFORE opening the new one, so its Closed handler
             // (which removes its global mouse monitor) runs first. The monitors are now per-token
             // (ce-review P0 fix in TaskbarWindow), but keeping the ordering clean avoids two
@@ -1132,7 +1158,8 @@ public partial class TaskbarView : UserControl
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
                     onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
                     appActions: AppActionsFor,
-                    onShowInFinder: _revealInFiler) is { } menu)
+                    onShowInFinder: _revealInFiler,
+                    spaces: spaces) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on

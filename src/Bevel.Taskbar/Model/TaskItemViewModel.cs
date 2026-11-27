@@ -69,6 +69,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     private Task HideAsync() =>
         string.IsNullOrEmpty(BundleId) ? Task.CompletedTask : _windows.HideAppAsync(BundleId);
 
+    /// <summary>Move this window onto another Mission Control Space (bevel-44vg SPIKE, dev-flagged):
+    /// on macOS a private-SkyLight re-parent in the helper; a no-op on backends without the verb.</summary>
+    public Task MoveToSpaceAsync(ulong spaceId) => _windows.MoveWindowToSpaceAsync(Id, spaceId);
+
     public ForeignWindowId Id { get; }
 
     /// <summary>Owning app's identifier (bundle id), used to collapse multi-window apps into a group

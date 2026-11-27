@@ -70,6 +70,7 @@ private func clampToInt32(_ v: CGFloat) -> Int32 {
 /// - `Restore`         — restore a minimized window
 /// - `Close`           — close a window
 /// - `Zoom`            — green-button zoom via an AXZoomButton press (bevel-kpkx)
+/// - `ListSpaces` / `MoveWindowToSpace` — Mission Control Spaces via private SkyLight only (bevel-44vg SPIKE)
 /// - `Changes`         — snapshot-then-deltas stream (server-streaming)
 ///
 /// Correlation between CGWindowIDs and AXUIElements uses the private
@@ -467,6 +468,50 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
                         maxHeight: Int(req.message.maxHeight)
                     )
                 }
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
+        // ── ListSpaces (bevel-44vg SPIKE) ─────────────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "ListSpaces"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_ListSpacesRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_ListSpacesReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                _ = try await ServerRequest(stream: request)
+                var reply = Bevel_Helper_V1_ListSpacesReply()
+                reply.spaces = self.listSpaces()
+                return StreamingServerResponse(single: ServerResponse(message: reply))
+            }
+        )
+
+        // ── MoveWindowToSpace (bevel-44vg SPIKE) ──────────────────────────
+        router.registerHandler(
+            forMethod: MethodDescriptor(fullyQualifiedService: serviceName, method: "MoveWindowToSpace"),
+            deserializer: ProtobufDeserializer<Bevel_Helper_V1_MoveWindowToSpaceRequest>(),
+            serializer: ProtobufSerializer<Bevel_Helper_V1_MoveWindowToSpaceReply>(),
+            handler: { [weak self] request, context in
+                guard let self else {
+                    throw RPCError(code: .internalError, message: "WindowService deallocated")
+                }
+                try AuthInterceptor.authenticate(
+                    request.metadata,
+                    expectedKey: self.expectedKey,
+                    expectedCapability: "window"
+                )
+                let req = try await ServerRequest(stream: request)
+                let ok = try self.moveWindowToSpace(
+                    windowID: req.message.windowID, spaceID: Int(req.message.spaceID))
+                var reply = Bevel_Helper_V1_MoveWindowToSpaceReply()
+                reply.ok = ok
                 return StreamingServerResponse(single: ServerResponse(message: reply))
             }
         )
@@ -1370,6 +1415,30 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             any = did || any
         }
         return any
+    }
+
+    /// Every Mission Control Space on every display (bevel-44vg): private SkyLight only. Empty when
+    /// the symbols are missing — the caller then offers no "Move to Space" submenu at all.
+    func listSpaces() -> [Bevel_Helper_V1_SpaceInfo] {
+        SkyLight.managedSpaces().map { space in
+            var info = Bevel_Helper_V1_SpaceInfo()
+            info.id = UInt64(space.id)
+            info.type = Int32(space.type)
+            info.name = space.name
+            info.displayUuid = space.displayUUID
+            info.isCurrent = space.isCurrent
+            return info
+        }
+    }
+
+    /// Move a window onto another Space (bevel-44vg SPIKE): `CGSMoveWindowsToManagedSpace` via
+    /// SkyLight. The window is re-parented — it leaves its current Space and appears on the target
+    /// one — without switching any display. Returns false (window untouched) when the private
+    /// symbol is missing or the WindowServer call refuses; throws notFound/invalidArgument for a
+    /// window id that no longer resolves, same as the other window verbs.
+    func moveWindowToSpace(windowID: String, spaceID: Int) throws -> Bool {
+        let target = try resolveWindow(windowID: windowID)
+        return SkyLight.moveWindowToSpace(cgID: target.cgID, spaceID: spaceID)
     }
 
     func minimizeWindow(windowID: String) throws {

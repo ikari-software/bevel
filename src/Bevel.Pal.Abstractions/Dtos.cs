@@ -115,6 +115,19 @@ public sealed record ForeignWindow(
     /// never guessed.</summary>
     string? BundlePath = null);
 
+/// <summary>One Mission Control Space (macOS; bevel-44vg). <see cref="Id"/> is the WindowServer
+/// Space id (id64); <see cref="Type"/> is the CGSSpaceType (0 = user "Desktop", 2 = system/dashboard,
+/// 4 = native fullscreen). <see cref="Name"/> is a best-effort label ("Desktop 2" synthesized when
+/// WindowServer carries none) — null/empty only when even that fails. <see cref="DisplayUuid"/> is
+/// the CGDisplay UUID of the display the Space lives on (null when unknown); <see cref="IsCurrent"/>
+/// is true when THAT display is currently showing the Space (per-display, multi-monitor).</summary>
+public sealed record SpaceInfo(
+    ulong Id,
+    int Type,
+    string? Name,
+    string? DisplayUuid,
+    bool IsCurrent);
+
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when
 /// <see cref="IsLive"/>, else the owning app's icon (limited mode, spec §5.5); <see cref="Bounds"/>

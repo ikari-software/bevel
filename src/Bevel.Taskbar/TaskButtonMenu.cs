@@ -47,16 +47,22 @@ public static class TaskButtonMenu
     /// view supplies them via Build's appActions parameter: bundle id in, actions out.</summary>
     public sealed record TaskMenuAction(string Header, Action Invoke);
 
+    /// <summary>bevel-44vg: one "Move to Space ▶" row — a Mission Control Space the window can be
+    /// moved onto. The view supplies the list (fetched before the menu opens, like tabs) only when the
+    /// dev flag is on; null/empty means the whole submenu is omitted.</summary>
+    public sealed record SpaceMenuRow(ulong Id, string Label, bool IsCurrent);
+
     public static MenuFlyout? TryShow(
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
         Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
-        Action<string>? onShowInFinder = null)
+        Action<string>? onShowInFinder = null,
+        IReadOnlyList<SpaceMenuRow>? spaces = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions, onShowInFinder) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions, onShowInFinder, spaces) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -72,7 +78,8 @@ public static class TaskButtonMenu
     internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
         Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
-        Action<string>? onShowInFinder = null)
+        Action<string>? onShowInFinder = null,
+        IReadOnlyList<SpaceMenuRow>? spaces = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -113,6 +120,24 @@ public static class TaskButtonMenu
                 // bevel-kpkx: the macOS green-button zoom (Windows: Maximize).
                 per.Items.Add(new MenuItem { Header = "Ma_ximize", Command = win.ZoomCommand });
                 per.Items.Add(new MenuItem { Header = "_Close", Command = win.CloseCommand });
+                // bevel-44vg (dev-flagged): "Move to Space ▶" per window, one row per Space. The
+                // current Space is disabled — moving onto the Space the window already lives on is
+                // a no-op the WindowServer would refuse anyway.
+                if (spaces is { Count: > 0 })
+                {
+                    var moveToSpace = new MenuItem { Header = "Move to _Space" };
+                    foreach (var space in spaces)
+                    {
+                        var captured = space;
+                        moveToSpace.Items.Add(new MenuItem
+                        {
+                            Header = EscapeHeader(captured.Label),
+                            IsEnabled = !captured.IsCurrent,
+                            Command = new AsyncRelayCommand(() => win.MoveToSpace(captured.Id)),
+                        });
+                    }
+                    per.Items.Add(moveToSpace);
+                }
                 windows.Items.Add(per);
             }
             items.Add(windows);
@@ -240,7 +265,8 @@ public static class TaskButtonMenu
 
     // ── Adapt either button VM to a common menu shape ────────────────────────
 
-    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand);
+    private sealed record WindowRow(string Title, ICommand ActivateCommand, ICommand MinimizeCommand, ICommand RestoreCommand, ICommand ZoomCommand, ICommand CloseCommand,
+        Func<ulong, Task> MoveToSpace);
     private sealed record MenuModel(string AppName, Bitmap? Icon, IReadOnlyList<WindowRow> Windows, ICommand QuitCommand, ICommand ForceQuitCommand,
         bool IsGroup = false, ICommand? MinimizeAllCommand = null, ICommand? RestoreAllCommand = null, ICommand? CloseAllCommand = null,
         string? BundleId = null, string? BundlePath = null, ICommand? HideCommand = null);
@@ -265,7 +291,8 @@ public static class TaskButtonMenu
     };
 
     private static WindowRow Row(TaskItemViewModel w) =>
-        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.RestoreCommand, w.ZoomCommand, w.CloseCommand);
+        new(w.Title, w.ActivateCommand, w.MinimizeCommand, w.RestoreCommand, w.ZoomCommand, w.CloseCommand,
+            w.MoveToSpaceAsync);
 
     /// <summary>Menu headers treat "_" as the access-key marker; tab titles are foreign text, so
     /// double any literal underscore to keep it visible (and un-hotkeyed).</summary>

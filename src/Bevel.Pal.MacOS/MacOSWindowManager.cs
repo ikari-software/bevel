@@ -184,6 +184,41 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    /// <summary>Every Mission Control Space on every display (bevel-44vg): the helper reads them via
+    /// private SkyLight. Empty when the helper is down or the private symbols are missing — callers
+    /// treat that as "unknown", not "no Spaces".</summary>
+    public async ValueTask<IReadOnlyList<Bevel.Pal.Abstractions.SpaceInfo>> ListSpacesAsync(CancellationToken ct = default)
+    {
+        if (_disposed) return Array.Empty<Bevel.Pal.Abstractions.SpaceInfo>();
+        try
+        {
+            var ws = GetWindowClient();
+            using var cts = TimeoutScope(ct);
+            var reply = await ws.ListSpacesAsync(new ListSpacesRequest(),
+                headers: AuthHeader(), cancellationToken: cts.Token);
+            return reply.Spaces.Select(s => new Bevel.Pal.Abstractions.SpaceInfo(
+                s.Id, (int)s.Type, string.IsNullOrEmpty(s.Name) ? null : s.Name,
+                string.IsNullOrEmpty(s.DisplayUuid) ? null : s.DisplayUuid, s.IsCurrent)).ToList();
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            _logger.LogWarning("ListSpaces unavailable: {Message}", ex.Message);
+            return Array.Empty<Bevel.Pal.Abstractions.SpaceInfo>();
+        }
+    }
+
+    /// <summary>Move a window onto another Space (bevel-44vg SPIKE): private SkyLight
+    /// CGSMoveWindowsToManagedSpace in the helper. A refusal (symbol missing / WindowServer says no)
+    /// arrives as ok=false and is a silent no-op — the next reconcile shows the window unmoved.</summary>
+    public async Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        await ws.MoveWindowToSpaceAsync(new MoveWindowToSpaceRequest { WindowId = id.Value, SpaceId = spaceId },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+    }
+
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (_disposed) return null;

@@ -71,6 +71,20 @@ public interface IWindowManager
     Task HideAppAsync(string bundleId, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    /// <summary>List every Mission Control Space on every display (bevel-44vg SPIKE): on macOS the
+    /// helper reads them from private SkyLight (<c>CGSCopyManagedDisplaySpaces</c>); an empty list
+    /// means "unknown/unavailable", never "no Spaces". Default: unsupported — stubs and non-macOS
+    /// backends answer empty.</summary>
+    ValueTask<IReadOnlyList<SpaceInfo>> ListSpacesAsync(CancellationToken ct = default)
+        => ValueTask.FromResult<IReadOnlyList<SpaceInfo>>(Array.Empty<SpaceInfo>());
+
+    /// <summary>Move a window onto another Mission Control Space (bevel-44vg SPIKE): on macOS the
+    /// helper calls private SkyLight <c>CGSMoveWindowsToManagedSpace</c> — the window is re-parented
+    /// onto the target Space without switching any display. No public API and no entitlement is
+    /// involved; a symbol miss or refusal is a silent no-op. Default: unsupported (stubs).</summary>
+    Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     event EventHandler<ForeignWindow>? WindowOpened;
     event EventHandler<ForeignWindow>? WindowClosed;
     event EventHandler<ForeignWindow>? WindowChanged;
