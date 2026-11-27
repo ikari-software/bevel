@@ -400,6 +400,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal("com.app000", settings.TaskbarPinnedApps[0]);
         Assert.Equal("com.app127", settings.TaskbarPinnedApps[^1]);
         Assert.All(settings.TaskbarPinnedApps, p => Assert.True(p.Length <= TaskbarPins.MaxIdLength));
+    }
 
     // ── Attention animation / duration (bevel-qb19) ────────────────────────────────────────────
 
