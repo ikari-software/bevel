@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -17,6 +18,8 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
 {
     private readonly IWindowManager _windows;
     private readonly TaskButtonClickPolicy _clicks;
+    private readonly TaskAttentionPolicy _attention;
+    private readonly IAttentionTimer _attentionTimer;
     /// <summary>Optimistic focus claims go through the shell's exclusive projection (bevel-yslj /
     /// bevel-c04q). Null in unit tests that construct a lone VM with no strip.</summary>
     private readonly Action<string?>? _claimFocus;
@@ -42,10 +45,13 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// Optimistic click/minimize must use this — never write <see cref="IsFocused"/> directly when a
     /// strip of siblings exists, or two buttons can stay pressed (bevel-yslj).</param>
     public TaskItemViewModel(ForeignWindow w, IWindowManager windows, TaskButtonClickPolicy? clicks = null,
-        Action<string?>? claimFocus = null, Func<string, Task>? launchApp = null)
+        Action<string?>? claimFocus = null, Func<string, Task>? launchApp = null,
+        TaskAttentionPolicy? attention = null, IAttentionTimer? attentionTimer = null)
     {
         _windows = windows;
         _clicks = clicks ?? TaskButtonClickPolicy.Shared;
+        _attention = attention ?? TaskAttentionPolicy.Shared;
+        _attentionTimer = attentionTimer ?? new DispatcherAttentionTimer();
         _claimFocus = claimFocus;
         _launchApp = launchApp;
         Id = w.Id;
@@ -277,10 +283,90 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         if (w.BundleId is { Length: > 0 } b) BundleId = b;
         // IsFocused is owned by ShellModel.ApplyExclusiveFocus — per-event isFocused flags
         // go stale and were leaving multiple buttons in the pressed state.
+        // Attention (bevel-qb19): a NEW non-zero stamp starts the animation, unless this window is
+        // already focused (activation is the acknowledgement). The same value again is a no-op, so
+        // the 500ms poll re-sending the sticky stamp never re-triggers.
+        if (w.AttentionAt > 0 && w.AttentionAt != _attentionAt)
+        {
+            _attentionAt = w.AttentionAt;
+            if (!IsFocused)
+                StartAttention();
+        }
     }
 
     /// <summary>Sets focus from the shell's exclusive foreground projection.</summary>
-    public void SetFocused(bool focused) => IsFocused = focused;
+    public void SetFocused(bool focused)
+    {
+        IsFocused = focused;
+        // bevel-qb19: activating/focusing the window acknowledges its attention request.
+        if (focused)
+            StopAttention();
+    }
+
+    // ── Attention state (bevel-qb19) ─────────────────────────────────────
+    //
+    // The helper stamps attention_at when a window NEWLY APPEARS or its TITLE CHANGES while its app
+    // is NOT foreground (never inferred from title/badge CONTENT). The stamp flows WindowChange ->
+    // ForeignWindow.AttentionAt -> here. Active animates; bounded settles into a static tint after
+    // MaxPulses cycles; until-activated runs until activation/close.
+
+    private long _attentionAt;
+    private TaskAttentionState _attentionState;
+
+    /// <summary>Raw attention stamp (unix ms, 0 = none) exactly as the helper last reported it.</summary>
+    public long AttentionAt => _attentionAt;
+
+    /// <summary>Attention state machine: Idle → Active → (bounded) Settled, back to Idle on
+    /// activation/close.</summary>
+    public TaskAttentionState AttentionState
+    {
+        get => _attentionState;
+        private set
+        {
+            if (!SetProperty(ref _attentionState, value)) return;
+            OnPropertyChanged(nameof(AttentionVisual));
+        }
+    }
+
+    /// <summary>The overlay visual, resolved live from the state + the shared policy (settings and
+    /// reduced-motion can change it under a running animation).</summary>
+    public TaskAttentionVisual AttentionVisual => TaskAttentionPolicy.ResolveVisual(_attentionState, _attention);
+
+    private void StartAttention()
+    {
+        AttentionState = TaskAttentionState.Active;
+        // Bounded mode arms the settle timer; until-activated (and the static modes, which resolve
+        // to a tint immediately) run no timer and stop only on activation/close.
+        if (_attention.EffectiveDuration == TaskbarAttentionDuration.Bounded &&
+            _attention.EffectiveAnimation is TaskbarAttentionAnimation.Pulse or TaskbarAttentionAnimation.Sweep)
+            _attentionTimer.Start(TaskAttentionPolicy.BoundedSettleDelay, SettleAttention);
+        else
+            _attentionTimer.Stop();
+    }
+
+    private void SettleAttention()
+    {
+        if (AttentionState == TaskAttentionState.Active)
+            AttentionState = TaskAttentionState.Settled;
+    }
+
+    /// <summary>Stops the attention animation (window activated, closed, app quit, button clicked).
+    /// Idempotent.</summary>
+    public void StopAttention()
+    {
+        _attentionTimer.Stop();
+        AttentionState = TaskAttentionState.Idle;
+    }
+
+    /// <summary>Re-resolves the visual after the shared policy changed (settings apply / reduced-motion
+    /// probe) and re-arms the settle timer if a bounded animation is still running under new semantics.</summary>
+    internal void RefreshAttentionVisual()
+    {
+        if (AttentionState == TaskAttentionState.Active)
+            StartAttention();
+        // Always raise: the state may be unchanged while the resolved visual moved (mode/reduced-motion).
+        OnPropertyChanged(nameof(AttentionVisual));
+    }
 
     /// <summary>Optimistic focus edit: prefer the shell claim so exclusivity holds; fall back to a
     /// direct write only when this VM was built without a strip (lone-unit tests).</summary>

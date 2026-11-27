@@ -103,6 +103,11 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// Changes stream exactly like windows. Guarded by `stateLock` alongside `windowStore`.
     private var appStore: [String: Bevel_Helper_V1_TaskbarWindow] = [:]
 
+    /// False until the first reconcile pass has populated `windowStore`/`appStore` (bevel-qb19):
+    /// the initial fill must not count as "every window newly appeared", or every background app
+    /// would raise attention the moment the helper starts. Guarded by `stateLock`.
+    private var storePrimed = false
+
     /// App-icon PNG cache keyed by bundle id. The reconciliation poll now builds
     /// full descriptors (icons included) every ~1s, so re-rendering each app's icon
     /// from disk on every tick would be wasteful — cache the PNG once per bundle id.
@@ -621,6 +626,9 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         /// Rank of each on-screen window in true front-to-back order (0 = frontmost). Sourced from the
         /// on-screen-only CG list — the `.optionAll` list's order is NOT depth.
         let zRank: [CGWindowID: Int]
+        /// True once the first reconcile has primed the stores — before that, "not in the store"
+        /// just means "initial fill", not "newly appeared" (bevel-qb19).
+        let primed: Bool
 
         func isOnScreen(_ id: CGWindowID) -> Bool { onScreen.contains(id) }
     }
@@ -643,7 +651,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             foregroundPID: effectiveForeignFrontmost(NSWorkspace.shared.frontmostApplication?.processIdentifier),
             spaces: SpaceContext.capture(),
             onScreen: onScreen,
-            zRank: trueZOrder()
+            zRank: trueZOrder(),
+            primed: stateLock.withLock { storePrimed }
         )
         if forReconcile {
             offscreenTracker.advance(
@@ -723,11 +732,24 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // accepted title while that same PID/window remains AX-correlated. Without this, the no-title
         // gate below emits CLOSED then OPENED on the next 500ms poll, making the button shrink and
         // regrow instead of updating in place.
-        let previousTitle: String? = stateLock.withLock {
-            guard let previous = windowStore[cgID], previous.pid == win.pid else { return nil }
-            return previous.title
-        }
-        win.title = titleForStableDiff(current: win.title, previous: previousTitle, hasAXWindow: pass.axMap[cgID] != nil)
+        let previous = stateLock.withLock { windowStore[cgID] }
+        let previousMatches = previous != nil && previous!.pid == win.pid
+        win.title = titleForStableDiff(current: win.title, previous: previousMatches ? previous!.title : nil, hasAXWindow: pass.axMap[cgID] != nil)
+
+        // Attention signal (bevel-qb19): stamp the moment this window newly appeared or its title
+        // changed while its app is NOT the foreground app. The Dock AX tree exposes no
+        // requestUserAttention state (spike 2026-11), so this is the observable proxy. Sticky
+        // across passes (a re-poll or frame-only change never retriggers), cleared when the app
+        // is foreground, and suppressed on the initial fill (pass.primed) so shell start doesn't
+        // pulse every background app. Never inferred from title CONTENT — only the fact of change.
+        win.attentionAt = AttentionPolicy.attentionAt(
+            existed: previousMatches || !pass.primed,
+            previousTitle: previousMatches ? previous!.title : "",
+            previousAttentionAt: previousMatches ? previous!.attentionAt : 0,
+            currentTitle: win.title,
+            pid: pid,
+            foregroundPID: pass.foregroundPID,
+            nowMs: AttentionPolicy.nowUnixMs())
 
         if let reason = dropReason(for: win, cgID: cgID, entry: entry, pass: pass) {
             dbg("drop cg=\(cgID) '\(win.appName)' reason=\(reason)")
@@ -1995,7 +2017,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // One pass = one consistent picture. `.optionAll` inside `beginPass` keeps minimized windows in
         // the set (else they'd be diffed as CLOSED every poll, bevel-m2.3); the SAME builder ListWindows
         // uses means the poll path carries icons + minimized state (bevel-m2.1 / bevel-m2.3).
-        let kept = listWindows(beginPass(forReconcile: true))
+        let pass = beginPass(forReconcile: true)
+        let kept = listWindows(pass)
         var newStore: [CGWindowID: Bevel_Helper_V1_TaskbarWindow] = [:]
         for win in kept {
             if let id = CGWindowID(win.windowID) { newStore[id] = win }
@@ -2077,8 +2100,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             }
         }
 
-        // Update the store atomically.
-        stateLock.withLock { windowStore = newStore }
+        // Update the store atomically. `storePrimed` flips here so the NEXT pass can tell a genuine
+        // "newly appeared" from the initial fill (bevel-qb19).
+        stateLock.withLock {
+            windowStore = newStore
+            storePrimed = true
+        }
 
         // App-presence (bevel-ww71): windowless-running apps = running .regular apps minus those owning a
         // kept window this poll. Diffed + emitted as OPENED/CLOSED synthetic windows, exactly like windows,
@@ -2086,9 +2113,22 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         // entry drops (CLOSED) while the real window arrives (OPENED); the C# projector suppresses the
         // presence entry for that bundle in the overlap frame so there's never a visible duplicate.
         let windowPIDs = Set(newStore.values.map { $0.pid })
-        let newApps = computeAppPresence(windowPIDs: windowPIDs)
-        let prevAppKeys: Set<String> = stateLock.withLock { Set(appStore.keys) }
+        var newApps = computeAppPresence(windowPIDs: windowPIDs)
+        let prevApps: [String: Bevel_Helper_V1_TaskbarWindow] = stateLock.withLock { appStore }
+        let prevAppKeys = Set(prevApps.keys)
         let curAppKeys = Set(newApps.keys)
+
+        // App-presence entries carry the attention signal too (bevel-qb19): a windowless app
+        // APPEARING while not foreground is the launch-bounce moment. Sticky for entries that
+        // persist across passes, stamped only on genuine appearance (not the initial fill).
+        for (bundle, var app) in newApps {
+            if let prev = prevApps[bundle] {
+                app.attentionAt = prev.attentionAt
+            } else if pass.primed, app.pid != 0, app.pid != pass.foregroundPID {
+                app.attentionAt = AttentionPolicy.nowUnixMs()
+            }
+            newApps[bundle] = app
+        }
 
         for bundle in curAppKeys.subtracting(prevAppKeys) {
             guard let app = newApps[bundle] else { continue }

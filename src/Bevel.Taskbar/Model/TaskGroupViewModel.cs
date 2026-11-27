@@ -89,6 +89,12 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
     /// <summary>Any child window focused → the group button shows the sunken/active state.</summary>
     public bool IsFocused => Windows.Any(w => w.IsFocused);
 
+    /// <summary>bevel-qb19: the first child with a live attention visual wins, so a grouped app's
+    /// button flashes too when one of its windows asks for attention.</summary>
+    public TaskAttentionVisual AttentionVisual =>
+        Windows.FirstOrDefault(w => w.AttentionVisual != TaskAttentionVisual.None)?.AttentionVisual
+        ?? TaskAttentionVisual.None;
+
     /// <summary>
     /// The app's unread badge (bevel-ijln). Every member window belongs to ONE app, so they all carry
     /// the same platform label — take the first non-empty rather than summing. Deliberately NOT the
@@ -177,6 +183,8 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
             OnPropertyChanged(nameof(IconSource));
         else if (e.PropertyName is nameof(TaskItemViewModel.BadgeText))
             RaiseBadge();
+        else if (e.PropertyName is nameof(TaskItemViewModel.AttentionVisual))
+            OnPropertyChanged(nameof(AttentionVisual));
     }
 
     private void RaiseBadge()
@@ -193,6 +201,7 @@ public sealed class TaskGroupViewModel : ObservableObject, ITaskbarItem
         OnPropertyChanged(nameof(Label));
         OnPropertyChanged(nameof(IconSource));
         OnPropertyChanged(nameof(IsFocused));
+        OnPropertyChanged(nameof(AttentionVisual));
         OnPropertyChanged(nameof(StatusText));
         RaiseBadge();
     }

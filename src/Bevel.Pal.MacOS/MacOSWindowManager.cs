@@ -414,7 +414,10 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             IsFullscreen: tw.IsFullscreen,
             IsOnOtherSpace: tw.IsOnOtherSpace,
             // Whitespace is as dead as empty — a blank path must not reach the verb (bevel-4nct review).
-            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath);
+            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath,
+            // Attention stamp (bevel-qb19): 0 = none, otherwise unix ms of the
+            // appear/title-change that requested attention while backgrounded.
+            AttentionAt: (long)tw.AttentionAt);
     }
 
     public void Dispose()

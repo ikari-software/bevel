@@ -300,64 +300,111 @@ public nonisolated struct Bevel_Helper_V1_WindowRef: Sendable {
 }
 
 /// Complete descriptor of a window suitable for taskbar-style display.
-public nonisolated struct Bevel_Helper_V1_TaskbarWindow: Sendable {
+public nonisolated struct Bevel_Helper_V1_TaskbarWindow: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var windowID: String = String()
+  public var windowID: String {
+    get {_storage._windowID}
+    set {_uniqueStorage()._windowID = newValue}
+  }
 
-  public var title: String = String()
+  public var title: String {
+    get {_storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
 
-  public var appName: String = String()
+  public var appName: String {
+    get {_storage._appName}
+    set {_uniqueStorage()._appName = newValue}
+  }
 
-  public var appBundleID: String = String()
+  public var appBundleID: String {
+    get {_storage._appBundleID}
+    set {_uniqueStorage()._appBundleID = newValue}
+  }
 
-  public var pid: Int32 = 0
+  public var pid: Int32 {
+    get {_storage._pid}
+    set {_uniqueStorage()._pid = newValue}
+  }
 
-  public var isMinimized: Bool = false
+  public var isMinimized: Bool {
+    get {_storage._isMinimized}
+    set {_uniqueStorage()._isMinimized = newValue}
+  }
 
-  public var isFocused: Bool = false
+  public var isFocused: Bool {
+    get {_storage._isFocused}
+    set {_uniqueStorage()._isFocused = newValue}
+  }
 
   public var frame: Bevel_Helper_V1_PixelRect {
-    get {_frame ?? Bevel_Helper_V1_PixelRect()}
-    set {_frame = newValue}
+    get {_storage._frame ?? Bevel_Helper_V1_PixelRect()}
+    set {_uniqueStorage()._frame = newValue}
   }
   /// Returns true if `frame` has been explicitly set.
-  public var hasFrame: Bool {self._frame != nil}
+  public var hasFrame: Bool {_storage._frame != nil}
   /// Clears the value of `frame`. Subsequent reads from it will return its default value.
-  public mutating func clearFrame() {self._frame = nil}
+  public mutating func clearFrame() {_uniqueStorage()._frame = nil}
 
   /// App icon as PNG bytes (from the owning app's bundle id), or empty if unavailable.
-  public var appIconPng: Data = Data()
+  public var appIconPng: Data {
+    get {_storage._appIconPng}
+    set {_uniqueStorage()._appIconPng = newValue}
+  }
 
   /// True for a synthetic "app-presence" entry: a regular app that is RUNNING but owns no window
   /// (bevel-ww71). Its window_id is "app:<bundle_id>", frame is empty, and the taskbar renders it as a
   /// dim icon-only button whose click reopens the app. Suppressed when a real window for the same bundle
   /// exists, so the merge transition is duplicate-free.
-  public var isAppPresence: Bool = false
+  public var isAppPresence: Bool {
+    get {_storage._isAppPresence}
+    set {_uniqueStorage()._isAppPresence = newValue}
+  }
 
   /// True when the window is in native (green-button) fullscreen, i.e. it occupies a dedicated
   /// fullscreen Space. NOT the same as zoomed/maximized, which stays on the user's Space. Consumers
   /// acting on geometry need the difference: a fullscreen window's frame IS the display, so it
   /// overlaps any shell chrome without being in its way (bevel-ex8n). False when undetermined.
-  public var isFullscreen: Bool = false
+  public var isFullscreen: Bool {
+    get {_storage._isFullscreen}
+    set {_uniqueStorage()._isFullscreen = newValue}
+  }
 
   /// True when the window's Space is known and no display is showing it. Such windows are still
   /// listed (the CG query uses .optionAll so minimized windows survive) and their frame is the last
   /// one they had on screen. False when undetermined — never guessed from absence of evidence.
-  public var isOnOtherSpace: Bool = false
+  public var isOnOtherSpace: Bool {
+    get {_storage._isOnOtherSpace}
+    set {_uniqueStorage()._isOnOtherSpace = newValue}
+  }
 
   /// Owning app's bundle path on disk ("/Applications/Safari.app"), from NSRunningApplication
   /// bundleURL (executableURL as fallback for unbundled processes). Empty when unknown. Feeds the
   /// taskbar's "Show in Finder" verb, which reveals this path in a file-manager window (bevel-4nct).
-  public var appBundlePath: String = String()
+  public var appBundlePath: String {
+    get {_storage._appBundlePath}
+    set {_uniqueStorage()._appBundlePath = newValue}
+  }
+
+  /// Unix-ms timestamp of the last attention-raising event for this window: the window NEWLY
+  /// APPEARED or its TITLE CHANGED while its owning app was NOT the foreground app (bevel-qb19).
+  /// The Dock's AX tree exposes no requestUserAttention state (spike, 2026-11), so the fact of
+  /// appearance/title-change while backgrounded is the observable signal. 0 = none. Sticky: a
+  /// window that raised attention keeps the timestamp until a newer event replaces it, and the
+  /// timestamp is cleared when the app becomes foreground. Never inferred from title CONTENT.
+  public var attentionAt: UInt64 {
+    get {_storage._attentionAt}
+    set {_uniqueStorage()._attentionAt = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _frame: Bevel_Helper_V1_PixelRect? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Bevel_Helper_V1_PixelRect: Sendable {
@@ -381,24 +428,21 @@ public nonisolated struct Bevel_Helper_V1_PixelRect: Sendable {
 /// WindowChange is the payload for the Changes server-streaming RPC.
 /// An initial burst of SNAPSHOT messages represents the full window list;
 /// subsequent DELTA messages represent individual changes.
-public nonisolated struct Bevel_Helper_V1_WindowChange: @unchecked Sendable {
+public nonisolated struct Bevel_Helper_V1_WindowChange: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var kind: Bevel_Helper_V1_WindowChange.Kind {
-    get {_storage._kind}
-    set {_uniqueStorage()._kind = newValue}
-  }
+  public var kind: Bevel_Helper_V1_WindowChange.Kind = .snapshot
 
   public var window: Bevel_Helper_V1_TaskbarWindow {
-    get {_storage._window ?? Bevel_Helper_V1_TaskbarWindow()}
-    set {_uniqueStorage()._window = newValue}
+    get {_window ?? Bevel_Helper_V1_TaskbarWindow()}
+    set {_window = newValue}
   }
   /// Returns true if `window` has been explicitly set.
-  public var hasWindow: Bool {_storage._window != nil}
+  public var hasWindow: Bool {self._window != nil}
   /// Clears the value of `window`. Subsequent reads from it will return its default value.
-  public mutating func clearWindow() {_uniqueStorage()._window = nil}
+  public mutating func clearWindow() {self._window = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -462,7 +506,7 @@ public nonisolated struct Bevel_Helper_V1_WindowChange: @unchecked Sendable {
 
   public init() {}
 
-  fileprivate var _storage = _StorageClass.defaultInstance
+  fileprivate var _window: Bevel_Helper_V1_TaskbarWindow? = nil
 }
 
 public nonisolated struct Bevel_Helper_V1_ListWindowsRequest: Sendable {
@@ -1085,93 +1129,160 @@ nonisolated extension Bevel_Helper_V1_WindowRef: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Bevel_Helper_V1_TaskbarWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TaskbarWindow"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0\u{3}is_fullscreen\0\u{3}is_on_other_space\0\u{3}app_bundle_path\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{1}title\0\u{3}app_name\0\u{3}app_bundle_id\0\u{1}pid\0\u{3}is_minimized\0\u{3}is_focused\0\u{1}frame\0\u{3}app_icon_png\0\u{3}is_app_presence\0\u{3}is_fullscreen\0\u{3}is_on_other_space\0\u{3}app_bundle_path\0\u{3}attention_at\0")
+
+  fileprivate class _StorageClass {
+    var _windowID: String = String()
+    var _title: String = String()
+    var _appName: String = String()
+    var _appBundleID: String = String()
+    var _pid: Int32 = 0
+    var _isMinimized: Bool = false
+    var _isFocused: Bool = false
+    var _frame: Bevel_Helper_V1_PixelRect? = nil
+    var _appIconPng: Data = Data()
+    var _isAppPresence: Bool = false
+    var _isFullscreen: Bool = false
+    var _isOnOtherSpace: Bool = false
+    var _appBundlePath: String = String()
+    var _attentionAt: UInt64 = 0
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _windowID = source._windowID
+      _title = source._title
+      _appName = source._appName
+      _appBundleID = source._appBundleID
+      _pid = source._pid
+      _isMinimized = source._isMinimized
+      _isFocused = source._isFocused
+      _frame = source._frame
+      _appIconPng = source._appIconPng
+      _isAppPresence = source._isAppPresence
+      _isFullscreen = source._isFullscreen
+      _isOnOtherSpace = source._isOnOtherSpace
+      _appBundlePath = source._appBundlePath
+      _attentionAt = source._attentionAt
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.title) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.appName) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.appBundleID) }()
-      case 5: try { try decoder.decodeSingularInt32Field(value: &self.pid) }()
-      case 6: try { try decoder.decodeSingularBoolField(value: &self.isMinimized) }()
-      case 7: try { try decoder.decodeSingularBoolField(value: &self.isFocused) }()
-      case 8: try { try decoder.decodeSingularMessageField(value: &self._frame) }()
-      case 9: try { try decoder.decodeSingularBytesField(value: &self.appIconPng) }()
-      case 10: try { try decoder.decodeSingularBoolField(value: &self.isAppPresence) }()
-      case 11: try { try decoder.decodeSingularBoolField(value: &self.isFullscreen) }()
-      case 12: try { try decoder.decodeSingularBoolField(value: &self.isOnOtherSpace) }()
-      case 13: try { try decoder.decodeSingularStringField(value: &self.appBundlePath) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._windowID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._appName) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._appBundleID) }()
+        case 5: try { try decoder.decodeSingularInt32Field(value: &_storage._pid) }()
+        case 6: try { try decoder.decodeSingularBoolField(value: &_storage._isMinimized) }()
+        case 7: try { try decoder.decodeSingularBoolField(value: &_storage._isFocused) }()
+        case 8: try { try decoder.decodeSingularMessageField(value: &_storage._frame) }()
+        case 9: try { try decoder.decodeSingularBytesField(value: &_storage._appIconPng) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._isAppPresence) }()
+        case 11: try { try decoder.decodeSingularBoolField(value: &_storage._isFullscreen) }()
+        case 12: try { try decoder.decodeSingularBoolField(value: &_storage._isOnOtherSpace) }()
+        case 13: try { try decoder.decodeSingularStringField(value: &_storage._appBundlePath) }()
+        case 14: try { try decoder.decodeSingularUInt64Field(value: &_storage._attentionAt) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.windowID.isEmpty {
-      try visitor.visitSingularStringField(value: self.windowID, fieldNumber: 1)
-    }
-    if !self.title.isEmpty {
-      try visitor.visitSingularStringField(value: self.title, fieldNumber: 2)
-    }
-    if !self.appName.isEmpty {
-      try visitor.visitSingularStringField(value: self.appName, fieldNumber: 3)
-    }
-    if !self.appBundleID.isEmpty {
-      try visitor.visitSingularStringField(value: self.appBundleID, fieldNumber: 4)
-    }
-    if self.pid != 0 {
-      try visitor.visitSingularInt32Field(value: self.pid, fieldNumber: 5)
-    }
-    if self.isMinimized != false {
-      try visitor.visitSingularBoolField(value: self.isMinimized, fieldNumber: 6)
-    }
-    if self.isFocused != false {
-      try visitor.visitSingularBoolField(value: self.isFocused, fieldNumber: 7)
-    }
-    try { if let v = self._frame {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
-    } }()
-    if !self.appIconPng.isEmpty {
-      try visitor.visitSingularBytesField(value: self.appIconPng, fieldNumber: 9)
-    }
-    if self.isAppPresence != false {
-      try visitor.visitSingularBoolField(value: self.isAppPresence, fieldNumber: 10)
-    }
-    if self.isFullscreen != false {
-      try visitor.visitSingularBoolField(value: self.isFullscreen, fieldNumber: 11)
-    }
-    if self.isOnOtherSpace != false {
-      try visitor.visitSingularBoolField(value: self.isOnOtherSpace, fieldNumber: 12)
-    }
-    if !self.appBundlePath.isEmpty {
-      try visitor.visitSingularStringField(value: self.appBundlePath, fieldNumber: 13)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._windowID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._windowID, fieldNumber: 1)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 2)
+      }
+      if !_storage._appName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._appName, fieldNumber: 3)
+      }
+      if !_storage._appBundleID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._appBundleID, fieldNumber: 4)
+      }
+      if _storage._pid != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._pid, fieldNumber: 5)
+      }
+      if _storage._isMinimized != false {
+        try visitor.visitSingularBoolField(value: _storage._isMinimized, fieldNumber: 6)
+      }
+      if _storage._isFocused != false {
+        try visitor.visitSingularBoolField(value: _storage._isFocused, fieldNumber: 7)
+      }
+      try { if let v = _storage._frame {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+      } }()
+      if !_storage._appIconPng.isEmpty {
+        try visitor.visitSingularBytesField(value: _storage._appIconPng, fieldNumber: 9)
+      }
+      if _storage._isAppPresence != false {
+        try visitor.visitSingularBoolField(value: _storage._isAppPresence, fieldNumber: 10)
+      }
+      if _storage._isFullscreen != false {
+        try visitor.visitSingularBoolField(value: _storage._isFullscreen, fieldNumber: 11)
+      }
+      if _storage._isOnOtherSpace != false {
+        try visitor.visitSingularBoolField(value: _storage._isOnOtherSpace, fieldNumber: 12)
+      }
+      if !_storage._appBundlePath.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._appBundlePath, fieldNumber: 13)
+      }
+      if _storage._attentionAt != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._attentionAt, fieldNumber: 14)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_TaskbarWindow, rhs: Bevel_Helper_V1_TaskbarWindow) -> Bool {
-    if lhs.windowID != rhs.windowID {return false}
-    if lhs.title != rhs.title {return false}
-    if lhs.appName != rhs.appName {return false}
-    if lhs.appBundleID != rhs.appBundleID {return false}
-    if lhs.pid != rhs.pid {return false}
-    if lhs.isMinimized != rhs.isMinimized {return false}
-    if lhs.isFocused != rhs.isFocused {return false}
-    if lhs._frame != rhs._frame {return false}
-    if lhs.appIconPng != rhs.appIconPng {return false}
-    if lhs.isAppPresence != rhs.isAppPresence {return false}
-    if lhs.isFullscreen != rhs.isFullscreen {return false}
-    if lhs.isOnOtherSpace != rhs.isOnOtherSpace {return false}
-    if lhs.appBundlePath != rhs.appBundlePath {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._windowID != rhs_storage._windowID {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._appName != rhs_storage._appName {return false}
+        if _storage._appBundleID != rhs_storage._appBundleID {return false}
+        if _storage._pid != rhs_storage._pid {return false}
+        if _storage._isMinimized != rhs_storage._isMinimized {return false}
+        if _storage._isFocused != rhs_storage._isFocused {return false}
+        if _storage._frame != rhs_storage._frame {return false}
+        if _storage._appIconPng != rhs_storage._appIconPng {return false}
+        if _storage._isAppPresence != rhs_storage._isAppPresence {return false}
+        if _storage._isFullscreen != rhs_storage._isFullscreen {return false}
+        if _storage._isOnOtherSpace != rhs_storage._isOnOtherSpace {return false}
+        if _storage._appBundlePath != rhs_storage._appBundlePath {return false}
+        if _storage._attentionAt != rhs_storage._attentionAt {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -1226,74 +1337,36 @@ nonisolated extension Bevel_Helper_V1_WindowChange: SwiftProtobuf.Message, Swift
   public static let protoMessageName: String = _protobuf_package + ".WindowChange"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}window\0")
 
-  fileprivate class _StorageClass {
-    var _kind: Bevel_Helper_V1_WindowChange.Kind = .snapshot
-    var _window: Bevel_Helper_V1_TaskbarWindow? = nil
-
-      // This property is used as the initial default value for new instances of the type.
-      // The type itself is protecting the reference to its storage via CoW semantics.
-      // This will force a copy to be made of this reference when the first mutation occurs;
-      // hence, it is safe to mark this as `nonisolated(unsafe)`.
-      static nonisolated(unsafe) let defaultInstance = _StorageClass()
-
-    private init() {}
-
-    init(copying source: _StorageClass) {
-      _kind = source._kind
-      _window = source._window
-    }
-  }
-
-  fileprivate mutating func _uniqueStorage() -> _StorageClass {
-    if !isKnownUniquelyReferenced(&_storage) {
-      _storage = _StorageClass(copying: _storage)
-    }
-    return _storage
-  }
-
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    _ = _uniqueStorage()
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      while let fieldNumber = try decoder.nextFieldNumber() {
-        // The use of inline closures is to circumvent an issue where the compiler
-        // allocates stack space for every case branch when no optimizations are
-        // enabled. https://github.com/apple/swift-protobuf/issues/1034
-        switch fieldNumber {
-        case 1: try { try decoder.decodeSingularEnumField(value: &_storage._kind) }()
-        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._window) }()
-        default: break
-        }
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._window) }()
+      default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every if/case branch local when no optimizations
-      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-      // https://github.com/apple/swift-protobuf/issues/1182
-      if _storage._kind != .snapshot {
-        try visitor.visitSingularEnumField(value: _storage._kind, fieldNumber: 1)
-      }
-      try { if let v = _storage._window {
-        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-      } }()
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.kind != .snapshot {
+      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 1)
     }
+    try { if let v = self._window {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Bevel_Helper_V1_WindowChange, rhs: Bevel_Helper_V1_WindowChange) -> Bool {
-    if lhs._storage !== rhs._storage {
-      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
-        let _storage = _args.0
-        let rhs_storage = _args.1
-        if _storage._kind != rhs_storage._kind {return false}
-        if _storage._window != rhs_storage._window {return false}
-        return true
-      }
-      if !storagesAreEqual {return false}
-    }
+    if lhs.kind != rhs.kind {return false}
+    if lhs._window != rhs._window {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

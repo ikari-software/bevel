@@ -113,7 +113,12 @@ public sealed record ForeignWindow(
     /// on Windows), carried from the window manager so the taskbar's "Show in Finder" verb can reveal
     /// it without re-asking the PAL (bevel-4nct). <b>Null when unknown</b> — the verb is then omitted,
     /// never guessed.</summary>
-    string? BundlePath = null);
+    string? BundlePath = null,
+    /// <summary>Unix-ms timestamp of the last attention-raising event for this window (bevel-qb19):
+    /// the window newly appeared or its title changed while its app was not foreground. <b>0 = none.</b>
+    /// Sticky across snapshots; a NEWER non-zero value is a new attention event. Never inferred from
+    /// title content — only the fact of appearance/change.</summary>
+    long AttentionAt = 0);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

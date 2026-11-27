@@ -186,6 +186,7 @@
                         <!-- A checked classic button renders with the authentic sunken/hatched active-
                              task state. TaskButton never self-toggles: IsChecked is a OneWay projection
                              of the shell's focus (bevel-zk4a), so the click can't diverge from it. -->
+                        <Grid>
                         <tb:TaskButton Command="{Binding ActivateCommand}"
                                       IsChecked="{Binding IsFocused, Mode=OneWay}"
                                       Focusable="True"
@@ -232,11 +233,18 @@
                                            IsHitTestVisible="False" />
                             </StackPanel>
                         </tb:TaskButton>
+                        <!-- Attention overlay (bevel-qb19): vector/token-bound, sits over the button's
+                             face with the same margin; opacity/translate only, never hit-testable. -->
+                        <tb:TaskAttentionOverlay Mode="{Binding AttentionVisual}"
+                                                 Margin="1,2,0,2"
+                                                 IsHitTestVisible="False" />
+                        </Grid>
                     </DataTemplate>
 
                     <!-- Grouped app: one button showing icon + "Name (N)", opening a flyout that lists
                          the app's windows. IsChecked reflects whether any child window is focused. -->
                     <DataTemplate DataType="tb:TaskGroupViewModel">
+                      <Grid>
                         <tb:TaskButton IsChecked="{Binding IsFocused, Mode=OneWay}"
                                       Focusable="True"
                                       AutomationProperties.Name="{Binding Label}"
@@ -300,6 +308,11 @@
                                            IsHitTestVisible="False" />
                             </StackPanel>
                         </tb:TaskButton>
+                        <!-- Attention overlay (bevel-qb19): mirrors the first attentive child window. -->
+                        <tb:TaskAttentionOverlay Mode="{Binding AttentionVisual}"
+                                                 Margin="1,2,0,2"
+                                                 IsHitTestVisible="False" />
+                      </Grid>
                     </DataTemplate>
                 </ItemsControl.DataTemplates>
             </ItemsControl>

@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bevel.Taskbar.TaskAttentionOverlay"
+             IsHitTestVisible="False">
+    <!--
+      Attention overlay for a taskbar button (bevel-qb19) — vector-only, token-bound, and animated
+      with OPACITY / TRANSLATE ONLY (compositor-friendly, no layout thrash, antialiasing untouched).
+      Every colour is a theme token that exists in every skin and is owned by both runtime recolor
+      engines: the pulse/tint glow uses Bevel.Brush.Highlight (the skin's selection colour, so it
+      reads on Win2000 flat grey AND Luna gloss), the sweep whoosh uses Bevel.Brush.HighlightText
+      masked by an alpha gradient.
+    -->
+    <Grid IsHitTestVisible="False">
+        <!-- Pulse glow / settled static tint: opacity-only breathing (~1.2s period). -->
+        <Border x:Name="Glow" CornerRadius="2" IsHitTestVisible="False"
+                Background="{DynamicResource Bevel.Brush.Highlight}" />
+        <!-- Sweep: one translucent light band travelling left→right per cycle. The gradient lives in
+             the OpacityMask (alpha only) so the band's colour is still the token brush, not a literal. -->
+        <Border x:Name="SweepStrip" Width="48" HorizontalAlignment="Left" CornerRadius="2"
+                IsHitTestVisible="False" Opacity="0"
+                Background="{DynamicResource Bevel.Brush.HighlightText}">
+            <Border.OpacityMask>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Offset="0" Color="#00FFFFFF" />
+                    <GradientStop Offset="0.5" Color="#FFFFFFFF" />
+                    <GradientStop Offset="1" Color="#00FFFFFF" />
+                </LinearGradientBrush>
+            </Border.OpacityMask>
+            <Border.RenderTransform>
+                <TranslateTransform />
+            </Border.RenderTransform>
+        </Border>
+    </Grid>
+</UserControl>

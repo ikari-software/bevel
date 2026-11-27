@@ -68,6 +68,20 @@ public sealed class CoreProtocolTests
     }
 
     [Fact]
+    public void Window_change_event_round_trips_the_attention_stamp()   // bevel-qb19
+    {
+        // The helper stamps attention_at when a window newly appears or changes title while its app
+        // is backgrounded; the stamp must survive core→taskbar JSON verbatim (0 = none).
+        var stamped = SampleWindow with { AttentionAt = 1_763_500_000_123 };
+        var back = RoundTrip(new CoreEvent(CoreEventKind.WindowChanged, Window: stamped));
+
+        Assert.Equal(1_763_500_000_123, back.Window!.AttentionAt);
+
+        var unstamped = RoundTrip(new CoreEvent(CoreEventKind.WindowChanged, Window: SampleWindow));
+        Assert.Equal(0, unstamped.Window!.AttentionAt);
+    }
+
+    [Fact]
     public void Installed_apps_snapshot_round_trips()
     {
         var evt = new CoreEvent(CoreEventKind.InstalledAppsSnapshot, InstalledApps: new[]

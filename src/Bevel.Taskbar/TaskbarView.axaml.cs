@@ -199,6 +199,11 @@ public partial class TaskbarView : UserControl
         // Click semantics live in the shared policy, not a field here: buttons created later by ShellModel
         // (which has no settings) read the same object, so a live change reaches them too (bevel-au94).
         TaskButtonClickPolicy.Shared.Mode = settings.TaskbarReclickMinimize;
+        // Attention display (bevel-qb19) lives in the shared policy too: settings + the OS
+        // reduced-motion probe (which forces tint-only).
+        TaskAttentionPolicy.Shared.Animation = settings.TaskbarAttentionAnimation;
+        TaskAttentionPolicy.Shared.Duration = settings.TaskbarAttentionDuration;
+        TaskAttentionPolicy.Shared.ReduceMotion = TaskbarNative.ReduceMotionOn();
         _sort = settings.TaskbarWindowSort;
         _windowlessLast = settings.WindowlessAppsLast;
         _showOtherSpaces = settings.TaskbarShowOtherSpaceWindows;
@@ -451,6 +456,20 @@ public partial class TaskbarView : UserControl
             _buttonLabels = s.TaskbarButtonLabels;
             _middleClickCloses = s.TaskbarMiddleClickCloses;
             TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
+        }
+
+        // Attention display (bevel-qb19): animation + duration from settings, reduced-motion from the
+        // OS probe (forces tint-only). Live — re-resolve every existing button's overlay visual.
+        if (applied is null ||
+            s.TaskbarAttentionAnimation != applied.TaskbarAttentionAnimation ||
+            s.TaskbarAttentionDuration != applied.TaskbarAttentionDuration)
+        {
+            TaskAttentionPolicy.Shared.Animation = s.TaskbarAttentionAnimation;
+            TaskAttentionPolicy.Shared.Duration = s.TaskbarAttentionDuration;
+            TaskAttentionPolicy.Shared.ReduceMotion = TaskbarNative.ReduceMotionOn();
+            if (_vm is not null)
+                foreach (var item in _vm.Windows)
+                    item.RefreshAttentionVisual();
         }
 
         // Appearance section: 3 fields (bevel-5dn)

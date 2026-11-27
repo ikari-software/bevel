@@ -297,6 +297,7 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(TaskbarReclickMinimize.Never, reloaded.Current.TaskbarReclickMinimize);
     }
 
+
     // ── Pinned taskbar apps (bevel-be86) ────────────────────────────────────────────────────────
 
     [Fact]
@@ -399,5 +400,73 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal("com.app000", settings.TaskbarPinnedApps[0]);
         Assert.Equal("com.app127", settings.TaskbarPinnedApps[^1]);
         Assert.All(settings.TaskbarPinnedApps, p => Assert.True(p.Length <= TaskbarPins.MaxIdLength));
+
+    // ── Attention animation / duration (bevel-qb19) ────────────────────────────────────────────
+
+    [Fact]
+    public void Attention_settings_default_to_pulse_bounded_and_stay_out_of_the_blob()
+    {
+        var blob = SettingsService.SerializeBlob(new BevelSettings(), new Dictionary<string, ThemeOverrides>());
+
+        Assert.DoesNotContain("taskbarAttentionAnimation", blob);
+        Assert.DoesNotContain("taskbarAttentionDuration", blob);
+        var s = SettingsService.ProjectBlob(blob).Settings;
+        Assert.Equal(TaskbarAttentionAnimation.Pulse, s.TaskbarAttentionAnimation);
+        Assert.Equal(TaskbarAttentionDuration.Bounded, s.TaskbarAttentionDuration);
+    }
+
+    [Theory]
+    [InlineData(TaskbarAttentionAnimation.Pulse, TaskbarAttentionDuration.Bounded)]
+    [InlineData(TaskbarAttentionAnimation.Pulse, TaskbarAttentionDuration.UntilActivated)]
+    [InlineData(TaskbarAttentionAnimation.Sweep, TaskbarAttentionDuration.Bounded)]
+    [InlineData(TaskbarAttentionAnimation.Sweep, TaskbarAttentionDuration.UntilActivated)]
+    [InlineData(TaskbarAttentionAnimation.TintOnly, TaskbarAttentionDuration.Bounded)]
+    [InlineData(TaskbarAttentionAnimation.TintOnly, TaskbarAttentionDuration.UntilActivated)]
+    [InlineData(TaskbarAttentionAnimation.Off, TaskbarAttentionDuration.Bounded)]
+    [InlineData(TaskbarAttentionAnimation.Off, TaskbarAttentionDuration.UntilActivated)]
+    public void Attention_settings_round_trip_all_combinations_through_the_peer_blob(
+        TaskbarAttentionAnimation animation, TaskbarAttentionDuration duration)
+    {
+        var blob = SettingsService.SerializeBlob(
+            new BevelSettings { TaskbarAttentionAnimation = animation, TaskbarAttentionDuration = duration },
+            new Dictionary<string, ThemeOverrides>());
+
+        // Non-default values are serialized; default-valued keys are pruned (like every other knob).
+        if (animation != TaskbarAttentionAnimation.Pulse)
+            Assert.Contains("taskbarAttentionAnimation", blob);
+        if (duration != TaskbarAttentionDuration.Bounded)
+            Assert.Contains("taskbarAttentionDuration", blob);
+        var s = SettingsService.ProjectBlob(blob).Settings;
+        Assert.Equal(animation, s.TaskbarAttentionAnimation);
+        Assert.Equal(duration, s.TaskbarAttentionDuration);
+    }
+
+    [Fact]
+    public void Unparseable_attention_values_fall_back_to_pulse_bounded()
+    {
+        var s = SettingsService.ProjectBlob(
+            """{ "taskbarAttentionAnimation": "Disco", "taskbarAttentionDuration": "Forever" }""").Settings;
+
+        Assert.Equal(TaskbarAttentionAnimation.Pulse, s.TaskbarAttentionAnimation);
+        Assert.Equal(TaskbarAttentionDuration.Bounded, s.TaskbarAttentionDuration);
+    }
+
+    [Fact]
+    public async Task Attention_settings_survive_a_save_load_cycle()
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        await service.UpdateAsync(s =>
+        {
+            s.TaskbarAttentionAnimation = TaskbarAttentionAnimation.Sweep;
+            s.TaskbarAttentionDuration = TaskbarAttentionDuration.UntilActivated;
+        });
+
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+
+        Assert.Equal(TaskbarAttentionAnimation.Sweep, reloaded.Current.TaskbarAttentionAnimation);
+        Assert.Equal(TaskbarAttentionDuration.UntilActivated, reloaded.Current.TaskbarAttentionDuration);
+
     }
 }

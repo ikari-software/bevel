@@ -744,6 +744,19 @@ internal static class TaskbarNative
     public static bool OptionKeyDown()
         => cls_NSEvent != IntPtr.Zero && (objc_msgSend_nuint(cls_NSEvent, sel_modifierFlags) & NSEventModifierFlagOption) != 0;
 
+    private static readonly IntPtr sel_accessibilityDisplayShouldReduceMotion = MacObjC.Sel("accessibilityDisplayShouldReduceMotion");
+
+    /// <summary>True iff macOS Reduce Motion (com.apple.universalaccess reduceMotion) is on, via
+    /// <c>[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion</c> (bevel-qb19: forces
+    /// the taskbar attention animation to tint-only). Non-macOS or a failed lookup reports false.</summary>
+    public static bool ReduceMotionOn()
+    {
+        if (!OperatingSystem.IsMacOS() || cls_NSWorkspace == IntPtr.Zero) return false;
+        var ws = MacObjC.SendIntPtr(cls_NSWorkspace, sel_sharedWorkspace);
+        if (ws == IntPtr.Zero) return false;
+        return MacObjC.SendByte(ws, sel_accessibilityDisplayShouldReduceMotion) != 0;
+    }
+
     // ── Global mouse-down monitor for click-outside dismiss (bevel-ww71) ──────
     // addGlobalMonitorForEventsMatchingMask: fires ONLY for events delivered to OTHER apps — exactly
     // "the user clicked away from us". No focus/coordinate assumptions. The handler is a GLOBAL ObjC

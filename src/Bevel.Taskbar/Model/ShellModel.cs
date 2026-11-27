@@ -492,6 +492,7 @@ public sealed class ShellModel : IDisposable
         if (Find(id) is { } vm)
         {
             TaskbarLog.Debug($"REMOVE button (event) id={id} title='{vm.Title}' -> exit-anim");
+            vm.StopAttention();   // bevel-qb19: a closed window's attention request dies with its button
             BeginExit(vm, () => { Windows.Remove(vm); RecomputeOpenAppKeys(); });   // bevel-xrx6
         }
     }
