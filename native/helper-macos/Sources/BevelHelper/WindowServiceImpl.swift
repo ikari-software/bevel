@@ -914,6 +914,12 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             // Every genuine user window exposes a title (AX or CG); the flood of title-less layer-0
             // windows (30px strips, 1x1/64x64/500x500 placeholders) are not real windows.
             { win.title.isEmpty && !win.isMinimized ? "no-title hasAX=\(hasAX)" : nil },
+            // bevel-2hk9: a TITLED but tiny on-screen window with no AX element is Electron-style
+            // scaffolding, not a user window — Beeper keeps a 10x10 shadow window (cg=16747) that
+            // sails past the on-screen gate and becomes a second taskbar button. Real small
+            // panels (136x32) expose an AX element, so they are exempt via hasAX.
+            { self.tinyNoAXReason(width: Int(win.frame.width), height: Int(win.frame.height),
+                                 hasAX: hasAX, isMinimized: win.isMinimized) },
             // Costly (a WindowServer round-trip per off-screen window), so it runs AFTER the cheap gates
             // above have already dropped the flood of title-less / zero-area ghosts.
             { self.offscreenGhostReason(cgID: cgID, hasAX: hasAX, entry: entry, spaces: pass.spaces) },
@@ -927,6 +933,15 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
         ]
         for gate in gates { if let reason = gate() { return reason } }
         return nil
+    }
+
+    /// bevel-2hk9: pure gate for tiny AX-less windows. A user window smaller than 64x64 in BOTH
+    /// dimensions with no AX element is scaffolding (measured: Beeper phantom 10x10; real small
+    /// panels like 136x32 carry AX). Zero-area is handled by the earlier zero-frame gate, and
+    /// minimized windows are exempt everywhere (they may report a stale tiny frame).
+    internal func tinyNoAXReason(width: Int, height: Int, hasAX: Bool, isMinimized: Bool) -> String? {
+        guard !isMinimized, !hasAX, width > 0, height > 0, width < 64, height < 64 else { return nil }
+        return "tiny-no-ax \(width)x\(height)"
     }
 
     /// Closed-window removal (bevel-m2.3): a just-closed window leaves a CGWindowList tombstone whose
