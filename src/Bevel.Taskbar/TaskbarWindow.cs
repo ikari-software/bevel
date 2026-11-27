@@ -734,7 +734,7 @@ internal static class TaskbarNative
     [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_ptr(IntPtr receiver, IntPtr selector, IntPtr arg);
 
-    private static readonly IntPtr cls_NSEvent = objc_getClass("NSEvent");
+    private static readonly IntPtr cls_NSEvent = OperatingSystem.IsMacOS() ? objc_getClass("NSEvent") : IntPtr.Zero;
     private static readonly IntPtr sel_modifierFlags = (OperatingSystem.IsMacOS() ? MacObjC.Sel("modifierFlags") : IntPtr.Zero);
     private static readonly IntPtr sel_addGlobalMonitor = (OperatingSystem.IsMacOS() ? MacObjC.Sel("addGlobalMonitorForEventsMatchingMask:handler:") : IntPtr.Zero);
     private static readonly IntPtr sel_removeMonitor = (OperatingSystem.IsMacOS() ? MacObjC.Sel("removeMonitor:") : IntPtr.Zero);
