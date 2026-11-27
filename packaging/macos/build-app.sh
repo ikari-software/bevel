@@ -16,6 +16,18 @@ CLEAN="${CLEAN:-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/tools/sh/pinned-dotnet.sh"  # use the SDK global.json pins, not whatever dotnet is first on PATH
+
+# Portability gate, up front (bevel-ka6c): the single-file apphost is stamped from the SDK's host pack,
+# and a Homebrew SDK's singlefilehost links /opt/homebrew/opt/brotli — the shipped binary would then
+# refuse to load on any Mac without Homebrew at that exact path (and hardened-runtime library validation
+# rejects the brew lib). pinned-dotnet.sh prefers a non-Homebrew SDK; if it had to fall back to one,
+# fail NOW, before minutes of publish, instead of at the otool gate after "Validating bundle".
+if [ "${BEVEL_DOTNET_FROM_HOMEBREW:-0}" = "1" ]; then
+	echo "dotnet resolves to a Homebrew install ($(command -v dotnet)) — its apphost links /opt/homebrew brotli" >&2
+	echo "Install the official SDK from https://dotnet.microsoft.com/download (/usr/local/share/dotnet) and rebuild" >&2
+	exit 1
+fi
+
 OUT="${OUT:-$ROOT/dist}"
 APP="$OUT/Bevel.app"
 PKG="$ROOT/packaging/macos"
