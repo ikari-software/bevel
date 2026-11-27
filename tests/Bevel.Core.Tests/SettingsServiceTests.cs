@@ -296,4 +296,57 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(TaskbarReclickMinimize.Never, reloaded.Current.TaskbarReclickMinimize);
     }
+
+    // ── Pinned taskbar apps (bevel-be86) ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TaskbarPinnedApps_round_trips_and_is_pruned_when_empty(/* bevel-be86 */)
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        Assert.Empty(service.Current.TaskbarPinnedApps);   // default: nothing pinned
+
+        var pins = new[] { "com.apple.Safari", "com.google.Chrome" };
+        await service.UpdateAsync(s => s.TaskbarPinnedApps = pins);
+
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+        Assert.Equal(pins, reloaded.Current.TaskbarPinnedApps);
+        Assert.Contains("\"taskbarPinnedApps\"", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+
+        // Pruned when emptied again (the blob must not keep a stale empty array).
+        await reloaded.UpdateAsync(s => s.TaskbarPinnedApps = Array.Empty<string>());
+        Assert.DoesNotContain("taskbarPinnedApps", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_flows_through_the_peer_snapshot_and_patch_paths(/* bevel-be86 */)
+    {
+        // The core owns settings.db; peers only ever see the blob over shell-core IPC and apply
+        // changed-keys patches, so serialize → project / merge-patch IS the pin mechanism there.
+        var blob = SettingsService.SerializeBlob(
+            new BevelSettings { TaskbarPinnedApps = new[] { "com.apple.Safari" } },
+            new Dictionary<string, ThemeOverrides>());
+
+        Assert.Contains("taskbarPinnedApps", blob);
+        Assert.Equal(new[] { "com.apple.Safari" },
+            SettingsService.ProjectBlob(blob).Settings.TaskbarPinnedApps);
+
+        // A merge patch carrying the key projects too (and a JSON-null patch prunes it back to default).
+        var patched = SettingsService.ProjectBlob("""{ "taskbarPinnedApps": ["com.google.Chrome"] }""");
+        Assert.Equal(new[] { "com.google.Chrome" }, patched.Settings.TaskbarPinnedApps);
+        Assert.Empty(SettingsService.ProjectBlob("""{ "taskbarPinnedApps": null }""").Settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_CopyFrom_deep_copies_the_array(/* bevel-be86 */)
+    {
+        // The Properties dialog reverts via CopyFrom — the clone must not alias the source's list.
+        var src = new BevelSettings { TaskbarPinnedApps = new[] { "com.apple.Safari" } };
+        var copy = src.Clone();
+        Assert.Equal(src.TaskbarPinnedApps, copy.TaskbarPinnedApps);
+
+        copy.TaskbarPinnedApps[0] = "mutated";
+        Assert.Equal("com.apple.Safari", src.TaskbarPinnedApps[0]);
+    }
 }

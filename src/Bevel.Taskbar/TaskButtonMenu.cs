@@ -51,12 +51,14 @@ public static class TaskButtonMenu
         Control button, object? dc, IReadOnlyList<TabMenuRow>? tabs = null, ITabProvider? tabProvider = null,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
         Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
-        Action<string>? onShowInFinder = null)
+        Action<string>? onShowInFinder = null,
+        Func<string?, bool>? isPinned = null, Action<string?>? onTogglePin = null)
     {
         // dc is passed in (not re-read from button.DataContext): the caller captured it before an
         // async tab prefetch and has verified the button still binds it — re-reading here would
         // reopen the race the caller just closed.
-        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions, onShowInFinder) is not { } flyout) return null;
+        if (Build(dc, tabs, tabProvider, onActivateForeign, onActivationFailed, appActions, onShowInFinder,
+                isPinned, onTogglePin) is not { } flyout) return null;
         flyout.ShowAt(button);   // anchored (not showAtPointer) — steadier light-dismiss coverage
         return flyout;
     }
@@ -72,7 +74,8 @@ public static class TaskButtonMenu
     internal static MenuFlyout? Build(object? dc, IReadOnlyList<TabMenuRow>? tabs, ITabProvider? tabProvider,
         Action? onActivateForeign = null, Action? onActivationFailed = null,
         Func<string?, IReadOnlyList<TaskMenuAction>>? appActions = null,
-        Action<string>? onShowInFinder = null)
+        Action<string>? onShowInFinder = null,
+        Func<string?, bool>? isPinned = null, Action<string?>? onTogglePin = null)
     {
         var model = Describe(dc);
         if (model is null) return null;
@@ -96,6 +99,20 @@ public static class TaskButtonMenu
                     Command = new AsyncRelayCommand(() => { captured.Invoke(); return Task.CompletedTask; })
                 });
             }
+            items.Add(new Separator());
+        }
+
+        // bevel-be86: Pin/Unpin — keyed on the bundle id, so the same row serves a window button, an app
+        // group, and a windowless pinned button. Omitted when the app can't be keyed (no bundle id) or
+        // the caller wired no hooks — never a dead verb.
+        if (isPinned is not null && onTogglePin is not null && model.BundleId is { Length: > 0 } pinKey)
+        {
+            var captured = pinKey;
+            items.Add(new MenuItem
+            {
+                Header = isPinned(captured) ? "Un_pin from taskbar" : "_Pin to taskbar",
+                Command = new AsyncRelayCommand(() => { onTogglePin(captured); return Task.CompletedTask; })
+            });
             items.Add(new Separator());
         }
 

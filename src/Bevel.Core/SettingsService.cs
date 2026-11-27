@@ -573,6 +573,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         // bevel-ze3o: empty = no per-folder states recorded yet → prune, like the other arrays.
         if (_settings.FilerFolderViews.Length == 0) _raw.Remove("filerFolderViews");
         else _raw["filerFolderViews"] = JsonSerializer.SerializeToElement(_settings.FilerFolderViews, SettingsJsonContext.Default.StringArray);
+        // bevel-be86: empty = no pinned apps → prune (an empty array equals the default).
+        if (_settings.TaskbarPinnedApps.Length == 0) _raw.Remove("taskbarPinnedApps");
+        else _raw["taskbarPinnedApps"] = JsonSerializer.SerializeToElement(_settings.TaskbarPinnedApps, SettingsJsonContext.Default.StringArray);
         // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
         // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
         if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
@@ -710,6 +713,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             FilerFavorites = GetStringArray("filerFavorites") ?? Array.Empty<string>(),
             FilerFolderViews = GetStringArray("filerFolderViews") ?? Array.Empty<string>(),
+            TaskbarPinnedApps = GetStringArray("taskbarPinnedApps") ?? Array.Empty<string>(),
             TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
             TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
@@ -980,6 +984,11 @@ public sealed class BevelSettings
     /// the strip, after every window button — independent of, and layered on top of, the sort mode.</summary>
     public bool WindowlessAppsLast { get; set; }
 
+    /// <summary>bevel-be86: apps pinned to the taskbar, as bundle ids in pin order. A pinned app renders
+    /// as a taskbar button even with no open window (clicking it launches the app); when the app has a
+    /// window, that window's button covers the pin, so the two never duplicate. Empty = none pinned.</summary>
+    public string[] TaskbarPinnedApps { get; set; } = Array.Empty<string>();
+
     /// <summary>bevel-jt30: list windows that live on other Spaces as taskbar buttons (default on).</summary>
     public bool TaskbarShowOtherSpaceWindows { get; set; } = true;
 
@@ -1061,6 +1070,7 @@ public sealed class BevelSettings
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
         FilerFavorites = (string[])other.FilerFavorites.Clone();
         FilerFolderViews = (string[])other.FilerFolderViews.Clone();
+        TaskbarPinnedApps = (string[])other.TaskbarPinnedApps.Clone();
         TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }

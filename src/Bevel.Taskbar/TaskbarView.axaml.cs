@@ -1132,7 +1132,11 @@ public partial class TaskbarView : UserControl
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
                     onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
                     appActions: AppActionsFor,
-                    onShowInFinder: _revealInFiler) is { } menu)
+                    onShowInFinder: _revealInFiler,
+                    // bevel-be86: Pin/Unpin, keyed on the bundle id; the toggle persists through the
+                    // settings store (TaskbarViewModel.TogglePinAsync) and the strip re-projects on change.
+                    isPinned: bid => _vm?.IsAppPinned(bid) ?? false,
+                    onTogglePin: bid => { if (_vm is not null) _ = _vm.TogglePinAsync(bid); }) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on

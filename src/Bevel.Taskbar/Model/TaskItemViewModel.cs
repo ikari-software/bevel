@@ -20,6 +20,10 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// <summary>Optimistic focus claims go through the shell's exclusive projection (bevel-yslj /
     /// bevel-c04q). Null in unit tests that construct a lone VM with no strip.</summary>
     private readonly Action<string?>? _claimFocus;
+    /// <summary>bevel-be86: launch hook for a PINNED app button with no window (bundle id in).
+    /// Only synthetic pin entries carry one — a helper app-presence entry (running, windowless) still
+    /// activates, since there IS something to activate.</summary>
+    private readonly Func<string, Task>? _launchApp;
     private string _title = "";
     private bool _isFocused;
     private bool _isMinimized;
@@ -38,11 +42,12 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// Optimistic click/minimize must use this — never write <see cref="IsFocused"/> directly when a
     /// strip of siblings exists, or two buttons can stay pressed (bevel-yslj).</param>
     public TaskItemViewModel(ForeignWindow w, IWindowManager windows, TaskButtonClickPolicy? clicks = null,
-        Action<string?>? claimFocus = null)
+        Action<string?>? claimFocus = null, Func<string, Task>? launchApp = null)
     {
         _windows = windows;
         _clicks = clicks ?? TaskButtonClickPolicy.Shared;
         _claimFocus = claimFocus;
+        _launchApp = launchApp;
         Id = w.Id;
         AppId = w.AppId;
         IsAppPresence = w.IsAppPresence;
@@ -340,6 +345,17 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
         // The helper's activateWindow resolves the "app:<bundle>" id to NSRunningApplication.activate().
         if (IsAppPresence)
         {
+            // bevel-be86: a PINNED app with no window is (almost certainly) not running, so there is
+            // nothing to activate — launch it instead (IAppEnvironment.LaunchAsync resolves the bundle
+            // id and also re-activates an already-running app). Helper presence entries carry no launch
+            // hook and keep the activate path.
+            if (_launchApp is not null && BundleId is { Length: > 0 } bundle)
+            {
+                TaskbarLog.Debug($"CLICK id={Id.Value} pinned -> launch {bundle}");
+                try { await _launchApp(bundle); }
+                catch (Exception ex) { TaskbarLog.Swallowed("PinnedApp.Launch", ex); }
+                return;
+            }
             TaskbarLog.Debug($"CLICK id={Id.Value} app-presence -> reopen");
             try { await _windows.ActivateAsync(Id); }
             catch (Exception ex) { TaskbarLog.Debug($"CLICK app-presence failed id={Id.Value}: {ex.Message}"); }

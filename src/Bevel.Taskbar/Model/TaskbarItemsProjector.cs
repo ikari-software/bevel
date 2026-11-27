@@ -33,6 +33,14 @@ public sealed class TaskbarItemsProjector : IDisposable
     private TaskbarWindowSort _sort = TaskbarWindowSort.OpenOrder;
     private bool _windowlessLast;
     private bool _showOtherSpaces = true;
+    /// <summary>bevel-be86: pinned bundle ids in pin order. A pin whose app already has a source entry
+    /// (a real window or a running-windowless presence entry) is covered by that entry — never duplicated.</summary>
+    private IReadOnlyList<string> _pinnedApps = Array.Empty<string>();
+    /// <summary>bevel-be86: factory for the synthetic button of a pinned app with no source entry.</summary>
+    private Func<string, TaskItemViewModel>? _createPinned;
+    /// <summary>bevel-be86: pinned-button VMs by bundle id, reused across re-plans so the button keeps
+    /// its identity (width/animation state, loaded icon) instead of rebuilding on every plan.</summary>
+    private readonly Dictionary<string, TaskItemViewModel> _pinnedItems = new(StringComparer.Ordinal);
 
     public TaskbarItemsProjector(ObservableCollection<TaskItemViewModel> source, TaskbarGroupingMode mode = TaskbarGroupingMode.Never)
     {
@@ -68,6 +76,21 @@ public sealed class TaskbarItemsProjector : IDisposable
     {
         if (_showOtherSpaces == show) return;
         _showOtherSpaces = show;
+        RePlan();
+    }
+
+    /// <summary>bevel-be86: sets the pinned apps (bundle ids, pin order) and re-plans immediately.
+    /// Pinned apps with no window in the source get a synthetic button from <paramref name="createPinned"/>;
+    /// pins covered by a real window or a running-windowless presence entry add nothing (no duplicate).
+    /// An empty/null list unpins everything (the synthetic buttons leave the strip).</summary>
+    public void SetPinnedApps(IEnumerable<string>? pins, Func<string, TaskItemViewModel>? createPinned)
+    {
+        _pinnedApps = pins?.Where(p => !string.IsNullOrEmpty(p)).Distinct(StringComparer.Ordinal).ToArray()
+            ?? Array.Empty<string>();
+        _createPinned = createPinned;
+        // Drop cached buttons for pins that are gone — their next RePlan removes them from Items.
+        foreach (var gone in _pinnedItems.Keys.Where(k => !_pinnedApps.Contains(k)).ToList())
+            _pinnedItems.Remove(gone);
         RePlan();
     }
 
@@ -107,6 +130,29 @@ public sealed class TaskbarItemsProjector : IDisposable
             else
             {
                 desired.Add(entry.Windows[0]);   // the window's own VM — identity preserved
+            }
+        }
+
+        // bevel-be86: pinned apps render as buttons even with no window. A pin whose app already has a
+        // live source entry (a real window or a running-windowless presence entry, matched on bundle id
+        // or app id) is covered by that entry — the pin only guarantees the button exists, it never
+        // duplicates it. So "pin while running" adds no button, and "unpin a running app" leaves the
+        // window's button in place.
+        if (_pinnedApps.Count > 0 && _createPinned is not null)
+        {
+            var covered = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var w in _source)
+            {
+                if (w.IsClosing) continue;
+                if (w.BundleId is { Length: > 0 } b) covered.Add(b);
+                if (w.AppId is { Length: > 0 } a) covered.Add(a);
+            }
+            foreach (var pin in _pinnedApps)
+            {
+                if (covered.Contains(pin)) continue;
+                if (!_pinnedItems.TryGetValue(pin, out var pinned))
+                    _pinnedItems[pin] = pinned = _createPinned(pin);
+                desired.Add(pinned);
             }
         }
 
@@ -259,5 +305,6 @@ public sealed class TaskbarItemsProjector : IDisposable
         foreach (var g in Items.OfType<TaskGroupViewModel>())
             g.SyncChildren(Array.Empty<TaskItemViewModel>());
         Items.Clear();
+        _pinnedItems.Clear();   // bevel-be86
     }
 }

@@ -22,6 +22,11 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     private readonly ISettingsService? _settings;
     private bool _isDisconnected;
     private bool _consolidated;
+    /// <summary>bevel-be86: pinned app bundle ids in pin order, mirrored from
+    /// <see cref="BevelSettings.TaskbarPinnedApps"/> (or kept locally when no settings service is
+    /// wired, e.g. unit tests). Drives both the projector's synthetic pin buttons and the context
+    /// menu's Pin/Unpin label.</summary>
+    private readonly List<string> _pinnedApps = new();
 
     /// <param name="connection">Link health to the shell core (null in tests / all-in-one, treated
     /// as always connected). Drives the tray disconnected indicator.</param>
@@ -65,7 +70,64 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
         if (settings is not null)
         {
             settings.Changed += OnSettingsChanged;
-            ApplyConsolidation(settings.Current.TaskbarConsolidateMenuBar);
+            var startup = settings.Current;   // one snapshot read for both startup applies (bevel-be86 keeps the guarded read count)
+            ApplyConsolidation(startup.TaskbarConsolidateMenuBar);
+            ApplyPins(startup.TaskbarPinnedApps);   // bevel-be86 (subscribe-before-read, as above)
+        }
+        else
+        {
+            ApplyPins(Enumerable.Empty<string>());
+        }
+    }
+
+    // ── Pinned apps (bevel-be86) ────────────────────────────────────────
+
+    /// <summary>The pinned app bundle ids in pin order.</summary>
+    public IReadOnlyList<string> PinnedApps => _pinnedApps;
+
+    /// <summary>Whether <paramref name="bundleId"/> is pinned — feeds the task-button context menu's
+    /// Pin/Unpin label. False for a null/empty key (nothing to pin on).</summary>
+    public bool IsAppPinned(string? bundleId) =>
+        !string.IsNullOrEmpty(bundleId) && _pinnedApps.Contains(bundleId);
+
+    /// <summary>Pushes a pin set onto the projector (synthetic buttons for pinned apps with no window)
+    /// and mirrors it locally. Idempotent — duplicate ids collapse, an unchanged set re-plans nothing
+    /// new. UI thread.</summary>
+    private void ApplyPins(IEnumerable<string>? pins)
+    {
+        var list = pins?.Where(p => !string.IsNullOrEmpty(p)).Distinct(StringComparer.Ordinal).ToList()
+            ?? new List<string>();
+        _pinnedApps.Clear();
+        _pinnedApps.AddRange(list);
+        _projector.SetPinnedApps(_pinnedApps, Model.CreatePinnedItem);
+    }
+
+    /// <summary>bevel-be86: pins (or unpins) an app, persisting through the settings store
+    /// (<see cref="BevelSettings.TaskbarPinnedApps"/>). Idempotent: pinning an already-pinned app is a
+    /// no-op (the id appears once), unpinning an unpinned one likewise. The strip updates when the
+    /// write lands — immediately for a local store (Current mutates in place), or when the core's
+    /// settings broadcast arrives (Changed) in split mode.</summary>
+    public async Task TogglePinAsync(string? bundleId)
+    {
+        if (string.IsNullOrEmpty(bundleId)) return;
+        var pin = !IsAppPinned(bundleId);
+        if (_settings is not null)
+        {
+            var captured = bundleId;
+            await _settings.UpdateAsync(s =>
+            {
+                var cur = s.TaskbarPinnedApps ?? Array.Empty<string>();
+                s.TaskbarPinnedApps = pin
+                    ? cur.Append(captured).Distinct(StringComparer.Ordinal).ToArray()
+                    : cur.Where(p => !string.Equals(p, captured, StringComparison.Ordinal)).ToArray();
+            });
+            // Local stores mutate Current in place, so re-sync now; the remote path is a no-op here and
+            // the broadcast's Changed handler applies it when the core answers.
+            ApplyPins(_settings.Current.TaskbarPinnedApps);
+        }
+        else
+        {
+            ApplyPins(pin ? _pinnedApps.Append(bundleId) : _pinnedApps.Where(p => p != bundleId));
         }
     }
 
@@ -131,7 +193,14 @@ public sealed class TaskbarViewModel : ObservableObject, IDisposable
     }
 
     private void OnSettingsChanged()
-        => ApplyConsolidation(_settings?.Current.TaskbarConsolidateMenuBar ?? false);
+    {
+        var current = _settings?.Current;   // one snapshot read for both applies
+        ApplyConsolidation(current?.TaskbarConsolidateMenuBar ?? false);
+        // bevel-be86: pins changed (possibly pushed from another process) — re-project the strip.
+        // Changed fires off the transport thread; the projector's collections are UI-thread-owned.
+        var pins = current?.TaskbarPinnedApps;
+        Dispatcher.UIThread.Post(() => ApplyPins(pins));
+    }
 
     /// <summary>Applies the consolidation setting via the tray host, skipping redundant RPCs when the
     /// state is unchanged (Changed can fire for unrelated setting edits).</summary>
