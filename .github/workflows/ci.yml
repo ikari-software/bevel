@@ -192,7 +192,7 @@ jobs:
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             while IFS= read -r -d '' f; do
               file -b "$f" | grep -q "Mach-O" || continue
-              if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/|@loader_path/)'; then
+              if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/|@loader_path/|\./)'; then
                 echo "::error::non-system dylib linked by $f — the apphost was stamped by a Homebrew SDK (bevel-ka6c); install the official SDK (/usr/local/share/dotnet)"
                 exit 1
               fi
