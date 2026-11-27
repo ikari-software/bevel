@@ -63,6 +63,16 @@ service WindowService {
   // max_width x max_height (0 = full size). Empty png if the window can't be captured.
   rpc CaptureWindow(CaptureWindowRequest) returns (CaptureWindowReply);
 
+  // List every Mission Control Space on every display (bevel-44vg SPIKE): id, type, best-effort
+  // label, owning display, and whether that display is currently showing it. Private SkyLight
+  // only (CGSCopyManagedDisplaySpaces); empty when the symbols are unavailable.
+  rpc ListSpaces(ListSpacesRequest) returns (ListSpacesReply);
+
+  // Move a window onto another Space (bevel-44vg SPIKE): CGSMoveWindowsToManagedSpace — private
+  // SkyLight only, no public API and no entitlement. ok=false when the symbol is missing or the
+  // WindowServer call failed; the window is left untouched then.
+  rpc MoveWindowToSpace(MoveWindowToSpaceRequest) returns (MoveWindowToSpaceReply);
+
   // Subscribe to window events: opens with a full Snapshot, then streams
   // Deltas as AXObserver callbacks fire (backstopped by a reconciliation poll).
   rpc Changes(ChangesRequest) returns (stream WindowChange);
@@ -298,4 +308,46 @@ message CaptureWindowRequest {
 
 message CaptureWindowReply {
   bytes png = 1;
+}
+
+// One Mission Control Space (bevel-44vg). `id` is the CGS Space id (id64); `type` is CGSSpaceType
+// (0 = user "Desktop", 2 = system/dashboard, 4 = native fullscreen). `name` is a best-effort
+// label ("Desktop 2" synthesized when WindowServer carries none) — empty only when even that fails.
+message SpaceInfo {
+  uint64 id = 1;
+  int32 type = 2;
+  string name = 3;
+  // CGDisplay UUID of the display this Space lives on; empty when unknown.
+  string display_uuid = 4;
+  // True when that display is CURRENTLY showing this Space (per-display, multi-monitor).
+  bool is_current = 5;
+}
+
+message ListSpacesRequest {
+  // Window the caller is asking about (bevel-44vg review): when set, the reply's
+  // window_space_id names the Space that window currently lives on, so the caller can
+  // disable that row in its "Move to Space" menu. Empty = no window context.
+  string window_id = 1;
+}
+
+message ListSpacesReply {
+  repeated SpaceInfo spaces = 1;
+  // The Space the requested window currently lives on (first of SkyLight.spaceIDs(ofWindow:)),
+  // 0 when unknown or no window was requested (bevel-44vg review).
+  uint64 window_space_id = 2;
+}
+
+message MoveWindowToSpaceRequest {
+  string window_id = 1;
+  uint64 space_id = 2;
+  // Owner pid the caller saw when it enumerated the window (bevel-44vg review): the VM
+  // verifies the resolved window's kCGWindowOwnerPID against it before moving, so a recycled
+  // window id cannot be moved. 0 = unknown, check skipped.
+  int32 owner_pid = 3;
+}
+
+message MoveWindowToSpaceReply {
+  // False when the private symbol is missing or the WindowServer call refused — the window
+  // was NOT moved then.
+  bool ok = 1;
 }

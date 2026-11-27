@@ -681,6 +681,95 @@ public nonisolated struct Bevel_Helper_V1_CaptureWindowReply: Sendable {
   public init() {}
 }
 
+/// One Mission Control Space (bevel-44vg). `id` is the CGS Space id (id64); `type` is CGSSpaceType
+/// (0 = user "Desktop", 2 = system/dashboard, 4 = native fullscreen). `name` is a best-effort
+/// label ("Desktop 2" synthesized when WindowServer carries none) — empty only when even that fails.
+public nonisolated struct Bevel_Helper_V1_SpaceInfo: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var id: UInt64 = 0
+
+  public var type: Int32 = 0
+
+  public var name: String = String()
+
+  /// CGDisplay UUID of the display this Space lives on; empty when unknown.
+  public var displayUuid: String = String()
+
+  /// True when that display is CURRENTLY showing this Space (per-display, multi-monitor).
+  public var isCurrent: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_ListSpacesRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Window the caller is asking about (bevel-44vg review): when set, the reply's
+  /// window_space_id names the Space that window currently lives on, so the caller can
+  /// disable that row in its "Move to Space" menu. Empty = no window context.
+  public var windowID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_ListSpacesReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var spaces: [Bevel_Helper_V1_SpaceInfo] = []
+
+  /// The Space the requested window currently lives on (first of SkyLight.spaceIDs(ofWindow:)),
+  /// 0 when unknown or no window was requested (bevel-44vg review).
+  public var windowSpaceID: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_MoveWindowToSpaceRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var windowID: String = String()
+
+  public var spaceID: UInt64 = 0
+
+  /// Owner pid the caller saw when it enumerated the window (bevel-44vg review): the VM
+  /// verifies the resolved window's kCGWindowOwnerPID against it before moving, so a recycled
+  /// window id cannot be moved. 0 = unknown, check skipped.
+  public var ownerPid: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Bevel_Helper_V1_MoveWindowToSpaceReply: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// False when the private symbol is missing or the WindowServer call refused — the window
+  /// was NOT moved then.
+  public var ok: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "bevel.helper.v1"
@@ -1730,6 +1819,191 @@ nonisolated extension Bevel_Helper_V1_CaptureWindowReply: SwiftProtobuf.Message,
 
   public static func ==(lhs: Bevel_Helper_V1_CaptureWindowReply, rhs: Bevel_Helper_V1_CaptureWindowReply) -> Bool {
     if lhs.png != rhs.png {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_SpaceInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SpaceInfo"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}type\0\u{1}name\0\u{3}display_uuid\0\u{3}is_current\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.type) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.displayUuid) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.isCurrent) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.id != 0 {
+      try visitor.visitSingularUInt64Field(value: self.id, fieldNumber: 1)
+    }
+    if self.type != 0 {
+      try visitor.visitSingularInt32Field(value: self.type, fieldNumber: 2)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 3)
+    }
+    if !self.displayUuid.isEmpty {
+      try visitor.visitSingularStringField(value: self.displayUuid, fieldNumber: 4)
+    }
+    if self.isCurrent != false {
+      try visitor.visitSingularBoolField(value: self.isCurrent, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_SpaceInfo, rhs: Bevel_Helper_V1_SpaceInfo) -> Bool {
+    if lhs.id != rhs.id {return false}
+    if lhs.type != rhs.type {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.displayUuid != rhs.displayUuid {return false}
+    if lhs.isCurrent != rhs.isCurrent {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_ListSpacesRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListSpacesRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.windowID.isEmpty {
+      try visitor.visitSingularStringField(value: self.windowID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ListSpacesRequest, rhs: Bevel_Helper_V1_ListSpacesRequest) -> Bool {
+    if lhs.windowID != rhs.windowID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_ListSpacesReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListSpacesReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}spaces\0\u{3}window_space_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.spaces) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.windowSpaceID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.spaces.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.spaces, fieldNumber: 1)
+    }
+    if self.windowSpaceID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.windowSpaceID, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_ListSpacesReply, rhs: Bevel_Helper_V1_ListSpacesReply) -> Bool {
+    if lhs.spaces != rhs.spaces {return false}
+    if lhs.windowSpaceID != rhs.windowSpaceID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_MoveWindowToSpaceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".MoveWindowToSpaceRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_id\0\u{3}space_id\0\u{3}owner_pid\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.windowID) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.spaceID) }()
+      case 3: try { try decoder.decodeSingularInt32Field(value: &self.ownerPid) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.windowID.isEmpty {
+      try visitor.visitSingularStringField(value: self.windowID, fieldNumber: 1)
+    }
+    if self.spaceID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.spaceID, fieldNumber: 2)
+    }
+    if self.ownerPid != 0 {
+      try visitor.visitSingularInt32Field(value: self.ownerPid, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_MoveWindowToSpaceRequest, rhs: Bevel_Helper_V1_MoveWindowToSpaceRequest) -> Bool {
+    if lhs.windowID != rhs.windowID {return false}
+    if lhs.spaceID != rhs.spaceID {return false}
+    if lhs.ownerPid != rhs.ownerPid {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Bevel_Helper_V1_MoveWindowToSpaceReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".MoveWindowToSpaceReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}ok\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.ok) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.ok != false {
+      try visitor.visitSingularBoolField(value: self.ok, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Bevel_Helper_V1_MoveWindowToSpaceReply, rhs: Bevel_Helper_V1_MoveWindowToSpaceReply) -> Bool {
+    if lhs.ok != rhs.ok {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

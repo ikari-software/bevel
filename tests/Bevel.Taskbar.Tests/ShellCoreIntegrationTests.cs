@@ -222,6 +222,72 @@ public sealed class ShellCoreIntegrationTests
             "the command queued while disconnected should replay against the PAL after reconnect");
     }
 
+    // 4d. bevel-44vg review: the OPPOSITE for MoveWindowToSpace — a move is NOT replayable. A replayed
+    //     move could hit a recycled window id after the reconnect (the WindowServer id space is reused
+    //     as windows close/open), so an action issued while the link is down is dropped, not queued.
+    [Fact]
+    public async Task MoveWindowToSpaceIssuedWhileDisconnected_IsDroppedNotReplayedOnReconnect()
+    {
+        var pal = new ControllablePal();
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+
+        var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client should connect to the core");
+
+        // Drop the link.
+        await server.DisposeAsync();
+        await WaitFor(() => !core.IsConnected, "client should observe the disconnect");
+
+        // A move issued while down must NOT throw and must NOT reach the PAL.
+        await wm.MoveWindowToSpaceAsync(new ForeignWindowId("win-42"), 250, ownerPid: 4242, Ct);
+        Assert.Empty(pal.SpaceMoves);
+
+        // Bring a core back on the SAME socket + nonce; the client reconnects…
+        await using var server2 = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server2.StartAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client should reconnect to the respawned core");
+
+        // …but the move is never replayed: a replayed move could hit a recycled window id.
+        await Task.Delay(TimeSpan.FromMilliseconds(500), Ct);
+        Assert.Empty(pal.SpaceMoves);
+    }
+
+    // bevel-44vg review: on a LIVE link, ListSpaces (a pull, never queued) round-trips the Spaces plus
+    // the window's own Space id, and MoveWindowToSpace reaches the PAL with window/space/owner pid.
+    [Fact]
+    public async Task ListSpacesAndMoveWindowToSpace_pass_through_on_a_connected_core()
+    {
+        var pal = new ControllablePal();
+        pal.NextSpaces = new SpaceList(
+            [new SpaceInfo(100, 0, "Desktop 1", "UUID-A", IsCurrent: true),
+             new SpaceInfo(250, 0, "Desktop 2", "UUID-A", IsCurrent: false)],
+            WindowSpaceId: 100);
+        var path = NewSocketPath();
+        var nonce = NewNonce();
+        await using var server = new ShellCoreServer(pal, pal, pal, new StubSettings(), path, nonce);
+        await server.StartAsync(Ct);
+
+        await using var core = new ShellCoreClient(path, nonce);
+        var wm = new ShellCoreWindowManager(core);
+        await core.EnsureConnectedAsync(Ct);
+        await WaitFor(() => core.IsConnected, "client should connect to the core");
+
+        var spaces = await wm.ListSpacesAsync(new ForeignWindowId("win-7"), Ct);
+        Assert.Equal("win-7", pal.LastSpacesWindowId);
+        Assert.Equal(new[] { 100UL, 250UL }, spaces.Spaces.Select(s => s.Id).ToArray());
+        Assert.Equal(100UL, spaces.WindowSpaceId);
+
+        await wm.MoveWindowToSpaceAsync(new ForeignWindowId("win-7"), 250, ownerPid: 4242, Ct);
+        await WaitFor(() => pal.SpaceMoves.Count == 1, "core should have moved the window on the PAL");
+        Assert.Contains(("win-7", 250UL, 4242), pal.SpaceMoves);
+    }
+
     // 4b. A client whose VERY FIRST connect fails (it dialed before the core bound its socket — exactly
     //     what RemoteSettingsService does in LoadAsync at startup, racing core boot) must still keep
     //     retrying and connect once the core comes up. Before the fix the reconnect supervisor was armed
@@ -1681,6 +1747,22 @@ public sealed class ShellCoreIntegrationTests
         public Task RestoreAndActivateAsync(ForeignWindowId id, CancellationToken ct = default) { RestoredAndActivated.Add(id.Value); return Task.CompletedTask; }
         public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
         public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
+
+        // bevel-44vg review seams: record MoveWindowToSpace (window, space, owner pid) and answer
+        // ListSpaces with a preset list, recording the window id the core forwarded.
+        public ConcurrentBag<(string Window, ulong SpaceId, int OwnerPid)> SpaceMoves { get; } = new();
+        public Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default)
+        {
+            SpaceMoves.Add((id.Value, spaceId, ownerPid));
+            return Task.CompletedTask;
+        }
+        public SpaceList NextSpaces { get; set; } = new(Array.Empty<SpaceInfo>());
+        public string? LastSpacesWindowId;
+        public ValueTask<SpaceList> ListSpacesAsync(ForeignWindowId? windowId = null, CancellationToken ct = default)
+        {
+            LastSpacesWindowId = windowId?.Value;
+            return ValueTask.FromResult(NextSpaces);
+        }
 
         public byte[]? CapturePng;                       // set by a test; returned by CaptureWindowAsync
         public (string Id, int W, int H)? LastCapture;   // records the request fields the core forwarded

@@ -88,6 +88,26 @@ public class PalContractTests
         }
     }
 
+    // bevel-44vg review: the Space verbs have interface defaults (empty list / no-op) so stubs and
+    // non-macOS backends satisfy the contract without implementing them.
+    [Theory]
+    [MemberData(nameof(WindowManagers))]
+    public async Task WindowManager_ListSpaces_DefaultsToEmptyNotNull(IWindowManager wm)
+    {
+        var spaces = await wm.ListSpacesAsync(new ForeignWindowId("w1"));
+        Assert.NotNull(spaces);
+        Assert.NotNull(spaces.Spaces);
+        Assert.Empty(spaces.Spaces);
+        Assert.Null(spaces.WindowSpaceId);
+    }
+
+    [Theory]
+    [MemberData(nameof(WindowManagers))]
+    public async Task WindowManager_MoveWindowToSpace_DefaultsToNoOpWithoutThrowing(IWindowManager wm)
+    {
+        await wm.MoveWindowToSpaceAsync(new ForeignWindowId("w1"), 42, ownerPid: 7);
+    }
+
     [Fact]
     public async Task ShellSession_ContractHolds_ForFakePal()
     {

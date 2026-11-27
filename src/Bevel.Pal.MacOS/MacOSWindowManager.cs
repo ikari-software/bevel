@@ -184,6 +184,49 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             headers: AuthHeader(), cancellationToken: cts.Token);
     }
 
+    /// <summary>Every Mission Control Space on every display (bevel-44vg): the helper reads them via
+    /// private SkyLight. Empty when the helper is down or the private symbols are missing — callers
+    /// treat that as "unknown", not "no Spaces". <paramref name="windowId"/> names the window whose
+    /// current Space the reply reports back as <see cref="SpaceList.WindowSpaceId"/>.</summary>
+    public async ValueTask<SpaceList> ListSpacesAsync(ForeignWindowId? windowId = null, CancellationToken ct = default)
+    {
+        if (_disposed) return new SpaceList(Array.Empty<Bevel.Pal.Abstractions.SpaceInfo>());
+        try
+        {
+            var ws = GetWindowClient();
+            using var cts = TimeoutScope(ct);
+            var reply = await ws.ListSpacesAsync(
+                new ListSpacesRequest { WindowId = windowId?.Value ?? "" },
+                headers: AuthHeader(), cancellationToken: cts.Token);
+            var spaces = reply.Spaces.Select(s => new Bevel.Pal.Abstractions.SpaceInfo(
+                s.Id, (int)s.Type, string.IsNullOrEmpty(s.Name) ? null : s.Name,
+                string.IsNullOrEmpty(s.DisplayUuid) ? null : s.DisplayUuid, s.IsCurrent)).ToList();
+            return new SpaceList(spaces, reply.WindowSpaceId == 0 ? null : reply.WindowSpaceId);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+        {
+            _logger.LogWarning("ListSpaces unavailable: {Message}", ex.Message);
+            return new SpaceList(Array.Empty<Bevel.Pal.Abstractions.SpaceInfo>());
+        }
+    }
+
+    /// <summary>Move a window onto another Space (bevel-44vg SPIKE): private SkyLight
+    /// CGSMoveWindowsToManagedSpace in the helper. A refusal (symbol missing / WindowServer says no /
+    /// recycled window id caught by the owner-pid check) arrives as ok=false and is a silent no-op —
+    /// the next reconcile shows the window unmoved — but it is logged, not swallowed.</summary>
+    public async Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MacOSWindowManager));
+        var ws = GetWindowClient();
+        using var cts = TimeoutScope(ct);
+        var reply = await ws.MoveWindowToSpaceAsync(
+            new MoveWindowToSpaceRequest { WindowId = id.Value, SpaceId = spaceId, OwnerPid = ownerPid },
+            headers: AuthHeader(), cancellationToken: cts.Token);
+        if (!reply.Ok)
+            _logger.LogWarning("MoveWindowToSpace refused for window {WindowId} → space {SpaceId} (ownerPid {OwnerPid}) — window left untouched",
+                id.Value, spaceId, ownerPid);
+    }
+
     public async Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int maxWidth, int maxHeight, CancellationToken ct = default)
     {
         if (_disposed) return null;
@@ -414,7 +457,9 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             IsFullscreen: tw.IsFullscreen,
             IsOnOtherSpace: tw.IsOnOtherSpace,
             // Whitespace is as dead as empty — a blank path must not reach the verb (bevel-4nct review).
-            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath);
+            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath,
+            // Owner pid for the recycled-window-id guard on MoveWindowToSpace (bevel-44vg review).
+            Pid: tw.Pid);
     }
 
     public void Dispose()

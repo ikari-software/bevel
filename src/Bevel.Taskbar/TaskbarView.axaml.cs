@@ -61,6 +61,15 @@ public partial class TaskbarView : UserControl
     private int _opacity = 100;
     private TaskbarWindow? _window;
     private TaskbarViewModel? _vm;
+    /// <summary>bevel-44vg dev flag (BEVEL_ENABLE_MOVE_TO_SPACE=1): adds the per-window
+    /// "Move to Space ▶" submenu to the task-button context menu. The verb is private-SkyLight-only
+    /// (SPIKE), so it stays hidden unless explicitly enabled.</summary>
+    private static readonly bool MoveToSpaceEnabled =
+        Environment.GetEnvironmentVariable("BEVEL_ENABLE_MOVE_TO_SPACE") == "1";
+    /// <summary>Budget for the Space list fetch on right-click (bevel-44vg): an open MenuFlyout
+    /// never repaints, so the list must exist before TryShow; a slow/missing helper must not stall
+    /// the menu — no submenu beats a stalled one.</summary>
+    private static readonly TimeSpan SpaceListBudget = TimeSpan.FromMilliseconds(1500);
     private string[]? _appliedStacks;   // last TaskbarStacks pushed through ApplyLiveSettings (bevel-2ip7 diff guard)
     /// <summary>Composes the stacks region from <see cref="BevelSettings.TaskbarComponents"/> (bevel-aqr7
     /// Task 14). Null until <see cref="InitComponentRegion"/> runs from <see cref="OnLoaded"/>.</summary>
@@ -959,6 +968,10 @@ public partial class TaskbarView : UserControl
         // result lands in _tabPrefetch and the context handler picks it up (or waits out the
         // remainder). Apps with no tab dialect never start a fetch — EnsureTabPrefetch gates first.
         _ = EnsureTabPrefetch(TabBundleIdOf(anchor?.DataContext));
+        // bevel-44vg review: warm the Space list on pointer-enter too (like the tab prefetch) —
+        // a right-click is always preceded by the pointer arriving here, so the list is usually
+        // ready by click time and the menu opens without waiting on the core round-trip.
+        _ = EnsureSpacePrefetch(SpaceWindowIdOf(anchor?.DataContext));
 
         if (anchor?.DataContext is not TaskItemViewModel vm)
             return;
@@ -1121,6 +1134,31 @@ public partial class TaskbarView : UserControl
             if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
                 return;
 
+            // bevel-44vg (dev flag): the Space list comes from the prefetch started on POINTER-ENTER
+            // (like the tabs above) — here we only await the REMAINDER, so a warmed list opens the
+            // menu on the click itself. An open MenuFlyout never repaints, so the "Move to Space ▶"
+            // rows must exist up front; bounded — a wedged helper yields no submenu, not a stalled
+            // menu. The row matching the WINDOW's own Space (WindowSpaceId) is the disabled one.
+            IReadOnlyList<TaskButtonMenu.SpaceMenuRow>? spaces = null;
+            if (MoveToSpaceEnabled && _vm is not null)
+            {
+                var spaceWork = EnsureSpacePrefetch(SpaceWindowIdOf(dc));
+                var list = spaceWork is null
+                    ? new SpaceList(Array.Empty<SpaceInfo>())
+                    : spaceWork.IsCompletedSuccessfully ? spaceWork.Result : await spaceWork;
+                if (list.Spaces.Count > 0)
+                    spaces = list.Spaces.Select(s => new TaskButtonMenu.SpaceMenuRow(
+                        s.Id, string.IsNullOrEmpty(s.Name) ? $"Space {s.Id}" : s.Name!,
+                        list.WindowSpaceId is { } windowSpace && s.Id == windowSpace)).ToList();
+            }
+
+            // The spaces await above is a second async gap after the tab one, and the projector may
+            // have rebound or detached the button inside it. Re-run the DataContext/visual-root guard
+            // NOW, immediately before TryShow (bevel-44vg review): a menu built from a stale dc would
+            // show one app's rows on another app's button.
+            if (!ReferenceEquals(c.DataContext, dc) || c.GetVisualRoot() is null)
+                return;
+
             // Dismiss any still-open prior menu BEFORE opening the new one, so its Closed handler
             // (which removes its global mouse monitor) runs first. The monitors are now per-token
             // (ce-review P0 fix in TaskbarWindow), but keeping the ordering clean avoids two
@@ -1132,7 +1170,8 @@ public partial class TaskbarView : UserControl
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
                     onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
                     appActions: AppActionsFor,
-                    onShowInFinder: _revealInFiler) is { } menu)
+                    onShowInFinder: _revealInFiler,
+                    spaces: spaces) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
@@ -1193,6 +1232,59 @@ public partial class TaskbarView : UserControl
         if (_tabProvider is null) return null;
         _tabs ??= new TabPrefetch(_tabProvider, TabPrefetchBudget, TabPrefetchFreshness);
         return _tabs.Warm(bundleId);
+    }
+
+    /// <summary>bevel-44vg review: the window whose Space the prefetch/menu asks about — the button's
+    /// own window for a single-window VM, the group's first window for a group.</summary>
+    internal static ForeignWindowId? SpaceWindowIdOf(object? dc) => dc switch
+    {
+        TaskItemViewModel t => t.Id,
+        TaskGroupViewModel g => g.Windows.FirstOrDefault()?.Id,
+        _ => null,
+    };
+
+    /// <summary>Space list warmed on hover (bevel-44vg review — mirrors the tab prefetch bevel-1fy8):
+    /// the in-flight/just-done fetch, keyed by the window id it was started for. Null when the dev
+    /// flag is off, no model is wired, or there is no window to ask about.</summary>
+    private Task<SpaceList>? _spaceFetch;
+    private ForeignWindowId? _spaceFetchWindowId;
+    private long _spaceFetchTick;
+
+    /// <summary>How old a prefetched Space list may be and still open a menu — same reasoning as
+    /// <see cref="TabPrefetchFreshness"/>: the list is rebuilt on every hover of a different button,
+    /// and a stale one only costs a wrong disabled row, not a wrong action.</summary>
+    private static readonly TimeSpan SpacePrefetchFreshness = TimeSpan.FromSeconds(10);
+
+    /// <summary>Starts a Space-list fetch for <paramref name="windowId"/>, or returns the one already
+    /// running/just done for that same window. Fire-and-forget safe: the click handler awaits the
+    /// remainder. UI thread.</summary>
+    private Task<SpaceList>? EnsureSpacePrefetch(ForeignWindowId? windowId)
+    {
+        if (!MoveToSpaceEnabled || _vm is null || windowId is not { } wid) return null;
+        var now = Environment.TickCount64;
+        if (_spaceFetch is not null && _spaceFetchWindowId == windowId
+            && now - _spaceFetchTick <= (long)SpacePrefetchFreshness.TotalMilliseconds)
+            return _spaceFetch;
+        _spaceFetchWindowId = windowId;
+        _spaceFetchTick = now;
+        _spaceFetch = FetchSpacesAsync(wid);
+        return _spaceFetch;
+    }
+
+    /// <summary>One bounded Space-list round-trip to the core (bevel-44vg); a failure degrades to an
+    /// empty list, which makes the menu omit the submenu rather than stall.</summary>
+    private async Task<SpaceList> FetchSpacesAsync(ForeignWindowId windowId)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(SpaceListBudget);
+            return await _vm!.Model.ListSpacesAsync(windowId, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            TaskbarLog.Swallowed("MoveToSpace space list", ex);
+            return new SpaceList(Array.Empty<SpaceInfo>());
+        }
     }
 
     /// <summary>How long a right-click may wait for the target app's tab list before the menu opens

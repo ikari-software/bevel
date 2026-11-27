@@ -182,6 +182,16 @@ public sealed class ShellModel : IDisposable
         => _windows?.CaptureWindowAsync(id, maxWidth, maxHeight, ct)
            ?? System.Threading.Tasks.Task.FromResult<byte[]?>(null);
 
+    /// <summary>Every Mission Control Space on every display (bevel-44vg SPIKE, dev-flagged menu):
+    /// empty when the PAL has no such verb or the helper is down — the caller then omits the
+    /// "Move to Space" submenu entirely rather than showing a dead one. <paramref name="windowId"/>
+    /// names the window whose current Space comes back as <see cref="SpaceList.WindowSpaceId"/>.</summary>
+    public async System.Threading.Tasks.ValueTask<SpaceList> ListSpacesAsync(
+        ForeignWindowId? windowId = null, System.Threading.CancellationToken ct = default)
+        => _windows is null
+            ? new SpaceList(Array.Empty<SpaceInfo>())
+            : await _windows.ListSpacesAsync(windowId, ct).ConfigureAwait(false);
+
     /// <summary>
     /// Subscribes to PAL window events and starts the reconcile loop — everything the taskbar
     /// STRIP needs. Idempotent. Call before starting the window manager's stream/poll so the initial

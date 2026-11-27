@@ -13,8 +13,8 @@ namespace Bevel.App.ShellCore;
 /// races the drop) is held in a small bounded queue and replayed FIFO on reconnect, so a click
 /// during the gap isn't a dead click — it just applies a beat late. Queries (Enumerate) are NOT
 /// queued: a stale enumeration is worthless, and the reconcile re-runs after reconnect anyway.
-/// Zoom is the one action that is never queued: a replayed zoom could hit a recycled window id
-/// (the wrong window) after reconnect.</para>
+/// Zoom and MoveWindowToSpace are the actions that are never queued: a replayed zoom/move could hit
+/// a recycled window id (the wrong window) after reconnect.</para>
 /// </summary>
 public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSource
 {
@@ -136,6 +136,23 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
     public Task HideAppAsync(string bundleId, CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.HideApp, AppIdOrPath: bundleId), ct);
 
+    /// <summary>bevel-44vg SPIKE: every Mission Control Space (plus the Space <paramref name="windowId"/>
+    /// lives on, for the menu's disabled row). A QUERY like Enumerate/CaptureWindow — never queued: a
+    /// stale Space list is worthless, and the menu simply omits the submenu when the link is down.</summary>
+    public async ValueTask<SpaceList> ListSpacesAsync(ForeignWindowId? windowId = null, CancellationToken ct = default)
+    {
+        if (!_core.IsConnected) return new SpaceList(Array.Empty<SpaceInfo>());
+        var r = await _core.SendAsync(
+            new CoreCommand(CoreCommandKind.ListSpaces, WindowId: windowId?.Value), ct).ConfigureAwait(false);
+        return new SpaceList(r.Spaces ?? Array.Empty<SpaceInfo>(), r.WindowSpaceId);
+    }
+
+    /// <summary>bevel-44vg SPIKE: move a window onto another Space. Sent like any other action, but
+    /// excluded from the replay queue (see <see cref="IsReplayable"/>): a replayed move could hit a
+    /// recycled window id after reconnect.</summary>
+    public Task MoveWindowToSpaceAsync(ForeignWindowId id, ulong spaceId, int ownerPid = 0, CancellationToken ct = default) =>
+        Send(new CoreCommand(CoreCommandKind.MoveWindowToSpace, WindowId: id.Value, SpaceId: spaceId, OwnerPid: ownerPid), ct);
+
     public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null,
         CancellationToken ct = default) =>
         Send(new CoreCommand(CoreCommandKind.Reposition, WindowId: id.Value, Bounds: bounds,
@@ -204,8 +221,11 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
 
     // bevel-kpkx review: Zoom is NOT replayable — a queued zoom replayed after reconnect could hit a
     // recycled window id (the wrong window entirely). A dropped zoom click is recoverable by the
-    // user; a zoom landing on the wrong window is not. Everything else stays replayable.
-    private static bool IsReplayable(CoreCommandKind kind) => kind != CoreCommandKind.Zoom;
+    // user; a zoom landing on the wrong window is not. MoveWindowToSpace is excluded for the same
+    // reason (bevel-44vg review): a replayed move could re-parent a recycled window id. Everything
+    // else stays replayable.
+    private static bool IsReplayable(CoreCommandKind kind) =>
+        kind is not (CoreCommandKind.Zoom or CoreCommandKind.MoveWindowToSpace);
 
     private void Enqueue(CoreCommand cmd)
     {

@@ -473,6 +473,44 @@ final class WindowServiceTests: XCTestCase {
         }
     }
 
+    func testMoveWindowToSpaceInvalidWindowID() {
+        // bevel-44vg review: the move verb resolves the window like zoom, so an unknown id is
+        // notFound — no WindowServer involved (the window is resolved from CGWindowList first).
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.moveWindowToSpace(windowID: "999999999", spaceID: 1)) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .notFound)
+        }
+    }
+
+    func testMoveWindowToSpaceEmptyWindowID() {
+        // An unparseable window id is invalidArgument, not a trap and not notFound.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.moveWindowToSpace(windowID: "", spaceID: 1)) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .invalidArgument)
+        }
+    }
+
+    func testMoveWindowToSpaceHugeSpaceIDIsInvalidArgumentNotTrap() {
+        // bevel-44vg review: a space id ≥ 2^63 made the old Int(req.message.spaceID) TRAP and kill
+        // the helper. Int(exactly:) turns it into invalidArgument instead.
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertThrowsError(try svc.moveWindowToSpace(windowID: "999999999", spaceID: UInt64.max)) { error in
+            guard let rpcError = error as? RPCError else {
+                XCTFail("Expected RPCError, got \(error)")
+                return
+            }
+            XCTAssertEqual(rpcError.code, .invalidArgument)
+        }
+    }
+
     func testHideAppUnknownBundleIDReturnsFalse() {
         // bevel-d2j9: no running app carries this bundle id, so hide() is never called and the
         // reply is ok=false. (Only ever probe with ids that match NOTHING — a matching id would

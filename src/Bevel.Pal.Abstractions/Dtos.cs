@@ -113,7 +113,32 @@ public sealed record ForeignWindow(
     /// on Windows), carried from the window manager so the taskbar's "Show in Finder" verb can reveal
     /// it without re-asking the PAL (bevel-4nct). <b>Null when unknown</b> — the verb is then omitted,
     /// never guessed.</summary>
-    string? BundlePath = null);
+    string? BundlePath = null,
+    /// <summary>Owning process id, carried from the window manager (bevel-44vg review): lets a
+    /// move-to-Space request prove the window id has not been recycled since enumeration.
+    /// <b>0 when unknown</b> — the check is then skipped, never guessed.</summary>
+    int Pid = 0);
+
+/// <summary>One Mission Control Space (macOS; bevel-44vg). <see cref="Id"/> is the WindowServer
+/// Space id (id64); <see cref="Type"/> is the CGSSpaceType (0 = user "Desktop", 2 = system/dashboard,
+/// 4 = native fullscreen). <see cref="Name"/> is a best-effort label ("Desktop 2" synthesized when
+/// WindowServer carries none) — null/empty only when even that fails. <see cref="DisplayUuid"/> is
+/// the CGDisplay UUID of the display the Space lives on (null when unknown); <see cref="IsCurrent"/>
+/// is true when THAT display is currently showing the Space (per-display, multi-monitor).</summary>
+public sealed record SpaceInfo(
+    ulong Id,
+    int Type,
+    string? Name,
+    string? DisplayUuid,
+    bool IsCurrent);
+
+/// <summary>The result of <see cref="IWindowManager.ListSpacesAsync"/> (bevel-44vg): the Spaces plus,
+/// when a window was named, the id of the Space that window currently lives on — the row its
+/// "Move to Space" menu disables. <see cref="WindowSpaceId"/> is null when unknown or no window was
+/// requested; an empty <see cref="Spaces"/> means "unknown/unavailable", never "no Spaces".</summary>
+public sealed record SpaceList(
+    IReadOnlyList<SpaceInfo> Spaces,
+    ulong? WindowSpaceId = null);
 
 /// <summary>A host-OS tray / status item (mirrored on macOS, owned elsewhere). On macOS the id is
 /// <c>ownerPID:windowNumber</c>; <see cref="IconPng"/> is a live ScreenCaptureKit grab when

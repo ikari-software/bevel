@@ -16,6 +16,110 @@ enum SkyLight {
     /// Undocumented like the rest of SkyLight; a wrong value here only ever costs the fullscreen
     /// distinction, which fails closed.
     private static let kCGSSpaceFullScreen = 4
+    private static let kCGSSpaceUser = 0
+    private static let kCGSSpaceSystem = 2
+
+    /// One Mission Control Space, as the task-button "Move to Space" menu needs it (bevel-44vg).
+    struct ManagedSpace: Equatable {
+        let id: Int
+        /// `CGSSpaceType`: 0 = user ("Desktop"), 2 = system/dashboard, 4 = native fullscreen.
+        let type: Int
+        /// Best-effort label — WindowServer's own name when present, else a synthesized one.
+        let name: String
+        /// CGDisplay UUID of the display this Space lives on ("" when unknown).
+        let displayUUID: String
+        /// True when that display is currently showing this Space.
+        let isCurrent: Bool
+    }
+
+    /// Pure parse of a `CGSCopyManagedDisplaySpaces` answer into menu-ready Spaces. Split from the
+    /// dlsym call so the labeling rules are unit-testable without a WindowServer (bevel-44vg).
+    ///
+    /// User Spaces carry no name in the CGS answer, so they are labeled "Desktop N" by their
+    /// id64 rank within the display (Mission Control numbers Desktops by creation order, which
+    /// id64 order approximates); fullscreen/system Spaces get a kind label. A display's
+    /// "Current Space" marks `isCurrent`.
+    ///
+    /// bevel-44vg review: mirrored displays list the SAME Space id once per display, so parsed
+    /// Spaces are deduped by id; a synthesized rank never collides with a real id rank (fallback
+    /// ranks start past the user-id list); "Current Space" also honors the ManagedSpaceID
+    /// fallback; and duplicate labels are disambiguated with the display UUID.
+    static func parseManagedSpaces(_ displays: [[String: Any]]) -> [ManagedSpace] {
+        var out: [ManagedSpace] = []
+        var seenIDs: Set<Int> = []
+        for display in displays {
+            let uuid = display["Display Identifier"] as? String ?? ""
+            let currentDict = display["Current Space"] as? [String: Any]
+            let currentID = (currentDict?["id64"] as? Int) ?? (currentDict?["ManagedSpaceID"] as? Int)
+            let spaces = display["Spaces"] as? [[String: Any]] ?? []
+            let userIDs = spaces
+                .filter { ($0["type"] as? Int) == kCGSSpaceUser }
+                .compactMap { $0["id64"] as? Int }
+                .sorted()
+            var desktopRank = 0
+            for space in spaces {
+                guard let id = (space["id64"] as? Int) ?? (space["ManagedSpaceID"] as? Int) else { continue }
+                if !seenIDs.insert(id).inserted { continue }   // mirrored display: same Space id again
+                let type = space["type"] as? Int ?? -1
+                let name: String
+                if let own = (space["name"] as? String) ?? (space["Name"] as? String), !own.isEmpty {
+                    name = own
+                } else if type == kCGSSpaceUser {
+                    if let idx = userIDs.firstIndex(of: id) {
+                        name = "Desktop \(idx + 1)"
+                    } else {
+                        // Fallback rank starts PAST the real id ranks so it can never collide
+                        // with another Desktop's number.
+                        name = "Desktop \(userIDs.count + desktopRank + 1)"
+                        desktopRank += 1
+                    }
+                } else if type == kCGSSpaceFullScreen {
+                    name = "Fullscreen"
+                } else if type == kCGSSpaceSystem {
+                    name = "System"
+                } else {
+                    name = "Space \(id)"
+                }
+                out.append(ManagedSpace(
+                    id: id, type: type, name: name,
+                    displayUUID: uuid, isCurrent: currentID == id))
+            }
+        }
+        // Two displays can both carry a "Desktop 1" — disambiguate duplicate labels with the
+        // display UUID so the menu rows stay distinguishable.
+        var labelCounts: [String: Int] = [:]
+        for space in out { labelCounts[space.name, default: 0] += 1 }
+        return out.map { space in
+            guard (labelCounts[space.name] ?? 0) > 1, !space.displayUUID.isEmpty else { return space }
+            return ManagedSpace(
+                id: space.id, type: space.type,
+                name: "\(space.name) (\(space.displayUUID))",
+                displayUUID: space.displayUUID, isCurrent: space.isCurrent)
+        }
+    }
+
+    /// Every Space on every display (empty when the symbols are unavailable).
+    static func managedSpaces() -> [ManagedSpace] {
+        guard let copy = symbols.copyManagedDisplaySpaces,
+              let displays = copy(symbols.connection)?.takeRetainedValue() as? [[String: Any]]
+        else { return [] }
+        return parseManagedSpaces(displays)
+    }
+
+    /// Move `window` onto the Space `spaceID` (bevel-44vg SPIKE): `CGSMoveWindowsToManagedSpace` —
+    /// the same private verb yabai-class tools use. Unlike `switchToSpace` (which only changes what
+    /// a display SHOWS), this re-parents the window itself: it leaves its current Space and appears
+    /// on the target one, on every display that shows it. No entitlement is involved — SkyLight is
+    /// a private framework reached by dlsym, so a symbol rename in an OS update degrades this to
+    /// `false` (window untouched) instead of crashing the helper.
+    ///
+    /// Returns false when the symbol is missing or the call fails; never throws.
+    @discardableResult
+    static func moveWindowToSpace(cgID: CGWindowID, spaceID: Int) -> Bool {
+        guard let move = symbols.moveWindowsToManagedSpace else { return false }
+        var window = cgID
+        return move(symbols.connection, &window, 1, UInt64(spaceID)) == .success
+    }
 
     private typealias MainConnection = @convention(c) () -> Int32
     private typealias CopySpacesForWindows = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
@@ -23,6 +127,7 @@ enum SkyLight {
     private typealias ShowSpaces = @convention(c) (Int32, CFArray) -> Void
     private typealias HideSpaces = @convention(c) (Int32, CFArray) -> Void
     private typealias SetCurrentSpace = @convention(c) (Int32, CFString, UInt64) -> Void
+    private typealias MoveWindowsToManagedSpace = @convention(c) (Int32, UnsafePointer<CGWindowID>?, Int32, UInt64) -> CGError
     private typealias SpaceSetFrontPSN = @convention(c) (Int32, UInt64, ProcessSerialNumber) -> CGError
     private typealias SetFrontProcess = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, CGWindowID, UInt32) -> CGError
     private typealias PostEventRecord = @convention(c) (UnsafeMutablePointer<ProcessSerialNumber>, UnsafeMutablePointer<UInt8>) -> CGError
@@ -35,6 +140,7 @@ enum SkyLight {
         let showSpaces: ShowSpaces?
         let hideSpaces: HideSpaces?
         let setCurrentSpace: SetCurrentSpace?
+        let moveWindowsToManagedSpace: MoveWindowsToManagedSpace?
         let spaceSetFrontPSN: SpaceSetFrontPSN?
         let setFrontProcess: SetFrontProcess?
         let postEventRecord: PostEventRecord?
@@ -54,6 +160,7 @@ enum SkyLight {
                 showSpaces: sym(sky, "CGSShowSpaces", as: ShowSpaces.self),
                 hideSpaces: sym(sky, "CGSHideSpaces", as: HideSpaces.self),
                 setCurrentSpace: sym(sky, "CGSManagedDisplaySetCurrentSpace", as: SetCurrentSpace.self),
+                moveWindowsToManagedSpace: sym(sky, "CGSMoveWindowsToManagedSpace", as: MoveWindowsToManagedSpace.self),
                 spaceSetFrontPSN: sym(sky, "SLSSpaceSetFrontPSN", as: SpaceSetFrontPSN.self),
                 setFrontProcess: sym(sky, "_SLPSSetFrontProcessWithOptions", as: SetFrontProcess.self),
                 postEventRecord: sym(sky, "SLPSPostEventRecordTo", as: PostEventRecord.self),
