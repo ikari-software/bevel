@@ -173,14 +173,31 @@ jobs:
       - name: Publish self-contained
         # bash on all runners: the \-continuations are POSIX; the Windows default (PowerShell) parses
         # them as line breaks and errors. GitHub's windows-latest ships Git Bash, so this is portable.
+        # bevel-ka6c review: source pinned-dotnet.sh first, so a Homebrew dotnet shadowing the
+        # setup-dotnet install (macOS runners ship one on PATH) can never stamp the apphost from a
+        # brew SDK. No-op when the PATH dotnet already satisfies global.json.
         shell: bash
         run: |
+          . tools/sh/pinned-dotnet.sh
           dotnet publish src/Bevel.App/Bevel.App.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
             -p:BevelPackaging=true \
             --output .publish/${{ matrix.artifact-name }}
+          # Portability gate (macOS only — otool doesn't exist on Linux/Windows): no Mach-O in the
+          # publish output may link a non-system dylib; a Homebrew SDK's apphost links
+          # /opt/homebrew/opt/brotli (bevel-ka6c). Mirrors the authoritative gate in
+          # packaging/macos/build-app.sh.
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            while IFS= read -r -d '' f; do
+              file -b "$f" | grep -q "Mach-O" || continue
+              if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/|@loader_path/)'; then
+                echo "::error::non-system dylib linked by $f — the apphost was stamped by a Homebrew SDK (bevel-ka6c); install the official SDK (/usr/local/share/dotnet)"
+                exit 1
+              fi
+            done < <(find ".publish/${{ matrix.artifact-name }}" -type f -print0)
+          fi
 
   # ── Swift native helper build (macOS only) ──────────────────────────────────
 
@@ -286,3 +303,30 @@ jobs:
             echo "::error::Generated Swift protobuf output drifted from proto/bevel.helper.v1.proto. Run native/helper-macos/generate-proto.sh and commit the result."
             exit 1
           fi
+
+  # ── Shell scripts: pinned-dotnet.sh harness + shellcheck (bevel-ka6c review) ──────────
+  # Cheap gate, no .NET SDK needed. Runs in a plain ubuntu container on purpose: the harness's
+  # brew-only / no-SDK scenarios require the fixed candidate paths baked into pinned-dotnet.sh
+  # (/usr/local/share/dotnet, /usr/share/dotnet, /usr/lib/dotnet, /opt/homebrew/opt/..., ...) to be
+  # ABSENT, which a hosted runner image cannot guarantee (it ships a system dotnet) — a bare
+  # container has none, so every scenario executes. On a dev machine with a system dotnet the
+  # harness SKIPs those scenarios with a notice instead of failing.
+  shell-scripts:
+    name: Shell scripts (pinned-dotnet + shellcheck)
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    steps:
+      # ubuntu:24.04 ships no git, which actions/checkout@v4 needs — install it (and shellcheck)
+      # before checking out.
+      - name: Install git + shellcheck
+        run: apt-get update -qq && apt-get install -y -qq git shellcheck
+
+      - uses: actions/checkout@v4
+
+      - name: Test pinned-dotnet.sh
+        run: bash tools/sh/test-pinned-dotnet.sh
+
+      - name: shellcheck
+        # --severity=warning: two pre-existing style/info nits (SC2001 in install-local.sh, SC2012 in
+        # make-dmg.sh) predate this gate and are out of scope here; warnings and above still fail.
+        run: shellcheck --severity=warning tools/sh/*.sh packaging/macos/*.sh

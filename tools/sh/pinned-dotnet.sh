@@ -26,15 +26,52 @@
 # wins; a Homebrew install is used only when nothing else does, and BEVEL_DOTNET_FROM_HOMEBREW=1 is then
 # exported so packaging scripts can refuse to ship such a build (packaging/macos/build-app.sh).
 
+# Guard: this file only makes sense SOURCED — it exports PATH/DOTNET_ROOT into the caller's shell.
+# Executed standalone there is nothing to do but say so.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+	echo "error: source this file, don't execute it:  . \"$0\"" >&2
+	exit 1
+fi
+
+# The real Homebrew roots. Detection is ANCHORED to these (bevel-ka6c review): a path merely
+# containing "homebrew" (/Users/x/homebrew-tools/dotnet) or named after libbrotli is NOT Homebrew.
+# Note that on Intel Macs /usr/local/share/dotnet is the OFFICIAL location — Homebrew's Intel root
+# is /usr/local/Cellar, not /usr/local as a whole.
+__bevel_homebrew_roots() {
+	printf '%s\n' /opt/homebrew /usr/local/Cellar /usr/local/opt
+	if [ -n "${HOMEBREW_PREFIX:-}" ] && [ "$HOMEBREW_PREFIX" != "/" ]; then
+		printf '%s\n%s\n' "$HOMEBREW_PREFIX/Cellar" "$HOMEBREW_PREFIX/opt"
+	fi
+	return 0
+}
+
+__bevel_path_is_homebrew() {
+	# $1 = path; resolves symlinks when readlink -f exists, then anchors to a real Homebrew root.
+	local p="$1" root
+	[ -n "$p" ] || return 1
+	command -v readlink >/dev/null 2>&1 && p="$(readlink -f "$p" 2>/dev/null || echo "$p")"
+	while IFS= read -r root; do
+		[ -n "$root" ] || continue
+		case "$p" in "$root"|"$root"/*) return 0 ;; esac
+	done < <(__bevel_homebrew_roots)
+	return 1
+}
+
 __bevel_is_homebrew_dotnet() {
-	# A Homebrew dotnet is a shim/symlink into the Cellar (…/Cellar/dotnet…/bin/dotnet,
-	# …/homebrew/opt/dotnet@N/libexec/dotnet). Official installs (/usr/local/share/dotnet, ~/.dotnet,
-	# distro packages) never live under a Cellar/homebrew path — note that on Intel Macs
-	# /usr/local/share/dotnet is the OFFICIAL location, not Homebrew's /usr/local/Cellar.
-	local resolved="$1"
-	command -v readlink >/dev/null 2>&1 && resolved="$(readlink -f "$1" 2>/dev/null || echo "$1")"
-	case "$resolved" in */Cellar/*|*/homebrew/*) return 0 ;; esac
-	case "$1" in */Cellar/*|*/homebrew/*) return 0 ;; esac
+	# $1 = candidate muxer (dotnet) path. Most authoritative signal first (bevel-ka6c review):
+	local cand="$1" base
+	# 1) The SDK root the muxer itself reports (`dotnet --info` "Base Path") — sees through wrapper
+	#    scripts and symlinks that a path pattern cannot.
+	base="$("$cand" --info 2>/dev/null | sed -n 's/^ *Base Path: *//p' | head -n 1 | sed 's/[[:space:]]*$//')"
+	[ -n "$base" ] && __bevel_path_is_homebrew "$base" && return 0
+	# 2) The candidate path itself, resolved through symlinks, anchored to a real Homebrew root.
+	__bevel_path_is_homebrew "$cand" && return 0
+	# 3) DOTNET_ROOT itself: when it points into a Homebrew root, the muxer it describes — the first
+	#    dotnet on PATH, even a wrapper living outside Homebrew — is a Homebrew install.
+	if [ -n "${DOTNET_ROOT:-}" ] && __bevel_path_is_homebrew "$DOTNET_ROOT" \
+		&& [ "$cand" = "$(command -v dotnet 2>/dev/null || true)" ]; then
+		return 0
+	fi
 	return 1
 }
 
@@ -50,8 +87,11 @@ __bevel_pinned_dotnet() {
 	[ -n "${DOTNET_ROOT:-}" ] && cands+=("$DOTNET_ROOT/dotnet" "$DOTNET_ROOT/dotnet.exe")
 	# Official installer (macOS), dotnet-install.sh default, Linux packages.
 	cands+=(/usr/local/share/dotnet/dotnet "$HOME/.dotnet/dotnet" /usr/share/dotnet/dotnet /usr/lib/dotnet/dotnet)
-	# Homebrew's versioned formulae — last resort (bevel-ka6c, see header).
-	cands+=(/opt/homebrew/opt/dotnet@10/libexec/dotnet /usr/local/opt/dotnet@10/libexec/dotnet)
+	# Homebrew formulae — last resort (bevel-ka6c, see header): versioned AND unversioned, libexec
+	# and bin variants. All sit under a Homebrew root, so the classifier above always catches them.
+	cands+=(/opt/homebrew/opt/dotnet@10/libexec/dotnet /usr/local/opt/dotnet@10/libexec/dotnet
+		/opt/homebrew/opt/dotnet/libexec/dotnet /opt/homebrew/opt/dotnet/bin/dotnet
+		/usr/local/opt/dotnet/libexec/dotnet /usr/local/opt/dotnet/bin/dotnet)
 
 	for cand in "${cands[@]}"; do
 		[ -x "$cand" ] || continue
@@ -73,6 +113,9 @@ __bevel_pinned_dotnet() {
 	done
 
 	if [ -n "$brew_fallback" ]; then
+		# Resolve the fallback through any shim symlink (e.g. /opt/homebrew/bin/dotnet -> Cellar)
+		# first, so DOTNET_ROOT is the real install dir, not the shim's bin dir.
+		command -v readlink >/dev/null 2>&1 && brew_fallback="$(readlink -f "$brew_fallback" 2>/dev/null || echo "$brew_fallback")"
 		dir="$(cd "$(dirname "$brew_fallback")" && pwd -P)"
 		export DOTNET_ROOT="$dir"
 		export PATH="$dir:$PATH"
@@ -88,4 +131,4 @@ __bevel_pinned_dotnet() {
 }
 
 __bevel_pinned_dotnet || exit 1
-unset -f __bevel_pinned_dotnet __bevel_is_homebrew_dotnet
+unset -f __bevel_pinned_dotnet __bevel_is_homebrew_dotnet __bevel_path_is_homebrew __bevel_homebrew_roots
