@@ -145,7 +145,7 @@ test -x "$APP/Contents/Resources/bevel-recover.sh"
 # @loader_path, so it belongs alongside @rpath/@executable_path).
 while IFS= read -r -d '' f; do
 	file -b "$f" | grep -q "Mach-O" || continue
-	if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/|@loader_path/|\./)'; then
+	if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep '^/' | grep -Ev '^(/usr/lib/|/System/)'; then
 		echo "non-system dylib linked by $f — build with the official SDK (/usr/local/share/dotnet), not Homebrew" >&2
 		exit 1
 	fi
