@@ -9,10 +9,6 @@ namespace Bevel.Pal.Windows;
 
 internal static class NotYet
 {
-    public const string Message =
-        "Bevel.Pal.Windows is a bootstrap stub (bevel-ncfp.1). Native Win32 integration lands per unit " +
-        "(U2-U12). Run with --pal=fake for the demo scaffold.";
-
     public static Capabilities Unavailable { get; } = Capabilities.None with
     {
         Notes = new[] { "windows-pal: not implemented (bootstrap stub)" },

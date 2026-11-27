@@ -1,6 +1,3 @@
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -9,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -104,19 +102,8 @@ public class TaskMenuRaceGuardTests
         public Task<TabActivationResult> ActivateAsync(AppTab tab, CancellationToken ct = default) => Task.FromResult(TabActivationResult.Activated);
     }
 
-    private sealed class StubWm : IWindowManager
+    private sealed class StubWm : TestWindowManager
     {
-        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, System.Array.Empty<string>(), true);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(System.Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event System.EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+        public StubWm() => Capabilities = RepositionCapable;
     }
 }

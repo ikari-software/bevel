@@ -1,7 +1,7 @@
 using System.Text;
+using Bevel.ComponentBus;
 using Bevel.Components.V1;
 using Bevel.Core.Components;
-using Bevel.ComponentBus;
 using Bevel.Taskbar.Components;
 using Google.Protobuf;
 using NetMQ;

@@ -1,9 +1,7 @@
 namespace Bevel.Pal.Abstractions;
 
-// Capability-oriented, async PAL interfaces (PAL-01/03). These are M0 stubs: the
-// signatures name the shell's needs, not any platform mechanism. Full contracts
-// (events with snapshot+delta semantics, progress/undo/conflict jobs, thumbnails)
-// are fleshed out per track and pinned by Bevel.Pal.ContractTests.
+// Capability-oriented, async PAL interfaces (PAL-01/03). The signatures name the shell's
+// needs, not any platform mechanism; contracts are pinned by Bevel.Pal.ContractTests.
 
 /// <summary>Foreign top-level windows: enumeration and control (taskbar backend).</summary>
 public interface IWindowManager
@@ -332,7 +330,6 @@ public interface IAudioPlayback
     Task PlayAsync(string wavPath, CancellationToken ct = default);
 }
 
-/// <summary>
 /// <summary>Native display labels for mounted volumes (My Computer, bevel-1cc). .NET on Unix reports
 /// DriveInfo.VolumeLabel as the mount path itself, so real labels ("Macintosh HD") need a
 /// platform lookup. Implementations must be cheap and synchronous — called once per volume
@@ -385,22 +382,4 @@ public sealed class AlwaysConnectedShellStatus : IShellConnectionStatus
 {
     public bool IsConnected => true;
     public event EventHandler<bool>? ConnectionChanged { add { } remove { } }
-}
-
-/// <summary>An <see cref="ISystemTrayHost"/> that never surfaces items — a stand-in for roles that
-/// don't own the tray source yet (e.g. the split taskbar process before the shell-core tray bridge,
-/// bevel-m3.1). Reports an unavailable, mirrored tray and no-ops the reclaim call.</summary>
-public sealed class EmptySystemTrayHost : ISystemTrayHost
-{
-    public Capabilities Capabilities { get; } =
-        Capabilities.None with { Notes = new[] { "tray: no source in this role" } };
-
-    public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-        => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
-
-    public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
-
-    public event EventHandler<TrayItem>? ItemAdded { add { } remove { } }
-    public event EventHandler<TrayItem>? ItemRemoved { add { } remove { } }
-    public event EventHandler<TrayItem>? ItemUpdated { add { } remove { } }
 }

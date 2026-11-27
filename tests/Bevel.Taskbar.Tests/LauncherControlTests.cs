@@ -1,6 +1,7 @@
 using Bevel.App;
 using Bevel.App.Supervision;
 using Bevel.ShellCore.Ipc;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -93,17 +94,11 @@ public sealed class LauncherControlTests : IDisposable
 
     // ── LauncherFilerSpawner routing ─────────────────────────────────────
 
-    private sealed class RecordingSpawner : IFilerSpawner
-    {
-        public List<(string Path, string? Select, bool Search)> Calls { get; } = new();
-        public void Spawn(string path, string? selectPath = null, bool search = false)
-            => Calls.Add((path, selectPath, search));
-    }
 
     [Fact]
     public async Task Supervised_spawn_with_ack_does_not_fall_back()
     {
-        var fallback = new RecordingSpawner();
+        var fallback = new TestFilerSpawner();
         await using var server = new UdsMessageServer(_socketPath, _nonce,
             (_, _, _) => ValueTask.FromResult(new byte[] { 1 }));
         server.Start();
@@ -117,7 +112,7 @@ public sealed class LauncherControlTests : IDisposable
     public void Unreachable_or_unsupervised_launcher_falls_back_in_process()
     {
         // Supervised but nothing listening at the socket → fallback (no launcher is the next case).
-        var fallback = new RecordingSpawner();
+        var fallback = new TestFilerSpawner();
         new LauncherFilerSpawner(fallback).Spawn("/tmp/a");
         Assert.Single(fallback.Calls);
 

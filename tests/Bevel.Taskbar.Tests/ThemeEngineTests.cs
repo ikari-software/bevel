@@ -1,7 +1,7 @@
-using Bevel.Core;
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Bevel.Core;
 using Classic.Avalonia.Theme;
 using Xunit;
 

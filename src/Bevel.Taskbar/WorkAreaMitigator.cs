@@ -88,7 +88,6 @@ public sealed class WorkAreaMitigator : IDisposable
     private readonly object _gate = new();
     private CancellationTokenSource? _settleCts;
     private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
     private bool _started;
     private bool _disposed;
 
@@ -151,7 +150,7 @@ public sealed class WorkAreaMitigator : IDisposable
             _windowManager.WindowChanged += OnActivity;
             _windowManager.ForegroundChanged += OnActivity;
             _pollCts = new CancellationTokenSource();
-            _pollTask = SafetyPollAsync(_pollCts.Token);
+            _ = SafetyPollAsync(_pollCts.Token);
         }
     }
 

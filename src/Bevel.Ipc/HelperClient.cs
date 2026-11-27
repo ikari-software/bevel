@@ -1,8 +1,8 @@
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using Grpc.Net.Client;
 using Bevel.Ipc.V1;
+using Grpc.Net.Client;
 
 namespace Bevel.Ipc;
 

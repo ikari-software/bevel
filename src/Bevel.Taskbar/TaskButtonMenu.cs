@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -153,7 +152,7 @@ public static class TaskButtonMenu
             items.Add(windows);
             items.Add(new Separator());
             // bevel-apm: app-scoped verbs, only for a real group with something to act on. The commands
-            // already exist on TaskGroupViewModel; this menu was the missing caller.
+            // live on TaskGroupViewModel.
             if (model.IsGroup && model.Windows.Count >= 2)
             {
                 items.Add(new MenuItem { Header = "Minimize _All", Command = model.MinimizeAllCommand });

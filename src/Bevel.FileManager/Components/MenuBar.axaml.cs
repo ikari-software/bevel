@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Avalonia.Controls;
 
 namespace Bevel.FileManager.Components;
@@ -12,7 +10,6 @@ public partial class MenuBar : UserControl
     public MenuItem NewWindow => NewWindowItem;
     public MenuItem NewTab => NewTabItem;
     public MenuItem Open => OpenItem;
-    public MenuItem OpenWith => OpenWithItem;
     public MenuItem MoveToFolder => MoveToFolderItem;
     public MenuItem CopyToFolder => CopyToFolderItem;
     public MenuItem CreateShortcut => CreateShortcutItem;

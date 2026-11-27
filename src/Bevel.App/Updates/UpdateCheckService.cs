@@ -1,9 +1,6 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
+using Bevel.App.Supervision;
 using Bevel.Core;
 using Bevel.Core.Updates;
-using Bevel.App.Supervision;
 using Microsoft.Extensions.Hosting;
 
 namespace Bevel.App.Updates;

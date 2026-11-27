@@ -1,6 +1,6 @@
+using Bevel.ComponentBus;
 using Bevel.Components.V1;
 using Bevel.Core.Components;
-using Bevel.ComponentBus;
 using Google.Protobuf;
 
 namespace Bevel.Taskbar.Components;

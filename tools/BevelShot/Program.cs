@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.VisualTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Core.Vfs;
 using Bevel.FileManager;

@@ -1,4 +1,3 @@
-using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Bevel.Core;

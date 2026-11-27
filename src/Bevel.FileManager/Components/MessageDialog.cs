@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -48,6 +47,4 @@ public sealed class MessageDialog : BevelWindow
         // Enter/Esc both dismiss.
         KeyDown += (_, e) => { if (e.Key is Key.Escape or Key.Enter) Close(); };
     }
-
-    public Task ShowMessageAsync(Window owner) => ShowDialog(owner);
 }

@@ -1,7 +1,3 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.Pal.Abstractions;
 using Bevel.Pal.MacOS;
 using Xunit;

@@ -1,11 +1,11 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Bevel.Ipc.V1;
-using WireTrayItem = Bevel.Ipc.V1.TrayItem;
 using Bevel.Pal.Abstractions;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using WireTrayItem = Bevel.Ipc.V1.TrayItem;
 
 namespace Bevel.Pal.MacOS.Tests;
 

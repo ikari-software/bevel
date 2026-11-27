@@ -97,14 +97,6 @@ internal static class LauncherControl
         return (socketPath, nonce);
     }
 
-    /// <summary>Launcher side: the environment pairs to inject into every child so it can reach us.</summary>
-    public static IReadOnlyDictionary<string, string> ChildEnvironment(string socketPath, byte[] nonce) =>
-        new Dictionary<string, string>
-        {
-            [SocketEnv] = socketPath,
-            [TokenEnv] = Convert.ToHexString(nonce),
-        };
-
     /// <summary>
     /// Child side: send one control command to the launcher and return whether it was delivered. Returns
     /// false immediately when unsupervised (no env). Fully synchronous with a short timeout — callers are

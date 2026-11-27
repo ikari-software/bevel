@@ -1,4 +1,3 @@
-using System.IO;
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;

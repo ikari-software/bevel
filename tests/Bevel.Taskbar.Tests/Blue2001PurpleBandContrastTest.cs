@@ -1,10 +1,9 @@
-using Bevel.Core;
-using System.Linq;
 using Avalonia;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Bevel.Core;
 using Bevel.UI.Blue2001;
-using Avalonia.Headless;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;

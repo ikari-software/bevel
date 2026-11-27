@@ -1,4 +1,3 @@
-using System.Linq;
 using Bevel.Core.Vfs;
 
 namespace Bevel.Interop.Cli;

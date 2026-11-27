@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using Bevel.Core.Vfs;
 using Xunit;
 

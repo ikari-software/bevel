@@ -1,13 +1,13 @@
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Avalonia;
 using Bevel.App.Supervision;
 using Bevel.ShellCore.Ipc;
 using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Diagnostics;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 
 namespace Bevel.App;
 
@@ -498,7 +498,7 @@ internal static class Program
                 await filerSupervisor.DisposeAsync().ConfigureAwait(false);
                 await control.DisposeAsync().ConfigureAwait(false);  // never bound → owner-only unlink keeps the incumbent's socket
             }).GetAwaiter().GetResult();
-            Environment.ExitCode = 3;   // the exit code the core already uses for "stood down"
+            Environment.ExitCode = IncumbentProbe.StandDownExitCode;
             return;
         }
 
@@ -651,7 +651,7 @@ internal static class Program
         catch (Exception ex)
         {
             RestartDiag.Log($"Relaunch FAILED: {ex}");
-            Console.Error.WriteLine($"Bevel restart failed: {ex.Message} (see {Path.Combine(Path.GetTempPath(), "bevel-restart.log")})");
+            Console.Error.WriteLine($"Bevel restart failed: {ex.Message} (see {RestartDiag.LogPath})");
         }
     }
 
@@ -767,7 +767,7 @@ internal static class Program
             command.Append(' ');
             command.Append(QuoteShellArgument(arg));
         }
-        var logPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
+        var logPath = RestartDiag.LogPath;
         command.Append($" >>{QuoteShellArgument(logPath)} 2>&1 &");   // quote: TMPDIR may contain spaces/metachars (ce-review)
 
         return new ProcessStartInfo

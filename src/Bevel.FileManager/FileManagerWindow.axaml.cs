@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reactive.Linq;
-using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -725,7 +721,7 @@ public partial class FileManagerWindow : BevelWindow
         try { await _fileOpener!.OpenPathAsync(localPath); }
         catch (Exception ex)
         {
-            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowMessageAsync(this);
+            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowDialog(this);
         }
     }
 
@@ -745,7 +741,7 @@ public partial class FileManagerWindow : BevelWindow
         try { await _fileOpener!.PreviewAsync(localPath); }
         catch (Exception ex)
         {
-            await new Components.MessageDialog("Cannot Preview", ex.Message).ShowMessageAsync(this);
+            await new Components.MessageDialog("Cannot Preview", ex.Message).ShowDialog(this);
         }
     }
 
@@ -775,7 +771,7 @@ public partial class FileManagerWindow : BevelWindow
         try { await _fileOpener!.OpenWithAsync(localPath, appPath); }
         catch (Exception ex)
         {
-            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowMessageAsync(this);
+            await new Components.MessageDialog("Cannot Open File", ex.Message).ShowDialog(this);
         }
     }
 
@@ -784,7 +780,7 @@ public partial class FileManagerWindow : BevelWindow
         try { await _fileOpener!.RevealAsync(localPath); }
         catch (Exception ex)
         {
-            await new Components.MessageDialog("Cannot Reveal", ex.Message).ShowMessageAsync(this);
+            await new Components.MessageDialog("Cannot Reveal", ex.Message).ShowDialog(this);
         }
     }
 
@@ -1389,11 +1385,11 @@ public partial class FileManagerWindow : BevelWindow
         {
             var result = await op();
             if (!string.IsNullOrEmpty(result.ErrorMessage))
-                await new Components.MessageDialog("Operation Incomplete", result.ErrorMessage!).ShowMessageAsync(this);
+                await new Components.MessageDialog("Operation Incomplete", result.ErrorMessage!).ShowDialog(this);
         }
         catch (Exception ex)
         {
-            await new Components.MessageDialog("Operation Failed", ex.Message).ShowMessageAsync(this);
+            await new Components.MessageDialog("Operation Failed", ex.Message).ShowDialog(this);
         }
         finally { _controller?.Refresh(); }
     }

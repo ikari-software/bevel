@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
 using static Bevel.UI.Blue2001.Blue2001ColorMath;

@@ -1,4 +1,3 @@
-using System;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
@@ -18,7 +17,6 @@ public partial class ClockWidget : UserControl
 
     // Display settings (bevel-cust.clock). Defaults mirror the original hardcoded "HH:mm" behaviour,
     // so an un-Configure'd widget (XAML previewer, tests) renders exactly as before.
-    private bool _show = true;
     private bool _h24 = true;
     private bool _seconds;
     private bool _showDate;
@@ -74,7 +72,6 @@ public partial class ClockWidget : UserControl
     /// running taskbar's clock reformats immediately.</summary>
     public void Configure(bool show, bool h24, bool seconds, bool showDate)
     {
-        _show = show;
         _h24 = h24;
         _seconds = seconds;
         _showDate = showDate;

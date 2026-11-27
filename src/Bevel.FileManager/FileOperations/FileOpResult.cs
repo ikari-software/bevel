@@ -40,9 +40,6 @@ public sealed record FileOpResult
     public string? ErrorMessage { get; init; }
 
     public int SucceededCount => ItemResults.Count(r => r.Status == FileItemResultStatus.Success);
-    public int FailedCount => ItemResults.Count(r => r.Status == FileItemResultStatus.Failed);
-    public int SkippedCount => ItemResults.Count(r => r.Status == FileItemResultStatus.Skipped);
-    public int CancelledCount => ItemResults.Count(r => r.Status == FileItemResultStatus.Cancelled);
 }
 
 public enum FileOpKind

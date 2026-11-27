@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
 using Bevel.Pal.Abstractions;
 
@@ -151,7 +146,7 @@ internal sealed class TabPrefetch : IDisposable
     private Bitmap? Icon(AppTab tab)
     {
         if (tab.IconPng is not { Length: > 0 } png) return null;
-        var key = ShellModel.Fnv1a64(png);
+        var key = Bevel.Core.ContentHash.Fnv1a64(png);
         lock (_iconsGate)
         {
             if (_icons.TryGetValue(key, out var hit))

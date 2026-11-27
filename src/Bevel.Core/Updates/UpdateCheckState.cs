@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 
 namespace Bevel.Core.Updates;
 

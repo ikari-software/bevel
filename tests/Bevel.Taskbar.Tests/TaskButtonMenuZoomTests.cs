@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -17,31 +13,9 @@ namespace Bevel.Taskbar.Tests;
 /// </summary>
 public class TaskButtonMenuZoomTests
 {
-    private sealed class RecordingWm : IWindowManager
+    private static (TaskItemViewModel Vm, TestWindowManager Wm) SingleWindowVm()
     {
-        public List<ForeignWindowId> Zooms { get; } = [];
-        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
-        {
-            lock (Zooms) Zooms.Add(id);
-            return Task.CompletedTask;
-        }
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-    }
-
-    private static (TaskItemViewModel Vm, RecordingWm Wm) SingleWindowVm()
-    {
-        var wm = new RecordingWm();
+        var wm = new TestWindowManager();
         var vm = new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w1"), "Doc", "fake.app", false, false,
                 new PalRect(100, 100, 800, 600), BundleId: "fake.app"),
@@ -87,7 +61,7 @@ public class TaskButtonMenuZoomTests
     [AvaloniaFact]
     public void Group_menu_window_rows_carry_the_maximize_verb_too()
     {
-        var wm = new RecordingWm();
+        var wm = new TestWindowManager();
         var group = new TaskGroupViewModel("fake.app");
         group.Windows.Add(new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w1"), "One", "fake.app", false, false,

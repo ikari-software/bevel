@@ -1,18 +1,15 @@
-using Bevel.Core;
-using System;
-using System.IO;
 using Avalonia;
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
-using Avalonia.Styling;
-using Avalonia.VisualTree;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Bevel.Core;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;

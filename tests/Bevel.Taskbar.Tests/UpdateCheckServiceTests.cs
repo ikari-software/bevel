@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.App.Updates;
 using Bevel.Core;
 using Bevel.Core.Updates;

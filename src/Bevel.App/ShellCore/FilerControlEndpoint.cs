@@ -91,7 +91,7 @@ public static class FilerControlEndpoint
                 var minted = RandomNumberGenerator.GetBytes(16);
                 var hex = Convert.ToHexString(minted);
                 using (var w = new StreamWriter(fs)) w.Write(hex);
-                Harden(TokenPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                ShellCoreEndpoint.Harden(TokenPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 Environment.SetEnvironmentVariable(TokenEnv, hex);
                 return minted;
             }
@@ -124,12 +124,6 @@ public static class FilerControlEndpoint
     {
         Environment.SetEnvironmentVariable(DirEnv, Dir);
         _ = ResolveNonce(); // mints + sets BEVEL_FILER_TOKEN if not already present
-    }
-
-    private static void Harden(string path, UnixFileMode mode)
-    {
-        if (!OperatingSystem.IsWindows())
-            File.SetUnixFileMode(path, mode);
     }
 }
 

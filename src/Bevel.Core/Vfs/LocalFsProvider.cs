@@ -1,6 +1,6 @@
+using System.Reactive.Subjects;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using System.Reactive.Subjects;
 
 namespace Bevel.Core.Vfs;
 

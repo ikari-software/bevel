@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 
 namespace Bevel.App;
 
@@ -12,7 +10,7 @@ namespace Bevel.App;
 /// </summary>
 internal static class RestartDiag
 {
-    private static readonly string LogPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
+    internal static readonly string LogPath = Path.Combine(Path.GetTempPath(), "bevel-restart.log");
 
     public static void Log(string message)
     {

@@ -20,11 +20,7 @@ internal static class FileOpHelpers
         {
             return await vfs.GetProvider(path).ResolveAsync(path, ct);
         }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
-        catch (DirectoryNotFoundException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             return null;
         }

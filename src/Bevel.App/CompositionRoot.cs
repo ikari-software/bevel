@@ -1,11 +1,11 @@
 using Bevel.Core;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Bevel.Desktop;
 using Bevel.FileManager;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
 using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace Bevel.App;

@@ -6,11 +6,11 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
-using Classic.Avalonia.Theme;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.UI;
 using Bevel.UI.Native;
+using Classic.Avalonia.Theme;
 
 namespace Bevel.Taskbar;
 

@@ -1,6 +1,5 @@
-using Bevel.Core;
-using System.Linq;
 using Bevel.App.ShellCore;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 

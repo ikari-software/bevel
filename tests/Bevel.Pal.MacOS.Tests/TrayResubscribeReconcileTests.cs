@@ -1,9 +1,9 @@
-using TrayChange = Bevel.Ipc.V1.TrayChange;
-using TrayItem = Bevel.Pal.Abstractions.TrayItem;
-using TrayItemId = Bevel.Pal.Abstractions.TrayItemId;
 using Bevel.Pal.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using TrayChange = Bevel.Ipc.V1.TrayChange;
+using TrayItem = Bevel.Pal.Abstractions.TrayItem;
+using TrayItemId = Bevel.Pal.Abstractions.TrayItemId;
 
 namespace Bevel.Pal.MacOS.Tests;
 

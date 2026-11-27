@@ -1,14 +1,10 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.Pal.Abstractions;
-using static Bevel.Pal.MacOS.CoreFoundationInterop;
 using static Bevel.Pal.MacOS.AccessibilityInterop;
+using static Bevel.Pal.MacOS.CoreFoundationInterop;
 
 namespace Bevel.Pal.MacOS;
 

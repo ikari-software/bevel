@@ -1,4 +1,3 @@
-using System.Linq;
 using Bevel.Pal.MacOS;
 using Xunit;
 
