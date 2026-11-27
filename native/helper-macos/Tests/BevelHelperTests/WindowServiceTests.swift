@@ -110,6 +110,56 @@ final class WindowServiceTests: XCTestCase {
                        "alpha=1 off-screen window must reach the tracker, not the alpha drop (got: \(reason ?? "nil"))")
     }
 
+    // MARK: - tinyNoAXReason (bevel-2hk9)
+
+    /// bevel-2hk9: Beeper's 10x10 titled shadow window has no AX element and is on-screen, so it
+    /// passed every gate and became a second taskbar button. Tiny + no AX => drop.
+    func testTinyNoAXDropsBeeperShadowWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertEqual(svc.tinyNoAXReason(width: 10, height: 10, hasAX: false, isMinimized: false, isOnScreen: true),
+                       "tiny-no-ax 10x10")
+    }
+
+    /// hasAX is false for every window on ANOTHER Space (AX lists only the current Space), so a
+    /// tiny titled window on Space 2 reads as tiny + no-AX + off-screen — it must NOT be dropped
+    /// by this gate; offscreenGhostReason gate 4 owns keeping it listed for Space-switch activation.
+    func testTinyGateKeepsOtherSpaceTinyWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNil(svc.tinyNoAXReason(width: 50, height: 50, hasAX: false, isMinimized: false, isOnScreen: false))
+    }
+
+    /// A real small panel (136x32) that exposes AX must be exempt — hasAX wins over size.
+    func testTinyGateExemptsWindowWithAX() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNil(svc.tinyNoAXReason(width: 32, height: 32, hasAX: true, isMinimized: false, isOnScreen: true))
+    }
+
+    /// Normal-sized AX-less on-screen windows (e.g. Calendar 1257x997) must NOT be dropped.
+    func testTinyGateKeepsNormalSizedNoAXWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNil(svc.tinyNoAXReason(width: 1257, height: 997, hasAX: false, isMinimized: false, isOnScreen: true))
+    }
+
+    /// Only-one-dimension-tiny windows (a 10x400 sidebar strip) are not scaffolding — keep.
+    func testTinyGateKeepsOneDimensionLargeWindow() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNil(svc.tinyNoAXReason(width: 10, height: 400, hasAX: false, isMinimized: false, isOnScreen: true))
+    }
+
+    /// Minimized windows are exempt (stale tiny frame while minimized must not drop them).
+    func testTinyGateExemptsMinimized() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNil(svc.tinyNoAXReason(width: 10, height: 10, hasAX: false, isMinimized: true, isOnScreen: true))
+    }
+
+    /// Threshold boundary: < 64 is exclusive — 63x63 drops, 64x64 is kept (the titled 64x64
+    /// placeholders from the no-title comment are a separate, title-less population).
+    func testTinyGateThresholdBoundary() {
+        let svc = WindowServiceImpl(expectedKey: "test-key")
+        XCTAssertNotNil(svc.tinyNoAXReason(width: 63, height: 63, hasAX: false, isMinimized: false, isOnScreen: true))
+        XCTAssertNil(svc.tinyNoAXReason(width: 64, height: 64, hasAX: false, isMinimized: false, isOnScreen: true))
+    }
+
     /// A missing alpha key (older macOS) must fail OPEN — fall through to the tracker, never drop.
     func testOffscreenGhostTreatsMissingAlphaAsNotOrderedOut() {
         let svc = WindowServiceImpl(expectedKey: "test-key")
