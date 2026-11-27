@@ -16,6 +16,21 @@ CLEAN="${CLEAN:-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/tools/sh/pinned-dotnet.sh"  # use the SDK global.json pins, not whatever dotnet is first on PATH
+
+# Portability gate, up front (bevel-ka6c): the single-file apphost is stamped from the SDK's host pack,
+# and a Homebrew SDK's singlefilehost links /opt/homebrew/opt/brotli — the shipped binary would then
+# refuse to load on any Mac without Homebrew at that exact path (and hardened-runtime library validation
+# rejects the brew lib). pinned-dotnet.sh prefers a non-Homebrew SDK; if it had to fall back to one,
+# fail NOW, before minutes of publish, instead of at the otool gate after "Validating bundle".
+# NOTE: this env-flag gate is ADVISORY / best-effort — it trusts pinned-dotnet.sh's classification. The
+# AUTHORITATIVE portability gate is the otool link check after "Validating bundle" below, which inspects
+# the actual Mach-O files in the assembled bundle.
+if [ "${BEVEL_DOTNET_FROM_HOMEBREW:-0}" = "1" ]; then
+	echo "dotnet resolves to a Homebrew install ($(command -v dotnet)) — its apphost links /opt/homebrew brotli" >&2
+	echo "Install the official SDK from https://dotnet.microsoft.com/download (/usr/local/share/dotnet) and rebuild" >&2
+	exit 1
+fi
+
 OUT="${OUT:-$ROOT/dist}"
 APP="$OUT/Bevel.app"
 PKG="$ROOT/packaging/macos"
@@ -120,18 +135,21 @@ test -x "$APP/Contents/MacOS/BevelHelper"
 test -f "$APP/Contents/Resources/Bevel.sdef"
 test -x "$APP/Contents/Resources/bevel-recover.sh"
 
-# Portability gate (bevel-ka6c): every Mach-O in the bundle must link only system dylibs
-# (/usr/lib, /System) or bundle-relative install names (@rpath / @executable_path). A link into
-# /opt/homebrew (e.g. the Homebrew-SDK apphost pulling in brotli) makes the signed build refuse to
-# run on a Mac without Homebrew. Gate, do not bundle: building with the official SDK
-# (/usr/local/share/dotnet) is the fix, and this stops a regression from shipping.
-for f in "$APP"/Contents/MacOS/*; do
+# Portability gate (bevel-ka6c, AUTHORITATIVE): every Mach-O in the bundle must link only system
+# dylibs (/usr/lib, /System) or bundle-relative install names. A link into /opt/homebrew (e.g. the
+# Homebrew-SDK apphost pulling in brotli) makes the signed build refuse to run on a Mac without
+# Homebrew. Gate, do not bundle: building with the official SDK (/usr/local/share/dotnet) is the fix,
+# and this stops a regression from shipping. RECURSIVE over the whole Contents tree (not just MacOS/):
+# nested binaries must pass too. Bundle-relative install names are allowlisted — @rpath,
+# @executable_path, and @loader_path (dylibs shipped inside Contents reference each other via
+# @loader_path, so it belongs alongside @rpath/@executable_path).
+while IFS= read -r -d '' f; do
 	file -b "$f" | grep -q "Mach-O" || continue
-	if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@rpath/|@executable_path/)'; then
+	if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep '^/' | grep -Ev '^(/usr/lib/|/System/)'; then
 		echo "non-system dylib linked by $f — build with the official SDK (/usr/local/share/dotnet), not Homebrew" >&2
 		exit 1
 	fi
-done
+done < <(find "$APP/Contents" -type f -print0)
 
 # Keep the repo's build output OUT of Spotlight/Launchpad so it doesn't shadow the canonical
 # /Applications/Bevel.app in the "Bevel" app list (bevel-5yx5). A .metadata_never_index marker in
