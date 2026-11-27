@@ -296,4 +296,108 @@ public sealed class SettingsServiceTests : IDisposable
 
         Assert.Equal(TaskbarReclickMinimize.Never, reloaded.Current.TaskbarReclickMinimize);
     }
+
+    // ── Pinned taskbar apps (bevel-be86) ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TaskbarPinnedApps_round_trips_and_is_pruned_when_empty(/* bevel-be86 */)
+    {
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();
+        Assert.Empty(service.Current.TaskbarPinnedApps);   // default: nothing pinned
+
+        var pins = new[] { "com.apple.Safari", "com.google.Chrome" };
+        await service.UpdateAsync(s => s.TaskbarPinnedApps = pins);
+
+        var reloaded = new SettingsService(_dir);
+        await reloaded.LoadAsync();
+        Assert.Equal(pins, reloaded.Current.TaskbarPinnedApps);
+        Assert.Contains("\"taskbarPinnedApps\"", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+
+        // Pruned when emptied again (the blob must not keep a stale empty array).
+        await reloaded.UpdateAsync(s => s.TaskbarPinnedApps = Array.Empty<string>());
+        Assert.DoesNotContain("taskbarPinnedApps", await File.ReadAllTextAsync(Path.Combine(_dir, "settings.json")));
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_flows_through_the_peer_snapshot_and_patch_paths(/* bevel-be86 */)
+    {
+        // The core owns settings.db; peers only ever see the blob over shell-core IPC and apply
+        // changed-keys patches, so serialize → project / merge-patch IS the pin mechanism there.
+        var blob = SettingsService.SerializeBlob(
+            new BevelSettings { TaskbarPinnedApps = new[] { "com.apple.Safari" } },
+            new Dictionary<string, ThemeOverrides>());
+
+        Assert.Contains("taskbarPinnedApps", blob);
+        Assert.Equal(new[] { "com.apple.Safari" },
+            SettingsService.ProjectBlob(blob).Settings.TaskbarPinnedApps);
+
+        // A merge patch carrying the key projects too (and a JSON-null patch prunes it back to default).
+        var patched = SettingsService.ProjectBlob("""{ "taskbarPinnedApps": ["com.google.Chrome"] }""");
+        Assert.Equal(new[] { "com.google.Chrome" }, patched.Settings.TaskbarPinnedApps);
+        Assert.Empty(SettingsService.ProjectBlob("""{ "taskbarPinnedApps": null }""").Settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_CopyFrom_deep_copies_the_array(/* bevel-be86 */)
+    {
+        // The Properties dialog reverts via CopyFrom — the clone must not alias the source's list.
+        var src = new BevelSettings { TaskbarPinnedApps = new[] { "com.apple.Safari" } };
+        var copy = src.Clone();
+        Assert.Equal(src.TaskbarPinnedApps, copy.TaskbarPinnedApps);
+
+        copy.TaskbarPinnedApps[0] = "mutated";
+        Assert.Equal("com.apple.Safari", src.TaskbarPinnedApps[0]);
+    }
+
+    // ── bevel-be86 review fixes ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task String_array_with_a_wrong_typed_element_loads_without_throwing()
+    {
+        // A single wrong-typed element must not throw a JsonException out of LoadAsync (boot crash /
+        // dead receive loop) — the bad element is dropped per-element and the rest survive.
+        Directory.CreateDirectory(_dir);
+        await File.WriteAllTextAsync(Path.Combine(_dir, "settings.json"),
+            """{ "taskbarPinnedApps": [42], "filerFavorites": ["a", 5] }""");
+        var service = new SettingsService(_dir);
+        await service.LoadAsync();   // must not throw
+        Assert.Empty(service.Current.TaskbarPinnedApps);   // 42 dropped
+        Assert.Equal(new[] { "a" }, service.Current.FilerFavorites);   // only the 5 dropped
+    }
+
+    [Fact]
+    public void ProjectBlob_drops_wrong_typed_array_elements_without_throwing()
+    {
+        // The remote-peer projection path (core snapshot → typed model) is the same pipeline.
+        var (settings, _) = SettingsService.ProjectBlob(
+            """{ "taskbarPinnedApps": ["com.ok", 5, true, null] }""");
+        Assert.Equal(new[] { "com.ok" }, settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_rejects_path_shaped_keys_and_strips_the_app_prefix_at_load()
+    {
+        // Launch-sink invariant (bevel-318a): a pin key is a bundle id, never a path. Path-shaped
+        // entries are dropped at the load boundary; a leading "app:" prefix is stripped when keying.
+        var (settings, _) = SettingsService.ProjectBlob("""
+            { "taskbarPinnedApps": [
+                "/Applications/Evil.app", "~/evil", "C:\\evil", "rel/evil", "evil.app", "..",
+                "app:com.prefixed", "com.valid", "has space", "", "com.apple.Safari" ] }
+            """);
+        Assert.Equal(new[] { "com.prefixed", "com.valid", "com.apple.Safari" }, settings.TaskbarPinnedApps);
+    }
+
+    [Fact]
+    public void TaskbarPinnedApps_is_capped_at_128_entries_and_512_chars_per_key()
+    {
+        var entries = Enumerable.Range(0, 200).Select(i => $"\"com.app{i:D3}\"")
+            .Append("\"" + new string('x', 600) + "\"");   // over-length → dropped
+        var blob = "{ \"taskbarPinnedApps\": [" + string.Join(",", entries) + "] }";
+        var (settings, _) = SettingsService.ProjectBlob(blob);
+        Assert.Equal(TaskbarPins.MaxCount, settings.TaskbarPinnedApps.Length);
+        Assert.Equal("com.app000", settings.TaskbarPinnedApps[0]);
+        Assert.Equal("com.app127", settings.TaskbarPinnedApps[^1]);
+        Assert.All(settings.TaskbarPinnedApps, p => Assert.True(p.Length <= TaskbarPins.MaxIdLength));
+    }
 }

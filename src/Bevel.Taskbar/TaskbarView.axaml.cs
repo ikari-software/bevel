@@ -1149,7 +1149,13 @@ public partial class TaskbarView : UserControl
                     onActivateForeign: () => _window?.CancelKeyFocusHandback(),
                     onActivationFailed: () => _tabs?.Invalidate(TabBundleIdOf(dc)),
                     appActions: AppActionsFor,
-                    onShowInFinder: _revealInFiler) is { } menu)
+                    onShowInFinder: _revealInFiler,
+                    // bevel-be86: Pin/Unpin, keyed on the bundle id; the toggle persists through the
+                    // settings store (TaskbarViewModel.TogglePinAsync) and the strip re-projects on change.
+                    // Fire-and-forget is wrapped so a settings failure can't surface as an unobserved
+                    // task exception (bevel-be86 review).
+                    isPinned: bid => _vm?.IsAppPinned(bid) ?? false,
+                    onTogglePin: bid => _ = TogglePinSafeAsync(bid)) is { } menu)
             {
                 _openTaskMenu = menu;
                 // The menu is already shown (TryShow → ShowAt); enter the key-focus scope now and exit on
@@ -1183,6 +1189,18 @@ public partial class TaskbarView : UserControl
         TaskItemViewModel t => t.BundleId,
         _ => null,
     };
+
+    /// <summary>bevel-be86 review: fire-and-forget wrapper for the context menu's Pin/Unpin verb —
+    /// a settings-store failure must be logged (swallowed), never surface as an unobserved task
+    /// exception from the discarded task.</summary>
+    private async Task TogglePinSafeAsync(string? bundleId)
+    {
+        try
+        {
+            if (_vm is not null) await _vm.TogglePinAsync(bundleId);
+        }
+        catch (Exception ex) { TaskbarLog.Swallowed("TaskbarView.TogglePin", ex); }
+    }
 
     /// <summary>bevel-s5x: per-app jump-list actions for the button context menu, keyed on the
     /// BUNDLE id (AppId is only a display name). Only the Filer gets one today: New Window opens a

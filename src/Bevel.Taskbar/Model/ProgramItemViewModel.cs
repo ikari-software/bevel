@@ -38,6 +38,11 @@ public sealed class ProgramItemViewModel : ObservableObject
 
     public string DisplayName { get; }
 
+    /// <summary>bevel-be86: the backing <see cref="InstalledApp.IconPath"/> (the .app bundle path on
+    /// macOS), exposed so a pinned app with no window can resolve its taskbar icon from the
+    /// installed-apps list.</summary>
+    internal string? IconPath => _iconPath;
+
     /// <summary>Optional short category label (e.g. "Developer Tools") shown as a grey second line under
     /// the name in the Luna Start menu's featured column. Null/empty for apps that declare no category.</summary>
     public string? SubLabel { get; }

@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
@@ -251,6 +252,10 @@ public sealed class ShellModel : IDisposable
                 sourceKeyOf: a => a.AppId,
                 create: CreateProgram);
         MarkProgramsLoaded();
+        // bevel-be86 review: retry pinned icon loads on EVERY installed-apps change, not only the
+        // one-shot ProgramsLoaded latch — an app installed (or first enumerated) after startup must
+        // still get its pinned button's icon.
+        RetryPinnedIcons();
     });
 
     // ── Windows ─────────────────────────────────────────────────────────
@@ -508,6 +513,7 @@ public sealed class ShellModel : IDisposable
     /// template's transition grows it in (XP-style). Icon is decoded off-thread.</summary>
     private TaskItemViewModel CreateItem(ForeignWindow w)
     {
+        LearnBundlePath(w);   // bevel-be86: feeds the pinned-app icon/path lookup
         var vm = new TaskItemViewModel(w, _windows!, claimFocus: ClaimFocus);
         LoadWindowIcon(vm, w.IconPng); // decode off-thread, assign on UI thread
         // Seed the unread pill from the last poll (bevel-ijln) so a button born on the instant event
@@ -519,6 +525,101 @@ public sealed class ShellModel : IDisposable
     /// <summary>Last badge snapshot, UI-thread-owned: applied to the strip each poll and used to seed
     /// buttons created between polls. Empty when no source is wired (bevel-ijln).</summary>
     private IReadOnlyDictionary<string, string> _badgeIndex = new Dictionary<string, string>();
+
+    // ── Pinned apps (bevel-be86) ────────────────────────────────────────
+    //
+    // A pinned app with no window gets a synthetic button built here (the projector asks via
+    // <see cref="CreatePinnedItem"/>). It renders like an app-presence entry but launches on click.
+
+    /// <summary>Bundle path learned from any window/presence entry that carried one — a pinned app
+    /// that is not running has no window to learn from, so this map (fed by the apps that DO run)
+    /// is where its icon path comes from.</summary>
+    private readonly Dictionary<string, string> _bundlePathById = new(StringComparer.Ordinal);
+
+    /// <summary>Pinned-button VMs created so far, keyed by bundle id — reused across re-plans so the
+    /// button keeps its identity (and its loaded icon) instead of rebuilding.</summary>
+    private readonly Dictionary<string, TaskItemViewModel> _pinnedByBundle = new(StringComparer.Ordinal);
+
+    /// <summary>Records a window's bundle id → bundle path pairing so a pinned (currently windowless)
+    /// app can still resolve its icon + "Show in Finder" path. UI thread.</summary>
+    private void LearnBundlePath(ForeignWindow w)
+    {
+        if (w.BundleId is { Length: > 0 } b && !string.IsNullOrWhiteSpace(w.BundlePath))
+            _bundlePathById[b] = w.BundlePath!;
+    }
+
+    /// <summary>Resolves an icon path for a pinned bundle id: the learned bundle path when known, else the
+    /// installed-apps entry whose id EXACTLY equals the pin key (on macOS InstalledApp.AppId is the bundle
+    /// PATH, which the learned map covers). No display-name fallback (bevel-be86 review): matching by
+    /// friendly name let a crafted pin render another app's icon + label while launching something else —
+    /// pins resolve by exact bundle-id / bundle-path match only.</summary>
+    private string? PinnedIconPath(string bundleId)
+    {
+        if (_bundlePathById.TryGetValue(bundleId, out var learned)) return learned;
+        var app = Programs.FirstOrDefault(p =>
+            string.Equals(p.AppId, bundleId, StringComparison.Ordinal));
+        return app?.IconPath;
+    }
+
+    /// <summary>bevel-be86: builds (or returns the cached) taskbar button for a PINNED app that has no
+    /// window and no running-windowless presence entry. The VM is app-presence-shaped (id
+    /// <c>app:&lt;bundle&gt;</c>, dim + label) but carries a launch hook, so a click LAUNCHES the app
+    /// rather than activating it. Icon loads off-thread when a path resolves.</summary>
+    public TaskItemViewModel CreatePinnedItem(string bundleId)
+    {
+        if (_pinnedByBundle.TryGetValue(bundleId, out var existing)) return existing;
+        var name = TaskbarGrouping.DisplayName(bundleId);
+        var w = new ForeignWindow(
+            Id: new ForeignWindowId("app:" + bundleId),
+            Title: name,
+            AppId: name,
+            IsMinimized: false,
+            IsFocused: false,
+            Bounds: default,
+            IconPng: null,
+            IsAppPresence: true,
+            BundleId: bundleId,
+            BundlePath: _bundlePathById.TryGetValue(bundleId, out var p) ? p : null);
+        var vm = new TaskItemViewModel(w, _windows!, claimFocus: ClaimFocus, launchApp: LaunchPinnedAppAsync);
+        _pinnedByBundle[bundleId] = vm;
+        LoadPinnedIcon(vm, bundleId);
+        return vm;
+    }
+
+    /// <summary>Launches a pinned app by bundle id (bevel-be86). NSWorkspace resolves the bundle id to
+    /// the .app and activates an already-running instance, so this one verb covers both cold launch
+    /// and "already running" clicks. The key is validated AGAIN here, immediately before the sink
+    /// (bevel-be86 review / bevel-318a invariant): a path-shaped value must never reach
+    /// IAppEnvironment.LaunchAsync — LSOpen/ShellExecute would open any rooted path or arbitrary
+    /// string. Best-effort like every PAL fire-and-forget here, but a refusal/failure is logged
+    /// visibly (not swallowed silently).</summary>
+    private async Task LaunchPinnedAppAsync(string bundleId)
+    {
+        if (_appEnv is null) return;
+        var key = TaskbarPins.NormalizeKey(bundleId);
+        if (!TaskbarPins.IsValidBundleId(key))
+        {
+            TaskbarLog.Warn($"PinnedApp.Launch REFUSED non-bundle-id key '{bundleId}' (launch sink takes bundle ids only)");
+            return;
+        }
+        try { await _appEnv.LaunchAsync(key!); }
+        catch (Exception ex) { TaskbarLog.Warn($"PinnedApp.Launch failed for '{key}': {ex.GetType().Name}: {ex.Message}"); }
+    }
+
+    /// <summary>Loads a pinned button's app icon off-thread and assigns the bitmap on the UI thread.
+    /// No path (app not installed / not yet learned) → the button stays label-only; retried whenever the
+    /// installed-apps list changes (see <see cref="RetryPinnedIcons"/>).</summary>
+    private void LoadPinnedIcon(TaskItemViewModel vm, string bundleId)
+    {
+        var path = PinnedIconPath(bundleId);
+        if (path is null) return;
+        _ = Task.Run(async () =>
+        {
+            var bmp = await _icons.LoadAsync(path, 64).ConfigureAwait(false);
+            if (bmp is null) return;
+            Dispatcher.UIThread.Post(() => { if (!_disposed) vm.IconSource = bmp; });
+        });
+    }
 
     /// <summary>UI thread. Pushes a fresh badge snapshot onto every button (clearing apps that stopped
     /// badging) and remembers it for buttons created before the next poll.</summary>
@@ -533,6 +634,7 @@ public sealed class ShellModel : IDisposable
     /// while its button was animating out, cancel the pending exit and keep the VM/container.</summary>
     private void ApplyUpdate(TaskItemViewModel vm, ForeignWindow w)
     {
+        LearnBundlePath(w);   // bevel-be86: a window that appears can teach a pinned sibling its path
         vm.Revive();
         vm.Update(w);
         // Retry a still-missing icon. A window first enumerated before its app icon was ready arrives
@@ -727,6 +829,21 @@ public sealed class ShellModel : IDisposable
         if (_disposed || ProgramsLoaded) return;
         ProgramsLoaded = true;
         ProgramsLoadedChanged?.Invoke();
+        // bevel-be86: pins applied at startup may have found no icon path because the installed-apps
+        // list had not landed yet — retry their icon loads now that it has.
+        RetryPinnedIcons();
+    }
+
+    /// <summary>bevel-be86: re-attempts icon loads for every pinned button that still has no icon.
+    /// Called on the one-shot ProgramsLoaded latch AND on every InstalledAppsChanged (an app installed
+    /// after startup heals its pin's icon). Safe to call repeatedly — a loaded icon is skipped, and
+    /// IconLoader no longer caches null results, so a retry is never a permanent no-op.</summary>
+    private void RetryPinnedIcons()
+    {
+        if (_disposed) return;
+        foreach (var vm in _pinnedByBundle.Values)
+            if (vm.IconSource is null && vm.BundleId is { } b)
+                LoadPinnedIcon(vm, b);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────

@@ -573,6 +573,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
         // bevel-ze3o: empty = no per-folder states recorded yet → prune, like the other arrays.
         if (_settings.FilerFolderViews.Length == 0) _raw.Remove("filerFolderViews");
         else _raw["filerFolderViews"] = JsonSerializer.SerializeToElement(_settings.FilerFolderViews, SettingsJsonContext.Default.StringArray);
+        // bevel-be86: empty = no pinned apps → prune (an empty array equals the default).
+        if (_settings.TaskbarPinnedApps.Length == 0) _raw.Remove("taskbarPinnedApps");
+        else _raw["taskbarPinnedApps"] = JsonSerializer.SerializeToElement(_settings.TaskbarPinnedApps, SettingsJsonContext.Default.StringArray);
         // bevel-aqr7: keyed on the VERSION marker, not emptiness — an empty list is a legitimate user
         // choice (spec §6), and keying on Length==0 would silently re-migrate it on every start.
         if (_settings.TaskbarComponentsVersion == 0) _raw.Remove("taskbarComponents");
@@ -710,6 +713,9 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarStacks = GetStringArray("taskbarStacks") ?? BevelSettings.DefaultStacks,
             FilerFavorites = GetStringArray("filerFavorites") ?? Array.Empty<string>(),
             FilerFolderViews = GetStringArray("filerFolderViews") ?? Array.Empty<string>(),
+            // bevel-be86: pins load through TaskbarPins.Sanitize — a path-shaped or oversized entry in
+            // the blob is dropped here, at the load boundary, before it can ever reach the launch sink.
+            TaskbarPinnedApps = TaskbarPins.Sanitize(GetStringArray("taskbarPinnedApps")),
             TaskbarComponents = components ?? Array.Empty<ComponentInstance>(),
             TaskbarComponentsVersion = componentsVersion,
             TaskbarRows = GetInt("taskbarRows") ?? 1,
@@ -782,8 +788,19 @@ public sealed class SettingsService : ISettingsService, IDisposable
             ? el.GetInt32() : null;
 
     private string[]? GetStringArray(string key)
-        => _raw.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.Array
-            ? el.Deserialize(SettingsJsonContext.Default.StringArray) : null;
+    {
+        if (!_raw.TryGetValue(key, out var el) || el.ValueKind != JsonValueKind.Array) return null;
+        // Per-element (bevel-be86 review): one wrong-typed element (e.g. [42] or ["a",5]) must not
+        // throw a JsonException out of Load and kill the boot / receive loop — mirror
+        // GetComponentInstances' corrupt tolerance and drop just the bad element, keeping the rest.
+        var items = new List<string?>(el.GetArrayLength());
+        foreach (var element in el.EnumerateArray())
+        {
+            try { items.Add(element.Deserialize(SettingsJsonContext.Default.String)); }
+            catch (JsonException) { items.Add(null); }
+        }
+        return items.OfType<string>().ToArray();
+    }
 
     /// <summary>
     /// Reads the persisted component list. On a corrupt or foreign-shaped value, sets
@@ -980,6 +997,15 @@ public sealed class BevelSettings
     /// the strip, after every window button — independent of, and layered on top of, the sort mode.</summary>
     public bool WindowlessAppsLast { get; set; }
 
+    /// <summary>bevel-be86: apps pinned to the taskbar, as bundle ids in pin order. A pinned app renders
+    /// as a taskbar button even with no open window (clicking it launches the app); when the app has a
+    /// window, that window's button covers the pin, so the two never duplicate. Empty = none pinned.
+    /// Keys are bundle ids ONLY — never paths (see <see cref="TaskbarPins"/>); invalid entries are dropped
+    /// at load. The key is written as a whole-array replace: with two taskbar instances writing
+    /// concurrently the LAST WRITE WINS for the whole list (TogglePinAsync re-reads Current and retries
+    /// once on a store version mismatch to shrink that window).</summary>
+    public string[] TaskbarPinnedApps { get; set; } = Array.Empty<string>();
+
     /// <summary>bevel-jt30: list windows that live on other Spaces as taskbar buttons (default on).</summary>
     public bool TaskbarShowOtherSpaceWindows { get; set; } = true;
 
@@ -1061,6 +1087,7 @@ public sealed class BevelSettings
         TaskbarStacks = (string[])other.TaskbarStacks.Clone();
         FilerFavorites = (string[])other.FilerFavorites.Clone();
         FilerFolderViews = (string[])other.FilerFolderViews.Clone();
+        TaskbarPinnedApps = (string[])other.TaskbarPinnedApps.Clone();
         TaskbarComponents = Array.ConvertAll(other.TaskbarComponents, i => i.DeepClone());
     }
 }
