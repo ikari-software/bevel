@@ -200,6 +200,54 @@ public sealed class TabPrefetchTests
         Assert.Equal(2, provider.Calls);
     }
 
+    /// <summary>bevel-vtc6 review: the Start menu's tabs search warms this cache from thread-pool
+    /// queries while the UI thread warms on pointer-enter. Concurrent Warm calls for one app must share
+    /// a SINGLE fetch — a check-and-set race would start N osascript spawns for one app.</summary>
+    [Fact]
+    public async Task Concurrent_warm_calls_share_a_single_fetch()
+    {
+        var provider = new CountingTabs { Hold = true, Tabs = [Tab(1)] };
+        using var prefetch = new TabPrefetch(provider, Budget, Freshness, decode: _ => null);
+
+        var works = new List<Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>();
+        var collect = new object();
+        Parallel.For(0, 32, _ =>
+        {
+            var w = prefetch.Warm(App);
+            lock (collect) works.Add(w);
+        });
+
+        Assert.Equal(32, works.Count);
+        Assert.All(works, w => Assert.NotNull(w));
+        Assert.All(works, w => Assert.Same(works[0], w));   // one shared task, not 32
+        Assert.Equal(1, prefetch.Fetches);
+
+        provider.Release();
+        Assert.Single(await works[0]!);
+        Assert.Equal(1, provider.Calls);
+    }
+
+    /// <summary>bevel-vtc6 review: the favicon cache is an LRU capped at 512 entries — a long-lived
+    /// taskbar warming a new site on every hover must not grow it forever. Distinct PNG bytes per tab
+    /// (the key is a content hash), a real decode for each.</summary>
+    [AvaloniaFact]
+    public async Task The_favicon_cache_is_capped_and_evicts_old_entries()
+    {
+        var png = Png16();
+        var tabs = Enumerable.Range(0, 600)
+            .Select(i => new AppTab(App, "1", i + 1, $"Tab {i}", $"https://example.com/{i}",
+                IconPng: new[] { (byte)i, (byte)(i >> 8) }))
+            .ToList();
+        var provider = new CountingTabs { Tabs = tabs };
+        using var prefetch = new TabPrefetch(provider, Budget, Freshness,
+            decode: _ => Bitmap.DecodeToWidth(new System.IO.MemoryStream(png), 16));
+
+        var rows = await prefetch.Warm(App)!;
+
+        Assert.Equal(600, rows.Count);
+        Assert.Equal(512, prefetch.IconCount);   // capped, not 600
+    }
+
     /// <summary>Byte-identical favicons decode ONCE and the rows share the bitmap. Tabs of one site
     /// repeat constantly, so a 100-tab window decoded 100 images for a handful of distinct icons —
     /// and, more importantly, a row that doesn't own its bitmap is what makes reusing a prefetched

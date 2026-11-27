@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Bevel.Core.Search;
+using Bevel.Pal.Abstractions;
 
 namespace Bevel.Taskbar;
 
@@ -59,7 +60,15 @@ internal sealed class StartMenuSearchInput
     // bevel-6sk6: the sectioned search session + the current Programs-section hits.
     private SearchSession? _searchSession;
     private IReadOnlyList<SearchHit> _programHits = Array.Empty<SearchHit>();
+    // bevel-vtc6 review: the current hits of EVERY section — Enter must not launch the top hit when the
+    // focused row is a hit of ANY section (a focused TAB row, not just a Programs row).
+    private readonly Dictionary<string, IReadOnlyList<SearchHit>> _sectionHits = new(StringComparer.Ordinal);
     private RoutedEventArgs? _lastSearchEvent;
+    // bevel-vtc6: the Tabs section's inputs, handed over like the host's other delegates — distinct
+    // bundle ids of the running apps, the one TabPrefetch warm delegate, and the provider itself.
+    private readonly Func<IReadOnlyList<string>>? _runningTabBundleIds;
+    private readonly Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? _warmTabs;
+    private readonly ITabProvider? _tabProvider;
 
     public StartMenuSearchInput(
         StartMenuViewModel? vm,
@@ -67,7 +76,10 @@ internal sealed class StartMenuSearchInput
         Func<bool> isOpen,
         Action close,
         Func<bool> lunaWired,
-        Action restoreProgramsPlaceholder)
+        Action restoreProgramsPlaceholder,
+        Func<IReadOnlyList<string>>? runningTabBundleIds = null,
+        Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? warmTabs = null,
+        ITabProvider? tabProvider = null)
     {
         _vm = vm;
         _body = body;
@@ -75,6 +87,9 @@ internal sealed class StartMenuSearchInput
         _close = close;
         _lunaWired = lunaWired;
         _restoreProgramsPlaceholder = restoreProgramsPlaceholder;
+        _runningTabBundleIds = runningTabBundleIds;
+        _warmTabs = warmTabs;
+        _tabProvider = tabProvider;
         QueryChanged += ApplySearch;
         Cleared += ClearSearch;
         EnterPressed += source => TryLaunchTopMatch(source);
@@ -162,20 +177,34 @@ internal sealed class StartMenuSearchInput
         }
     }
 
-    // bevel-6sk6: one SearchSession over the apps provider feeds BOTH layouts' results views; publishes
+    // bevel-6sk6: one SearchSession over the providers feeds BOTH layouts' results views; publishes
     // are marshaled to the UI thread via Dispatcher.Post (background providers answer off-thread).
     private void WireSearchSession()
     {
         if (_vm is null) return;
-        _searchSession = new SearchSession(
-            new ISearchProvider[] { new AppsSearchProvider(_vm.Model) },
-            a => Dispatcher.UIThread.Post(a));
+        var providers = new List<ISearchProvider> { new AppsSearchProvider(_vm.Model) };
+        // bevel-vtc6: the Tabs section rides the same session when the host handed over the tab plumbing.
+        if (_runningTabBundleIds is not null && _warmTabs is not null && _tabProvider is not null)
+            providers.Add(new TabsSearchProvider(_runningTabBundleIds, _warmTabs, _tabProvider));
+        _searchSession = new SearchSession(providers, a => Dispatcher.UIThread.Post(a));
         _searchSession.SectionChanged += OnSearchSectionChanged;
         foreach (var view in new[] { _body.ClassicResults, _body.LunaResults })
         {
-            view.RegisterProvider(_searchSession.Providers[0]);
+            foreach (var p in _searchSession.Providers)
+                view.RegisterProvider(p);
             view.HitActivated += hit => { _ = hit.ActivateAsync(); _close(); };
         }
+    }
+
+    /// <summary>bevel-vtc6: warms every running tab-capable app when the menu opens, so the Tabs section's
+    /// first paint on the first keystroke is served from cache. Fire-and-forget: the warm delegate reuses
+    /// a running/fresh slot and never blocks the UI thread.</summary>
+    public void WarmTabs()
+    {
+        if (_runningTabBundleIds is null || _warmTabs is null || _tabProvider is null) return;
+        foreach (var id in _runningTabBundleIds())
+            if (_tabProvider.SupportsApp(id))
+                _ = _warmTabs(id);
     }
 
     /// <summary>
@@ -193,7 +222,9 @@ internal sealed class StartMenuSearchInput
     /// <summary>
     /// Enter's rule while a search is running: launch the top match — UNLESS the keystroke came from a row
     /// that is itself one of the matches, i.e. the user arrowed focus onto it, in which case that row's own
-    /// activation is the right thing and the search stays out of the way.
+    /// activation is the right thing and the search stays out of the way. The focused row is checked
+    /// against EVERY section's hits (Programs AND Tabs — a focused TAB row must not launch the TopHit
+    /// either), not just the Programs section.
     ///
     /// Exposed on the host because it is the only honestly testable form of the rule: headless Avalonia
     /// never realizes a submenu's containers, so no test can produce a focused cascade row to raise the
@@ -204,7 +235,7 @@ internal sealed class StartMenuSearchInput
         if (_searchSession?.TopHit is null) return false;
         return keySource is not Control c
             || c.DataContext is not SearchHit focused
-            || !_programHits.Contains(focused);
+            || !_sectionHits.Values.Any(hits => hits.Contains(focused));
     }
 
     private bool TryLaunchTopMatch(object? source)
@@ -237,6 +268,7 @@ internal sealed class StartMenuSearchInput
     /// the Programs hits for Enter/arrow semantics.</summary>
     private void OnSearchSectionChanged(string sectionId, IReadOnlyList<SearchHit> hits)
     {
+        _sectionHits[sectionId] = hits;
         _body.ClassicResults.SetSection(sectionId, hits);
         _body.LunaResults.SetSection(sectionId, hits);
         if (sectionId == "programs")
@@ -269,6 +301,7 @@ internal sealed class StartMenuSearchInput
         _searchSession?.Clear();
         _searchResults.Clear();
         _programHits = Array.Empty<SearchHit>();
+        _sectionHits.Clear();
         _body.ClassicStrip.IsVisible = false;
         _body.LunaStrip.IsVisible = false;
         _body.ClassicResults.IsVisible = false;

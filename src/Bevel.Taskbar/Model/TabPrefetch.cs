@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -24,6 +23,11 @@ namespace Bevel.Taskbar;
 /// next. A caller that finds it finished uses the rows with no await at all; one that finds it still
 /// running waits out the REMAINDER rather than starting a second enumeration.</para>
 ///
+/// <para><b>Thread-safe.</b> The Start menu's tabs search warms the same cache from thread-pool queries
+/// (bevel-vtc6) while the UI thread warms on pointer-enter, so the slot check-and-set is locked and
+/// <see cref="Fetches"/> is an <see cref="Interlocked"/> counter — concurrent <see cref="Warm"/> calls
+/// for one app share a single fetch.</para>
+///
 /// <para><b>Freshness is a correctness bound, not a nicety.</b> <see cref="AppTab"/>'s refs are
 /// positional — the activation scripts do <c>set active tab index of window N to K</c> — so a row
 /// whose tab has since closed does not no-op, it selects whatever tab now occupies that index.
@@ -38,17 +42,32 @@ internal sealed class TabPrefetch : IDisposable
     private readonly Func<byte[], Bitmap?> _decode;
     private readonly Func<long> _nowMs;
 
+    /// <summary>Guards <see cref="_slots"/> — Warm runs on the UI thread (pointer-enter) AND on
+    /// thread-pool search queries (bevel-vtc6), so the reuse check-and-set must be atomic.</summary>
+    private readonly object _slotsGate = new();
     private readonly Dictionary<string, (Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>> Work, long StartedAt)>
         _slots = new(StringComparer.Ordinal);
 
-    /// <summary>Decoded favicons keyed by a content hash of the PNG, for this object's whole life —
-    /// the same pattern and reason as <c>ShellModel</c>'s window-icon cache. Two things fall out:
-    /// many tabs of one site share a favicon, so a 100-tab window decodes a handful of images rather
-    /// than 100; and a row no longer OWNS its bitmap, which is what makes it safe to hand the same
-    /// rows to a second menu. The old per-open decode had to dispose on close, which is exactly
-    /// what made a reusable prefetch impossible.</summary>
-    private readonly ConcurrentDictionary<long, Bitmap> _icons = new();
+    /// <summary>Decoded favicons keyed by a content hash of the PNG — the same pattern and reason as
+    /// <c>ShellModel</c>'s window-icon cache. Two things fall out: many tabs of one site share a
+    /// favicon, so a 100-tab window decodes a handful of images rather than 100; and a row no longer
+    /// OWNS its bitmap, which is what makes it safe to hand the same rows to a second menu. The old
+    /// per-open decode had to dispose on close, which is exactly what made a reusable prefetch
+    /// impossible.
+    ///
+    /// <para>The cache is an LRU capped at <see cref="MaxIcons"/> entries (a long-lived taskbar warming
+    /// a new site per hover would otherwise grow it forever); the evicted bitmap is disposed, since
+    /// it is Skia-backed unmanaged memory the GC cannot see. All access is under
+    /// <see cref="_iconsGate"/> — decodes happen OUTSIDE the lock, and a lost decode race disposes
+    /// its own bitmap, exactly as before.</para></summary>
+    private const int MaxIcons = 512;
+    private readonly object _iconsGate = new();
+    private readonly Dictionary<long, Bitmap> _icons = new();
+    /// <summary>Most-recently-used first; <see cref="_iconLruIndex"/> points at each key's node.</summary>
+    private readonly LinkedList<long> _iconLru = new();
+    private readonly Dictionary<long, LinkedListNode<long>> _iconLruIndex = new();
 
+    private int _fetches;
     private int _disposed;
 
     public TabPrefetch(ITabProvider? provider, TimeSpan budget, TimeSpan freshness,
@@ -62,28 +81,37 @@ internal sealed class TabPrefetch : IDisposable
     }
 
     /// <summary>Fetches actually started, including the ones served from a reused slot's caller. Lets a
-    /// test assert that a warm slot does NOT spawn a second enumeration.</summary>
-    public int Fetches { get; private set; }
+    /// test assert that a warm slot does NOT spawn a second enumeration. An <see cref="Interlocked"/>
+    /// counter — Warm is called from the UI thread and from thread-pool search queries.</summary>
+    public int Fetches => Volatile.Read(ref _fetches);
+
+    /// <summary>Live favicon cache entries (never above <see cref="MaxIcons"/>). Exposed for tests.</summary>
+    internal int IconCount { get { lock (_iconsGate) return _icons.Count; } }
 
     /// <summary>Starts a tab enumeration for <paramref name="bundleId"/>, or returns the one already
     /// running or recently finished. Null when there is no provider or the app has no tab dialect, so
-    /// an unsupported app never pays a query (or a consent prompt). Call on one thread — the view's
-    /// pointer and context handlers are both on the UI thread.</summary>
+    /// an unsupported app never pays a query (or a consent prompt). Thread-safe: the view's pointer
+    /// and context handlers call this on the UI thread while the Start menu's tabs search warms from
+    /// thread-pool queries (bevel-vtc6) — concurrent callers for one app share a single fetch.</summary>
     public Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>? Warm(string? bundleId)
     {
         if (_provider is null || !_provider.SupportsApp(bundleId)) return null;
 
         var now = _nowMs();
-        if (_slots.TryGetValue(bundleId!, out var slot)
-            // Reuse while fresh, and reuse a stale-but-UNFINISHED fetch too: it is about to answer
-            // (or time out) either way, and a second osascript for the same app would make the slow
-            // case slower, not faster.
-            && (now - slot.StartedAt <= (long)_freshness.TotalMilliseconds || !slot.Work.IsCompleted))
-            return slot.Work;
+        Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>> work;
+        lock (_slotsGate)
+        {
+            if (_slots.TryGetValue(bundleId!, out var slot)
+                // Reuse while fresh, and reuse a stale-but-UNFINISHED fetch too: it is about to answer
+                // (or time out) either way, and a second osascript for the same app would make the slow
+                // case slower, not faster.
+                && (now - slot.StartedAt <= (long)_freshness.TotalMilliseconds || !slot.Work.IsCompleted))
+                return slot.Work;
 
-        Fetches++;
-        var work = FetchAsync(bundleId!);
-        _slots[bundleId!] = (work, now);
+            work = FetchAsync(bundleId!);
+            _slots[bundleId!] = (work, now);
+        }
+        Interlocked.Increment(ref _fetches);
         return work;
     }
 
@@ -92,7 +120,8 @@ internal sealed class TabPrefetch : IDisposable
     /// cached list no longer reflects the app, and the next menu open must show the truth.</summary>
     public void Invalidate(string? bundleId)
     {
-        if (bundleId is not null) _slots.Remove(bundleId);
+        if (bundleId is null) return;
+        lock (_slotsGate) _slots.Remove(bundleId);
     }
 
     private async Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>> FetchAsync(string bundleId)
@@ -123,11 +152,55 @@ internal sealed class TabPrefetch : IDisposable
     {
         if (tab.IconPng is not { Length: > 0 } png) return null;
         var key = ShellModel.Fnv1a64(png);
-        if (_icons.TryGetValue(key, out var cached)) return cached;
+        lock (_iconsGate)
+        {
+            if (_icons.TryGetValue(key, out var hit))
+            {
+                TouchLocked(key);
+                return hit;
+            }
+        }
+        // Decode OUTSIDE the lock (never-block rule) — a lost race disposes its own bitmap below.
         if (_decode(png) is not { } bmp) return null;
-        var winner = _icons.GetOrAdd(key, bmp);
-        if (!ReferenceEquals(winner, bmp)) bmp.Dispose();   // lost a decode race — free it now
+        Bitmap winner;
+        var lostRace = false;
+        lock (_iconsGate)
+        {
+            if (_icons.TryGetValue(key, out winner)) lostRace = true;   // another thread decoded it first
+            else
+            {
+                StoreLocked(key, bmp);
+                winner = bmp;
+            }
+        }
+        if (lostRace) bmp.Dispose();   // lost a decode race — free it now
         return winner;
+    }
+
+    /// <summary>Records a cache hit as most-recently-used. Caller must hold <see cref="_iconsGate"/>.</summary>
+    private void TouchLocked(long key)
+    {
+        if (_iconLruIndex.TryGetValue(key, out var node))
+        {
+            _iconLru.Remove(node);
+            _iconLru.AddFirst(node);
+        }
+    }
+
+    /// <summary>Inserts a fresh entry, evicting (and disposing) the least-recently-used bitmap when the
+    /// cache is at <see cref="MaxIcons"/>. Caller must hold <see cref="_iconsGate"/>.</summary>
+    private void StoreLocked(long key, Bitmap bmp)
+    {
+        while (_icons.Count >= MaxIcons)
+        {
+            var oldest = _iconLru.Last!;
+            _iconLru.RemoveLast();
+            _iconLruIndex.Remove(oldest.Value);
+            if (_icons.Remove(oldest.Value, out var evicted)) evicted.Dispose();
+        }
+        var node = _iconLru.AddFirst(key);
+        _iconLruIndex[key] = node;
+        _icons[key] = bmp;
     }
 
     /// <summary>DecodeToWidth(16) so a 192px cache blob isn't decoded at full size for a 16px row; a
@@ -143,8 +216,13 @@ internal sealed class TabPrefetch : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        foreach (var icon in _icons.Values) icon.Dispose();
-        _icons.Clear();
-        _slots.Clear();
+        lock (_iconsGate)
+        {
+            foreach (var icon in _icons.Values) icon.Dispose();
+            _icons.Clear();
+            _iconLru.Clear();
+            _iconLruIndex.Clear();
+        }
+        lock (_slotsGate) _slots.Clear();
     }
 }
