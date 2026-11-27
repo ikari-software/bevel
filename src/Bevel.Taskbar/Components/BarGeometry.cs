@@ -139,14 +139,6 @@ public sealed class BarGeometry
         _ => DefaultButtonHeight,
     };
 
-    /// <summary>Glyph edge for a size tier. Icons arrive at 64px, so every value is a downscale.</summary>
-    public static int TaskIconSizeFor(TaskbarButtonSize size) => size switch
-    {
-        TaskbarButtonSize.Large => 24,
-        TaskbarButtonSize.Big => 32,
-        _ => 16,
-    };
-
     private static int IconSizeForButtonHeight(int h) => h switch
     {
         >= 40 => 32,

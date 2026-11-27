@@ -44,9 +44,6 @@ public sealed class SettingsSnapshotCache
         _path = Path.Combine(configDir, FileName);
     }
 
-    /// <summary>Full path of the cache file (diagnostics + tests).</summary>
-    public string FilePath => _path;
-
     /// <summary>The cached snapshot, or null when there is none — the file is missing, unreadable, torn,
     /// or does not carry a well-formed settings object. Never throws: a broken cache must degrade to
     /// "no cache", not abort the peer's boot.</summary>

@@ -691,7 +691,7 @@ public sealed class ShellModel : IDisposable
     {
         if (png is not { Length: > 0 }) return;
 
-        var key = Fnv1a64(png);
+        var key = Bevel.Core.ContentHash.Fnv1a64(png);
         if (_windowIconCache.TryGetValue(key, out var cached))
         {
             Dispatcher.UIThread.Post(() => vm.IconSource = cached); // already decoded — no thread hop needed
@@ -714,10 +714,6 @@ public sealed class ShellModel : IDisposable
             catch (Exception ex) { TaskbarLog.Swallowed("LoadWindowIcon", ex); } // invalid PNG — icon-less
         });
     }
-
-    /// <summary>A cheap, stable content key for the icon cache. Shared with the favicon cache and the
-    /// core's icon de-duplication, so it lives in <see cref="Bevel.Core.ContentHash"/>.</summary>
-    internal static long Fnv1a64(byte[] data) => Bevel.Core.ContentHash.Fnv1a64(data);
 
     // ── Programs ────────────────────────────────────────────────────────
 

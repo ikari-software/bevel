@@ -1,14 +1,14 @@
 using System.Diagnostics;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
-using System.Linq;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Avalonia.Platform.Storage;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 

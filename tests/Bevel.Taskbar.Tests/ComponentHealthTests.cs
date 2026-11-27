@@ -1,4 +1,3 @@
-using System;
 using Bevel.Taskbar.Components;
 using Xunit;
 

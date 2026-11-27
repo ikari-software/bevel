@@ -1,6 +1,3 @@
-using Bevel.Core;
-using System;
-using System.IO;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -9,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Bevel.Core;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;

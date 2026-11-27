@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Bevel.Pal.Abstractions;
 using Bevel.Pal.Fake;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -19,28 +16,12 @@ public class TaskButtonMenuTabsTests
 {
     private const string App = FakeTabProvider.TabApp;
 
-    private sealed class NullWm : IWindowManager
-    {
-        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(System.Threading.CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-    }
-
     private static TaskItemViewModel BrowserVm() =>
-        new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default), new NullWm());
+        new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default), new TestWindowManager());
 
     // Same shape but with the machine key set — jump-list actions key on BundleId, not AppId.
     private static TaskItemViewModel BrowserVmWithBundle() =>
-        new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default, BundleId: App), new NullWm());
+        new(new ForeignWindow(new ForeignWindowId("w1"), "Fake Browser", App, false, false, default, BundleId: App), new TestWindowManager());
 
     private static IReadOnlyList<TaskButtonMenu.TabMenuRow> MakeTabs(int count) =>
         Enumerable.Range(1, count)
@@ -230,9 +211,9 @@ public class TaskButtonMenuTabsTests
     {
         var group = new TaskGroupViewModel(App);
         group.Windows.Add(new TaskItemViewModel(
-            new ForeignWindow(new ForeignWindowId("w1"), "One", App, false, false, default), new NullWm()));
+            new ForeignWindow(new ForeignWindowId("w1"), "One", App, false, false, default), new TestWindowManager()));
         group.Windows.Add(new TaskItemViewModel(
-            new ForeignWindow(new ForeignWindowId("w2"), "Two", App, false, false, default), new NullWm()));
+            new ForeignWindow(new ForeignWindowId("w2"), "Two", App, false, false, default), new TestWindowManager()));
         return group;
     }
 
@@ -279,30 +260,12 @@ public class TaskButtonMenuTabsTests
 
     // ── bevel-d2j9: the app-level Hide verb in the button menu ──────────────
 
-    private sealed class HideRecWm : IWindowManager
-    {
-        public List<string> Hidden { get; } = new();
-        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(System.Threading.CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task HideAppAsync(string bundleId, System.Threading.CancellationToken ct = default) { Hidden.Add(bundleId); return Task.CompletedTask; }
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-    }
-
     [AvaloniaFact]
     public void Menu_offers_hide_directly_above_quit_and_it_hides_the_app()
     {
         // bevel-d2j9: "_Hide" sits immediately before the separator + Quit at the menu bottom (the
         // macOS app-menu order), and its command rides HideAppAsync with the bundle id.
-        var wm = new HideRecWm();
+        var wm = new TestWindowManager();
         var vm = new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w1"), "Doc", "Safari", false, false, default, BundleId: "com.apple.Safari"), wm);
 
@@ -321,7 +284,7 @@ public class TaskButtonMenuTabsTests
     public void Group_menu_hide_delegates_to_a_member_window()
     {
         // The group's HideCommand acts on the whole app via any member's bundle id.
-        var wm = new HideRecWm();
+        var wm = new TestWindowManager();
         var group = new TaskGroupViewModel(App);
         group.Windows.Add(new TaskItemViewModel(
             new ForeignWindow(new ForeignWindowId("w1"), "One", App, false, false, default, BundleId: App), wm));

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -177,7 +174,6 @@ public static class Glyphs
     // Code
     private static readonly string TokICD  = ThemeTokens.ColorIconCodeInk;
     // Disc
-    private static readonly string TokIDC  = ThemeTokens.ColorIconDiscBody;
     private static readonly string TokIDCS = ThemeTokens.ColorIconDiscSheen;
 
     // ── Resolved brushes (lazy, theme-aware) ────────────────────────────────
@@ -224,7 +220,6 @@ public static class Glyphs
     private static IBrush DbTop            => S(TOKIDT, "#C2D4E6");
     private static IBrush DbEdge           => S(TokIDDe, "#5B7590");
     private static IBrush CodeInk          => S(TokICD, "#3B4A57");
-    private static IBrush DiscBody         => VGrad(TokIDC, TokIDCS, "#C7D2DE", "#A8B4C2");
     private static IBrush DiscSheen        => S(TokIDCS, "#EAF1F8");
 
     // The iridescent rainbow sweep of a real CD's data side — a conic gradient cycling hues once

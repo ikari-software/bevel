@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -8,10 +5,10 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using Bevel.UI;
-using ShapePath = Avalonia.Controls.Shapes.Path;
 using Bevel.Core;
+using Bevel.UI;
 using Bevel.UI.Blue2001;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 
 namespace Bevel.FileManager.Components;
 

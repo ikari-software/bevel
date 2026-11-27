@@ -1,6 +1,6 @@
 using System.IO.MemoryMappedFiles;
 using System.Text;
-using System.Threading;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.UI;
@@ -256,7 +256,7 @@ public sealed class MmfBgraPool : IDisposable
         if (image.Bgra.Length > _maxBgraBytes) return false;
 
         var keyBytes = Encoding.UTF8.GetBytes(key);
-        long keyHash = Fnv1a64(keyBytes);
+        long keyHash = ContentHash.Fnv1a64(keyBytes);
 
         // Single writer: reading our own cursor with acquire is enough to enumerate what's published.
         long count = ReadPublishedCountAcquire();
@@ -303,7 +303,7 @@ public sealed class MmfBgraPool : IDisposable
         if (key is null || Detached) return false;   // detached reader: the writer hasn't published yet
 
         var keyBytes = Encoding.UTF8.GetBytes(key);
-        long keyHash = Fnv1a64(keyBytes);
+        long keyHash = ContentHash.Fnv1a64(keyBytes);
 
         long count = ReadPublishedCountAcquire();
         int slot = FindSlot(keyBytes, keyHash, count);
@@ -381,20 +381,6 @@ public sealed class MmfBgraPool : IDisposable
     {
         Interlocked.MemoryBarrier(); // release: keep earlier blob/entry writes above this store
         _accessor!.Write(OffPublished, value);
-    }
-
-    /// <summary>FNV-1a 64-bit — a small, stable, non-crypto hash over the UTF-8 key bytes.</summary>
-    private static long Fnv1a64(ReadOnlySpan<byte> data)
-    {
-        const ulong offset = 14695981039346656037UL;
-        const ulong prime = 1099511628211UL;
-        ulong h = offset;
-        foreach (byte b in data)
-        {
-            h ^= b;
-            h *= prime;
-        }
-        return unchecked((long)h);
     }
 
     /// <summary>

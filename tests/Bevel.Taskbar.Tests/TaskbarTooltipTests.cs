@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -87,19 +88,5 @@ public sealed class TaskbarTooltipTests
         Assert.Same(button, popup.PlacementTarget);
     }
 
-    private sealed class NoOpWindowManager : IWindowManager
-    {
-        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>([]);
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
-    }
+    private sealed class NoOpWindowManager : TestWindowManager;
 }

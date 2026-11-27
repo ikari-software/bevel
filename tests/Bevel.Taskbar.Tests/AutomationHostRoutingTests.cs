@@ -1,12 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.App;
 using Bevel.Core.Vfs;
 using Bevel.Interop;
 using Bevel.Interop.Cli;
+using Bevel.TestSupport;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -120,9 +116,9 @@ public sealed class AutomationHostRoutingTests
 
     // ── Harness ──────────────────────────────────────────────────────────────────────────────────
 
-    private static (AutomationCommandRouter Router, RecordingSpawner Spawner) BuildHost(string? work = null)
+    private static (AutomationCommandRouter Router, TestFilerSpawner Spawner) BuildHost(string? work = null)
     {
-        var spawner = new RecordingSpawner();
+        var spawner = new TestFilerSpawner();
         var surface = new SpawningShellSurface(spawner);
         var vfs = new VfsRoot();
         vfs.Register(new LocalFsProvider(trashDirectory: work ?? System.IO.Path.GetTempPath()));
@@ -130,17 +126,4 @@ public sealed class AutomationHostRoutingTests
         return (new AutomationCommandRouter(auto), spawner);
     }
 
-    private sealed class RecordingSpawner : IFilerSpawner
-    {
-        public string? Path;
-        public string? SelectPath;
-        public bool Search;
-
-        public void Spawn(string path, string? selectPath = null, bool search = false)
-        {
-            Path = path;
-            SelectPath = selectPath;
-            Search = search;
-        }
-    }
 }

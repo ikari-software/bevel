@@ -1,4 +1,3 @@
-using System.Linq;
 using Bevel.App;
 using Bevel.App.ShellCore;
 using Bevel.Core;

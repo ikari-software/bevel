@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -9,6 +7,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -95,25 +94,15 @@ public class RenderGroupedFocusTest
 
 
 
-/// <summary>Minimal window manager: a fixed live set (buttons are driven directly by the test).</summary>
-internal sealed class StubWindowManager : IWindowManager
+internal sealed class StubWindowManager : TestWindowManager
 {
     public IReadOnlyList<ForeignWindow> Live { get; set; } = [];
 
-    public Capabilities Capabilities { get; } =
-        new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: [], SupportsReposition: true);
+    public StubWindowManager()
+        => Capabilities = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: [], SupportsReposition: true);
 
-    public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+    public override ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
         => ValueTask.FromResult(Live);
 
-    public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-    public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-    public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-
-    public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-    public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-    public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-    public event EventHandler<ForeignWindow>? ForegroundChanged;
+    public void RaiseForeground(ForeignWindow w) => RaiseForegroundChanged(w);
 }

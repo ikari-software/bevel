@@ -48,9 +48,6 @@ public sealed class ComponentHealth
         lock (_gate) _heartbeats[instanceId] = at;
     }
 
-    /// <summary>Notes that the component is alive now. Production convenience over the testable overload.</summary>
-    public void RecordHeartbeat(string instanceId) => RecordHeartbeat(instanceId, DateTime.UtcNow);
-
     /// <summary>
     /// A component that stopped answering is not crashed, so nothing else would notice. Past the
     /// deadline it is quarantined and its slot goes inert rather than silently freezing.

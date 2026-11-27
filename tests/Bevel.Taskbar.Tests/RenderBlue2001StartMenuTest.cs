@@ -1,12 +1,9 @@
-using Bevel.Core;
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 

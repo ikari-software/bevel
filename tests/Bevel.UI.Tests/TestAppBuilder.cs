@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
-using Bevel.UI.Tests;
 using Bevel.Tests.Shared;
+using Bevel.UI.Tests;
 
 [assembly: AvaloniaTestApplication(typeof(TestAppBuilder))]
 

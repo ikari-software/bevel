@@ -61,7 +61,7 @@ public static class ShellCoreEndpoint
     public static ShellCoreClient CreateClient(string capability = "shellcore") =>
         new(SocketPath, ReadNonce(), capability);
 
-    private static void Harden(string path, UnixFileMode mode)
+    internal static void Harden(string path, UnixFileMode mode)
     {
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, mode);

@@ -1,7 +1,7 @@
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
-using System.Linq;
 
 namespace Bevel.Taskbar;
 

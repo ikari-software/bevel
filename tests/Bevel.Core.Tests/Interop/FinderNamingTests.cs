@@ -1,4 +1,3 @@
-using System;
 using Bevel.Interop;
 using Xunit;
 

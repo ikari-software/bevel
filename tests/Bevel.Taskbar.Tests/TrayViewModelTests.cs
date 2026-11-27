@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;

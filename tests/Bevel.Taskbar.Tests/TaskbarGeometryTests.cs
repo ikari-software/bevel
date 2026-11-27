@@ -1,5 +1,5 @@
-using Bevel.Pal.Abstractions;
 using Avalonia;
+using Bevel.Pal.Abstractions;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;

@@ -263,8 +263,6 @@
                         <DockPanel LastChildFill="True">
                             <Border DockPanel.Dock="Top" Height="2"
                                     Background="{DynamicResource Bevel.Brush.StartMenuFooterRule}" />
-                            <!-- bevel-6sk6: the dead fake search box is gone — real search lives in the
-                                 search strip + results panel at the top of the menu. -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"
                                         VerticalAlignment="Center" Margin="0,0,10,0">
                             <Button x:Name="Blue2001LogOffButton" Classes="footer-round" Click="OnBlue2001LogOffClick" ToolTip.Tip="Log Off">

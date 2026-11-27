@@ -1,4 +1,3 @@
-using System;
 using Bevel.Pal.Abstractions;
 
 namespace Bevel.Pal.MacOS;

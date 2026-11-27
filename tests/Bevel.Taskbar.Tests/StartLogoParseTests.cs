@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;

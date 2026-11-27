@@ -1,10 +1,11 @@
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using Avalonia.LogicalTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -22,14 +23,7 @@ namespace Bevel.Taskbar.Tests;
 [Collection("TaskbarTheme")]
 public class SettingsPlatformGatingTests
 {
-    private sealed class Broker(PermissionState state) : IPermissionBroker
-    {
-        public ValueTask<PermissionState> GetStateAsync(ShellPermission p, CancellationToken ct = default)
-            => ValueTask.FromResult(state);
-        public Task<PermissionState> RequestAsync(ShellPermission p, CancellationToken ct = default)
-            => Task.FromResult(state);
-        public event EventHandler<ShellPermission>? PermissionChanged;
-    }
+
 
     private sealed class Dock(bool available) : IDockController
     {
@@ -38,24 +32,14 @@ public class SettingsPlatformGatingTests
         public Task SetAutoHideAsync(bool enabled, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private sealed class Tray(TrayCapability mode) : ISystemTrayHost
-    {
-        public Capabilities Capabilities { get; } =
-            new(Available: true, TrayMode: mode, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
-        public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<TrayItem>? ItemAdded;
-        public event EventHandler<TrayItem>? ItemRemoved;
-        public event EventHandler<TrayItem>? ItemUpdated;
-    }
+
 
     private static SettingsService ScratchSettings()
         => new(Directory.CreateDirectory(Path.Combine(
                Path.GetTempPath(), "bevel-tests", Guid.NewGuid().ToString("n"))).FullName);
 
     private static OnboardingWindow Build(PermissionState perms, bool dockAvailable, TrayCapability trayMode)
-        => new(ScratchSettings(), new Broker(perms), null, new Dock(dockAvailable), new Tray(trayMode));
+        => new(ScratchSettings(), new TestPermissionBroker(perms), null, new Dock(dockAvailable), new TestPlatform { Capabilities = new(Available: true, TrayMode: trayMode, Notes: []) });
 
     /// The permission probe is async and fire-and-forget, so settle the dispatcher before asserting.
     private static async Task Settle()

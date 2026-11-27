@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Bevel.Core.Input;

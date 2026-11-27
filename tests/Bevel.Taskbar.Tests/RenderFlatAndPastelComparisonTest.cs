@@ -1,8 +1,3 @@
-using Bevel.Core;
-using System;
-using System.Threading;
-using System.IO;
-using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -12,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Xunit;
 

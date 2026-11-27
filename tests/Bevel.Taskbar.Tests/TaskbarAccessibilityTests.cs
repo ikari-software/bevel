@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -15,6 +10,7 @@ using Bevel.Core;
 using Bevel.Core.Components;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar.Components;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -286,21 +282,8 @@ public class TaskbarAccessibilityTests
         window.Close();
     }
 
-    /// <summary>No-op window manager so a TaskItemViewModel's commands have a target.</summary>
-    private sealed class NoopWindowManager : IWindowManager
+    private sealed class NoopWindowManager : TestWindowManager
     {
-        public Capabilities Capabilities { get; } =
-            new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+        public NoopWindowManager() => Capabilities = RepositionCapable;
     }
 }

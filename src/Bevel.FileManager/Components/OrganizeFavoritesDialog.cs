@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Bevel.Core;
@@ -17,7 +15,6 @@ public sealed class OrganizeFavoritesDialog : BevelWindow
 
     internal ListBox List => _list;
     internal Button UpButton => _up;
-    internal Button DownButton => _down;
     internal Button RemoveButton => _remove;
 
     private readonly ListBox _list;

@@ -1,13 +1,9 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.App.ShellCore;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -61,66 +57,25 @@ public sealed class CoreWindowTrafficTests
         Assert.True(condition(), because);
     }
 
-    private sealed class Pal : IWindowManager, IAppEnvironment, ISystemTrayHost
+    private sealed class Pal : TestPlatform
     {
-        private readonly List<ForeignWindow> _windows = [];
         public int EnumerateCalls;
 
-        public void Seed(params ForeignWindow[] w) => _windows.AddRange(w);
-        public void RaiseOpened(ForeignWindow w) => WindowOpened?.Invoke(this, w);
-        public void RaiseChanged(ForeignWindow w) => WindowChanged?.Invoke(this, w);
-        public void RaiseClosed(ForeignWindow w) => WindowClosed?.Invoke(this, w);
+        public Pal() => Capabilities = new(true, TrayCapability.Mirrored, [], SupportsReposition: true);
 
-        public Capabilities Capabilities { get; } =
-            new(true, TrayCapability.Mirrored, [], SupportsReposition: true);
+        public void Seed(params ForeignWindow[] w) { lock (Windows) Windows.AddRange(w); }
+        public void RaiseOpened(ForeignWindow w) => RaiseWindowOpened(w);
+        public void RaiseChanged(ForeignWindow w) => RaiseWindowChanged(w);
+        public void RaiseClosed(ForeignWindow w) => RaiseWindowClosed(w);
 
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+        public override ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
         {
             Interlocked.Increment(ref EnumerateCalls);
-            return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
+            return base.EnumerateAsync(ct);
         }
 
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public List<ForeignWindowId> Zooms { get; } = [];
-        public Task ZoomAsync(ForeignWindowId id, CancellationToken ct = default)
-        {
-            lock (Zooms) Zooms.Add(id);
-            return Task.CompletedTask;
-        }
-        public List<(ForeignWindowId Id, PalRect Bounds, PalRect? Expected)> Repositions { get; } = [];
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default)
-        {
-            lock (Repositions) Repositions.Add((id, bounds, expected));
-            return Task.CompletedTask;
-        }
-        public Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int w, int h, CancellationToken ct = default)
-            => Task.FromResult<byte[]?>(null);
-
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-
-        public ValueTask<IReadOnlyList<InstalledApp>> EnumerateInstalledAppsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<InstalledApp>>(Array.Empty<InstalledApp>());
-        public ValueTask<IReadOnlyList<RunningApp>> GetRunningAppsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<RunningApp>>(Array.Empty<RunningApp>());
-        public Task LaunchAsync(string appIdOrPath, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<RunningApp>? AppLaunched;
-        public event EventHandler<RunningApp>? AppTerminated;
-        public event EventHandler<IReadOnlyList<InstalledApp>>? InstalledAppsChanged;
-
-        public ValueTask<IReadOnlyList<TrayItem>> GetItemsAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<TrayItem>>(Array.Empty<TrayItem>());
-        public Task SetNativeTrayHiddenAsync(bool hidden, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
+        public override Task<bool> ForwardClickAsync(TrayItemId id, TrayButton button, TrayModifiers modifiers,
             bool park = false, CancellationToken ct = default) => Task.FromResult(true);
-        public event EventHandler<TrayItem>? ItemAdded;
-        public event EventHandler<TrayItem>? ItemRemoved;
-        public event EventHandler<TrayItem>? ItemUpdated;
     }
 
     private sealed record Harness(Pal Pal, ShellCoreServer Server, ShellCoreClient Core,

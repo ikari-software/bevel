@@ -86,7 +86,7 @@ public sealed class ComponentBarHost
         var normalized = ComponentListNormalizer.Normalize(
             instances, id => _registry.TryResolve(id, out var m) ? m : null);
 
-        // Whole-branch review Fix 3: these used to be computed and discarded. A hand-edited or
+        // A hand-edited or
         // version-skewed settings.db can repair silently every apply (dropped duplicates,
         // reassigned instanceIds, demoted greedy components) with nobody able to see why the bar
         // looks different from what settings.db says — log every repair so that is diagnosable.
@@ -119,10 +119,10 @@ public sealed class ComponentBarHost
 
             try
             {
-                // CreateChannel invokes a third-party factory (whole-branch review Fix 6, spec §6:
-                // "Validation rejects the component, never the bar"). It used to sit OUTSIDE this
-                // try, so one throwing factory aborted the whole apply and left the region silently
-                // empty instead of costing just its own slot.
+                // CreateChannel invokes a third-party factory (spec §6:
+                // "Validation rejects the component, never the bar"). Keep it INSIDE this try, so a
+                // throwing factory costs just its own slot instead of aborting the whole apply and
+                // leaving the region silently empty.
                 var channel = _registry.CreateChannel(inst);
                 if (channel is null)
                 {
@@ -136,8 +136,8 @@ public sealed class ComponentBarHost
                 {
                     // Whole-branch review Fix 5, spec §6: "Hangs count as failures." A timed-out
                     // component reports back via Inert: true rather than throwing, and this path
-                    // used to record nothing — so a hung component was retried on every settings
-                    // push forever and never reached the health budget's quarantine.
+                    // must record the hang — otherwise a hung component is retried on every settings
+                    // push forever and never reaches the health budget's quarantine.
                     var hungVerdict = _health.RecordCrash(inst.InstanceId);
                     plans.Add(() => ComponentSlot.Inert(inst, hungVerdict == ComponentVerdict.Quarantine
                         ? "This component failed repeatedly and has been disabled."

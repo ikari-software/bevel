@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Bevel.Core.Components;
 using Xunit;
 

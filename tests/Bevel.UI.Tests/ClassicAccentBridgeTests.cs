@@ -2,8 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
-using ClassicCommon = Classic.CommonControls;
 using Xunit;
+using ClassicCommon = Classic.CommonControls;
 
 namespace Bevel.UI.Tests;
 

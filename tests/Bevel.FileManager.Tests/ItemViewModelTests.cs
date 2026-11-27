@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Bevel.Core.Vfs;
 using Bevel.FileManager.Components;
 using Xunit;

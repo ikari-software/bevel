@@ -1,10 +1,10 @@
-using Bevel.Core;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Bevel.Core;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
 using Xunit;

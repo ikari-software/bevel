@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -167,32 +162,23 @@ public sealed class ProgramCurationTests
 
     // ── bevel-xrx6 Part A: exclude-open apps from the frequent column ──
 
-    private sealed class RaisableWm : IWindowManager
+    private sealed class RaisableWm : TestWindowManager
     {
-        private readonly List<ForeignWindow> _windows = new();
-        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(_windows.ToArray());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
         public void Open(ForeignWindow w)
         {
-            _windows.Add(w);
-            WindowOpened?.Invoke(this, w);
+            lock (Windows) Windows.Add(w);
+            RaiseWindowOpened(w);
             Dispatcher.UIThread.RunJobs();
         }
         public void Close(ForeignWindowId id)
         {
-            var w = _windows.First(x => x.Id == id);
-            _windows.Remove(w);
-            WindowClosed?.Invoke(this, w);
+            ForeignWindow w;
+            lock (Windows)
+            {
+                w = Windows.First(x => x.Id == id);
+                Windows.Remove(w);
+            }
+            RaiseWindowClosed(w);
             Dispatcher.UIThread.RunJobs();
         }
     }

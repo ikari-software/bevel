@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.Pal.Abstractions;
 using Bevel.Taskbar;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -25,8 +22,7 @@ namespace Bevel.Taskbar.Tests;
 /// </summary>
 public sealed class ReconcileBackoffTests
 {
-    /// <summary>An enumerate that fails a fixed number of times, recording when each attempt landed.</summary>
-    private sealed class FlakyWindows : IWindowManager
+    private sealed class FlakyWindows : TestWindowManager
     {
         private readonly int _failures;
         private int _attempts;
@@ -40,29 +36,14 @@ public sealed class ReconcileBackoffTests
         public Task FirstSuccess => _firstSuccess.Task;
         public int Attempts => Volatile.Read(ref _attempts);
 
-        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
-
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
+        public override ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
         {
             lock (AttemptAt) AttemptAt.Add(_clock.Elapsed);
             if (Interlocked.Increment(ref _attempts) <= _failures)
                 throw new InvalidOperationException("Helper not connected");   // the real boot-race shape
             _firstSuccess.TrySetResult();
-            return ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
+            return base.EnumerateAsync(ct);
         }
-
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int w, int h, CancellationToken ct = default)
-            => Task.FromResult<byte[]?>(null);
-
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
     }
 
     /// <summary>Two failed ticks then a success: with the old flat interval the third attempt could not

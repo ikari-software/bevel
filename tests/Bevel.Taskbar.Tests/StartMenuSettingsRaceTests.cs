@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Security.Cryptography;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;

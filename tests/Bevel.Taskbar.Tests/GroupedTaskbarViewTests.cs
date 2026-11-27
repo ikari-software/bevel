@@ -1,4 +1,3 @@
-using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -6,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -95,19 +95,8 @@ public class GroupedTaskbarViewTests
     private static ToggleButton? FindToggle(Control c)
         => c as ToggleButton ?? c.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault();
 
-    private sealed class GroupViewStubWm : IWindowManager
+    private sealed class GroupViewStubWm : TestWindowManager
     {
-        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, Array.Empty<string>(), true);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+        public GroupViewStubWm() => Capabilities = RepositionCapable;
     }
 }

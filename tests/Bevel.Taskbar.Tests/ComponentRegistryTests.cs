@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Bevel.Core.Components;
 using Bevel.Taskbar.Components;
 using Xunit;

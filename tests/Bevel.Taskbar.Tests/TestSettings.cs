@@ -1,4 +1,3 @@
-using System;
 using Bevel.Core;
 
 namespace Bevel.Taskbar.Tests;

@@ -1,7 +1,4 @@
-using System;
 using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using Bevel.App.ShellCore;
 using Bevel.ShellCore.Ipc;
 using Xunit;

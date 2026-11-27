@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using System.Linq;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -70,20 +70,8 @@ public class OtherSpaceFilterTests
         Assert.Contains(b, proj.Items);
     }
 
-    private sealed class StubWm : IWindowManager
+    private sealed class StubWm : TestWindowManager
     {
-        public Capabilities Capabilities { get; } =
-            new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: System.Array.Empty<string>(), SupportsReposition: true);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(System.Threading.CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(System.Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public event System.EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event System.EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+        public StubWm() => Capabilities = RepositionCapable;
     }
 }

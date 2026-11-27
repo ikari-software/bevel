@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Path = Avalonia.Controls.Shapes.Path;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -8,6 +7,7 @@ using Avalonia.VisualTree;
 using Bevel.FileManager.Components;
 using Bevel.UI;
 using Xunit;
+using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Bevel.FileManager.Tests;
 

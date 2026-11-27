@@ -1,4 +1,3 @@
-using System;
 
 namespace Bevel.Pal.MacOS;
 

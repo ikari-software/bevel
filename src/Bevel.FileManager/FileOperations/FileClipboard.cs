@@ -14,7 +14,6 @@ public static class FileClipboard
 
     public static IReadOnlyList<VfsPath> Paths => _clipboardPaths;
     public static bool IsCut => _isCut;
-    public static bool HasContent => _clipboardPaths.Count > 0;
 
     public static void Cut(IEnumerable<VfsPath> paths)
     {

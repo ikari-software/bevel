@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using Bevel.App.ShellCore;
 using Xunit;
 

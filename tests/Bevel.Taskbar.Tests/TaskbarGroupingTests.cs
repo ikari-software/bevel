@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using System.Linq;
 using Bevel.Core;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -209,20 +209,8 @@ public class TaskbarGroupingTests
         Assert.Empty(group.Windows);   // every member was visited despite the mutation
     }
 
-    private sealed class GroupStubWm : IWindowManager
+    private sealed class GroupStubWm : TestWindowManager
     {
-        public Capabilities Capabilities { get; } =
-            new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>(), SupportsReposition: true);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowClosed { add { } remove { } }
-        public event EventHandler<ForeignWindow>? WindowChanged { add { } remove { } }
-        public event EventHandler<ForeignWindow>? ForegroundChanged { add { } remove { } }
+        public GroupStubWm() => Capabilities = RepositionCapable;
     }
 }

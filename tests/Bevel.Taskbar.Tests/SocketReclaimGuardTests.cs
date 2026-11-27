@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using Bevel.App;
 using Bevel.ShellCore.Ipc;
 using Xunit;

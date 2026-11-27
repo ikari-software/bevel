@@ -1,14 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -54,7 +50,7 @@ public sealed class TabPrefetchWiringTests
         // AppId is the FRIENDLY NAME; BundleId is the machine key the tab provider is gated on.
         var fw = new ForeignWindow(new ForeignWindowId("w1"), "A page", "App", false, false, default,
             BundleId: appId);
-        model.Windows.Add(new TaskItemViewModel(fw, new NoOpWindowManager()) { Width = 120, Opacity = 1 });
+        model.Windows.Add(new TaskItemViewModel(fw, new TestWindowManager()) { Width = 120, Opacity = 1 });
 
         window.Show();
         Dispatcher.UIThread.RunJobs();
@@ -121,21 +117,4 @@ public sealed class TabPrefetchWiringTests
         finally { window.Close(); }
     }
 
-    private sealed class NoOpWindowManager : IWindowManager
-    {
-        public Capabilities Capabilities { get; } = new(true, TrayCapability.Mirrored, []);
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<byte[]?> CaptureWindowAsync(ForeignWindowId id, int w, int h, CancellationToken ct = default)
-            => Task.FromResult<byte[]?>(null);
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-    }
 }

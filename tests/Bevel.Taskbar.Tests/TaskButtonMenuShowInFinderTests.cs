@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Bevel.Pal.Abstractions;
+using Bevel.TestSupport;
 using Xunit;
 
 namespace Bevel.Taskbar.Tests;
@@ -18,25 +15,9 @@ namespace Bevel.Taskbar.Tests;
 /// </summary>
 public class TaskButtonMenuShowInFinderTests
 {
-    private sealed class NullWm : IWindowManager
-    {
-        public Capabilities Capabilities { get; } = new(Available: true, TrayMode: TrayCapability.Mirrored, Notes: Array.Empty<string>());
-        public ValueTask<IReadOnlyList<ForeignWindow>> EnumerateAsync(System.Threading.CancellationToken ct = default)
-            => ValueTask.FromResult<IReadOnlyList<ForeignWindow>>(Array.Empty<ForeignWindow>());
-        public Task ActivateAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task MinimizeAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RestoreAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task CloseAsync(ForeignWindowId id, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public Task RepositionAsync(ForeignWindowId id, PalRect bounds, PalRect? expected = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
-        public event EventHandler<ForeignWindow>? WindowOpened;
-        public event EventHandler<ForeignWindow>? WindowClosed;
-        public event EventHandler<ForeignWindow>? WindowChanged;
-        public event EventHandler<ForeignWindow>? ForegroundChanged;
-    }
-
     private static TaskItemViewModel Vm(string? bundlePath, string id = "w1") =>
         new(new ForeignWindow(new ForeignWindowId(id), "Fake App", "fake.app", false, false, default,
-            BundleId: "fake.app", BundlePath: bundlePath), new NullWm());
+            BundleId: "fake.app", BundlePath: bundlePath), new TestWindowManager());
 
     private static MenuItem? ShowInFinderItem(MenuFlyout? flyout) =>
         (flyout?.ItemsSource as IEnumerable<object>)?.OfType<MenuItem>()
