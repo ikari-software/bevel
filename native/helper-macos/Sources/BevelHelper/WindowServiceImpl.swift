@@ -914,12 +914,16 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
             // Every genuine user window exposes a title (AX or CG); the flood of title-less layer-0
             // windows (30px strips, 1x1/64x64/500x500 placeholders) are not real windows.
             { win.title.isEmpty && !win.isMinimized ? "no-title hasAX=\(hasAX)" : nil },
-            // bevel-2hk9: a TITLED but tiny on-screen window with no AX element is Electron-style
+            // bevel-2hk9: a TITLED but tiny ON-SCREEN window with no AX element is Electron-style
             // scaffolding, not a user window — Beeper keeps a 10x10 shadow window (cg=16747) that
             // sails past the on-screen gate and becomes a second taskbar button. Real small
-            // panels (136x32) expose an AX element, so they are exempt via hasAX.
+            // panels (136x32) expose an AX element, so they are exempt via hasAX. The gate is
+            // scoped to on-screen entries: hasAX is also false for windows on OTHER Spaces
+            // (AX lists only the current Space), and those must stay listed so activation can
+            // switch to them — offscreenGhostReason gate 4 owns that decision, not this one.
             { self.tinyNoAXReason(width: Int(win.frame.width), height: Int(win.frame.height),
-                                 hasAX: hasAX, isMinimized: win.isMinimized) },
+                                 hasAX: hasAX, isMinimized: win.isMinimized,
+                                 isOnScreen: (entry[kCGWindowIsOnscreen as String] as? Bool) == true) },
             // Costly (a WindowServer round-trip per off-screen window), so it runs AFTER the cheap gates
             // above have already dropped the flood of title-less / zero-area ghosts.
             { self.offscreenGhostReason(cgID: cgID, hasAX: hasAX, entry: entry, spaces: pass.spaces) },
@@ -939,8 +943,8 @@ final class WindowServiceImpl: RegistrableRPCService, @unchecked Sendable {
     /// dimensions with no AX element is scaffolding (measured: Beeper phantom 10x10; real small
     /// panels like 136x32 carry AX). Zero-area is handled by the earlier zero-frame gate, and
     /// minimized windows are exempt everywhere (they may report a stale tiny frame).
-    internal func tinyNoAXReason(width: Int, height: Int, hasAX: Bool, isMinimized: Bool) -> String? {
-        guard !isMinimized, !hasAX, width > 0, height > 0, width < 64, height < 64 else { return nil }
+    internal func tinyNoAXReason(width: Int, height: Int, hasAX: Bool, isMinimized: Bool, isOnScreen: Bool) -> String? {
+        guard isOnScreen, !isMinimized, !hasAX, width > 0, height > 0, width < 64, height < 64 else { return nil }
         return "tiny-no-ax \(width)x\(height)"
     }
 
