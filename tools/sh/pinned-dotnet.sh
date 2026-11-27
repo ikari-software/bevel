@@ -49,7 +49,12 @@ __bevel_path_is_homebrew() {
 	# $1 = path; resolves symlinks when readlink -f exists, then anchors to a real Homebrew root.
 	local p="$1" root
 	[ -n "$p" ] || return 1
-	command -v readlink >/dev/null 2>&1 && p="$(readlink -f "$p" 2>/dev/null || echo "$p")"
+	# Prefer realpath (macOS), fall back to readlink -f (Linux)
+	if command -v realpath >/dev/null 2>&1; then
+		p="$(realpath "$p" 2>/dev/null || echo "$p")"
+	elif command -v readlink >/dev/null 2>&1; then
+		p="$(readlink -f "$p" 2>/dev/null || echo "$p")"
+	fi
 	while IFS= read -r root; do
 		[ -n "$root" ] || continue
 		case "$p" in "$root"|"$root"/*) return 0 ;; esac
