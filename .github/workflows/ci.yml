@@ -190,18 +190,19 @@ jobs:
             --self-contained true \
             -p:BevelPackaging=true \
             --output .publish/${{ matrix.artifact-name }}
-          # Portability gate (macOS only — otool doesn't exist on Linux/Windows): no Mach-O in the
-          # publish output may link a non-system dylib; a Homebrew SDK's apphost links
-          # /opt/homebrew/opt/brotli (bevel-ka6c). Mirrors the authoritative gate in
-          # packaging/macos/build-app.sh.
+          # Portability gate (macOS only — otool doesn't exist on Linux/Windows): the
+          # single-file apphost must not link non-system dylibs; a Homebrew SDK's apphost links
+          # /opt/homebrew/opt/brotli (bevel-ka6c). Only the apphost itself is checked — native
+          # libraries like libAvaloniaNative.dylib are shared lib stubs that intentionally link
+          # to /usr/local/lib or /opt/homebrew/lib and are NOT stamped by the SDK.
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            while IFS= read -r -d '' f; do
-              file -b "$f" | grep -q "Mach-O" || continue
-              if otool -L "$f" | tail -n +2 | awk '{print $1}' | grep '^/' | grep -Ev '^(/usr/lib/|/System/)'; then
-                echo "::error::non-system dylib linked by $f — the apphost was stamped by a Homebrew SDK (bevel-ka6c); install the official SDK (/usr/local/share/dotnet)"
+            APPS_HOST=".publish/${{ matrix.artifact-name }}/Bevel"
+            if [ -f "$APPS_HOST" ] && file -b "$APPS_HOST" | grep -q "Mach-O"; then
+              if otool -L "$APPS_HOST" | tail -n +2 | awk '{print $1}' | grep '^/' | grep -Ev '^(/usr/lib/|/System/)'; then
+                echo "::error::non-system dylib linked by $APPS_HOST — the apphost was stamped by a Homebrew SDK (bevel-ka6c); install the official SDK (/usr/local/share/dotnet)"
                 exit 1
               fi
-            done < <(find ".publish/${{ matrix.artifact-name }}" -type f -print0)
+            fi
           fi
 
   # ── Swift native helper build (macOS only) ──────────────────────────────────
