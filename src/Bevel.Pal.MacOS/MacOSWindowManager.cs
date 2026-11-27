@@ -390,7 +390,8 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
     private Grpc.Core.Metadata AuthHeader()
         => _helperLifecycle.AuthFor("window");
 
-    private static ForeignWindow Map(TaskbarWindow tw)
+    // internal (not private) so Bevel.Pal.MacOS.Tests can pin the uint64→long boundary clamp.
+    internal static ForeignWindow Map(TaskbarWindow tw)
     {
         // AppId is only ever used as the taskbar button's label fallback (when the
         // window has no title), so prefer the friendly app name ("Google Chrome")
@@ -414,7 +415,12 @@ public sealed class MacOSWindowManager : IWindowManager, IDisposable
             IsFullscreen: tw.IsFullscreen,
             IsOnOtherSpace: tw.IsOnOtherSpace,
             // Whitespace is as dead as empty — a blank path must not reach the verb (bevel-4nct review).
-            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath);
+            BundlePath: string.IsNullOrWhiteSpace(tw.AppBundlePath) ? null : tw.AppBundlePath,
+            // Attention stamp (bevel-qb19): 0 = none, otherwise unix ms of the
+            // appear/title-change that requested attention while backgrounded. proto uint64 → long:
+            // clamp at the boundary — a value above Int64.MaxValue saturates instead of wrapping
+            // negative (which the VM's strictly-newer (>) compare would treat as ancient).
+            AttentionAt: tw.AttentionAt > (ulong)long.MaxValue ? long.MaxValue : (long)tw.AttentionAt);
     }
 
     public void Dispose()

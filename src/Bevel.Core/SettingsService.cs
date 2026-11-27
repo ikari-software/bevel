@@ -548,6 +548,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         SetOrPrune("taskbarButtonLabels", _settings.TaskbarButtonLabels.ToString(), d.TaskbarButtonLabels.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarMiddleClickCloses", _settings.TaskbarMiddleClickCloses, d.TaskbarMiddleClickCloses, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarReclickMinimize", _settings.TaskbarReclickMinimize.ToString(), d.TaskbarReclickMinimize.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarAttentionAnimation", _settings.TaskbarAttentionAnimation.ToString(), d.TaskbarAttentionAnimation.ToString(), SettingsJsonContext.Default.String);
+        SetOrPrune("taskbarAttentionDuration", _settings.TaskbarAttentionDuration.ToString(), d.TaskbarAttentionDuration.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("taskbarWindowSort", _settings.TaskbarWindowSort.ToString(), d.TaskbarWindowSort.ToString(), SettingsJsonContext.Default.String);
         SetOrPrune("windowlessAppsLast", _settings.WindowlessAppsLast, d.WindowlessAppsLast, SettingsJsonContext.Default.Boolean);
         SetOrPrune("taskbarShowOtherSpaceWindows", _settings.TaskbarShowOtherSpaceWindows, d.TaskbarShowOtherSpaceWindows, SettingsJsonContext.Default.Boolean);
@@ -734,6 +736,12 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TaskbarMiddleClickCloses = GetBool("taskbarMiddleClickCloses") ?? true,
             TaskbarReclickMinimize = Enum.TryParse<TaskbarReclickMinimize>(GetString("taskbarReclickMinimize"), out var trm)
                 ? trm : TaskbarReclickMinimize.Click,
+            // bevel-qb19 review: Enum.IsDefined rejects numeric out-of-range values ("99" parses
+            // fine with TryParse alone and would stick as an undefined enum member).
+            TaskbarAttentionAnimation = Enum.TryParse<TaskbarAttentionAnimation>(GetString("taskbarAttentionAnimation"), out var taa)
+                && Enum.IsDefined(taa) ? taa : TaskbarAttentionAnimation.Pulse,
+            TaskbarAttentionDuration = Enum.TryParse<TaskbarAttentionDuration>(GetString("taskbarAttentionDuration"), out var tad)
+                && Enum.IsDefined(tad) ? tad : TaskbarAttentionDuration.Bounded,
             TaskbarWindowSort = Enum.TryParse<TaskbarWindowSort>(GetString("taskbarWindowSort"), out var tws)
                 ? tws : TaskbarWindowSort.OpenOrder,
             WindowlessAppsLast = GetBool("windowlessAppsLast") ?? false,
@@ -989,6 +997,20 @@ public sealed class BevelSettings
     /// a click to only ever raise. See <c>docs/design/taskbar-reclick-minimize.md</c>.</summary>
     public TaskbarReclickMinimize TaskbarReclickMinimize { get; set; } = TaskbarReclickMinimize.Click;
 
+    /// <summary>bevel-qb19: how a taskbar button animates while its window requests attention (the
+    /// helper stamps <c>attention_at</c> when a window newly appears or changes title while its app
+    /// is NOT foreground). Defaults to <see cref="TaskbarAttentionAnimation.Pulse"/>. The effective
+    /// mode is forced to <see cref="TaskbarAttentionAnimation.TintOnly"/> when the OS reduced-motion
+    /// setting is on, regardless of this value.</summary>
+    public TaskbarAttentionAnimation TaskbarAttentionAnimation { get; set; } = TaskbarAttentionAnimation.Pulse;
+
+    /// <summary>bevel-qb19: how long the attention animation runs. <see cref="TaskbarAttentionDuration.Bounded"/>
+    /// (default) pulses at most 3 times (~4s) then settles into a static tint — the classic Windows
+    /// bounded flash-then-tint. <see cref="TaskbarAttentionDuration.UntilActivated"/> animates until the
+    /// window is activated/focused or closed, closer to the macOS Dock bounce. Ignored (treated as
+    /// Bounded) when <see cref="TaskbarAttentionAnimation"/> is TintOnly or Off.</summary>
+    public TaskbarAttentionDuration TaskbarAttentionDuration { get; set; } = TaskbarAttentionDuration.Bounded;
+
     /// <summary>How taskbar buttons are ordered. OpenOrder keeps the classic positional order (a window
     /// stays put — muscle memory); Name sorts by app name A→Z.</summary>
     public TaskbarWindowSort TaskbarWindowSort { get; set; } = TaskbarWindowSort.OpenOrder;
@@ -1170,6 +1192,35 @@ public enum TaskbarReclickMinimize
     /// <summary>Never minimize from the button — a click always raises. Minimize stays on the button's
     /// right-click menu, so the verb is never unreachable.</summary>
     Never,
+}
+
+/// <summary>bevel-qb19: attention animation played on a taskbar button whose window requested
+/// attention (new window / title change while the app was backgrounded).</summary>
+public enum TaskbarAttentionAnimation
+{
+    /// <summary>Default: a token-bound glow overlay breathing on a ~1.2s period (opacity only).</summary>
+    Pulse,
+
+    /// <summary>One linear-gradient whoosh left→right per cycle.</summary>
+    Sweep,
+
+    /// <summary>Static attention tint, no animation (also forced by OS reduced-motion).</summary>
+    TintOnly,
+
+    /// <summary>No attention visuals at all — overrides every other attention setting.</summary>
+    Off,
+}
+
+/// <summary>bevel-qb19: how long the taskbar attention animation runs before settling.</summary>
+public enum TaskbarAttentionDuration
+{
+    /// <summary>Default: bounded — max 3 pulses (~4s), then a static tint (classic Windows
+    /// bounded flash-then-tint).</summary>
+    Bounded,
+
+    /// <summary>Animate perpetually until the window is activated/focused or closed
+    /// (closer to the macOS Dock bounce).</summary>
+    UntilActivated,
 }
 
 /// <summary>bevel-m2.10.1: taskbar button height tier (drives button, row, and bar height).</summary>

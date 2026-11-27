@@ -135,6 +135,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         WindowlessLastCheck.IsCheckedChanged += OnWindowlessLastChanged;
         MiddleClickCloseCheck.IsCheckedChanged += OnMiddleClickChanged;
         ReclickMinimizeCombo.SelectionChanged += OnReclickMinimizeChanged;
+        AttentionAnimationCombo.SelectionChanged += OnAttentionAnimationChanged;
+        AttentionDurationCombo.SelectionChanged += OnAttentionDurationChanged;
         ShowStartCheck.IsCheckedChanged += (_, _) => PersistStart();
         StartLabelBox.TextChanged += (_, _) => PersistStart();
         FrequentCountSlider.ValueChanged += OnFrequentCountChanged;
@@ -228,6 +230,8 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         // live-modifier probe behind it is per-platform too (bevel-au94).
         ReclickModifierItem.Content = $"Minimizes with {TaskButtonClickPolicy.ModifierName} held";
         ReclickMinimizeCombo.SelectedIndex = (int)s.TaskbarReclickMinimize;   // Click=0, OptionClick=1, Never=2
+        AttentionAnimationCombo.SelectedIndex = (int)s.TaskbarAttentionAnimation;   // Pulse=0, Sweep=1, TintOnly=2, Off=3
+        AttentionDurationCombo.SelectedIndex = (int)s.TaskbarAttentionDuration;     // Bounded=0, UntilActivated=1
         ButtonSizeCombo.SelectedIndex = (int)s.TaskbarButtonSize;   // Small=0, Normal=1, Large=2, Big=3
         RowsSlider.Value = s.TaskbarRows;
         RowsValue.Text = $"{s.TaskbarRows} row{(s.TaskbarRows == 1 ? "" : "s")}";
@@ -576,6 +580,26 @@ public partial class OnboardingWindow : Bevel.UI.BevelWindow
         var mode = (TaskbarReclickMinimize)ReclickMinimizeCombo.SelectedIndex;
         if (_settings.Current.TaskbarReclickMinimize == mode) return;
         await PersistAndApply(s => s.TaskbarReclickMinimize = mode);
+    }
+
+    /// <summary>Attention animation mode (bevel-qb19). Applies live: TaskbarView pushes the new mode
+    /// into <see cref="TaskAttentionPolicy.Shared"/> on the next settings poll.</summary>
+    private async void OnAttentionAnimationChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (AttentionAnimationCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarAttentionAnimation)AttentionAnimationCombo.SelectedIndex;
+        if (_settings.Current.TaskbarAttentionAnimation == mode) return;
+        await PersistAndApply(s => s.TaskbarAttentionAnimation = mode);
+    }
+
+    /// <summary>Attention duration mode (bevel-qb19): bounded (a few pulses then a static tint) vs.
+    /// until-activated (animate until the window is focused or closed).</summary>
+    private async void OnAttentionDurationChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (AttentionDurationCombo.SelectedIndex < 0) return;
+        var mode = (TaskbarAttentionDuration)AttentionDurationCombo.SelectedIndex;
+        if (_settings.Current.TaskbarAttentionDuration == mode) return;
+        await PersistAndApply(s => s.TaskbarAttentionDuration = mode);
     }
 
     /// <summary>Start show/caption both persist here (TextChanged fires per keystroke — the equality

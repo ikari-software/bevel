@@ -628,6 +628,10 @@ internal static class TaskbarNative
 
     static TaskbarNative()
     {
+        // libobjc exists only on macOS; any P/Invoke here would make the TYPE INITIALIZER throw on
+        // Windows/Linux and take down every caller (TypeInitializationException). All ObjC state
+        // stays IntPtr.Zero off macOS and every use site already guards with IsMacOS().
+        if (!OperatingSystem.IsMacOS()) return;
         sel_setLevel = MacObjC.Sel("setLevel:");
         sel_setCanBecomeKeyWindow = MacObjC.Sel("setCanBecomeKeyWindow:");
         sel_setCollectionBehavior = MacObjC.Sel("setCollectionBehavior:");
@@ -677,15 +681,15 @@ internal static class TaskbarNative
     [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_nuint(IntPtr receiver, IntPtr selector, nuint arg);
 
-    private static readonly IntPtr cls_NSWorkspace = objc_getClass("NSWorkspace");
-    private static readonly IntPtr cls_NSRunningApplication = objc_getClass("NSRunningApplication");
-    private static readonly IntPtr sel_sharedWorkspace = MacObjC.Sel("sharedWorkspace");
-    private static readonly IntPtr sel_frontmostApplication = MacObjC.Sel("frontmostApplication");
-    private static readonly IntPtr sel_processIdentifier = MacObjC.Sel("processIdentifier");
-    private static readonly IntPtr sel_runningAppWithPid = MacObjC.Sel("runningApplicationWithProcessIdentifier:");
-    private static readonly IntPtr sel_activateWithOptions = MacObjC.Sel("activateWithOptions:");
-    private static readonly IntPtr sel_makeKeyAndOrderFront = MacObjC.Sel("makeKeyAndOrderFront:");
-    private static readonly IntPtr sel_keyCode = MacObjC.Sel("keyCode");
+    private static readonly IntPtr cls_NSWorkspace = OperatingSystem.IsMacOS() ? objc_getClass("NSWorkspace") : IntPtr.Zero;
+    private static readonly IntPtr cls_NSRunningApplication = OperatingSystem.IsMacOS() ? objc_getClass("NSRunningApplication") : IntPtr.Zero;
+    private static readonly IntPtr sel_sharedWorkspace = OperatingSystem.IsMacOS() ? MacObjC.Sel("sharedWorkspace") : IntPtr.Zero;
+    private static readonly IntPtr sel_frontmostApplication = OperatingSystem.IsMacOS() ? MacObjC.Sel("frontmostApplication") : IntPtr.Zero;
+    private static readonly IntPtr sel_processIdentifier = (OperatingSystem.IsMacOS() ? MacObjC.Sel("processIdentifier") : IntPtr.Zero);
+    private static readonly IntPtr sel_runningAppWithPid = (OperatingSystem.IsMacOS() ? MacObjC.Sel("runningApplicationWithProcessIdentifier:") : IntPtr.Zero);
+    private static readonly IntPtr sel_activateWithOptions = (OperatingSystem.IsMacOS() ? MacObjC.Sel("activateWithOptions:") : IntPtr.Zero);
+    private static readonly IntPtr sel_makeKeyAndOrderFront = (OperatingSystem.IsMacOS() ? MacObjC.Sel("makeKeyAndOrderFront:") : IntPtr.Zero);
+    private static readonly IntPtr sel_keyCode = (OperatingSystem.IsMacOS() ? MacObjC.Sel("keyCode") : IntPtr.Zero);
 
     // NSApplicationActivateIgnoringOtherApps — bring the target app fully forward on restore.
     private const nuint NSApplicationActivateIgnoringOtherApps = 1 << 1;
@@ -730,10 +734,10 @@ internal static class TaskbarNative
     [DllImport(MacObjC.ObjC, EntryPoint = "objc_msgSend")]
     private static extern void objc_msgSend_void_ptr(IntPtr receiver, IntPtr selector, IntPtr arg);
 
-    private static readonly IntPtr cls_NSEvent = objc_getClass("NSEvent");
-    private static readonly IntPtr sel_modifierFlags = MacObjC.Sel("modifierFlags");
-    private static readonly IntPtr sel_addGlobalMonitor = MacObjC.Sel("addGlobalMonitorForEventsMatchingMask:handler:");
-    private static readonly IntPtr sel_removeMonitor = MacObjC.Sel("removeMonitor:");
+    private static readonly IntPtr cls_NSEvent = OperatingSystem.IsMacOS() ? objc_getClass("NSEvent") : IntPtr.Zero;
+    private static readonly IntPtr sel_modifierFlags = (OperatingSystem.IsMacOS() ? MacObjC.Sel("modifierFlags") : IntPtr.Zero);
+    private static readonly IntPtr sel_addGlobalMonitor = (OperatingSystem.IsMacOS() ? MacObjC.Sel("addGlobalMonitorForEventsMatchingMask:handler:") : IntPtr.Zero);
+    private static readonly IntPtr sel_removeMonitor = (OperatingSystem.IsMacOS() ? MacObjC.Sel("removeMonitor:") : IntPtr.Zero);
 
     private static readonly nuint NSEventModifierFlagOption = (nuint)(1UL << 19);
     private static readonly nuint NSEventMaskLeftMouseDown = (nuint)(1UL << 1);
@@ -743,6 +747,34 @@ internal static class TaskbarNative
     /// <summary>True iff Option/Alt is held right now (queried from macOS, focus-independent).</summary>
     public static bool OptionKeyDown()
         => cls_NSEvent != IntPtr.Zero && (objc_msgSend_nuint(cls_NSEvent, sel_modifierFlags) & NSEventModifierFlagOption) != 0;
+
+    private static readonly IntPtr sel_accessibilityDisplayShouldReduceMotion = (OperatingSystem.IsMacOS() ? MacObjC.Sel("accessibilityDisplayShouldReduceMotion") : IntPtr.Zero);
+
+    /// <summary>True iff macOS Reduce Motion (com.apple.universalaccess reduceMotion) is on, via
+    /// <c>[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion</c> (bevel-qb19: forces
+    /// the taskbar attention animation to tint-only). Fails CLOSED (bevel-qb19 review): any failed
+    /// lookup on macOS reports reduce-motion ON — animating when the flag is unknown is the
+    /// accessibility harm, a spurious tint-only is only cosmetic. Non-macOS has no such OS setting
+    /// and reports false (no lookup was attempted — that is not a failure).</summary>
+    public static bool ReduceMotionOn()
+    {
+        if (!OperatingSystem.IsMacOS()) return false;
+        var classFound = cls_NSWorkspace != IntPtr.Zero;
+        var ws = classFound ? MacObjC.SendIntPtr(cls_NSWorkspace, sel_sharedWorkspace) : IntPtr.Zero;
+        var probe = ws != IntPtr.Zero ? MacObjC.SendByte(ws, sel_accessibilityDisplayShouldReduceMotion) : (byte)0;
+        return EvaluateReduceMotion(isMacOS: true, nsWorkspaceClassFound: classFound,
+            workspaceInstanceFound: ws != IntPtr.Zero, probeResult: probe);
+    }
+
+    /// <summary>Pure core of <see cref="ReduceMotionOn"/> — fail CLOSED: on macOS, any failed lookup
+    /// (class or shared-workspace instance) means "assume reduce motion ON". Internal so tests drive
+    /// every failure combination without touching ObjC.</summary>
+    internal static bool EvaluateReduceMotion(bool isMacOS, bool nsWorkspaceClassFound, bool workspaceInstanceFound, byte probeResult)
+    {
+        if (!isMacOS) return false;   // no such OS setting off macOS — not a lookup failure
+        if (!nsWorkspaceClassFound || !workspaceInstanceFound) return true;   // fail CLOSED
+        return probeResult != 0;
+    }
 
     // ── Global mouse-down monitor for click-outside dismiss (bevel-ww71) ──────
     // addGlobalMonitorForEventsMatchingMask: fires ONLY for events delivered to OTHER apps — exactly

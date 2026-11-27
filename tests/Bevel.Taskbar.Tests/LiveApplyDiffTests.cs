@@ -91,4 +91,36 @@ public class LiveApplyDiffTests
         // Clock should have been reconfigured exactly once
         Assert.Equal(afterInitial + 1, afterClockChange);
     }
+
+    [AvaloniaFact]
+    public void Flipping_taskbarAttentionAnimation_live_pushes_the_new_animation_into_the_shared_policy()
+    {
+        // bevel-qb19 review pin: the attention settings are part of the live-apply diff — flipping
+        // taskbarAttentionAnimation must reach TaskAttentionPolicy.Shared (every existing button
+        // resolves its overlay visual through it) without a restart.
+        var previous = TaskAttentionPolicy.Shared.Animation;
+        try
+        {
+            var settings = new BevelSettings { TaskbarAttentionAnimation = TaskbarAttentionAnimation.Pulse };
+            TestSettings.NoStacks(settings);
+
+            var view = new TaskbarView();
+            view.Initialize(settings);
+            Assert.Equal(TaskbarAttentionAnimation.Pulse, TaskAttentionPolicy.Shared.Animation);
+
+            var flipped = settings.Clone();
+            flipped.TaskbarAttentionAnimation = TaskbarAttentionAnimation.Sweep;
+            view.ApplyLiveSettings(flipped);
+
+            Assert.Equal(TaskbarAttentionAnimation.Sweep, TaskAttentionPolicy.Shared.Animation);
+
+            // An identical re-apply leaves it alone (diff guard — no churn).
+            view.ApplyLiveSettings(flipped.Clone());
+            Assert.Equal(TaskbarAttentionAnimation.Sweep, TaskAttentionPolicy.Shared.Animation);
+        }
+        finally
+        {
+            TaskAttentionPolicy.Shared.Animation = previous;
+        }
+    }
 }

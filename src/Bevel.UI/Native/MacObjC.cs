@@ -50,6 +50,12 @@ public static class MacObjC
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     public static extern byte SendByte_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg);
 
+    /// <summary>objc_msgSend returning ObjC BOOL as a raw byte, no arguments (e.g.
+    /// <c>accessibilityDisplayShouldReduceMotion</c>). Same byte-not-bool marshalling note as
+    /// <see cref="SendByte_IntPtr"/>.</summary>
+    [DllImport(ObjC, EntryPoint = "objc_msgSend")]
+    public static extern byte SendByte(IntPtr receiver, IntPtr selector);
+
     // ── Selectors ─────────────────────────────────────────────────────────
 
     [DllImport(ObjC, EntryPoint = "sel_registerName")]

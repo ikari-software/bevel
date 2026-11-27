@@ -90,6 +90,22 @@ public partial class TaskbarView : UserControl
     private int _previewGeneration;   // tags each hover-preview capture so a superseded/late one is discarded
     private bool _wired;
     private bool _layoutQueued;
+    /// <summary>bevel-qb19 review: slow re-probe of the OS reduce-motion flag (see OnLoaded).</summary>
+    private DispatcherTimer? _reduceMotionTimer;
+    private static readonly TimeSpan ReduceMotionProbeInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>bevel-qb19 review: re-reads the OS reduce-motion flag and, when it flipped, pushes it
+    /// into the shared attention policy and re-resolves every button's overlay visual. Cheap ObjC
+    /// call; called from ApplyLiveSettings and the slow OnLoaded timer.</summary>
+    private void ReprobeReduceMotion()
+    {
+        var reduceMotion = TaskbarNative.ReduceMotionOn();
+        if (reduceMotion == TaskAttentionPolicy.Shared.ReduceMotion) return;
+        TaskAttentionPolicy.Shared.ReduceMotion = reduceMotion;
+        if (_vm is not null)
+            foreach (var item in _vm.Windows)
+                item.RefreshAttentionVisual();
+    }
 
     // Menu-scoped key focus (bevel-vk4n): the taskbar becomes key ONLY while a menu/popover it owns is
     // open. A depth counter lets nested/overlapping menus (Start menu + a task menu) coexist without one
@@ -199,6 +215,11 @@ public partial class TaskbarView : UserControl
         // Click semantics live in the shared policy, not a field here: buttons created later by ShellModel
         // (which has no settings) read the same object, so a live change reaches them too (bevel-au94).
         TaskButtonClickPolicy.Shared.Mode = settings.TaskbarReclickMinimize;
+        // Attention display (bevel-qb19) lives in the shared policy too: settings + the OS
+        // reduced-motion probe (which forces tint-only).
+        TaskAttentionPolicy.Shared.Animation = settings.TaskbarAttentionAnimation;
+        TaskAttentionPolicy.Shared.Duration = settings.TaskbarAttentionDuration;
+        TaskAttentionPolicy.Shared.ReduceMotion = TaskbarNative.ReduceMotionOn();
         _sort = settings.TaskbarWindowSort;
         _windowlessLast = settings.WindowlessAppsLast;
         _showOtherSpaces = settings.TaskbarShowOtherSpaceWindows;
@@ -451,6 +472,29 @@ public partial class TaskbarView : UserControl
             _buttonLabels = s.TaskbarButtonLabels;
             _middleClickCloses = s.TaskbarMiddleClickCloses;
             TaskButtonClickPolicy.Shared.Mode = s.TaskbarReclickMinimize;   // bevel-au94: live, no restart
+        }
+
+        // Attention display (bevel-qb19): animation + duration from settings. Live — re-resolve
+        // every existing button's overlay visual when they change.
+        var attentionSettingsChanged = applied is null ||
+            s.TaskbarAttentionAnimation != applied.TaskbarAttentionAnimation ||
+            s.TaskbarAttentionDuration != applied.TaskbarAttentionDuration;
+        if (attentionSettingsChanged)
+        {
+            TaskAttentionPolicy.Shared.Animation = s.TaskbarAttentionAnimation;
+            TaskAttentionPolicy.Shared.Duration = s.TaskbarAttentionDuration;
+        }
+        // bevel-qb19 review: the OS reduce-motion flag can flip in System Settings with NO Bevel
+        // settings change reaching this method, so the probe re-runs on EVERY apply (a cheap ObjC
+        // call) and again on the slow timer below — not only when the two attention settings change.
+        var reduceMotion = TaskbarNative.ReduceMotionOn();
+        var reduceMotionChanged = reduceMotion != TaskAttentionPolicy.Shared.ReduceMotion;
+        TaskAttentionPolicy.Shared.ReduceMotion = reduceMotion;
+        if (attentionSettingsChanged || reduceMotionChanged)
+        {
+            if (_vm is not null)
+                foreach (var item in _vm.Windows)
+                    item.RefreshAttentionVisual();
         }
 
         // Appearance section: 3 fields (bevel-5dn)
@@ -812,6 +856,13 @@ public partial class TaskbarView : UserControl
             ScrollUpBtn.Click += (_, _) => ScrollRows(-1);
             ScrollDownBtn.Click += (_, _) => ScrollRows(1);
             WindowButtonScroller.ScrollChanged += (_, _) => UpdateOverflowChevrons();
+
+            // bevel-qb19 review: re-probe the OS reduce-motion flag on a slow timer — it can change
+            // in System Settings without any settings event, and a running attention animation must
+            // drop to tint-only (or resume) when it does.
+            _reduceMotionTimer = new DispatcherTimer { Interval = ReduceMotionProbeInterval };
+            _reduceMotionTimer.Tick += (_, _) => ReprobeReduceMotion();
+            _reduceMotionTimer.Start();
         }
 
         StartButton.MaxHeight = StartButtonMaxHeight();
@@ -831,6 +882,8 @@ public partial class TaskbarView : UserControl
             TaskbarNative.RemoveMonitor(_startHotkeyMonitor);
             _startHotkeyMonitor = IntPtr.Zero;
         }
+        _reduceMotionTimer?.Stop();   // bevel-qb19: no reduce-motion re-probe timer on a dead view
+        _reduceMotionTimer = null;
         // Favicon bitmaps are Skia-backed unmanaged memory the GC cannot see (bevel-1fy8): the cache
         // outlives individual menus on purpose, so the view is what has to free it.
         lock (_tabPrefetchGate)

@@ -207,6 +207,13 @@ message TaskbarWindow {
   // bundleURL (executableURL as fallback for unbundled processes). Empty when unknown. Feeds the
   // taskbar's "Show in Finder" verb, which reveals this path in a file-manager window (bevel-4nct).
   string app_bundle_path = 13;
+  // Unix-ms timestamp of the last attention-raising event for this window: the window NEWLY
+  // APPEARED or its TITLE CHANGED while its owning app was NOT the foreground app (bevel-qb19).
+  // The Dock's AX tree exposes no requestUserAttention state (spike, 2026-11), so the fact of
+  // appearance/title-change while backgrounded is the observable signal. 0 = none. Sticky: a
+  // window that raised attention keeps the timestamp until a newer event replaces it, and the
+  // timestamp is cleared when the app becomes foreground. Never inferred from title CONTENT.
+  uint64 attention_at = 14;
 }
 
 message PixelRect {

@@ -380,7 +380,11 @@ public sealed class ShellModel : IDisposable
             sourceKeyOf: w => w.Id.Value,
             create: CreateItem,
             update: (vm, w) => { if (EarnsButton(w)) ApplyUpdate(vm, w); },
-            onRemove: (vm, commit) => BeginExit(vm, () => { commit(); RecomputeOpenAppKeys(); }));   // bevel-xrx6
+            onRemove: (vm, commit) =>
+            {
+                vm.StopAttention();   // bevel-qb19 review: a vanished window's attention dies with its button (the event path does this in Remove)
+                BeginExit(vm, () => { commit(); RecomputeOpenAppKeys(); });   // bevel-xrx6
+            });
 
         RecomputeOpenAppKeys();   // bevel-xrx6: the reconciled set may have changed
         var liveIds = new HashSet<string>(live.Select(w => w.Id.Value));
@@ -492,6 +496,7 @@ public sealed class ShellModel : IDisposable
         if (Find(id) is { } vm)
         {
             TaskbarLog.Debug($"REMOVE button (event) id={id} title='{vm.Title}' -> exit-anim");
+            vm.StopAttention();   // bevel-qb19: a closed window's attention request dies with its button
             BeginExit(vm, () => { Windows.Remove(vm); RecomputeOpenAppKeys(); });   // bevel-xrx6
         }
     }

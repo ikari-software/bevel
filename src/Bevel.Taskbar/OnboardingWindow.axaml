@@ -248,6 +248,32 @@
                                        TextWrapping="Wrap" Margin="20,0,0,0" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Attention" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="AttentionAnimationCombo" FontSize="11" Width="200" VerticalAlignment="Center">
+                                    <ComboBoxItem>Pulse (default)</ComboBoxItem>
+                                    <ComboBoxItem>Light sweep</ComboBoxItem>
+                                    <ComboBoxItem>Tint only</ComboBoxItem>
+                                    <ComboBoxItem>Off</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock x:Name="AttentionAnimationHint"
+                                       Text="How a button flashes when its window asks for attention (a window appearing or changing title while its app is in the background). 'Off' disables attention visuals entirely; 'Tint only' is also forced automatically when macOS Reduce Motion is on."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                <TextBlock Text="Attention stop" FontSize="11" VerticalAlignment="Center" Width="86" />
+                                <ComboBox x:Name="AttentionDurationCombo" FontSize="11" Width="200" VerticalAlignment="Center">
+                                    <ComboBoxItem>Stop after a few pulses (classic)</ComboBoxItem>
+                                    <ComboBoxItem>Until the window is activated</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock x:Name="AttentionDurationHint"
+                                       Text="Classic stops the flash after about 3 pulses (~4s) and leaves a static tint. 'Until activated' keeps animating until the window is clicked/focused or closed — closer to the macOS Dock bounce. Ignored when the animation is Tint only or Off."
+                                       FontSize="10" Foreground="{DynamicResource Bevel.Brush.GrayText}"
+                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                 <TextBlock Text="Button size" FontSize="11" VerticalAlignment="Center" />
                                 <ComboBox x:Name="ButtonSizeCombo" FontSize="11" Width="120" VerticalAlignment="Center">
                                     <ComboBoxItem>Small</ComboBoxItem>
