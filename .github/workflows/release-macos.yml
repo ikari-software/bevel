@@ -77,6 +77,19 @@ jobs:
           bash packaging/macos/notarize-app.sh
           bash packaging/macos/make-dmg.sh
 
+      - name: Pack Velopack release (bevel-ym0)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # vpk CLI ships as a dotnet tool on the runner image
+          vpk pack --packId pl.ikari.bevel --packVersion "$VERSION" \
+            --packDir dist/Bevel.app --outputDir dist/velopack \
+            --packageFileName "Bevel-{version}-osx.nupkg"
+          vpk generate --outputDir dist/velopack --packId pl.ikari.bevel
+          # Guardrail: helper code-signature identifier must survive (TCC grants key on it)
+          HELPER_ID="$(codesign -dv dist/Bevel.app/Contents/MacOS/BevelHelper 2>&1 | sed -n 's/.*Identifier=\(.*\)/\1/p' | head -1)"
+          [ "$HELPER_ID" = "pl.ikari.bevel.helper" ] || { echo "::error::helper id is '$HELPER_ID'"; exit 1; }
+
       - name: Clean up secrets
         if: always()
         run: rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/bevel-signing.keychain-db"
@@ -85,11 +98,13 @@ jobs:
       # attaches it (plus the win/linux zips) to the GitHub Release on tag builds. Release
       # assets are free and unmetered, unlike Actions artifacts which bill against the org's
       # 2 GB Actions storage and then silently expire.
-      - name: Upload DMG artifact
+      - name: Upload DMG + Velopack feed artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Bevel-macos-${{ steps.ver.outputs.version }}
-          path: dist/Bevel-*.dmg
+          path: |
+            dist/Bevel-*.dmg
+            dist/velopack/*
           if-no-files-found: error
           retention-days: 7
 

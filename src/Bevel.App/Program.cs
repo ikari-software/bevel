@@ -8,6 +8,7 @@ using Bevel.ShellCore.Ipc;
 using Bevel.UI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Velopack;
 
 namespace Bevel.App;
 
@@ -23,6 +24,14 @@ internal static class Program
         // lifetime starts — mirrors App.Services). Restart replays argv verbatim, so --role survives.
         App.Role = role;
         RestartDiag.Log($"boot: role={role} pal={pal}");
+
+        // bevel-ym0 (UPD-01): Velopack startup hook — first statement of Main, before anything else,
+        // so an update downloaded by a previous session is applied on launch. Only runs from an
+        // installed .app bundle; dev builds (dotnet run) skip it entirely.
+        if (AppContext.BaseDirectory.Contains(".app/Contents/MacOS/", StringComparison.Ordinal))
+        {
+            try { VelopackApp.Build().Run(); } catch { /* update apply failure must never block launch */ }
+        }
 
         // bevel-aqr7 Task 1: a reachable NetMQ round-trip shipped IN the app (not just a test
         // project) so an AOT publish can't trim it away — the actual gate for whether NetMQ

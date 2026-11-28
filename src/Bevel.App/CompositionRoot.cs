@@ -26,13 +26,15 @@ public static class CompositionRoot
     /// peers; if each peer polled its own feed a five-process shell would make five times the requests and
     /// five processes would each have to decide what to do with the answer.
     ///
-    /// The source is <see cref="Bevel.Core.Updates.NoUpdateSource"/> until Velopack is wired (bevel-ym0,
-    /// UPD-01). Registered explicitly rather than left unbound so "no update source on this build" is a
-    /// stated fact in the container, not a resolve-time failure — the same reason NullAppBadgeSource and
-    /// NullThumbnailProvider exist.</summary>
+    /// Velopack-backed when running from an installed .app bundle (bevel-ym0 / UPD-01);
+    /// <see cref="Bevel.Core.Updates.NoUpdateSource"/> for dev builds (dotnet run / tests) so they
+    /// never phone home. Registered explicitly rather than left unbound so "no update source on this
+    /// build" is a stated fact in the container, not a resolve-time failure.</summary>
     private static void AddUpdateChecking(IServiceCollection services)
     {
-        services.AddSingleton<Bevel.Core.Updates.IUpdateSource>(_ => Bevel.Core.Updates.NoUpdateSource.Instance);
+        var fromBundle = AppContext.BaseDirectory.Contains(".app/Contents/MacOS/", StringComparison.Ordinal);
+        services.AddSingleton<Bevel.Core.Updates.IUpdateSource>(_ =>
+            fromBundle ? new Updates.VelopackUpdateSource() : Bevel.Core.Updates.NoUpdateSource.Instance);
         services.AddSingleton(_ => new Bevel.Core.Updates.UpdateCheckState(BevelConfigDir.Path));
         // Registered by TYPE rather than through a factory so the descriptor carries the implementation
         // name: RoleSelectorTests tells the helper apart from other hosted services that way, and a
