@@ -480,20 +480,49 @@ public partial class ItemView : UserControl
         ItemsPresenter.ItemsSource = _viewModels;
     }
 
-    /// <summary>Append streamed items, each inserted at its sorted position. Keeps the bound collection
-    /// continuously sorted with one incremental Insert per item, so streaming enumeration never
-    /// detaches/rebuilds the whole ItemsSource — the old per-batch SortItems() made opening a folder
-    /// O(n²) (a full teardown + re-add of the growing list on every 32-item chunk). A deliberate
-    /// re-sort (header click) still goes through SortAsync/ApplyOrder.</summary>
+    /// <summary>Append a streamed batch, merged in one O(n+m) pass. The incoming batch is sorted, then
+    /// merged backward with the already-sorted <see cref="_viewModels"/> into a single new list, and
+    /// the bound collection is swapped once (detach → refill → re-attach = one Reset) instead of m ×
+    /// O(n) per-item Inserts. With the panel now virtualized (bevel-rzz) the Reset only recycles the
+    /// realized viewport, so the swap is cheap; the win is killing the O(n²) array shifts in
+    /// ObservableCollection.Insert. A deliberate re-sort (header click) still goes through
+    /// SortAsync/ApplyOrder. (bevel-onyp item 2)</summary>
     public void AddItems(IReadOnlyList<IVfsNode> nodes)
     {
+        if (nodes.Count == 0) return;
+        var batch = new List<ItemViewModel>(nodes.Count);
         foreach (var n in nodes)
         {
             var vm = new ItemViewModel(n);
             _nameSizer.Add(vm.DisplayName);
-            InsertSorted(vm);
+            batch.Add(vm);
         }
+        batch.Sort((a, b) => CompareItems(a, b, _sortCol, _sortAsc));
+        MergeBatchSorted(batch);
         FitListColumns(reset: false);
+    }
+
+    /// <summary>One backward O(n+m) merge of the sorted <see cref="_viewModels"/> with a sorted batch,
+    /// then a single detach/refill/attach. Equal keys land after existing ones (stable, matching
+    /// <see cref="InsertSorted"/>).</summary>
+    void MergeBatchSorted(List<ItemViewModel> sortedBatch)
+    {
+        var merged = new List<ItemViewModel>(_viewModels.Count + sortedBatch.Count);
+        int i = _viewModels.Count - 1, j = sortedBatch.Count - 1;
+        while (i >= 0 && j >= 0)
+        {
+            if (CompareItems(_viewModels[i], sortedBatch[j], _sortCol, _sortAsc) <= 0)
+                merged.Add(sortedBatch[j--]);
+            else
+                merged.Add(_viewModels[i--]);
+        }
+        while (i >= 0) merged.Add(_viewModels[i--]);
+        while (j >= 0) merged.Add(sortedBatch[j--]);
+        merged.Reverse();
+        ItemsPresenter.ItemsSource = null;
+        _viewModels.Clear();
+        foreach (var v in merged) _viewModels.Add(v);
+        ItemsPresenter.ItemsSource = _viewModels;
     }
 
     /// <summary>Binary-search the current sorted position for <paramref name="vm"/> and Insert it there

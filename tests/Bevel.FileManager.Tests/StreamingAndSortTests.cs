@@ -100,6 +100,51 @@ public class StreamingAndSortTests
         var src = (System.Collections.IList)view.ItemsControl.ItemsSource!;
         Assert.Equal(50, src.Count);
     }
+
+    [AvaloniaFact]
+    public void Batch_merge_keeps_items_sorted_across_many_batches()   // bevel-onyp item 2
+    {
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.ResetItems();
+
+        // 1000 items streamed in 32-item batches, names in random order.
+        var rng = new Random(42);
+        var all = Enumerable.Range(0, 1000)
+            .Select(i => TestNode.Make($"file_{i:D4}.txt"))
+            .OrderBy(_ => rng.Next())
+            .ToArray();
+        foreach (var batch in all.Chunk(32))
+            view.AddItems(batch);
+        Dispatcher.UIThread.RunJobs();
+
+        var src = (System.Collections.IList)view.ItemsControl.ItemsSource!;
+        var names = src.Cast<ItemViewModel>().Select(v => v.DisplayName).ToArray();
+        Assert.Equal(1000, names.Length);
+        var sorted = names.OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(sorted, names);   // fully sorted after all batches
+    }
+
+    [AvaloniaFact]
+    public void Batch_merge_matches_per_item_insert_order()   // bevel-onyp item 2: stability parity
+    {
+        // Equal sort keys (same name, different size) must land in the same relative order
+        // as the old per-item InsertSorted did: batch item AFTER existing equal key.
+        var view = new ItemView { ViewMode = ViewMode.Details };
+        PumpAndShow(view);
+        view.ResetItems();
+
+        var a = TestNode.Make("same.txt", size: 1);
+        var b = TestNode.Make("same.txt", size: 2);
+        var c = TestNode.Make("same.txt", size: 3);
+        view.AddItems(new[] { a });
+        view.AddItems(new[] { b, c });   // batch: b then c, both after a
+        Dispatcher.UIThread.RunJobs();
+
+        var src = (System.Collections.IList)view.ItemsControl.ItemsSource!;
+        var sizes = src.Cast<ItemViewModel>().Select(v => v.Size).ToArray();
+        Assert.Equal(new long?[] { 1, 2, 3 }, sizes);
+    }
 }
 
 file sealed class TestNode : IVfsNode
