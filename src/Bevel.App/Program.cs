@@ -211,7 +211,10 @@ internal static class Program
             _ = macTray.StartPollAsync();
 
         var (socketPath, nonce) = ShellCore.ShellCoreEndpoint.ForServer();
-        var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce);
+        var updateCheck = services.GetServices<Microsoft.Extensions.Hosting.IHostedService>()
+            .OfType<Updates.UpdateCheckService>().FirstOrDefault();
+        var server = new ShellCore.ShellCoreServer(windows, apps, tray, settings, socketPath, nonce,
+            updateLatest: updateCheck is null ? null : () => updateCheck.Latest);
 
         // Signal handling is armed BEFORE the (helper-dependent, up to ~7.5 s) seed in StartAsync (bevel-wheq
         // review): a SIGTERM/SIGINT during the seed cancels it and still reaches the ordered teardown below,

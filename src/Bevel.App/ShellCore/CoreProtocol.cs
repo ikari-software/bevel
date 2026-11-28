@@ -165,6 +165,9 @@ public enum CoreCommandKind
     /// stream that built the projection, asks for this instead. NOT for a reconcile backstop: a
     /// projection polled against itself can only ever agree (see IProjectedWindowSource).</summary>
     EnumerateWindowsProjected,
+    /// <summary>UI→core: pull the core's latest update-availability answer (bevel-ij3n). The reply
+    /// carries <see cref="CoreResponse.UpdateAvailable"/> + <see cref="CoreResponse.UpdateVersion"/>.</summary>
+    GetUpdateAvailability,
 }
 
 /// <summary>A UI-&gt;core request. The core executes it against the real PAL and replies with a
@@ -207,7 +210,11 @@ public sealed record CoreResponse(
     /// <summary>GetSettings: the settings store version the blob was read at.</summary>
     int? SettingsVersion = null,
     /// <summary>GetTrayItems: the core's current mirrored-tray projection (bevel-4zfs).</summary>
-    IReadOnlyList<TrayItem>? TrayItems = null)
+    IReadOnlyList<TrayItem>? TrayItems = null,
+    /// <summary>GetUpdateAvailability: whether a newer version exists (bevel-ij3n).</summary>
+    bool? UpdateAvailable = null,
+    /// <summary>GetUpdateAvailability: the newer version string, if any (bevel-ij3n).</summary>
+    string? UpdateVersion = null)
 {
     public static CoreResponse Success() => new(Ok: true);
     public static CoreResponse Fail(string error) => new(Ok: false, Error: error);

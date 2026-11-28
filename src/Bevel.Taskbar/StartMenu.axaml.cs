@@ -36,6 +36,7 @@ public partial class StartMenu : UserControl
     private readonly StartMenuViewModel? _programsVm;
     private readonly Action _quit;
     private readonly Action _restart;
+    private readonly Func<Task<(bool Available, string? Version)>>? _queryUpdate;
     private readonly Action _openSettings;
     private readonly Action<VfsPath> _openFolder;
     private readonly Action _openSearch;
@@ -70,7 +71,9 @@ public partial class StartMenu : UserControl
         // warm delegate, and the tab provider itself. Null (tests/all-in-one) = no Tabs section.
         Func<IReadOnlyList<string>>? runningTabBundleIds = null,
         Func<string, Task<IReadOnlyList<TaskButtonMenu.TabMenuRow>>?>? warmTabs = null,
-        ITabProvider? tabProvider = null)
+        ITabProvider? tabProvider = null,
+        // bevel-ij3n: pull the core's update-availability answer when the menu opens.
+        Func<Task<(bool Available, string? Version)>>? queryUpdate = null)
     {
         InitializeComponent();
         _programsVm = programs;
@@ -100,6 +103,7 @@ public partial class StartMenu : UserControl
             tabProvider: tabProvider);
         _quit = quit ?? RequestQuit;
         _restart = restart ?? (() => { });
+        _queryUpdate = queryUpdate;
         _openSettings = openSettings ?? (() => { });
         _openFolder = openFolder ?? (_ => { });
         _openSearch = openSearch ?? (() => { });
@@ -149,6 +153,7 @@ public partial class StartMenu : UserControl
         _searchInput.ClearSearch();   // every open starts on the unfiltered menu (bevel-cezo)
         _searchInput.WarmTabs();      // bevel-vtc6: hot tab cache before the first keystroke
         RefreshDesktopLabel();
+        RefreshUpdateBadge();         // bevel-ij3n: pull update availability, relabel Restart if newer
         MenuPopup.PlacementTarget = placementTarget;
         MenuPopup.IsOpen = true;
         // Move keyboard focus INTO the menu so arrow keys work immediately (bevel-vk4n). The popup is a
@@ -634,6 +639,23 @@ public partial class StartMenu : UserControl
     {
         Close();
         _restart();
+    }
+
+    /// <summary>bevel-ij3n: on menu open, ask the core whether an update is available. If so, relabel
+    /// the Restart item to "Restart to update (vX.Y.Z)" so the user knows a restart applies it.
+    /// Never throws — a failed query just leaves the default label.</summary>
+    private async void RefreshUpdateBadge()
+    {
+        if (_queryUpdate is null) return;
+        try
+        {
+            var (available, version) = await _queryUpdate().ConfigureAwait(false);
+            if (available && !string.IsNullOrEmpty(version) && RestartItem is not null)
+                RestartItem.Header = $"Restart to _update (v{version})";
+            else if (RestartItem is not null)
+                RestartItem.Header = "_Restart Bevel";
+        }
+        catch { /* update check failure must never break the menu */ }
     }
 
     /// <summary>Start ▸ Show/Hide Desktop (bevel-gdie). Shared by the Win2000 leaf and the Luna row: close

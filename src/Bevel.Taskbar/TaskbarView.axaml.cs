@@ -25,6 +25,7 @@ public partial class TaskbarView : UserControl
     private Action? _quit;
     private Action? _restart;
     private Func<Bevel.Pal.Abstractions.LogoutKind, Task>? _session;   // bevel-4vce
+    private Func<Task<(bool Available, string? Version)>>? _queryUpdate;  // bevel-ij3n
     /// Targeted repair for a lost core link: respawn only the shell-core process (the launcher owns it).
     /// Null when unsupervised — the repair menu then offers only the whole-shell restart.
     private Action? _restartCore;
@@ -179,7 +180,9 @@ public partial class TaskbarView : UserControl
         Func<bool?>? desktopRunning = null,
         ITabProvider? tabProvider = null,
         Bevel.Core.ISettingsService? settingsService = null,
-        Func<Bevel.Pal.Abstractions.LogoutKind, Task>? session = null)   // bevel-4vce
+        Func<Bevel.Pal.Abstractions.LogoutKind, Task>? session = null,   // bevel-4vce
+        // bevel-ij3n: pull the core's update-availability answer for the Start-menu badge/relabel.
+        Func<Task<(bool Available, string? Version)>>? queryUpdate = null)
     {
         // Non-settings wiring
         // Non-settings wiring (PAL services + the shell-command callbacks).
@@ -189,6 +192,7 @@ public partial class TaskbarView : UserControl
         _quit = quit;
         _restart = restart;
         _session = session;
+        _queryUpdate = queryUpdate;   // bevel-ij3n
         _restartCore = restartCore;
         // Only offer a repair that can actually run: an unsupervised taskbar has no launcher to ask.
         if (RepairRestartCoreItem is not null) RepairRestartCoreItem.IsEnabled = restartCore is not null;
@@ -741,7 +745,8 @@ public partial class TaskbarView : UserControl
         _startMenu ??= new StartMenu(_appEnv, _iconProvider, _quit, _restart, _vm?.StartMenu, _openSettings, _openFolder, _openSearch, _toggleDesktop, _desktopRunning, _session,
             runningTabBundleIds: RunningTabBundleIds,
             warmTabs: EnsureTabPrefetch,
-            tabProvider: _tabProvider);
+            tabProvider: _tabProvider,
+            queryUpdate: _queryUpdate);
         // The menu hosts its content in a Popup, which only opens once attached to a visual tree
         // (it needs a TopLevel). It contributes no layout size, so parenting it in the taskbar
         // grid is invisible but is what lets the Start menu appear on screen.
