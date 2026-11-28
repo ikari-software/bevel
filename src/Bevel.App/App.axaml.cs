@@ -394,7 +394,15 @@ public partial class App : Application
             // or the core connect still in flight) — handing the service itself lets TaskbarView catch
             // up on its OWN ISettingsService.Changed the moment the real snapshot lands, instead of
             // staying frozen at whatever TaskbarRows/etc. Initialize saw here (bevel-kclq regression).
-            settingsService: settings);
+            settingsService: settings,
+            // bevel-ij3n: Start-menu update badge — query the core's UpdateCheckService.Latest.
+            queryUpdate: services.GetService<ShellCore.ShellCoreClient>() is { } core
+                ? async () =>
+                {
+                    var resp = await core.SendAsync(new ShellCore.CoreCommand(ShellCore.CoreCommandKind.GetUpdateAvailability)).ConfigureAwait(false);
+                    return (resp.UpdateAvailable ?? false, resp.UpdateVersion);
+                }
+                : null);
         // Start the background shell model's window side (subscribes to window events + starts the
         // reconcile loop) BEFORE the window manager's stream/poll, so its initial snapshot is
         // captured; then start the poll so events flow into the model. The installed-apps side

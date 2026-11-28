@@ -26,6 +26,7 @@ public sealed class ShellCoreServer : IAsyncDisposable
     // every UI process on connect and applies their changed-keys patches as the single writer, so no peer
     // touches SQLite. This is the real DB-backed SettingsService in the core role.
     private readonly ISettingsService _settings;
+    private readonly Func<Bevel.Core.Updates.UpdateAvailability?>? _updateLatest;
     private readonly UdsMessageServer _server;
 
     // The owned projection. A snapshot must be produced SYNCHRONOUSLY on connect (so the transport
@@ -86,12 +87,14 @@ public sealed class ShellCoreServer : IAsyncDisposable
     private int _sessionsStarted;
 
     public ShellCoreServer(IWindowManager windows, IAppEnvironment apps, ISystemTrayHost tray,
-        ISettingsService settings, string socketPath, byte[] nonce)
+        ISettingsService settings, string socketPath, byte[] nonce,
+        Func<Bevel.Core.Updates.UpdateAvailability?>? updateLatest = null)
     {
         _windows = windows;
         _apps = apps;
         _tray = tray;
         _settings = settings;
+        _updateLatest = updateLatest;
         _server = new UdsMessageServer(socketPath, nonce, HandleRequestAsync);
     }
 
@@ -520,6 +523,12 @@ public sealed class ShellCoreServer : IAsyncDisposable
                 lock (_gate)
                     return new CoreResponse(Ok: true,
                         Windows: _windowById.Values.Select(w => w with { IconPng = null }).ToArray());
+            case CoreCommandKind.GetUpdateAvailability:
+                // bevel-ij3n: the UI polls this when the Start menu opens to decide badge/relabel.
+                var latest = _updateLatest?.Invoke();
+                return new CoreResponse(Ok: true,
+                    UpdateAvailable: latest?.Available,
+                    UpdateVersion: latest?.Version);
             case CoreCommandKind.Activate:
                 await _windows.ActivateAsync(Id(cmd), ct).ConfigureAwait(false); return CoreResponse.Success();
             case CoreCommandKind.Minimize:
