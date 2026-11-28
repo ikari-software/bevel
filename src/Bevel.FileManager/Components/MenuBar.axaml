@@ -10,7 +10,10 @@
             <MenuItem Header="New _Tab" x:Name="NewTabItem" InputGesture="Ctrl+T" />
             <Separator />
             <MenuItem Header="_Open" x:Name="OpenItem" InputGesture="Enter" />
-            <MenuItem Header="Open Wit_h..." x:Name="OpenWithItem" />
+            <!-- bevel-onyp item 4: submenu populated on SubmenuOpened, same as the context menu's Open With. -->
+            <MenuItem Header="Open Wit_h..." x:Name="OpenWithItem">
+                <MenuItem Header="(loading…)" x:Name="OpenWithPlaceholder" IsEnabled="False" />
+            </MenuItem>
             <Separator />
             <MenuItem Header="Move _To Folder..." x:Name="MoveToFolderItem" />
             <MenuItem Header="_Copy To Folder..." x:Name="CopyToFolderItem" />
