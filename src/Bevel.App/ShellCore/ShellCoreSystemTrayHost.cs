@@ -61,13 +61,18 @@ public sealed class ShellCoreSystemTrayHost : ISystemTrayHost
             {
                 // (fall through to the snapshot merge below)
 
-                // A snapshot is authoritative (bevel-ri8c): remove what it omits, then (re)add what it
-                // lists. Adds alone left ghosts for icons that vanished while the link was down.
+                // A snapshot is authoritative (bevel-ri8c): remove what it omits, then add what is new.
+                // ONLY genuinely new items fire ItemAdded — re-firing every existing item on every
+                // snapshot/reconnect makes tray icons re-add themselves (bevel-adu8 sibling).
+                var existingKeys = _known.Keys.ToHashSet(StringComparer.Ordinal);
                 var gone = _known.ApplySnapshot(e.TrayItems);
                 foreach (var g in gone)
                     ItemRemoved?.Invoke(this, g);
                 foreach (var t in e.TrayItems)
-                    ItemAdded?.Invoke(this, t);
+                {
+                    if (!existingKeys.Contains(t.Id.Value))
+                        ItemAdded?.Invoke(this, t);
+                }
                 break;
             }
             case CoreEventKind.TrayItemAdded when e.TrayItem is { } ta:

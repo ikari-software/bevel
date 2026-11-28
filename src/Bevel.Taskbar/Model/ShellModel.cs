@@ -36,6 +36,10 @@ public sealed class ShellModel : IDisposable
     private bool _disposed;
     /// <summary>Last known focused window; reconcile keeps this when the snapshot omits focus.</summary>
     private string? _focusedWindowId;
+    /// <summary>bevel-adu8 follow-up: grace period (1-3s) during which app-presence entries
+    /// still get the XP grow-in animation. After this, they start at Width=1 to skip the anim.</summary>
+    private DateTime _startTime;
+    private static readonly TimeSpan _appPresenceAnimGracePeriod = TimeSpan.FromSeconds(3);
 
     /// <summary>Decoded window-icon bitmaps keyed by a content hash of the PNG bytes (bevel-gww.8),
     /// so byte-identical app icons across many windows are decoded once and shared.</summary>
@@ -195,6 +199,7 @@ public sealed class ShellModel : IDisposable
     {
         if (_started || _disposed) return;
         _started = true;
+        _startTime = DateTime.UtcNow;
 
         // Live installed-apps: subscribed in Start() (not in StartProgramsAsync) so the gap between
         // Start() and the Opened/ContextIdle-posted kick cannot miss a broadcast (ce-review bevel-qf95).
@@ -515,11 +520,17 @@ public sealed class ShellModel : IDisposable
 
     /// <summary>Builds a button for a newly-seen window. It enters at Width/Opacity 0 (the VM
     /// defaults); the view's next layout pass pushes the target width and Opacity 1 so the
-    /// template's transition grows it in (XP-style). Icon is decoded off-thread.</summary>
+    /// template's transition grows it in (XP-style). Icon is decoded off-thread.
+    /// App-presence entries (windowless running apps) skip the grow-in animation by starting at
+    /// Width=1 — EXCEPT during the first 3s after start, when they still animate for visual polish.</summary>
     private TaskItemViewModel CreateItem(ForeignWindow w)
     {
         LearnBundlePath(w);   // bevel-be86: feeds the pinned-app icon/path lookup
         var vm = new TaskItemViewModel(w, _windows!, claimFocus: ClaimFocus);
+        // App-presence entries: skip the XP grow-in animation after the grace period
+        // (bevel-adu8 follow-up). During the first 3s, they still animate for first-start polish.
+        if (w.IsAppPresence && DateTime.UtcNow - _startTime > _appPresenceAnimGracePeriod)
+            vm.Width = 1;
         LoadWindowIcon(vm, w.IconPng); // decode off-thread, assign on UI thread
         // Seed the unread pill from the last poll (bevel-ijln) so a button born on the instant event
         // path already carries its app's badge instead of waiting out the next backstop tick.

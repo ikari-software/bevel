@@ -54,41 +54,55 @@ enum WindowActivator {
 
     static func perform(_ target: WindowTarget) {
         let steps = ActivationPlan.steps(hasAX: target.axWin != nil, isOnOtherSpace: target.isOnOtherSpace)
-        dbg("activate cg=\(target.cgID) pid=\(target.pid) otherSpace=\(target.isOnOtherSpace) hasAX=\(target.axWin != nil) steps=\(steps)")
+        dbg("activate cg=\ (target.cgID) pid=\ (target.pid) otherSpace=\ (target.isOnOtherSpace) hasAX=\ (target.axWin != nil) steps=\ (steps)")
+        var appActivated = false
         for step in steps {
             switch step {
             case .switchSpace:
                 let r = SkyLight.switchToSpace(ofWindow: target.cgID)
-                dbg("  switchSpace → ok=\(r.ok) already=\(r.alreadyCurrent) focused=\(r.displayFocused) clicked=\(r.clicked) display=\(r.displayUUID ?? "?") \(r.fromSpace.map(String.init) ?? "?")->\(r.toSpace.map(String.init) ?? "?") currents=\(SkyLight.currentSpaceIDs().sorted())")
+                dbg("  switchSpace -> ok=\ (r.ok) already=\ (r.alreadyCurrent) focused=\ (r.displayFocused) clicked=\ (r.clicked) display=\ (r.displayUUID ?? "?") \ (r.fromSpace.map(String.init) ?? "?")->\ (r.toSpace.map(String.init) ?? "?") currents=\ (SkyLight.currentSpaceIDs().sorted())")
             case .activateApp:
-                activateApp(pid: target.pid)
-                dbg("  activateApp")
+                appActivated = activateApp(pid: target.pid)
+                dbg("  activateApp -> \ (appActivated)")
             case .focusViaWindowServer:
-                // Address THIS window by WindowServer id. Do not follow with setFrontOnSpace —
+                // Address THIS window by WindowServer id. Do not follow with setFrontOnSpace --
                 // that re-activates the app PSN and can fire didActivateApplication while AX still
                 // reports a sibling as focused (sibling_steal via broadcastFocusForApp).
                 let ok = SkyLight.focusWindow(pid: target.pid, cgID: target.cgID)
-                dbg("  focusViaWindowServer → \(ok)")
+                dbg("  focusViaWindowServer -> \ (ok)")
                 if !ok {
-                    activateApp(pid: target.pid)
-                    dbg("  focusViaWindowServer fallback activateApp")
+                    // WindowServer focus failed -- the window might be sandboxed (Calendar, Keychain Access).
+                    // Retry app-level activation as the fallback (bevel-ma6f).
+                    let fallbackOk = activateApp(pid: target.pid)
+                    dbg("  focusViaWindowServer fallback activateApp -> \ (fallbackOk)")
+                    appActivated = appActivated || fallbackOk
                 }
             case .raiseViaAX:
                 if let axWin = target.axWin {
                     let rc = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-                    dbg("  raiseViaAX → \(rc.rawValue)")
+                    dbg("  raiseViaAX -> \ (rc.rawValue)")
                 }
             }
+        }
+        // bevel-ma6f: if the window is on another Space and WindowServer focus failed, the Space
+        // switch might have succeeded but the window never came forward. Retry app-level one final time
+        // after the Space switch has settled, as a belt-and-suspenders for sandboxed apps.
+        if target.isOnOtherSpace && !appActivated {
+            let finalOk = activateApp(pid: target.pid)
+            dbg("  final activateApp (otherSpace, no windowServer) -> \ (finalOk)")
         }
     }
 
     /// `kAXFrontmostAttribute` is the accessibility-native activation; `NSRunningApplication.activate`
     /// is the belt-and-suspenders for apps whose app-level AX is also restricted (Apple Music).
-    private static func activateApp(pid: pid_t) {
+    /// Returns true if at least one activation method succeeded.
+    @discardableResult
+    private static func activateApp(pid: pid_t) -> Bool {
         let appElement = AXUIElementCreateApplication(pid)
         _ = _AXUIElementSetMessagingTimeout(appElement, 1.0)   // R18: never block on a hung target
-        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-        NSRunningApplication(processIdentifier: pid)?.activate()
+        let axOk = AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue) == .success
+        let nsOk = NSRunningApplication(processIdentifier: pid)?.activate() ?? false
+        return axOk || nsOk
     }
 
     private static func dbg(_ msg: @autoclosure () -> String) {

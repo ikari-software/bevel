@@ -924,6 +924,12 @@ public partial class TaskbarView : UserControl
         TaskbarLog.Debug($"Windows.CollectionChanged action={e.Action} " +
             $"new=[{Titles(e.NewItems)}] old=[{Titles(e.OldItems)}] -> HideTooltip + QueueLayout");
         HideTaskbarTooltip();
+        // Clear stale previews for removed windows so app-presence buttons don't show old thumbnails
+        // (bevel-ma6f follow-up: Calendar/Keychain Access have no windows but kept old preview).
+        if (e.Action == NotifyCollectionChangedAction.Remove || e.Action == NotifyCollectionChangedAction.Replace)
+            foreach (var item in e.OldItems ?? Array.Empty<object>())
+                if (item is TaskItemViewModel vm)
+                    _previewCache.Remove(vm.Id.Value);
         QueueLayout();
     }
 
@@ -1068,6 +1074,10 @@ public partial class TaskbarView : UserControl
         PreviewImage.Source = null;
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
+
+        // App-presence entries (running apps with no window) have no window to preview (bevel-ma6f).
+        if (vm.IsAppPresence)
+            return;
 
         // Stale-then-update (bevel-c04q): paint a cached PNG immediately so hover feels instant;
         // refresh from CaptureWindow in the background and swap when a fresher frame arrives.

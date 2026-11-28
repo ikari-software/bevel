@@ -62,15 +62,20 @@ public sealed class ShellCoreWindowManager : IWindowManager, IProjectedWindowSou
             {
                 // (fall through to the snapshot merge below)
 
-                // A snapshot is authoritative (bevel-wheq): close what it omits, then (re)open what it lists.
-                // Opens alone left stale buttons for windows that closed while the link was down. ShellModel
-                // drops its foreground claim on a WindowClosed for the focused id, so a closed foreground
-                // window leaves nothing pressed; a focused window in the snapshot re-claims it on its Opened.
+                // A snapshot is authoritative (bevel-wheq): close what it omits, then add what is new.
+                // ONLY genuinely new windows fire WindowOpened — re-firing every existing window on every
+                // snapshot/reconnect flashes all buttons as new (bevel-adu8).
+                // Build the pre-snapshot key set BEFORE ApplySnapshot mutates _known.
+                var existingKeys = _known.Keys.ToHashSet(StringComparer.Ordinal);
                 var gone = _known.ApplySnapshot(e.Windows);
                 foreach (var g in gone)
                     WindowClosed?.Invoke(this, g);
                 foreach (var w in e.Windows)
-                    WindowOpened?.Invoke(this, w);
+                {
+                    // Only windows whose id was NOT known before this snapshot are new arrivals.
+                    if (!existingKeys.Contains(w.Id.Value))
+                        WindowOpened?.Invoke(this, w);
+                }
                 break;
             }
             // Every non-close kind makes ShellModel show a button for the window (it upserts), even for an id it

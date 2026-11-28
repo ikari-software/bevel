@@ -28,6 +28,12 @@ internal sealed class ProjectionMirror<T>
 
     public ProjectionMirror(Func<T, string> keyOf) => _keyOf = keyOf;
 
+    /// <summary>Snapshot of the current known keys (for diffing before ApplySnapshot mutates state).</summary>
+    public IReadOnlyCollection<string> Keys
+    {
+        get { lock (_gate) return _known.Keys.ToArray(); }
+    }
+
     /// <summary>Apply an authoritative snapshot: forget what it omits (returned, in known order, for the
     /// caller to raise as removed) and record everything it lists.</summary>
     public IReadOnlyList<T> ApplySnapshot(IReadOnlyList<T> snapshot)
