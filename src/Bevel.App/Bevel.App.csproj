@@ -40,6 +40,8 @@
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- Velopack auto-update (bevel-ym0 / UPD-01) — Bevel.App only, never in Bevel.Core. -->
+    <PackageReference Include="Velopack" />
     <!-- Avalonia.Diagnostics (F12 dev tools) — Debug builds only. -->
     <PackageReference Include="Avalonia.Diagnostics" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
