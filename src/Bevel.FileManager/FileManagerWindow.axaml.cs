@@ -313,6 +313,34 @@ public partial class FileManagerWindow : BevelWindow
         MenuBar.NewWindow.Click += (_, _) => NewWindow();
         MenuBar.NewTab.Click += (_, _) => NewTab();
         MenuBar.Open.Click += (_, _) => { if (ItemView.SelectedItem is { } item) OnItemActivated(this, new ItemActivatedEventArgs(item)); };
+        // bevel-onyp item 4: menu-bar Open With was enabled but inert — wire it to the same handler
+        // pipeline as the context menu (populate the submenu on first open).
+        MenuBar.OpenWithItem.SubmenuOpened += async (_, _) =>
+        {
+            MenuBar.OpenWithItem.Items.Clear();
+            MenuBar.OpenWithItem.Items.Add(new MenuItem { Header = "(loading…)", IsEnabled = false });
+            IReadOnlyList<Bevel.Pal.Abstractions.OpenWithHandler> handlers;
+            try { handlers = await GetOpenWithHandlersAsync(); }
+            catch { handlers = System.Array.Empty<Bevel.Pal.Abstractions.OpenWithHandler>(); }
+            MenuBar.OpenWithItem.Items.Clear();
+            if (handlers.Count == 0)
+            {
+                MenuBar.OpenWithItem.Items.Add(new MenuItem { Header = "(no applications)", IsEnabled = false });
+                return;
+            }
+            foreach (var handler in handlers)
+            {
+                var item = new MenuItem { Header = handler.IsDefault ? $"{handler.AppName} (default)" : handler.AppName };
+                if (handler.IsDefault) item.FontWeight = Avalonia.Media.FontWeight.Bold;
+                var captured = handler;
+                item.Click += (_, _) =>
+                {
+                    if (LocalPathOfSelected() is { } local && _fileOpener is not null)
+                        _ = OpenWithAsync(local, captured.AppPath);
+                };
+                MenuBar.OpenWithItem.Items.Add(item);
+            }
+        };
         MenuBar.MoveToFolder.Click += (_, _) => _ = MoveToFolderAsync();
         MenuBar.CopyToFolder.Click += (_, _) => _ = CopyToFolderAsync();
         MenuBar.Delete.Click += (_, _) => _ = DeleteSelectionAsync(toTrash: true);
