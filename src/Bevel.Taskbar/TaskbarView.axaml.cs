@@ -924,6 +924,14 @@ public partial class TaskbarView : UserControl
         TaskbarLog.Debug($"Windows.CollectionChanged action={e.Action} " +
             $"new=[{Titles(e.NewItems)}] old=[{Titles(e.OldItems)}] -> HideTooltip + QueueLayout");
         HideTaskbarTooltip();
+        // Clear stale previews for removed windows so app-presence buttons don't show old thumbnails
+        // (bevel-ma6f follow-up: Calendar/Keychain Access have no windows but kept old preview).
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+            _previewCache.Clear();
+        else if (e.Action == NotifyCollectionChangedAction.Remove || e.Action == NotifyCollectionChangedAction.Replace)
+            foreach (var item in e.OldItems ?? Array.Empty<object>())
+                if (item is TaskItemViewModel vm)
+                    _previewCache.Remove(vm.Id.Value);
         QueueLayout();
     }
 
@@ -1068,6 +1076,10 @@ public partial class TaskbarView : UserControl
         PreviewImage.Source = null;
         TooltipPopup.PlacementTarget = button;
         TooltipPopup.IsOpen = true;
+
+        // App-presence entries (running apps with no window) have no window to preview (bevel-ma6f).
+        if (vm.IsAppPresence)
+            return;
 
         // Stale-then-update (bevel-c04q): paint a cached PNG immediately so hover feels instant;
         // refresh from CaptureWindow in the background and swap when a fresher frame arrives.
@@ -1444,11 +1456,27 @@ public partial class TaskbarView : UserControl
 
         foreach (var vm in live)
         {
+            if (vm is TaskItemViewModel { SkipGrowIn: true } item && RealizedButton(item) is { } button)
+            {
+                // bevel-adu8: land at the target directly — restoring Transitions afterwards doesn't
+                // animate a value that was already set.
+                var transitions = button.Transitions;
+                button.Transitions = null;
+                vm.Width = width;
+                vm.Opacity = 1;
+                button.Transitions = transitions;
+                item.SkipGrowIn = false;
+            }
             vm.Width = width;         // transitions animate the resize / grow-in
             vm.ShowLabel = showLabel; // icon-only tier when crowded
             vm.Opacity = 1;           // reveal (buttons are added at Opacity 0)
         }
     }
+
+    /// <summary>The realized task button for <paramref name="vm"/>, or null if its container isn't built
+    /// yet (the flag then stays set and the next layout pass retries).</summary>
+    private TaskButton? RealizedButton(TaskItemViewModel vm) =>
+        WindowButtonArea.ContainerFromItem(vm)?.FindDescendantOfType<TaskButton>();
 
     /// <summary>
     /// Pure width/label policy for the window buttons (bevel-m2.10) — extracted so the mode logic is

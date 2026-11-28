@@ -605,8 +605,10 @@ public sealed class ShellCoreIntegrationTests
         var tray = new ShellCoreSystemTrayHost(core);
         var removed = new List<string>();
         var added = new List<string>();
+        var updated = new List<string>();
         tray.ItemRemoved += (_, t) => removed.Add(t.Id.Value);
         tray.ItemAdded += (_, t) => added.Add(t.Id.Value);
+        tray.ItemUpdated += (_, t) => updated.Add(t.Id.Value);
 
         tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot,
             TrayItems: new[] { Tray("1:10", "Alpha"), Tray("2:20", "Beta") }));
@@ -616,7 +618,9 @@ public sealed class ShellCoreIntegrationTests
         tray.OnCoreEvent(new CoreEvent(CoreEventKind.TraySnapshot, TrayItems: new[] { Tray("2:20", "Beta") }));
 
         Assert.Equal(new[] { "1:10" }, removed.ToArray());
-        Assert.Equal(3, added.Count);   // 1:10, 2:20, then 2:20 re-added (idempotent upsert downstream)
+        // bevel-adu8: the known 2:20 is NOT re-added (icons re-adding themselves) — it arrives as an update.
+        Assert.Equal(new[] { "1:10", "2:20" }, added.ToArray());
+        Assert.Equal(new[] { "2:20" }, updated.ToArray());
 
         // A delta-removed item is forgotten too: it must not be reported removed a second time.
         tray.OnCoreEvent(new CoreEvent(CoreEventKind.TrayItemRemoved, TrayItem: Tray("2:20", "Beta")));
@@ -895,13 +899,36 @@ public sealed class ShellCoreIntegrationTests
         // The link dropped; "a" closed meanwhile; the reconnect Hello resends the projection.
         wm.OnCoreEvent(WindowSnapshot(Win("b", "Beta")));
         Assert.Equal(new[] { "a" }, closed.ToArray());
-        Assert.Equal(new[] { "a", "b", "b" }, opened.ToArray());   // b re-raised: ShellModel upserts by id
+        Assert.Equal(new[] { "a", "b" }, opened.ToArray());   // bevel-adu8: known "b" is not re-opened (no flash)
 
         // Ordering: a WindowClosed delta followed by a later snapshot — the delta already forgot "b", so the
         // snapshot that omits it must not close it a second time.
         wm.OnCoreEvent(new CoreEvent(CoreEventKind.WindowClosed, Window: Win("b", "Beta")));
         wm.OnCoreEvent(WindowSnapshot());
         Assert.Equal(new[] { "a", "b" }, closed.ToArray());
+    }
+
+    // bevel-adu8: a known window is not re-opened by a snapshot, but what changed about it while the link was
+    // down still reaches ShellModel — a title/minimize change as WindowChanged, and a focus change as
+    // ForegroundChanged (only Opened/Foreground apply focus, so a Changed alone would leave the button unpressed).
+    [Fact]
+    public async Task A_resent_snapshot_delivers_state_changes_of_known_windows()
+    {
+        await using var core = new ShellCoreClient(NewSocketPath(), NewNonce());
+        var wm = new ShellCoreWindowManager(core);
+        var opened = new List<string>();
+        var changed = new List<string>();
+        var foreground = new List<string>();
+        wm.WindowOpened += (_, w) => opened.Add(w.Id.Value);
+        wm.WindowChanged += (_, w) => changed.Add($"{w.Id.Value}:{w.Title}");
+        wm.ForegroundChanged += (_, w) => foreground.Add(w.Id.Value);
+
+        wm.OnCoreEvent(WindowSnapshot(Win("a", "Alpha", focused: true), Win("b", "Beta")));
+        wm.OnCoreEvent(WindowSnapshot(Win("a", "Alpha"), Win("b", "Beta 2", focused: true)));
+
+        Assert.Equal(new[] { "a", "b" }, opened.ToArray());
+        Assert.Equal(new[] { "a:Alpha" }, changed.ToArray());
+        Assert.Equal(new[] { "b" }, foreground.ToArray());
     }
 
     // bevel-wheq: ordering the other way — a snapshot followed by a late delta for a window the snapshot did

@@ -20,12 +20,28 @@ public sealed class ProjectionMirrorTests
     public void A_snapshot_reports_what_it_omits_and_a_removed_item_is_not_reported_again()
     {
         var m = NewMirror();
-        Assert.Empty(m.ApplySnapshot([new("a"), new("b"), new("c")]));
+        Assert.Empty(m.ApplySnapshot([new("a"), new("b"), new("c")]).Gone);
 
-        Assert.Equal(["a", "c"], Ids(m.ApplySnapshot([new("b")])));
+        Assert.Equal(["a", "c"], Ids(m.ApplySnapshot([new("b")]).Gone));
 
         m.Remove(new("b"));
-        Assert.Empty(m.ApplySnapshot([]));   // the delta already forgot "b"
+        Assert.Empty(m.ApplySnapshot([]).Gone);   // the delta already forgot "b"
+    }
+
+    // bevel-adu8: a reconnect snapshot must not re-announce known items as new (buttons flash), but must still
+    // hand them back as Known so their changed state is delivered.
+    [Fact]
+    public void A_snapshot_splits_what_it_lists_into_added_and_known()
+    {
+        var m = NewMirror();
+        var first = m.ApplySnapshot([new("a"), new("b")]);
+        Assert.Equal(["a", "b"], Ids(first.Added));
+        Assert.Empty(first.Known);
+
+        var second = m.ApplySnapshot([new("b", "renamed"), new("c")]);
+        Assert.Equal(["a"], Ids(second.Gone));
+        Assert.Equal(["c"], Ids(second.Added));
+        Assert.Equal([new Item("b", "renamed")], second.Known);
     }
 
     [Fact]
@@ -35,12 +51,12 @@ public sealed class ProjectionMirrorTests
         m.ApplySnapshot([new("a"), new("b")]);
 
         var pull = m.BeginPull();
-        Assert.Equal(["a"], Ids(m.ApplySnapshot([new("b")])));   // "a" gone while the pull is in flight
-        var merged = m.MergePull(pull, [new("a"), new("b")]);     // the pull is older: still lists "a"
+        Assert.Equal(["a"], Ids(m.ApplySnapshot([new("b")]).Gone));   // "a" gone while the pull is in flight
+        var merged = m.MergePull(pull, [new("a"), new("b")]);          // the pull is older: still lists "a"
         m.EndPull();
 
         Assert.Equal(["b"], Ids(merged));
-        Assert.Empty(m.ApplySnapshot([new("b")]));                // "a" was not resurrected in the mirror
+        Assert.Empty(m.ApplySnapshot([new("b")]).Gone);                // "a" was not resurrected in the mirror
     }
 
     [Fact]
@@ -94,7 +110,7 @@ public sealed class ProjectionMirrorTests
 
         // The newer upsert wins over the stale pull's value — for the caller AND in the mirror.
         Assert.Equal([new Item("a", "back")], merged);
-        Assert.Equal([new Item("a", "back")], m.ApplySnapshot([]));
+        Assert.Equal([new Item("a", "back")], m.ApplySnapshot([]).Gone);
     }
 
     [Fact]
@@ -107,7 +123,7 @@ public sealed class ProjectionMirrorTests
         m.EndPull();
 
         Assert.Equal([new Item("a", "newer"), new Item("b", "pulled")], merged);
-        Assert.Equal([new Item("a", "newer"), new Item("b", "pulled")], m.ApplySnapshot([]));
+        Assert.Equal([new Item("a", "newer"), new Item("b", "pulled")], m.ApplySnapshot([]).Gone);
     }
 
     // A pull that ended BEFORE a newer upsert must not overwrite that upsert's value: the newer delta wins.
@@ -120,6 +136,6 @@ public sealed class ProjectionMirrorTests
         m.EndPull();
         m.Upsert(new("a", "newer"));
 
-        Assert.Equal([new Item("a", "newer")], m.ApplySnapshot([]));
+        Assert.Equal([new Item("a", "newer")], m.ApplySnapshot([]).Gone);
     }
 }

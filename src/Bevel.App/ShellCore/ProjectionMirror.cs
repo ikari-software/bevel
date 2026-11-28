@@ -28,18 +28,30 @@ internal sealed class ProjectionMirror<T>
 
     public ProjectionMirror(Func<T, string> keyOf) => _keyOf = keyOf;
 
-    /// <summary>Apply an authoritative snapshot: forget what it omits (returned, in known order, for the
-    /// caller to raise as removed) and record everything it lists.</summary>
-    public IReadOnlyList<T> ApplySnapshot(IReadOnlyList<T> snapshot)
+    /// <summary>Apply an authoritative snapshot: forget what it omits and record everything it lists.
+    /// Returns what to raise: <c>Gone</c> (known order) as removed, <c>Added</c> (ids not known before this
+    /// snapshot) as new, and <c>Known</c> (ids already known) as updated — a reconnect must not re-announce
+    /// existing items as new (bevel-adu8: buttons flash), but their state may have changed while the link was
+    /// down, so it is still delivered. Classified under the same lock as the mutation, so no delta can slip
+    /// between the diff and the apply.</summary>
+    public SnapshotDiff ApplySnapshot(IReadOnlyList<T> snapshot)
     {
         lock (_gate)
         {
             var gone = SnapshotReconcile.Absent(_known, snapshot, _keyOf);
             foreach (var g in gone) RemoveLocked(_keyOf(g));
-            foreach (var item in snapshot) UpsertLocked(item);
-            return gone;
+            var added = new List<T>();
+            var known = new List<T>();
+            foreach (var item in snapshot)
+            {
+                (_known.ContainsKey(_keyOf(item)) ? known : added).Add(item);
+                UpsertLocked(item);
+            }
+            return new SnapshotDiff(gone, added, known);
         }
     }
+
+    public readonly record struct SnapshotDiff(IReadOnlyList<T> Gone, IReadOnlyList<T> Added, IReadOnlyList<T> Known);
 
     /// <summary>An add/update/foreground delta: the item exists (again).</summary>
     public void Upsert(T item)
