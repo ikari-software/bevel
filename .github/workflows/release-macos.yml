@@ -174,7 +174,14 @@ jobs:
           shopt -s nullglob
           assets=(dist/Bevel-*)
           if [ ${#assets[@]} -eq 0 ]; then echo '::error::no release assets downloaded'; exit 1; fi
-          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-            --title "Bevel $VERSION" \
-            --generate-notes \
-            --verify-tag
+          # Idempotent: if the release was already created (e.g. via the web UI when the tag
+          # was pushed), upload assets to it instead of failing on gh release create.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists — uploading assets to it"
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --title "Bevel Desktop $VERSION" \
+              --generate-notes \
+              --verify-tag
+          fi
