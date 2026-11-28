@@ -54,42 +54,33 @@ enum WindowActivator {
 
     static func perform(_ target: WindowTarget) {
         let steps = ActivationPlan.steps(hasAX: target.axWin != nil, isOnOtherSpace: target.isOnOtherSpace)
-        dbg("activate cg=\ (target.cgID) pid=\ (target.pid) otherSpace=\ (target.isOnOtherSpace) hasAX=\ (target.axWin != nil) steps=\ (steps)")
-        var appActivated = false
+        dbg("activate cg=\(target.cgID) pid=\(target.pid) otherSpace=\(target.isOnOtherSpace) hasAX=\(target.axWin != nil) steps=\(steps)")
         for step in steps {
             switch step {
             case .switchSpace:
                 let r = SkyLight.switchToSpace(ofWindow: target.cgID)
-                dbg("  switchSpace -> ok=\ (r.ok) already=\ (r.alreadyCurrent) focused=\ (r.displayFocused) clicked=\ (r.clicked) display=\ (r.displayUUID ?? "?") \ (r.fromSpace.map(String.init) ?? "?")->\ (r.toSpace.map(String.init) ?? "?") currents=\ (SkyLight.currentSpaceIDs().sorted())")
+                dbg("  switchSpace → ok=\(r.ok) already=\(r.alreadyCurrent) focused=\(r.displayFocused) clicked=\(r.clicked) display=\(r.displayUUID ?? "?") \(r.fromSpace.map(String.init) ?? "?")->\(r.toSpace.map(String.init) ?? "?") currents=\(SkyLight.currentSpaceIDs().sorted())")
             case .activateApp:
-                appActivated = activateApp(pid: target.pid)
-                dbg("  activateApp -> \ (appActivated)")
+                let ok = activateApp(pid: target.pid)
+                dbg("  activateApp → \(ok)")
             case .focusViaWindowServer:
-                // Address THIS window by WindowServer id. Do not follow with setFrontOnSpace --
+                // Address THIS window by WindowServer id. Do not follow with setFrontOnSpace —
                 // that re-activates the app PSN and can fire didActivateApplication while AX still
                 // reports a sibling as focused (sibling_steal via broadcastFocusForApp).
                 let ok = SkyLight.focusWindow(pid: target.pid, cgID: target.cgID)
-                dbg("  focusViaWindowServer -> \ (ok)")
+                dbg("  focusViaWindowServer → \(ok)")
                 if !ok {
-                    // WindowServer focus failed -- the window might be sandboxed (Calendar, Keychain Access).
-                    // Retry app-level activation as the fallback (bevel-ma6f).
+                    // WindowServer focus failed — e.g. a sandboxed app (Calendar, Keychain Access).
+                    // Fall back to app-level activation (bevel-ma6f).
                     let fallbackOk = activateApp(pid: target.pid)
-                    dbg("  focusViaWindowServer fallback activateApp -> \ (fallbackOk)")
-                    appActivated = appActivated || fallbackOk
+                    dbg("  focusViaWindowServer fallback activateApp → \(fallbackOk)")
                 }
             case .raiseViaAX:
                 if let axWin = target.axWin {
                     let rc = AXUIElementPerformAction(axWin, kAXRaiseAction as CFString)
-                    dbg("  raiseViaAX -> \ (rc.rawValue)")
+                    dbg("  raiseViaAX → \(rc.rawValue)")
                 }
             }
-        }
-        // bevel-ma6f: if the window is on another Space and WindowServer focus failed, the Space
-        // switch might have succeeded but the window never came forward. Retry app-level one final time
-        // after the Space switch has settled, as a belt-and-suspenders for sandboxed apps.
-        if target.isOnOtherSpace && !appActivated {
-            let finalOk = activateApp(pid: target.pid)
-            dbg("  final activateApp (otherSpace, no windowServer) -> \ (finalOk)")
         }
     }
 

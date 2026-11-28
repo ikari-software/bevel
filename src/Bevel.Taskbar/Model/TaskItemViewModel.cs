@@ -221,6 +221,11 @@ public sealed class TaskItemViewModel : ObservableObject, ITaskbarItem
     /// </summary>
     public bool IsClosing { get => _isClosing; set => SetProperty(ref _isClosing, value); }
 
+    /// <summary>When true, the view's next layout pass sets this button's first width/opacity with its
+    /// transitions suspended, so it appears at full size instead of growing in (bevel-adu8: app-presence
+    /// entries popping in after startup). The view clears it once applied.</summary>
+    public bool SkipGrowIn { get; set; }
+
     private int _closeGeneration;
 
     /// <summary>Identifies the current close episode. <see cref="ShellModel"/> captures this when it
